@@ -101,12 +101,17 @@ expect_status() {
 
 inspect() { docker inspect -f "$2" "$1"; }
 
+# EXIT trap of the smoke test: on any failure show the container logs; always remove the stack afterwards.
+cleanup() {
+  local rc=$?
+  if [ "$rc" -ne 0 ] || [ "$failures" -gt 0 ]; then compose logs --no-color | tail -n 80; fi
+  compose down -v >/dev/null 2>&1 || true
+}
+
 smoke() {
   local image=$1 tag=$2
   printf 'CLOUDSHARE_IMAGE=%s\nCLOUDSHARE_VERSION=%s\n' "$image" "$tag" >> "$base/env/versions.env"
-  # On any failure show the container logs; always remove the stack afterwards.
-  trap 'rc=$?; if [ "$rc" -ne 0 ] || [ "$failures" -gt 0 ]; then compose logs --no-color | tail -n 80; fi
-        compose down -v >/dev/null 2>&1 || true' EXIT
+  trap cleanup EXIT
 
   step "Start stack ($image:$tag + Caddy)"
   compose up -d --quiet-pull
