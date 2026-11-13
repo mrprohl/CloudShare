@@ -66,10 +66,18 @@
           addHandlerAsync(_type, _handler, cb) { if (cb) cb(ok()); },
           body: {
             getTypeAsync(cb) { cb(ok(cfg.bodyType || "html")); },
+            // New Outlook reports success but inserts nothing when the cursor has never been in the body.
             setSelectedDataAsync(data, options, cb) {
-              log.inserted.push({ data, coercionType: options.coercionType });
+              if (!cfg.cursorOutsideBody && !cfg.bodyRejectsInsert) {
+                log.inserted.push({ data, coercionType: options.coercionType, at: "cursor" });
+              }
               cb(ok());
             },
+            prependAsync(data, options, cb) {
+              if (!cfg.bodyRejectsInsert) log.inserted.push({ data, coercionType: options.coercionType, at: "top" });
+              cb(ok());
+            },
+            getAsync(_coercionType, cb) { cb(ok(log.inserted.map((i) => i.data).join("\n"))); },
           },
           sessionData: {
             getAsync(key, cb) { cb(key in log.session ? ok(log.session[key]) : failed("not found")); },
