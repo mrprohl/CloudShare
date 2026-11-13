@@ -7,7 +7,7 @@ vi.mock("../src/graph.js", () => ({
 }));
 
 const graph = await import("../src/graph.js");
-const { addFileToJob, addSeparatePart, armJob, checkJobs, createJob, createSeparateJob, getJob, setJobPasswordTo } =
+const { addFileToJob, addFileToPart, addSeparatePart, armJob, checkJobs, createJob, createSeparateJob, getJob, setJobPasswordTo } =
   await import("../src/jobs.js");
 const { quietLog } = await import("./helpers.js");
 
@@ -76,11 +76,29 @@ describe("password jobs", () => {
     expect(getJob(id)?.dispatched).toBe(true);
   });
 
-  it("sends one password mail per file when every file has its own password", async () => {
+  it("names all files of a step in its one password mail", async () => {
     const id = await createSeparateJob("oid", "max@example.test", {
-      fileName: "a.pdf", sendUrl: "https://vault/#/send/a", maxAccessCount: 3,
+      step: "s1", fileNames: ["a.pdf"], sendUrl: "https://vault/#/send/a", maxAccessCount: 3,
     });
-    await addSeparatePart(id, { fileName: "b.png", sendUrl: "https://vault/#/send/b", maxAccessCount: 1 });
+    await addFileToPart(id, "s1", "b.png");
+    await arm(id);
+    sentOnlyFor(id);
+
+    await checkJobs(quietLog());
+
+    expect(sendMail).toHaveBeenCalledOnce();
+    const [, , subject, html] = sendMail.mock.calls[0];
+    expect(subject).toBe("Kennwort für 2 Dateien: Unterlagen");
+    expect(html).toContain("a.pdf");
+    expect(html).toContain("b.png");
+    expect(getJob(id)?.fileNames).toEqual(["a.pdf", "b.png"]);
+  });
+
+  it("sends one password mail per step, each with its own password link", async () => {
+    const id = await createSeparateJob("oid", "max@example.test", {
+      step: "s1", fileNames: ["a.pdf"], sendUrl: "https://vault/#/send/a", maxAccessCount: 3,
+    });
+    await addSeparatePart(id, { step: "s2", fileNames: ["b.png"], sendUrl: "https://vault/#/send/b", maxAccessCount: 1 });
     await arm(id);
     sentOnlyFor(id);
 
@@ -100,11 +118,11 @@ describe("password jobs", () => {
     expect(getJob(id)?.dispatched).toBe(true);
   });
 
-  it("does not send a file's password mail twice when a later one failed", async () => {
+  it("does not send a step's password mail twice when a later one failed", async () => {
     const id = await createSeparateJob("oid", "max@example.test", {
-      fileName: "a.pdf", sendUrl: "https://vault/#/send/a", maxAccessCount: 3,
+      step: "s1", fileNames: ["a.pdf"], sendUrl: "https://vault/#/send/a", maxAccessCount: 3,
     });
-    await addSeparatePart(id, { fileName: "b.png", sendUrl: "https://vault/#/send/b", maxAccessCount: 3 });
+    await addSeparatePart(id, { step: "s2", fileNames: ["b.png"], sendUrl: "https://vault/#/send/b", maxAccessCount: 3 });
     await arm(id);
     sentOnlyFor(id);
     sendMail.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("Graph 503"));

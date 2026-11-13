@@ -244,21 +244,20 @@ test("uploads a large attachment in chunks, removes it and inserts the card", as
   expect(log.inserted[0].data).toContain("Präsentation.pptx");
   expect(log.inserted[0].data).toContain("Max Mustermann · Projektleitung"); // footer from the profile
   expect(log.customProps.cloudshareJob).toBe("job-1"); // links the draft to the password mail
-  expect(JSON.parse(log.session["cloudshare-state"])).toMatchObject({ jobId: "job-1", password, maxAccess: 3 });
+  expect(JSON.parse(log.session["cloudshare-state"])).toMatchObject({ jobId: "job-1", separate: true });
 
-  // From now on the password applies to the whole mail.
-  await expect(page.locator("#mode-random")).toBeDisabled();
-  await expect(page.locator("#mode-own")).toBeDisabled();
+  // The next "Als Link einfügen" gets its own password and password mail; only "Ohne Kennwort" is fixed now.
+  await expect(page.locator("#mode-random")).toBeEnabled();
+  await expect(page.locator("#mode-none")).toBeDisabled();
+  await expect(page.locator("#password")).not.toHaveValue(password);
+  await expect(page.locator("#password-hint")).toContainText("Der nächste Link erhält ein neues Kennwort");
   await shot(page, "after-upload");
 
-  // "Kennwort abrufbar" stays changeable until sending – it updates the existing Send.
+  // "Kennwort abrufbar" applies to the next link.
   await page.fill("#max-access", "7");
   await page.press("#max-access", "Tab");
-  await expect(page.locator("#status")).toContainText("jetzt 7-mal abrufbar");
-  const patch = calls.find((c) => c.method === "PATCH")!;
-  expect(patch.path).toBe("/api/jobs/job-1");
-  expect(JSON.parse(patch.body!.toString())).toEqual({ maxAccess: 7 });
-  expect(JSON.parse((await officeLog(page)).session["cloudshare-state"]).maxAccess).toBe(7);
+  await expect(page.locator("#status")).toContainText("7-mal abrufbar (für den nächsten Link)");
+  expect(calls.some((c) => c.method === "PATCH")).toBe(false);
 });
 
 test("Link gültig für / Kennwort abrufbar: capped at the maximum with a note, confirmed otherwise", async ({ page }) => {
@@ -285,30 +284,25 @@ test("Link gültig für / Kennwort abrufbar: capped at the maximum with a note, 
   await expect(status).toHaveText("Der Link zum Kennwort ist einmal abrufbar.");
 });
 
-test("Für jede Datei ein eigenes Kennwort: every file gets its own password, the mode stays fixed", async ({ page }) => {
+test("every 'Als Link einfügen' gets its own password; files of one click share it", async ({ page }) => {
   const calls = await openTaskpane(page, {
     attachments: [attachment("a1", "Angebot.pdf", 1.5 * MiB), attachment("a2", "Plan.zip", 1.5 * MiB)],
   });
-  await page.check("#separate");
-  await expect(page.locator("#password-hint")).toContainText("Jede Datei erhält ein eigenes Kennwort");
-  await expectAccessible(page);
-
-  await page.click("#submit");
+  await page.click("#submit"); // click 1: both files together
   await expect(page.locator("#status")).toContainText("2 Links wurden eingefügt.");
-  const bodies = calls.filter((c) => c.path.endsWith("/complete")).map((c) => JSON.parse(c.body!.toString()));
-  expect(bodies).toHaveLength(2);
-  expect(bodies.every((b) => b.separate === true)).toBe(true);
-  expect(bodies[0].password).not.toBe(bodies[1].password); // a new random password per file
-  expect(bodies[1].jobId).toBe("job-1"); // same mail, same job
 
-  // The password stays open for the next file; the mode itself is fixed for this mail.
-  await expect(page.locator("#mode-random")).toBeEnabled();
-  await expect(page.locator("#separate")).toBeChecked();
-  await expect(page.locator("#separate")).toBeDisabled();
-  await expect(page.locator("#mode-none")).toBeDisabled();
-  const state = JSON.parse((await officeLog(page)).session["cloudshare-state"]);
-  expect(state).toMatchObject({ jobId: "job-1", separate: true });
-  expect(state.password).toBeUndefined();
+  await page.setInputFiles("#file", { name: "Nachtrag.pdf", mimeType: "application/pdf", buffer: Buffer.alloc(2000, 0x41) });
+  await page.click("#submit"); // click 2: another file
+  await expect.poll(() => calls.filter((c) => c.path.endsWith("/complete")).length).toBe(3);
+  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
+
+  const bodies = calls.filter((c) => c.path.endsWith("/complete")).map((c) => JSON.parse(c.body!.toString()));
+  expect(bodies[0].step).toBe(bodies[1].step); // same click → same password and password mail
+  expect(bodies[0].password).toBe(bodies[1].password);
+  expect(bodies[2].step).not.toBe(bodies[0].step); // next click → new password, own password mail
+  expect(bodies[2].password).not.toBe(bodies[0].password);
+  expect(bodies[2].jobId).toBe("job-1"); // still one mail
+  await expectAccessible(page);
 });
 
 test("Kennwort an eine andere E-Mail-Adresse: stored on the job once it exists", async ({ page }) => {
@@ -338,7 +332,7 @@ test("links deleted from the mail again: password options unlock, no password ma
   await openTaskpane(page, { attachments: [attachment("a1", "Bericht.pdf", 1.5 * MiB)] });
   await page.click("#submit");
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
-  await expect(page.locator("#mode-random")).toBeDisabled();
+  await expect(page.locator("#mode-none")).toBeDisabled(); // mail has a password link
   expect(JSON.parse((await officeLog(page)).session["cloudshare-state"]).links).toEqual(["u1"]);
 
   // The user deletes the card from the mail; the pane notices on focus.

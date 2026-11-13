@@ -45,8 +45,8 @@ backend does not use Entra tokens for Nextcloud but one app password per user.
 4. Upload in 10 MiB chunks through the backend using Nextcloud chunked upload v2 (`/remote.php/dav/uploads/…`),
    target `Outlook-Anhaenge/<date>_<id>/<file>`. No fixed maximum: the free Nextcloud quota is checked up front
    (technical limit 10,000 chunks ≈ 100 GB).
-5. One public link per file (password + expiry date). The number of times the password link (Vaultwarden Send) can be opened is set per mail in the taskpane ("Kennwort abrufbar … mal", default `SEND_MAX_ACCESS_COUNT` = 3, limited to `SEND_MAX_ACCESS_LIMIT` = 20 by the server). It stays changeable until sending: afterwards `PATCH /api/jobs/:id` updates the existing Send via `bw serve` (`GET`/`PUT /object/send/:id`, the job keeps the Send ID; jobs from before this version cannot be changed, `SEND_FIXED`); the password mail states the current value ("bis zu 3 Abrufe"). The user chooses a **random password** (default, 20 characters from 67 symbols ≈ 121 bits, CSPRNG with rejection sampling, all four character classes) or an **own password** (min. 12 characters, at least 3 of 4 character classes, no repetition/simple sequence; live check in the taskpane, same rules enforced by the server in `server/src/password.ts`; Nextcloud's password policy applies on top). **All files of one mail share one password, one Vaultwarden
-   Send and one password mail.** Job ID and password live in `item.sessionData`; the password field is locked after
+5. One public link per file (password + expiry date). The number of times the password link (Vaultwarden Send) can be opened is set per step in the taskpane ("Kennwort abrufbar … mal", default `SEND_MAX_ACCESS_COUNT` = 3, limited to `SEND_MAX_ACCESS_LIMIT` = 20 by the server). It stays changeable until sending: afterwards `PATCH /api/jobs/:id` updates the existing Send via `bw serve` (`GET`/`PUT /object/send/:id`, the job keeps the Send ID; jobs from before this version cannot be changed, `SEND_FIXED`); the password mail states the current value ("bis zu 3 Abrufe"). The user chooses a **random password** (default, 20 characters from 67 symbols ≈ 121 bits, CSPRNG with rejection sampling, all four character classes) or an **own password** (min. 12 characters, at least 3 of 4 character classes, no repetition/simple sequence; live check in the taskpane, same rules enforced by the server in `server/src/password.ts`; Nextcloud's password policy applies on top). **Every "Als Link einfügen" step gets its own password, its own Vaultwarden
+   Send and its own password mail; files selected together in one step share them** (see below). The job ID lives in `item.sessionData`; drafts from before this version keep one shared password, locked after
    the first file. If the user deletes all inserted links from the mail again, the draft is released (the taskpane
    checks on focus and every 4 s while locked, the send handler before arming): password options unlock, the
    `cloudshareJob` tag is removed and no password mail goes out. Drafts from before link tracking are never released.
@@ -159,13 +159,14 @@ The taskpane is meant to look like part of Outlook, not like an external tool:
   link (`DraftState.noPassword`); upload links always keep a password. If Nextcloud enforces passwords for link
   shares (capability `files_sharing.public.password.enforced`, evaluated per user incl. group exceptions, reported
   as `passwordEnforced` by `/api/nextcloud/status`), the option is hidden.
-- **"Für jede Datei ein eigenes Kennwort"** (checkbox, default off): every link gets its own password, its own Send and
-  its own password mail ("Kennwort für „Datei“: Betreff"). Still one job per mail (`separate: true` on
-  `/complete`, `/api/requests`, `/api/shares/:id/link`; `PasswordJob.separate` lists the parts), so tagging and arming
-  stay unchanged; the watcher sends one mail per part and remembers sent parts (no duplicates after a retry). The mode is
-  fixed by the first link of the mail (the server refuses mixing, 409); the password field stays open – random
-  passwords are regenerated per file, an own password is cleared after each step; "Kennwort abrufbar" applies to the
-  next file.
+- **One password per step**: every click on "Als Link einfügen", "Link zum Hochladen einfügen" or "Meine Freigaben →
+  Als Link einfügen" is a step with its own password, Send and password mail ("Kennwort für „Datei“: Betreff", or
+  "Kennwort für 2 Dateien: …" when several files were selected in that click). The taskpane sends a `step` ID per
+  click; the server groups by it (`PasswordJob.separate` = one part per step with its files). Still one job per mail,
+  so tagging and arming stay unchanged; the watcher sends one mail per part and remembers sent parts (no duplicates
+  after a retry). After a step the taskpane offers a new random password (or clears an own one); "Kennwort abrufbar"
+  applies to the next step; "Ohne Kennwort" is no longer possible in a mail with password links. Requests without
+  `step` (drafts and cached clients from before) keep one shared password per mail.
 - **"Kennwort an eine andere E-Mail-Adresse senden"** (checkbox + one address per mail, `DraftState.passwordTo`): the
   password mail goes *only* to that address, not to the recipients of the mail. The taskpane stores it on the job
   (`PATCH /api/jobs/:id` with `passwordTo`, "" = back to the recipients; also right after the first link), the send

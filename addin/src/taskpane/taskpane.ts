@@ -15,7 +15,6 @@ import {
   rememberLink,
   tagDraft,
   updateDraftState,
-  type DraftState,
   type ServerConfig,
 } from "../shared/office";
 import { checkPassword, generatePassword } from "../shared/password";
@@ -46,8 +45,6 @@ const modeOwn = $<HTMLInputElement>("mode-own");
 const modeNone = $<HTMLInputElement>("mode-none");
 const passwordGroup = $<HTMLDivElement>("password-group");
 const maxAccessField = $<HTMLDivElement>("max-access-field");
-const separateRow = $<HTMLLabelElement>("separate-row");
-const separateBox = $<HTMLInputElement>("separate");
 const passwordToField = $<HTMLDivElement>("password-to-field");
 const passwordToToggle = $<HTMLInputElement>("password-to-toggle");
 const passwordToInput = $<HTMLInputElement>("password-to");
@@ -323,7 +320,7 @@ interface UploadStart { uploadId: string; chunkSize: number; totalChunks: number
 /** jobId is null for links "Ohne Kennwort" – no password mail. */
 interface UploadResult { shareUrl: string; expireDate: string; jobId: string | null; fileName: string; size: number }
 
-async function upload(blob: Blob, fileName: string): Promise<UploadResult> {
+async function upload(blob: Blob, fileName: string, step: string): Promise<UploadResult> {
   const start = await api<UploadStart>(
     "/api/uploads",
     { method: "POST", body: JSON.stringify({ fileName, size: blob.size }) },
@@ -350,7 +347,7 @@ async function upload(blob: Blob, fileName: string): Promise<UploadResult> {
 
   const result = await api<UploadResult>(
     `/api/uploads/${start.uploadId}/complete`,
-    { method: "POST", body: JSON.stringify(await shareSettingsBody()) },
+    { method: "POST", body: JSON.stringify(await shareSettingsBody(step)) },
     await getToken(),
   );
   await rememberShareChoice(result.jobId);
@@ -358,18 +355,19 @@ async function upload(blob: Blob, fileName: string): Promise<UploadResult> {
 }
 
 /** Password settings of the "Senden" tab for a new link of this mail (upload, upload link, link again). */
-async function shareSettingsBody() {
+/**
+ * Settings of the "Senden" tab for a new link. `step` identifies the click ("Als Link einfügen" etc.): every step
+ * gets its own password and password mail, files of the same step share them (see attachToJob on the server).
+ */
+async function shareSettingsBody(step: string) {
   const expireDays = Number(expireInput.value);
   if (withoutPassword()) return { noPassword: true, expireDays };
   const state = await readDraftState();
-  return {
-    password: passwordInput.value,
-    expireDays,
-    maxAccess: maxAccessValue(),
-    jobId: state.jobId,
-    ...(separateBox.checked ? { separate: true } : {}),
-  };
+  return { password: passwordInput.value, expireDays, maxAccess: maxAccessValue(), jobId: state.jobId, step };
 }
+
+/** New ID for one click on "Als Link einfügen" / "Link zum Hochladen einfügen" / "Meine Freigaben → Als Link einfügen". */
+const newStep = () => Math.random().toString(36).slice(2, 12);
 
 /** From the first link on, the choice (this password or none) applies to the whole mail. */
 async function rememberShareChoice(jobId: string | null) {
@@ -378,17 +376,16 @@ async function rememberShareChoice(jobId: string | null) {
     lockNoPassword();
     return;
   }
-  let state: DraftState;
-  if (separateBox.checked) {
-    // One password per file: nothing to lock except the mode; the next file gets a new password.
+  let state = await readDraftState();
+  if (state.password) {
+    // Mail started before passwords per step existed: it keeps its one shared password.
+    state = await updateDraftState({ jobId });
+    await tagDraft(jobId);
+  } else {
+    // One password per step: only the mode is fixed; the next step gets a new password (nextStepPassword).
     state = await updateDraftState({ jobId, separate: true });
     await tagDraft(jobId);
     lockSeparate();
-    if (modeRandom.checked) passwordInput.value = generatePassword();
-  } else {
-    state = await updateDraftState({ jobId, password: passwordInput.value, maxAccess: maxAccessValue() });
-    await tagDraft(jobId);
-    lockPassword();
   }
   // Entered before the first link: hand it to the new job (the send handler passes it on again when arming).
   if (state.passwordTo) {
@@ -560,7 +557,8 @@ const PASSWORD_HINT = "Die Empfänger erhalten das Kennwort nach dem Senden auto
 const NO_PASSWORD_HINT =
   "Jeder, der den Link kennt, kann die Dateien herunterladen. Es wird keine Nachricht mit Kennwort verschickt.";
 const SEPARATE_HINT =
-  "Jede Datei erhält ein eigenes Kennwort. Die Empfänger bekommen nach dem Senden je Datei eine Nachricht mit dem Kennwort.";
+  "Der nächste Link erhält ein neues Kennwort. Die Empfänger bekommen nach dem Senden für jeden Link eine eigene " +
+  "Nachricht mit dem Kennwort.";
 
 /** "Ohne Kennwort" selected (file links only – upload links always keep a password). */
 const withoutPassword = () => modeNone.checked;
@@ -597,8 +595,7 @@ function setPasswordMode(mode: "random" | "own" | "none") {
   passwordGroup.hidden = none;
   maxAccessField.hidden = none;
   passwordToField.hidden = none;
-  separateRow.hidden = none;
-  passwordHint.textContent = none ? NO_PASSWORD_HINT : separateBox.checked ? SEPARATE_HINT : PASSWORD_HINT;
+  passwordHint.textContent = none ? NO_PASSWORD_HINT : perStep ? SEPARATE_HINT : PASSWORD_HINT;
   passwordInput.readOnly = !own;
   generateButton.hidden = own;
   revealButton.hidden = !own;
@@ -632,32 +629,33 @@ function lockPassword() {
   rulesList.hidden = true;
   revealButton.hidden = false;
   setRevealed(false);
-  separateBox.disabled = true;
   passwordHint.textContent =
     "Dieses Kennwort gilt für alle Dateien dieser Nachricht. Die Empfänger erhalten es nach dem Senden automatisch.";
 }
 
+/** The mail has links with a password per step: every further click gets a new password. */
+let perStep = false;
+
 /**
- * "Für jede Datei ein eigenes Kennwort" after the first link: the mode is fixed for the mail (one password mail
- * per file), "Ohne Kennwort" is no longer possible – but the password itself stays open for the next file.
+ * After the first link with a password: every "Als Link einfügen" gets its own password and password mail, so the
+ * password stays open for the next step – only "Ohne Kennwort" is no longer possible in this mail.
  */
 function lockSeparate() {
-  separateBox.checked = true;
-  separateBox.disabled = true;
+  perStep = true;
   modeNone.disabled = true;
   passwordHint.textContent = SEPARATE_HINT;
 }
 
-/** With an own password and one password per file, the next file needs a new one. */
-function nextOwnPassword() {
-  if (!separateBox.checked || !modeOwn.checked || !modeNone.disabled) return;
-  passwordInput.value = "";
-  renderRules();
+/** After a step: a new random password for the next one, or an empty field for an own one. */
+function nextStepPassword() {
+  if (!perStep) return;
+  if (modeRandom.checked) {
+    passwordInput.value = generatePassword();
+  } else if (modeOwn.checked) {
+    passwordInput.value = "";
+    renderRules();
+  }
 }
-
-separateBox.addEventListener("change", () => {
-  passwordHint.textContent = separateBox.checked ? SEPARATE_HINT : PASSWORD_HINT;
-});
 
 /** After the first link without password the whole mail stays without password (no mix in one mail). */
 function lockNoPassword() {
@@ -674,8 +672,7 @@ function unlockPassword() {
   modeRandom.disabled = false;
   modeOwn.disabled = false;
   modeNone.disabled = false;
-  separateBox.disabled = false;
-  separateBox.checked = false;
+  perStep = false;
   maxAccessInput.readOnly = false;
   maxAccessInput.value = String(serverConfig.sendMaxAccessCount);
   setPasswordMode("random");
@@ -688,7 +685,7 @@ function unlockPassword() {
  */
 async function releaseIfLinksDeleted() {
   // Only while the mail has CloudShare links (options locked or per-file mode fixed) and nothing is running.
-  if (busy > 0 || document.hidden || !(modeRandom.disabled || separateBox.disabled)) return;
+  if (busy > 0 || document.hidden || !(modeRandom.disabled || perStep)) return;
   if (await releaseDraftIfLinksGone().catch(() => false)) {
     unlockPassword();
     setStatus("Die CloudShare-Links wurden aus der Nachricht entfernt. Kennwort und Optionen sind wieder frei wählbar.");
@@ -736,12 +733,12 @@ maxAccessInput.addEventListener("change", async () => {
   maxAccessInput.value = String(maxAccess);
   const note = capped ? capNote(serverConfig.sendMaxAccessLimit, "Abrufe") : "";
   const state = await readDraftState();
-  // No link yet, or one password per file: the number applies to the next link, nothing to change on the server.
+  // No link yet, or one password per step: the number applies to the next link, nothing to change on the server.
   if (!state.jobId || state.separate || state.maxAccess === maxAccess) {
     setStatus(
       note +
         `Der Link zum Kennwort ist ${timesText(maxAccess)} abrufbar` +
-        (state.separate ? " (für die nächste Datei)." : "."),
+        (state.separate ? " (für den nächsten Link)." : "."),
       capped ? "info" : "success",
     );
     return;
@@ -780,6 +777,8 @@ submitButton.addEventListener("click", async () => {
   submitButton.disabled = true;
   busy++;
   const results: UploadResult[] = [];
+  // One step for this click: all selected files share one password and one password mail.
+  const step = newStep();
   let failed = false;
   try {
     for (const box of selectedAttachments) {
@@ -787,14 +786,14 @@ submitButton.addEventListener("click", async () => {
       setProgress(0);
       setStatus(`„${name}“ wird vorbereitet …`);
       const blob = await readAttachment(box.value);
-      results.push(await upload(blob, name));
+      results.push(await upload(blob, name, step));
       // Remove from the mail only after a successful upload.
       await officeAsync<void>((cb) => composeItem().removeAttachmentAsync(box.value, cb));
     }
     for (const file of selectedFiles) {
       if (file.size === 0) throw new Error(`„${file.name}“ ist leer.`);
       setProgress(0);
-      results.push(await upload(file, file.name));
+      results.push(await upload(file, file.name, step));
       pickedFiles = pickedFiles.filter((f) => f !== file);
     }
   } catch (err) {
@@ -823,7 +822,7 @@ submitButton.addEventListener("click", async () => {
       await refreshConnection().catch(() => undefined); // refreshes the free quota
     }
     submitButton.disabled = false;
-    nextOwnPassword();
+    nextStepPassword();
     busy--;
     setProgress(null);
   }
@@ -848,7 +847,7 @@ requestButton.addEventListener("click", async () => {
     setStatus("Link zum Hochladen wird erstellt …");
     const result = await api<{ shareUrl: string; expireDate: string; jobId: string }>(
       "/api/requests",
-      { method: "POST", body: JSON.stringify(await shareSettingsBody()) },
+      { method: "POST", body: JSON.stringify(await shareSettingsBody(newStep())) },
       await getToken(),
     );
     // Same password and password mail as the files of this mail.
@@ -866,7 +865,7 @@ requestButton.addEventListener("click", async () => {
     setStatus(errorMessage(err), "error");
   } finally {
     requestButton.disabled = false;
-    nextOwnPassword();
+    nextStepPassword();
     busy--;
   }
 });
@@ -1038,7 +1037,7 @@ async function linkAgain(share: ShareItem, button: HTMLButtonElement) {
     setStatus(`Neuer Link zu „${share.name}“ wird erstellt …`);
     const result = await api<LinkAgainResult>(
       `/api/shares/${encodeURIComponent(share.id)}/link`,
-      { method: "POST", body: JSON.stringify(await shareSettingsBody()) },
+      { method: "POST", body: JSON.stringify(await shareSettingsBody(newStep())) },
       await getToken(),
     );
     await rememberShareChoice(result.jobId);
@@ -1070,7 +1069,7 @@ async function linkAgain(share: ShareItem, button: HTMLButtonElement) {
     setStatus(`Der Link konnte nicht eingefügt werden: ${errorMessage(err)}`, "error");
   } finally {
     button.disabled = false;
-    nextOwnPassword();
+    nextStepPassword();
     busy--;
   }
 }
@@ -1122,8 +1121,8 @@ Office.onReady(async () => {
   } else if (state.noPassword) {
     lockNoPassword();
   } else if (state.separate) {
-    setPasswordMode("random");
     lockSeparate();
+    setPasswordMode("random");
   } else {
     setPasswordMode("random");
   }
