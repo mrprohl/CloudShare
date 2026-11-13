@@ -7,7 +7,7 @@
            xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
            xsi:type="MailApp">
   <Id>8f3c2a71-5d4e-4b9a-9e2f-6c1d7a0b3e54</Id>
-  <Version>1.0.0.0</Version>
+  <Version>1.0.1.0</Version>
   <ProviderName>CloudShare</ProviderName>
   <DefaultLocale>de-DE</DefaultLocale>
   <DisplayName DefaultValue="CloudShare"/>
@@ -104,7 +104,7 @@
         </bt:Urls>
         <bt:ShortStrings>
           <bt:String id="Group.Label" DefaultValue="Nextcloud"/>
-          <bt:String id="Button.Label" DefaultValue="CloudShare"/>
+          <bt:String id="Button.Label" DefaultValue="Dateien oder Nachrichten sicher versenden oder abrufen"/>
         </bt:ShortStrings>
         <bt:LongStrings>
           <bt:String id="Button.Tooltip" DefaultValue="Große Dateien als kennwortgeschützten Link aus Ihrer Nextcloud senden."/>

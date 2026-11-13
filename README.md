@@ -6,9 +6,9 @@ How it works and how Entra ID, Nextcloud and Vaultwarden are set up: [docs/archi
 
 ## What it looks like in Outlook
 
-![CloudShare in a new-Outlook compose window: "CloudShare" in the ribbon, the inserted card with download buttons and profile footer in the mail, and the CloudShare taskpane on the right](docs/images/outlook-compose.png)
+![CloudShare in a new-Outlook compose window: the CloudShare button in the ribbon, the inserted card with download buttons and profile footer in the mail, and the CloudShare taskpane on the right](docs/images/outlook-compose.png)
 
-*Composing a mail: the ribbon button **CloudShare** opens the taskpane. Files are uploaded to the sender's
+*Composing a mail: the ribbon button **Dateien oder Nachrichten sicher versenden oder abrufen** (CloudShare) opens the taskpane. Files are uploaded to the sender's
 Nextcloud and inserted as a card – one row per file with a download button, expiry date and a footer filled from
 the sender's Microsoft 365 profile (`MAIL_FOOTER`). The password follows automatically in a second mail after
 sending. The taskpane offers a random or own password, link validity and **Dateien anfordern** (upload link).*
