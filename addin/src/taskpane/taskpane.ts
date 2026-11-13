@@ -15,6 +15,7 @@ import {
   rememberLink,
   tagDraft,
   updateDraftState,
+  type DraftState,
   type ServerConfig,
 } from "../shared/office";
 import { checkPassword, generatePassword } from "../shared/password";
@@ -45,6 +46,12 @@ const modeOwn = $<HTMLInputElement>("mode-own");
 const modeNone = $<HTMLInputElement>("mode-none");
 const passwordGroup = $<HTMLDivElement>("password-group");
 const maxAccessField = $<HTMLDivElement>("max-access-field");
+const separateRow = $<HTMLLabelElement>("separate-row");
+const separateBox = $<HTMLInputElement>("separate");
+const passwordToField = $<HTMLDivElement>("password-to-field");
+const passwordToToggle = $<HTMLInputElement>("password-to-toggle");
+const passwordToInput = $<HTMLInputElement>("password-to");
+const passwordToHint = $<HTMLParagraphElement>("password-to-hint");
 const rulesList = $<HTMLUListElement>("password-rules");
 const requestButton = $<HTMLButtonElement>("request");
 const tabSend = $<HTMLButtonElement>("tab-send");
@@ -355,7 +362,13 @@ async function shareSettingsBody() {
   const expireDays = Number(expireInput.value);
   if (withoutPassword()) return { noPassword: true, expireDays };
   const state = await readDraftState();
-  return { password: passwordInput.value, expireDays, maxAccess: maxAccessValue(), jobId: state.jobId };
+  return {
+    password: passwordInput.value,
+    expireDays,
+    maxAccess: maxAccessValue(),
+    jobId: state.jobId,
+    ...(separateBox.checked ? { separate: true } : {}),
+  };
 }
 
 /** From the first link on, the choice (this password or none) applies to the whole mail. */
@@ -365,10 +378,79 @@ async function rememberShareChoice(jobId: string | null) {
     lockNoPassword();
     return;
   }
-  await updateDraftState({ jobId, password: passwordInput.value, maxAccess: maxAccessValue() });
-  await tagDraft(jobId);
-  lockPassword();
+  let state: DraftState;
+  if (separateBox.checked) {
+    // One password per file: nothing to lock except the mode; the next file gets a new password.
+    state = await updateDraftState({ jobId, separate: true });
+    await tagDraft(jobId);
+    lockSeparate();
+    if (modeRandom.checked) passwordInput.value = generatePassword();
+  } else {
+    state = await updateDraftState({ jobId, password: passwordInput.value, maxAccess: maxAccessValue() });
+    await tagDraft(jobId);
+    lockPassword();
+  }
+  // Entered before the first link: hand it to the new job (the send handler passes it on again when arming).
+  if (state.passwordTo) {
+    await api(`/api/jobs/${encodeURIComponent(jobId)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ passwordTo: state.passwordTo }),
+    }, await getToken()).catch(() => undefined);
+  }
 }
+
+// --- "Kennwort an eine andere E-Mail-Adresse senden" ------------------------------------
+
+const looksLikeEmail = (value: string) => /^[^\s@,;<>"()]+@[^\s@,;<>"()]+\.[^\s@,;<>"()]{2,}$/.test(value);
+
+function showPasswordTo(on: boolean) {
+  passwordToToggle.checked = on;
+  passwordToInput.hidden = !on;
+  passwordToHint.hidden = !on;
+}
+
+/** Stores the other password recipient for this mail and, once the job exists, on the server. "" = recipients. */
+async function applyPasswordTo(value: string) {
+  const state = await updateDraftState({ passwordTo: value || undefined });
+  try {
+    if (state.jobId) {
+      await api(`/api/jobs/${encodeURIComponent(state.jobId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ passwordTo: value }),
+      }, await getToken());
+    }
+    setStatus(
+      value
+        ? `Das Kennwort wird nur an ${value} geschickt.`
+        : "Das Kennwort geht wieder an die Empfänger der Nachricht.",
+      "success",
+    );
+  } catch (err) {
+    setStatus(`Die Adresse für das Kennwort konnte nicht gespeichert werden: ${errorMessage(err)}`, "error");
+  }
+}
+
+passwordToToggle.addEventListener("change", () => {
+  showPasswordTo(passwordToToggle.checked);
+  if (passwordToToggle.checked) {
+    passwordToInput.focus();
+    if (passwordToInput.value) void applyPasswordTo(passwordToInput.value.trim());
+  } else {
+    void applyPasswordTo("");
+  }
+});
+
+passwordToInput.addEventListener("change", () => {
+  const value = passwordToInput.value.trim();
+  passwordToInput.value = value;
+  if (value && !looksLikeEmail(value)) {
+    passwordToInput.setAttribute("aria-invalid", "true");
+    setStatus("Bitte genau eine gültige E-Mail-Adresse für das Kennwort angeben.", "error");
+    return;
+  }
+  passwordToInput.removeAttribute("aria-invalid");
+  void applyPasswordTo(value);
+});
 
 /**
  * Why a new link cannot be created with the current settings, or null. Upload links always need a password;
@@ -477,6 +559,8 @@ async function insertLinks(results: UploadResult[]) {
 const PASSWORD_HINT = "Die Empfänger erhalten das Kennwort nach dem Senden automatisch in einer separaten Nachricht.";
 const NO_PASSWORD_HINT =
   "Jeder, der den Link kennt, kann die Dateien herunterladen. Es wird keine Nachricht mit Kennwort verschickt.";
+const SEPARATE_HINT =
+  "Jede Datei erhält ein eigenes Kennwort. Die Empfänger bekommen nach dem Senden je Datei eine Nachricht mit dem Kennwort.";
 
 /** "Ohne Kennwort" selected (file links only – upload links always keep a password). */
 const withoutPassword = () => modeNone.checked;
@@ -512,7 +596,9 @@ function setPasswordMode(mode: "random" | "own" | "none") {
   modeNone.checked = none;
   passwordGroup.hidden = none;
   maxAccessField.hidden = none;
-  passwordHint.textContent = none ? NO_PASSWORD_HINT : PASSWORD_HINT;
+  passwordToField.hidden = none;
+  separateRow.hidden = none;
+  passwordHint.textContent = none ? NO_PASSWORD_HINT : separateBox.checked ? SEPARATE_HINT : PASSWORD_HINT;
   passwordInput.readOnly = !own;
   generateButton.hidden = own;
   revealButton.hidden = !own;
@@ -546,9 +632,32 @@ function lockPassword() {
   rulesList.hidden = true;
   revealButton.hidden = false;
   setRevealed(false);
+  separateBox.disabled = true;
   passwordHint.textContent =
     "Dieses Kennwort gilt für alle Dateien dieser Nachricht. Die Empfänger erhalten es nach dem Senden automatisch.";
 }
+
+/**
+ * "Für jede Datei ein eigenes Kennwort" after the first link: the mode is fixed for the mail (one password mail
+ * per file), "Ohne Kennwort" is no longer possible – but the password itself stays open for the next file.
+ */
+function lockSeparate() {
+  separateBox.checked = true;
+  separateBox.disabled = true;
+  modeNone.disabled = true;
+  passwordHint.textContent = SEPARATE_HINT;
+}
+
+/** With an own password and one password per file, the next file needs a new one. */
+function nextOwnPassword() {
+  if (!separateBox.checked || !modeOwn.checked || !modeNone.disabled) return;
+  passwordInput.value = "";
+  renderRules();
+}
+
+separateBox.addEventListener("change", () => {
+  passwordHint.textContent = separateBox.checked ? SEPARATE_HINT : PASSWORD_HINT;
+});
 
 /** After the first link without password the whole mail stays without password (no mix in one mail). */
 function lockNoPassword() {
@@ -565,6 +674,8 @@ function unlockPassword() {
   modeRandom.disabled = false;
   modeOwn.disabled = false;
   modeNone.disabled = false;
+  separateBox.disabled = false;
+  separateBox.checked = false;
   maxAccessInput.readOnly = false;
   maxAccessInput.value = String(serverConfig.sendMaxAccessCount);
   setPasswordMode("random");
@@ -576,7 +687,8 @@ function unlockPassword() {
  * not stay locked, and no password mail must go out (the send handler checks this too).
  */
 async function releaseIfLinksDeleted() {
-  if (busy > 0 || document.hidden || !modeRandom.disabled) return; // only while locked and idle
+  // Only while the mail has CloudShare links (options locked or per-file mode fixed) and nothing is running.
+  if (busy > 0 || document.hidden || !(modeRandom.disabled || separateBox.disabled)) return;
   if (await releaseDraftIfLinksGone().catch(() => false)) {
     unlockPassword();
     setStatus("Die CloudShare-Links wurden aus der Nachricht entfernt. Kennwort und Optionen sind wieder frei wählbar.");
@@ -585,20 +697,55 @@ async function releaseIfLinksDeleted() {
 
 /** Number of accesses within the allowed range (the server limits it again). */
 function maxAccessValue(): number {
-  const value = Math.floor(Number(maxAccessInput.value));
-  if (!Number.isFinite(value) || value < 1) return serverConfig.sendMaxAccessCount;
-  return Math.min(value, serverConfig.sendMaxAccessLimit);
+  return boundedNumber(maxAccessInput, serverConfig.sendMaxAccessCount, serverConfig.sendMaxAccessLimit).value;
 }
+
+/** Whole number from 1 to `max` (empty or invalid → `fallback`); `capped` if the entry was above the maximum. */
+function boundedNumber(input: HTMLInputElement, fallback: number, max: number): { value: number; capped: boolean } {
+  const raw = Math.floor(Number(input.value));
+  if (!Number.isFinite(raw) || raw < 1) return { value: fallback, capped: false };
+  return raw > max ? { value: max, capped: true } : { value: raw, capped: false };
+}
+
+const capNote = (max: number, unit: string) => `Höchstens ${max} ${unit} möglich – der Wert wurde auf ${max} gesetzt. `;
+const timesText = (count: number) => (count === 1 ? "einmal" : `${count}-mal`);
+
+/** "Link gültig für": applies to the next links; above the maximum it is capped with a note (like the server does). */
+expireInput.addEventListener("change", async () => {
+  const { value, capped } = boundedNumber(expireInput, serverConfig.defaultExpireDays, serverConfig.maxExpireDays);
+  expireInput.value = String(value);
+  const state = await readDraftState();
+  setStatus(
+    (capped ? capNote(serverConfig.maxExpireDays, "Tage") : "") +
+      `Neue Links sind ${value} ${value === 1 ? "Tag" : "Tage"} gültig.` +
+      (state.links?.length ? " Bereits eingefügte Links behalten ihr Ablaufdatum." : ""),
+    capped ? "info" : "success",
+  );
+});
 
 /**
  * "Kennwort abrufbar" changed: before the first link it only applies to the next one; afterwards the mail's
  * Vaultwarden Send already exists and is updated on the server (until the password mail went out).
  */
 maxAccessInput.addEventListener("change", async () => {
-  const maxAccess = maxAccessValue();
+  const { value: maxAccess, capped } = boundedNumber(
+    maxAccessInput,
+    serverConfig.sendMaxAccessCount,
+    serverConfig.sendMaxAccessLimit,
+  );
   maxAccessInput.value = String(maxAccess);
+  const note = capped ? capNote(serverConfig.sendMaxAccessLimit, "Abrufe") : "";
   const state = await readDraftState();
-  if (!state.jobId || state.maxAccess === maxAccess) return;
+  // No link yet, or one password per file: the number applies to the next link, nothing to change on the server.
+  if (!state.jobId || state.separate || state.maxAccess === maxAccess) {
+    setStatus(
+      note +
+        `Der Link zum Kennwort ist ${timesText(maxAccess)} abrufbar` +
+        (state.separate ? " (für die nächste Datei)." : "."),
+      capped ? "info" : "success",
+    );
+    return;
+  }
   try {
     const result = await api<{ maxAccess: number }>(
       `/api/jobs/${encodeURIComponent(state.jobId)}`,
@@ -607,10 +754,7 @@ maxAccessInput.addEventListener("change", async () => {
     );
     maxAccessInput.value = String(result.maxAccess);
     await updateDraftState({ maxAccess: result.maxAccess });
-    setStatus(
-      `Der Link zum Kennwort ist jetzt ${result.maxAccess === 1 ? "einmal" : `${result.maxAccess}-mal`} abrufbar.`,
-      "success",
-    );
+    setStatus(`${note}Der Link zum Kennwort ist jetzt ${timesText(result.maxAccess)} abrufbar.`, capped ? "info" : "success");
   } catch (err) {
     // Not changeable (e.g. links inserted before this version): show the value that actually applies.
     maxAccessInput.value = String(state.maxAccess ?? serverConfig.sendMaxAccessCount);
@@ -679,6 +823,7 @@ submitButton.addEventListener("click", async () => {
       await refreshConnection().catch(() => undefined); // refreshes the free quota
     }
     submitButton.disabled = false;
+    nextOwnPassword();
     busy--;
     setProgress(null);
   }
@@ -721,6 +866,7 @@ requestButton.addEventListener("click", async () => {
     setStatus(errorMessage(err), "error");
   } finally {
     requestButton.disabled = false;
+    nextOwnPassword();
     busy--;
   }
 });
@@ -924,6 +1070,7 @@ async function linkAgain(share: ShareItem, button: HTMLButtonElement) {
     setStatus(`Der Link konnte nicht eingefügt werden: ${errorMessage(err)}`, "error");
   } finally {
     button.disabled = false;
+    nextOwnPassword();
     busy--;
   }
 }
@@ -974,9 +1121,14 @@ Office.onReady(async () => {
     lockPassword();
   } else if (state.noPassword) {
     lockNoPassword();
+  } else if (state.separate) {
+    setPasswordMode("random");
+    lockSeparate();
   } else {
     setPasswordMode("random");
   }
+  passwordToInput.value = state.passwordTo ?? "";
+  showPasswordTo(Boolean(state.passwordTo));
   // Outlook has no "body changed" event: check when the pane gets focus and every few seconds while locked.
   await releaseIfLinksDeleted();
   window.addEventListener("focus", () => void releaseIfLinksDeleted());

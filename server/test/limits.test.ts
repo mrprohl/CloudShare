@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampInt } from "../src/limits.js";
+import { clampInt, isEmailAddress } from "../src/limits.js";
 
 describe("clampInt (link validity, password-link accesses)", () => {
   it("keeps values within the range", () => {
@@ -17,5 +17,16 @@ describe("clampInt (link validity, password-link accesses)", () => {
     expect(clampInt(undefined, 3, 1, 20)).toBe(3);
     expect(clampInt("abc", 3, 1, 20)).toBe(3);
     expect(clampInt(0, 3, 1, 20)).toBe(3);
+  });
+});
+
+describe("isEmailAddress (Kennwort an andere Adresse)", () => {
+  it.each(["max@example.com", "Max.Muster+cs@sub.example.co.uk", "a@b.de"])("accepts %s", (value) => {
+    expect(isEmailAddress(value)).toBe(true);
+  });
+
+  it.each(["", "max", "max@", "@example.com", "max@example", "max @example.com", "a@b.de, c@d.de", "a@b.de;c@d.de",
+    "Max <max@example.com>", `${"x".repeat(250)}@example.com`])("rejects %j", (value) => {
+    expect(isEmailAddress(value)).toBe(false);
   });
 });

@@ -222,6 +222,34 @@ describe("uploads", () => {
     expect(createPasswordSend).not.toHaveBeenCalled();
   });
 
+  it("gives every file its own password and Send with 'separate', in one job per mail", async () => {
+    const first = await startUpload("anna");
+    await putChunk("anna", first.body.uploadId, 1);
+    const { jobId } = (await complete("anna", first.body.uploadId, { separate: true, maxAccess: 2 })).json();
+
+    const OTHER = "Zr8!mQ4#vT1x_Lp9Wk2s";
+    const second = await startUpload("anna", "b.pdf");
+    await putChunk("anna", second.body.uploadId, 1);
+    const res = await complete("anna", second.body.uploadId, { separate: true, jobId, password: OTHER, maxAccess: 5 });
+    expect(res.json().jobId).toBe(jobId);
+
+    expect(createPasswordSend.mock.calls.map((c) => [c[1], c[2]])).toEqual([[STRONG, 2], [OTHER, 5]]);
+    expect(getJob(jobId)?.separate?.map((p) => [p.fileName, p.maxAccessCount])).toEqual([["a.pdf", 2], ["b.pdf", 5]]);
+    expect(getJob(jobId)?.fileNames).toEqual(["a.pdf", "b.pdf"]);
+  });
+
+  it("does not mix one shared password and separate passwords in one mail", async () => {
+    const first = await startUpload("anna");
+    await putChunk("anna", first.body.uploadId, 1);
+    const { jobId } = (await complete("anna", first.body.uploadId)).json();
+
+    const second = await startUpload("anna", "b.pdf");
+    await putChunk("anna", second.body.uploadId, 1);
+    const res = await complete("anna", second.body.uploadId, { separate: true, jobId });
+    expect(res.statusCode).toBe(409);
+    expect(getJob(jobId)?.fileNames).toEqual(["a.pdf"]);
+  });
+
   it("only accepts noPassword as a real boolean", async () => {
     const { body } = await startUpload("anna");
     await putChunk("anna", body.uploadId, 1);
@@ -356,6 +384,16 @@ describe("arming the password mail", () => {
     expect(getJob(id)?.armed).toBeUndefined();
   });
 
+  it("takes the other password recipient from the arm call, only if valid", async () => {
+    const id = await createJob("oid-anna", "anna@example.test", "a.pdf", "https://vault/#/send/x");
+    const arm = (passwordTo: unknown) =>
+      app.inject({ method: "POST", url: `/api/jobs/${id}/arm`, headers: as("anna"), payload: { passwordTo } });
+    await arm("keine-adresse");
+    expect(getJob(id)?.passwordTo).toBeUndefined();
+    await arm("kollege@example.test");
+    expect(getJob(id)?.passwordTo).toBe("kollege@example.test");
+  });
+
   it("stores a valid shared mailbox and ignores anything else", async () => {
     const shared = await createJob("oid-anna", "anna@example.test", "a.pdf", "https://vault/#/send/x");
     await app.inject({ method: "POST", url: `/api/jobs/${shared}/arm`, headers: as("anna"), payload: { from: "Info@Example.test" } });
@@ -376,7 +414,7 @@ describe("changing 'Kennwort abrufbar' after the first link", () => {
     const id = await createJob("oid-anna", "anna@example.test", "a.pdf", "https://vault/#/send/x", 3, "send-9");
     const res = await change("anna", id, 500);
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ maxAccess: 20 });
+    expect(res.json()).toEqual({ maxAccess: 20, passwordTo: "" });
     expect(setSendMaxAccess).toHaveBeenCalledWith("send-9", 20);
     expect(getJob(id)?.maxAccessCount).toBe(20);
   });
@@ -393,6 +431,25 @@ describe("changing 'Kennwort abrufbar' after the first link", () => {
     getJob(id)!.dispatched = true;
     expect((await change("anna", id, 5)).statusCode).toBe(409);
     expect(setSendMaxAccess).not.toHaveBeenCalled();
+  });
+
+  it("sets and clears the other password recipient, only with a valid address", async () => {
+    const id = await createJob("oid-anna", "anna@example.test", "a.pdf", "https://vault/#/send/x", 3, "send-9");
+    const set = (passwordTo: unknown) =>
+      app.inject({ method: "PATCH", url: `/api/jobs/${id}`, headers: as("anna"), payload: { passwordTo } });
+
+    const res = await set("  kollege@example.test ");
+    expect(res.statusCode).toBe(200);
+    expect(res.json().passwordTo).toBe("kollege@example.test");
+    expect(getJob(id)?.passwordTo).toBe("kollege@example.test");
+    expect(setSendMaxAccess).not.toHaveBeenCalled(); // only the recipient changed
+
+    expect((await set("a@b.de, c@d.de")).statusCode).toBe(400);
+    expect((await set(42)).statusCode).toBe(400);
+    expect(getJob(id)?.passwordTo).toBe("kollege@example.test");
+
+    expect((await set("")).json().passwordTo).toBe("");
+    expect(getJob(id)?.passwordTo).toBeUndefined();
   });
 
   it("remembers the Send of a new share", async () => {

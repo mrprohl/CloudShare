@@ -159,6 +159,18 @@ The taskpane is meant to look like part of Outlook, not like an external tool:
   link (`DraftState.noPassword`); upload links always keep a password. If Nextcloud enforces passwords for link
   shares (capability `files_sharing.public.password.enforced`, evaluated per user incl. group exceptions, reported
   as `passwordEnforced` by `/api/nextcloud/status`), the option is hidden.
+- **"Für jede Datei ein eigenes Kennwort"** (checkbox, default off): every link gets its own password, its own Send and
+  its own password mail ("Kennwort für „Datei“: Betreff"). Still one job per mail (`separate: true` on
+  `/complete`, `/api/requests`, `/api/shares/:id/link`; `PasswordJob.separate` lists the parts), so tagging and arming
+  stay unchanged; the watcher sends one mail per part and remembers sent parts (no duplicates after a retry). The mode is
+  fixed by the first link of the mail (the server refuses mixing, 409); the password field stays open – random
+  passwords are regenerated per file, an own password is cleared after each step; "Kennwort abrufbar" applies to the
+  next file.
+- **"Kennwort an eine andere E-Mail-Adresse senden"** (checkbox + one address per mail, `DraftState.passwordTo`): the
+  password mail goes *only* to that address, not to the recipients of the mail. The taskpane stores it on the job
+  (`PATCH /api/jobs/:id` with `passwordTo`, "" = back to the recipients; also right after the first link), the send
+  handler passes it again with `/arm` as a fallback. Validated server-side (`isEmailAddress`, a single address);
+  kept when the links are deleted from the mail.
 - **Upload links ("Dateien von Empfängern erhalten", button "Link zum Hochladen einfügen")**: `POST /api/requests` creates `NEXTCLOUD_REQUEST_FOLDER/<date>_<id>` and a
   create-only public share (permissions 4, "file drop", label "Dateianforderung") with the same password/expiry
   rules. It joins the draft's password job, so files and upload link share one password mail. Nextcloud must

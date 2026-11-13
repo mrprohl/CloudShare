@@ -11,7 +11,7 @@ How it works and how Entra ID, Nextcloud and Vaultwarden are set up: [docs/archi
 *Composing a mail: the ribbon button **CloudShare** opens the taskpane. Files are uploaded to the sender's
 Nextcloud and inserted as a card – one row per file with a download button, expiry date and a footer filled from
 the sender's Microsoft 365 profile (`MAIL_FOOTER`). The password follows automatically in a second mail after
-sending. The taskpane offers a random or own password (or none for file links), link validity and **Dateien von Empfängern erhalten** (upload link).*
+sending. The taskpane offers a random or own password (or none for file links), an other address for the password, link validity and **Dateien von Empfängern erhalten** (upload link).*
 
 <img src="docs/images/outlook-my-shares.png" alt="CloudShare taskpane, tab 'Meine Freigaben' with download status, received uploads, expired links and revoke confirmation" width="376" align="right">
 

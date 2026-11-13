@@ -261,6 +261,79 @@ test("uploads a large attachment in chunks, removes it and inserts the card", as
   expect(JSON.parse((await officeLog(page)).session["cloudshare-state"]).maxAccess).toBe(7);
 });
 
+test("Link gültig für / Kennwort abrufbar: capped at the maximum with a note, confirmed otherwise", async ({ page }) => {
+  await openTaskpane(page);
+  const status = page.locator("#status");
+
+  await page.fill("#expire", "500");
+  await page.press("#expire", "Tab");
+  await expect(page.locator("#expire")).toHaveValue("90");
+  await expect(status).toContainText("Höchstens 90 Tage möglich – der Wert wurde auf 90 gesetzt.");
+  await expect(status).toContainText("Neue Links sind 90 Tage gültig.");
+
+  await page.fill("#expire", "10");
+  await page.press("#expire", "Tab");
+  await expect(status).toHaveText("Neue Links sind 10 Tage gültig.");
+
+  await page.fill("#max-access", "50");
+  await page.press("#max-access", "Tab");
+  await expect(page.locator("#max-access")).toHaveValue("20");
+  await expect(status).toContainText("Höchstens 20 Abrufe möglich – der Wert wurde auf 20 gesetzt.");
+
+  await page.fill("#max-access", "1");
+  await page.press("#max-access", "Tab");
+  await expect(status).toHaveText("Der Link zum Kennwort ist einmal abrufbar.");
+});
+
+test("Für jede Datei ein eigenes Kennwort: every file gets its own password, the mode stays fixed", async ({ page }) => {
+  const calls = await openTaskpane(page, {
+    attachments: [attachment("a1", "Angebot.pdf", 1.5 * MiB), attachment("a2", "Plan.zip", 1.5 * MiB)],
+  });
+  await page.check("#separate");
+  await expect(page.locator("#password-hint")).toContainText("Jede Datei erhält ein eigenes Kennwort");
+  await expectAccessible(page);
+
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("2 Links wurden eingefügt.");
+  const bodies = calls.filter((c) => c.path.endsWith("/complete")).map((c) => JSON.parse(c.body!.toString()));
+  expect(bodies).toHaveLength(2);
+  expect(bodies.every((b) => b.separate === true)).toBe(true);
+  expect(bodies[0].password).not.toBe(bodies[1].password); // a new random password per file
+  expect(bodies[1].jobId).toBe("job-1"); // same mail, same job
+
+  // The password stays open for the next file; the mode itself is fixed for this mail.
+  await expect(page.locator("#mode-random")).toBeEnabled();
+  await expect(page.locator("#separate")).toBeChecked();
+  await expect(page.locator("#separate")).toBeDisabled();
+  await expect(page.locator("#mode-none")).toBeDisabled();
+  const state = JSON.parse((await officeLog(page)).session["cloudshare-state"]);
+  expect(state).toMatchObject({ jobId: "job-1", separate: true });
+  expect(state.password).toBeUndefined();
+});
+
+test("Kennwort an eine andere E-Mail-Adresse: stored on the job once it exists", async ({ page }) => {
+  const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)] });
+  await expect(page.locator("#password-to")).toBeHidden();
+  await page.check("#password-to-toggle");
+  await expect(page.locator("#password-to-hint")).toContainText("Nur diese Adresse erhält das Kennwort");
+
+  await page.fill("#password-to", "keine adresse");
+  await page.press("#password-to", "Tab");
+  await expect(page.locator("#status")).toContainText("gültige E-Mail-Adresse");
+
+  await page.fill("#password-to", "kollege@example.com");
+  await page.press("#password-to", "Tab");
+  await expect(page.locator("#status")).toContainText("nur an kollege@example.com");
+  expect(JSON.parse((await officeLog(page)).session["cloudshare-state"]).passwordTo).toBe("kollege@example.com");
+  await expectAccessible(page);
+
+  // No job yet – after the first link the address goes to the new job.
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
+  await expect.poll(() => calls.filter((c) => c.method === "PATCH").map((c) => JSON.parse(c.body!.toString())))
+    .toEqual([{ passwordTo: "kollege@example.com" }]);
+});
+
 test("links deleted from the mail again: password options unlock, no password mail", async ({ page }) => {
   await openTaskpane(page, { attachments: [attachment("a1", "Bericht.pdf", 1.5 * MiB)] });
   await page.click("#submit");
