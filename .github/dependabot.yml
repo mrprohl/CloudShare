@@ -1,0 +1,35 @@
+# Dependabot version updates – opens pull requests; the Image workflow tests every PR (unit tests, audit,
+# manifest, deployment files, image build, Trivy, stack smoke test) without publishing the image.
+# Minor and patch updates are grouped into one PR per ecosystem and directory; major updates come separately.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /server
+    schedule: { interval: weekly, day: monday }
+    groups:
+      server-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: npm
+    directory: /addin
+    schedule: { interval: weekly, day: monday }
+    groups:
+      addin-minor-patch:
+        update-types: [minor, patch]
+
+  # GitHub Actions in .github/workflows (also clears the Node.js 20 deprecation warnings)
+  - package-ecosystem: github-actions
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    groups:
+      actions:
+        patterns: ["*"]
+
+  # node:22-alpine in the Dockerfile – patch/minor only; a new Node.js major is a deliberate change.
+  # The Bitwarden CLI (BW_CLI_VERSION) is not tracked: it must match the Vaultwarden version.
+  - package-ecosystem: docker
+    directory: /
+    schedule: { interval: weekly, day: monday }
+    ignore:
+      - dependency-name: node
+        update-types: [version-update:semver-major]

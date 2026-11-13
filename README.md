@@ -113,6 +113,14 @@ Network calls are mocked.
 | build | image build · Trivy scan (critical/high with an available fix) · **stack smoke test**: the new image and Caddy are started with `compose.yml` and dummy settings (Bitwarden CLI replaced by a mock, `ci/fake-bw`) and tested from outside – TLS and HTTP→HTTPS redirect, security headers (no `X-Frame-Options`), add-in files with replaced placeholders, `/api/config`, 401 without login, 413 above 12 MB, read-only/user/capabilities/ports/internal network |
 | push | only if everything passed: `ghcr.io/mrprohl/cloudshare` (`latest`, `sha-<commit>`, version tags) |
 
+Pull requests (e.g. from Dependabot) run the same checks including the smoke test, but publish nothing.
+
+**Security services** of the public repository: **Dependabot** (`.github/dependabot.yml`: weekly update PRs for npm
+in `server/` and `addin/`, GitHub Actions and the Node base image – minor/patch grouped, no Node major; plus
+alerts and automatic security-fix PRs), **CodeQL** code scanning (default setup, extended queries for
+JavaScript/TypeScript and Actions) and **secret scanning with push protection**. Findings: repository →
+*Security*.
+
 Deployment stays manual (re-pull, see *Updating*). Locally:
 ```bash
 cd server && npm install && npm test
