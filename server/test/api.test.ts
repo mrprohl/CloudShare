@@ -100,6 +100,12 @@ describe("authentication", () => {
     expect(res.json()).toMatchObject({ thresholdMb: 1, sendMaxAccessCount: 3, sendMaxAccessLimit: 20 });
   });
 
+  it("allows the send handler script in classic Outlook's JavaScript-only runtime (well-known URI)", async () => {
+    const res = await app.inject({ method: "GET", url: "/.well-known/microsoft-officeaddins-allowed.json" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ allowed: ["https://cloudshare.example.test/commands.js"] });
+  });
+
   it.each([
     ["GET", "/api/profile"],
     ["GET", "/api/nextcloud/status"],
