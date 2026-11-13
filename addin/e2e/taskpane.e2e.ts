@@ -155,6 +155,16 @@ test("not connected: shows the connect view and connects via the Nextcloud login
   expect(calls.some((c) => c.path === "/api/nextcloud/connect/c1/poll")).toBe(true);
 });
 
+test("opening the pane: profile and connection status share one sign-in (no 13008)", async ({ page }) => {
+  // The footer template has placeholders → profile and Nextcloud status both need a token right at startup.
+  const calls = await openTaskpane(page);
+  await expect(page.locator("#send-view")).toBeVisible();
+  await expect.poll(() => calls.some((c) => c.path === "/api/profile")).toBe(true);
+  await expect(page.locator("#status")).toBeHidden();
+  const log = await page.evaluate(() => (window as unknown as { __officeLog: { tokenRequests: number } }).__officeLog);
+  expect(log.tokenRequests).toBe(1);
+});
+
 test("Microsoft sign-in fails: readable message with the Office code", async ({ page }) => {
   await openTaskpane(page, { tokenError: { code: 13007, name: "Error", message: "An unexpected error occurred" } });
   const status = page.locator("#status");

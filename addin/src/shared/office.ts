@@ -17,16 +17,66 @@ export interface ServerConfig {
   mailFooter: string;
 }
 
-/**
- * SSO token for the backend (audience = our own app registration). Office rejects with a plain object
- * ({ code, message }); it is turned into an Error with a German message and the code (see sso.ts).
- */
-export async function getToken(): Promise<string> {
+/** Office SSO: "a previous getAccessToken call is still in progress". */
+const SSO_IN_PROGRESS = 13008;
+
+let cachedToken: { token: string; expiresAt: number } | null = null;
+let pendingToken: Promise<string> | null = null;
+
+/** Expiry of a JWT in ms; unreadable tokens are reused for five minutes at most. */
+function tokenExpiry(token: string): number {
   try {
-    return await Office.auth.getAccessToken({ allowSignInPrompt: true, allowConsentPrompt: true, forMSGraphAccess: true });
-  } catch (err) {
-    throw toSsoError(err);
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const exp = Number(JSON.parse(atob(payload)).exp);
+    if (Number.isFinite(exp)) return exp * 1000;
+  } catch {
+    // atob may be missing in the JavaScript-only runtime of classic Outlook
   }
+  return Date.now() + 5 * 60_000;
+}
+
+const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+async function requestToken(): Promise<string> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      const token = await Office.auth.getAccessToken({
+        allowSignInPrompt: true,
+        allowConsentPrompt: true,
+        forMSGraphAccess: true,
+      });
+      cachedToken = { token, expiresAt: tokenExpiry(token) };
+      return token;
+    } catch (err) {
+      // Another runtime of this add-in (taskpane / send handler) may be asking at the same moment.
+      const code = err && typeof err === "object" ? Number((err as { code?: unknown }).code) : NaN;
+      if (code === SSO_IN_PROGRESS && attempt < 4) {
+        await delay(400 * attempt);
+        continue;
+      }
+      throw toSsoError(err);
+    }
+  }
+}
+
+/**
+ * SSO token for the backend (audience = our own app registration). Office allows only one getAccessToken call at
+ * a time (otherwise error 13008), so concurrent callers share one request and a valid token is reused until shortly
+ * before it expires. Office rejects with a plain object ({ code, message }); it is turned into an Error with a
+ * German message and the code (see sso.ts).
+ */
+export function getToken(): Promise<string> {
+  if (cachedToken && cachedToken.expiresAt - 2 * 60_000 > Date.now()) return Promise.resolve(cachedToken.token);
+  pendingToken ??= requestToken().finally(() => {
+    pendingToken = null;
+  });
+  return pendingToken;
+}
+
+/** Tests only: forget the cached token. */
+export function resetTokenCache(): void {
+  cachedToken = null;
+  pendingToken = null;
 }
 
 export const NOT_CONNECTED = "NEXTCLOUD_NOT_CONNECTED";
