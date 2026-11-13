@@ -469,6 +469,9 @@ function settingsProblem(kind: "file" | "request"): string | null {
 
 const formatDate = (isoDate: string) => new Date(isoDate).toLocaleDateString("de-DE");
 
+/** Empty paragraph after an inserted card, so the cursor ends up below it (see insertIntoBody). */
+const AFTER_CARD = "<p style=\"margin:0;\"><br></p>";
+
 /**
  * Fills MAIL_FOOTER from the sender's Microsoft 365 profile. If the profile cannot be read, name and address
  * known to Outlook are used, so the footer never shows raw placeholders.
@@ -521,7 +524,9 @@ async function insertIntoBody(html: string, text: string, marker: string) {
     () => Office.CoercionType.Html,
   );
   const isText = type === Office.CoercionType.Text;
-  const data = isText ? text : html;
+  // An empty line after the card: Outlook leaves the cursor at the end of the inserted HTML – without it the cursor
+  // stays in the card's last cell, and the next "Als Link einfügen" would land inside this card (broken layout).
+  const data = isText ? text : `${html}${AFTER_CARD}`;
   const options = { coercionType: isText ? Office.CoercionType.Text : Office.CoercionType.Html };
 
   // Only links that really landed in the mail are recorded: after a failed insertion the user may paste the link
@@ -957,9 +962,12 @@ function shareRow(share: ShareItem): HTMLElement {
     `<div class="share-state${state.done ? " done" : ""}${state.expired ? " expired" : ""}">` +
     `<span class="dot-state" aria-hidden="true"></span><span class="state-text"></span></div>` +
     `<div class="share-actions">` +
-    `<button type="button" class="btn btn-subtle copy">Link kopieren</button>` +
-    `<button type="button" class="btn btn-subtle insert">Als Link einfügen</button>` +
-    `<button type="button" class="btn btn-subtle btn-danger revoke">Zurückziehen</button>` +
+    // Short labels: the taskpane is narrow (Outlook sets its width); the full text is in title / aria-label.
+    `<button type="button" class="btn btn-subtle copy" title="Link kopieren" aria-label="Link kopieren">Kopieren</button>` +
+    `<button type="button" class="btn btn-subtle insert" title="Als neuen Link in diese Nachricht einfügen" ` +
+    `aria-label="Als neuen Link in diese Nachricht einfügen">Einfügen</button>` +
+    `<button type="button" class="btn btn-subtle btn-danger revoke" title="Freigabe zurückziehen" ` +
+    `aria-label="Freigabe zurückziehen">Zurückziehen</button>` +
     `</div></div>`;
   row.querySelector<HTMLElement>(".share-name")!.textContent = share.name;
   row.querySelector<HTMLElement>(".share-name")!.title = share.name;
@@ -973,7 +981,7 @@ function shareRow(share: ShareItem): HTMLElement {
   copy.addEventListener("click", async () => {
     await copyText(share.url);
     copy.textContent = "Kopiert";
-    setTimeout(() => (copy.textContent = "Link kopieren"), 2000);
+    setTimeout(() => (copy.textContent = "Kopieren"), 2000);
   });
 
   // A new link for this mail with the settings of the "Senden" tab – the original password cannot be recovered.
@@ -988,11 +996,13 @@ function shareRow(share: ShareItem): HTMLElement {
   revoke.addEventListener("click", async () => {
     if (Date.now() > armedUntil) {
       armedUntil = Date.now() + 4000;
-      revoke.textContent = "Wirklich zurückziehen?";
+      revoke.textContent = "Wirklich?";
+      revoke.setAttribute("aria-label", "Wirklich? Freigabe zurückziehen – zum Bestätigen erneut wählen.");
       revoke.classList.add("confirm");
       setTimeout(() => {
         if (Date.now() >= armedUntil) {
           revoke.textContent = "Zurückziehen";
+          revoke.setAttribute("aria-label", "Freigabe zurückziehen");
           revoke.classList.remove("confirm");
         }
       }, 4100);

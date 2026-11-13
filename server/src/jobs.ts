@@ -16,6 +16,7 @@ import path from "node:path";
 import type { FastifyBaseLogger } from "fastify";
 import { config } from "./config.js";
 import { findSentMessage, sendMail } from "./graph.js";
+import { passwordMailHtml } from "./passwordMail.js";
 import { createAtomicWriter, seal, unseal, type Sealed } from "./storage.js";
 
 export interface ArmedSend {
@@ -173,26 +174,6 @@ export async function armJob(id: string, armed: ArmedSend): Promise<void> {
   await persist();
 }
 
-const escapeHtml = (s: string) =>
-  s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
-
-const accessText = (count?: number) =>
-  count === undefined ? "begrenzte Anzahl Abrufe" : count === 1 ? "nur einmal abrufbar" : `bis zu ${count} Abrufe`;
-
-/** The password mail goes to German-speaking recipients, so its text stays German. */
-function passwordMailHtml(job: Pick<PasswordJob, "fileNames" | "sendUrl" | "maxAccessCount">, subject: string): string {
-  const files = job.fileNames.map((f) => `<li>${escapeHtml(f)}</li>`).join("");
-  return (
-    `<p>Guten Tag,</p>` +
-    `<p>für ${job.fileNames.length === 1 ? "die folgende Freigabe" : "die folgenden Freigaben"}` +
-    (subject ? ` aus der Nachricht „${escapeHtml(subject)}“` : "") +
-    ` benötigen Sie ein Kennwort:</p><ul>${files}</ul>` +
-    `<p>Sie können es über den folgenden Link abrufen ` +
-    `(${accessText(job.maxAccessCount)}, läuft nach ${config.sendExpireDays} Tagen ab):</p>` +
-    `<p><a href="${escapeHtml(job.sendUrl)}">${escapeHtml(job.sendUrl)}</a></p>`
-  );
-}
-
 /** One pass of the watcher over all jobs (exported for tests; normally driven by startJobWatcher). */
 export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
   const now = Date.now();
@@ -239,14 +220,15 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
           const files = partFiles(part);
           const label = files.length === 1 ? `„${files[0]}“` : `${files.length} Dateien`;
           await sendMail(armed.graphToken, recipients, `Kennwort für ${label}: ${sent.subject || files[0]}`,
-            passwordMailHtml({ fileNames: files, sendUrl: part.sendUrl, maxAccessCount: part.maxAccessCount },
-              sent.subject), sender);
+            passwordMailHtml({ fileNames: files, sendUrl: part.sendUrl, maxAccessCount: part.maxAccessCount,
+              subject: sent.subject, expireDays: config.sendExpireDays }), sender);
           part.dispatched = true;
           changed = true;
         }
       } else {
         await sendMail(armed.graphToken, recipients, `Kennwort für: ${sent.subject || job.fileNames[0]}`,
-          passwordMailHtml(job, sent.subject), sender);
+          passwordMailHtml({ fileNames: job.fileNames, sendUrl: job.sendUrl, maxAccessCount: job.maxAccessCount,
+            subject: sent.subject, expireDays: config.sendExpireDays }), sender);
       }
       job.dispatched = true;
       job.armed = undefined;

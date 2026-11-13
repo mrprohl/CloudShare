@@ -16,7 +16,7 @@ sending. The taskpane offers a random or own password (or none for file links), 
 <img src="docs/images/outlook-my-shares.png" alt="CloudShare taskpane, tab 'Meine Freigaben' with download status, received uploads, expired links and revoke confirmation" width="376" align="right">
 
 *Tab **Meine Freigaben**: the user's CloudShare links with download status ("2× heruntergeladen"), received files
-for upload links, expired links, **Link kopieren** and **Zurückziehen** (with confirmation).*
+for upload links, expired links, **Kopieren**, **Einfügen** and **Zurückziehen** (with confirmation).*
 
 *The images show example data ("Max Mustermann", example.com). They are rendered from
 [docs/mockups](docs/mockups) with the real taskpane styles and icon:*

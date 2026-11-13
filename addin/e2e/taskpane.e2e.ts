@@ -240,6 +240,8 @@ test("uploads a large attachment in chunks, removes it and inserts the card", as
   expect(log.removed).toEqual(["a1"]);
   expect(log.inserted).toHaveLength(1);
   expect(log.inserted[0].coercionType).toBe("html");
+  // Empty line after the card: the cursor ends up below it, so a second card does not land inside this one.
+  expect(log.inserted[0].data.endsWith("<p style=\"margin:0;\"><br></p>")).toBe(true);
   expect(log.inserted[0].data).toContain("https://cloud.example.com/s/u1");
   expect(log.inserted[0].data).toContain("Präsentation.pptx");
   expect(log.inserted[0].data).toContain("Max Mustermann · Projektleitung"); // footer from the profile
@@ -503,7 +505,7 @@ test("Meine Freigaben: shows the state of each link and revokes after confirmati
 
   const revoke = rows.nth(1).locator(".revoke");
   await revoke.click();
-  await expect(revoke).toHaveText("Wirklich zurückziehen?");
+  await expect(revoke).toHaveText("Wirklich?");
   expect(calls.some((c) => c.method === "DELETE")).toBe(false); // first click only asks
   await revoke.click();
   await expect(rows).toHaveCount(3);
