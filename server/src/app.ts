@@ -180,24 +180,30 @@ export async function buildApp(options: { logger?: boolean } = {}) {
    * Diagnostics (CLIENT_TRACE=true only): steps of the Smart Alert, to find where sending hangs in a client.
    * No login – the handler may be stuck exactly at the sign-in. Only short, validated fields are logged.
    */
-  app.post<{ Body: { run?: unknown; step?: unknown; ms?: unknown; detail?: unknown; host?: unknown } }>(
-    "/api/trace",
-    async (req, reply) => {
+  // GET with query parameters: a "simple" request that a restricted frame still sends (no preflight, no body).
+  type TraceFields = { run?: unknown; step?: unknown; ms?: unknown; detail?: unknown; host?: unknown; origin?: unknown };
+  app.route<{ Querystring: TraceFields; Body: TraceFields }>({
+    method: ["GET", "POST"],
+    url: "/api/trace",
+    handler: async (req, reply) => {
       if (!config.clientTrace) return reply.status(404).send({ error: "Not Found" });
+      const data: TraceFields = (req.method === "GET" ? req.query : req.body) ?? {};
       const text = (value: unknown, pattern: RegExp) => (typeof value === "string" && pattern.test(value) ? value : "?");
+      const ms = Number(data.ms);
       req.log.info(
         {
-          trace: text(req.body?.run, /^[a-z0-9]{1,12}$/),
-          step: text(req.body?.step, /^[a-z0-9:._-]{1,40}$/),
-          ms: typeof req.body?.ms === "number" ? Math.round(req.body.ms) : null,
-          host: text(req.body?.host, /^[A-Za-z0-9 ._-]{1,40}$/),
-          detail: typeof req.body?.detail === "string" ? req.body.detail.slice(0, 300) : undefined,
+          trace: text(data.run, /^[a-z0-9]{1,12}$/),
+          step: text(data.step, /^[a-z0-9:._-]{1,40}$/),
+          ms: Number.isFinite(ms) ? Math.round(ms) : null,
+          host: text(data.host, /^[A-Za-z0-9 ._-]{1,40}$/),
+          origin: text(data.origin, /^(null|none|https?:\/\/[A-Za-z0-9.-]+(:\d{1,5})?)$/),
+          detail: typeof data.detail === "string" ? data.detail.slice(0, 300) : undefined,
         },
         "Smart Alert trace",
       );
       return { ok: true };
     },
-  );
+  });
 
   /** Sender's Microsoft 365 profile – fills the placeholders of MAIL_FOOTER in the taskpane. */
   app.get("/api/profile", async (req) => {

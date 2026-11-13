@@ -99,7 +99,7 @@ Backend and add-in have automated tests (vitest) in `server/test/` and `addin/te
 
 - **API** (`api.test.ts`, via `fastify.inject`): login required, users cannot touch each other's uploads, jobs or
   links, only CloudShare links can be revoked, file names/sizes/chunk numbers are validated, limits are enforced.
-- **Outlook event handlers** (`commands.test.ts`, Office.js mock): `enforce`/`suggest`, opt-out, arming before the
+- **Outlook event handlers** (`commands.test.ts`, Office.js mock): `enforce`/`suggest`, arming before the
   prompt, Mailbox 1.12 vs 1.14, shared mailboxes, server unreachable (cached configuration), info bar.
 - Password rules and generator, encryption, Graph, Nextcloud client, password-job flow, footer template, mail card.
 
@@ -158,6 +158,6 @@ brute-force protection ever throttles them, allow that address in the "Brute-for
 **Sending hangs in a client** ("CloudShare dauert länger als erwartet"): set `CLIENT_TRACE=true` in
 `env/cloudshare.env`, recreate the stack, send once and read the steps of the send check:
 ```bash
-docker logs --since 5m cloudshare 2>&1 | grep 'Smart Alert trace' | grep -oE '"trace":"[^"]+"|"step":"[^"]+"|"ms":[0-9]+|"host":"[^"]+"|"detail":"[^"]*"'
+docker logs --since 5m cloudshare 2>&1 | grep 'Smart Alert trace' | grep -oE '"trace":"[^"]+"|"step":"[^"]+"|"ms":[0-9]+|"host":"[^"]+"|"origin":"[^"]+"|"detail":"[^"]*"'
 ```
 The last step shown is where it stops. Switch it off again afterwards (`CLIENT_TRACE` removed, stack recreated).

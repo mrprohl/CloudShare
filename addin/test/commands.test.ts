@@ -97,12 +97,6 @@ describe("send – policy enforce", () => {
     expect(result.cancelLabel).toBeUndefined();
   });
 
-  it("ignores the per-mail opt-out", async () => {
-    office.state.attachments = [big];
-    draft({ optOut: true });
-    expect((await send()).allowEvent).toBe(false);
-  });
-
   it("does not arm the password mail while the mail is still blocked", async () => {
     office.state.attachments = [big];
     draft({ jobId: "job-1" });
@@ -136,12 +130,6 @@ describe("send – policy suggest", () => {
     expect(result.cancelLabel).toBe("CloudShare öffnen");
   });
 
-  it("respects the per-mail opt-out", async () => {
-    office.state.attachments = [big];
-    draft({ optOut: true });
-    expect(await send()).toEqual({ allowEvent: true });
-  });
-
   it("does not block clients that cannot offer 'Send anyway'", async () => {
     office.state.attachments = [big];
     office.state.supported = { Mailbox: "1.12" };
@@ -167,13 +155,13 @@ describe("send – password mail", () => {
   });
 
   it("sends no password mail when all inserted links were deleted from the mail", async () => {
-    draft({ jobId: "job-1", password: "geheim", links: ["tokA"], optOut: true });
+    draft({ jobId: "job-1", password: "geheim", links: ["tokA"] });
     office.state.customProps.cloudshareJob = "job-1";
     office.state.body = "<p>Nur Text, kein Link mehr</p>";
     expect(await send()).toEqual({ allowEvent: true });
     expect(armed()).toHaveLength(0);
     expect(office.state.customProps.cloudshareJob).toBeUndefined();
-    expect(JSON.parse(office.state.session["cloudshare-state"])).toEqual({ optOut: true });
+    expect(JSON.parse(office.state.session["cloudshare-state"])).toEqual({});
   });
 
   it("never releases drafts without recorded links (inserted before this version)", async () => {
@@ -236,7 +224,7 @@ describe("send – password mail", () => {
 
 describe("send – diagnostics (CLIENT_TRACE)", () => {
   const traces = () =>
-    requests.filter((r) => r.url.endsWith("/api/trace")).map((r) => (r.body as { step: string }).step);
+    requests.filter((r) => r.url.includes("/api/trace?")).map((r) => new URLSearchParams(r.url.split("?")[1]).get("step"));
 
   it("stays silent unless the server switched tracing on", async () => {
     draft({ jobId: "job-1" });
@@ -302,12 +290,11 @@ describe("info bar while composing", () => {
     expect(office.state.notifications.removed).toEqual(["cloudshare-large-attachment"]);
   });
 
-  it("stays quiet after opting out under 'suggest'", async () => {
+  it("also offers CloudShare under 'suggest' (asking a question, not blocking)", async () => {
     server.policy = "suggest";
     office.state.attachments = [big];
-    draft({ optOut: true });
     await changed();
-    expect(office.state.notifications.replaced).toHaveLength(0);
+    expect(String(office.state.notifications.replaced[0].message)).toContain("Als kennwortgeschützten Nextcloud-Link senden?");
   });
 
   it("never fails while composing, even if the server is down", async () => {

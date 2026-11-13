@@ -310,8 +310,6 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 4px; }
 .panel { display: flex; flex-direction: column; flex: 1; }
 .request-text { margin: 0 0 8px; }
-/* Aligned with the checkbox label (16 px box + 8 px gap). */
-.opt-out-hint { margin: -4px 0 0 24px; }
 
 /* --- My shares ----------------------------------------------------------------------- */
 .toolbar { display: flex; align-items: center; justify-content: space-between; margin: 0 0 8px; }

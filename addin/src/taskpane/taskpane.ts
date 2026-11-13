@@ -3,12 +3,12 @@ import {
   API_BASE,
   ApiError,
   composeItem,
+  CONFIG_CACHE_KEY,
   getConfig,
   getFileAttachments,
   getToken,
   MB,
   NOT_CONNECTED,
-  NOTIFICATION_ID,
   officeAsync,
   readDraftState,
   releaseDraftIfLinksGone,
@@ -57,7 +57,6 @@ const refreshSharesButton = $<HTMLButtonElement>("refresh-shares");
 const expireInput = $<HTMLInputElement>("expire");
 const maxAccessInput = $<HTMLInputElement>("max-access");
 const submitButton = $<HTMLButtonElement>("submit");
-const optOutBox = $<HTMLInputElement>("opt-out");
 const progress = $<HTMLDivElement>("progress");
 const progressBar = $<HTMLDivElement>("progress-bar");
 const statusBar = $<HTMLDivElement>("status");
@@ -944,19 +943,6 @@ refreshSharesButton.addEventListener("click", () => {
   loadShares().catch((err) => setStatus(errorMessage(err), "error"));
 });
 
-optOutBox.addEventListener("change", async () => {
-  await updateDraftState({ optOut: optOutBox.checked });
-  if (optOutBox.checked) {
-    // Remove the info bar; it reappears only when the box is unchecked and attachments change.
-    await officeAsync<void>((cb) => composeItem().notificationMessages.removeAsync(NOTIFICATION_ID, cb)).catch(
-      () => undefined,
-    );
-    setStatus("Große Anhänge werden bei dieser Nachricht normal mitgesendet.");
-  } else {
-    setStatus("");
-  }
-});
-
 Office.onReady(async () => {
   applyOfficeTheme();
   try {
@@ -967,6 +953,13 @@ Office.onReady(async () => {
 
   try {
     serverConfig = await getConfig();
+    // Also for the send handler: it starts with this cached copy (attachment policy, diagnostics switch).
+    try {
+      Office.context.roamingSettings.set(CONFIG_CACHE_KEY, serverConfig);
+      Office.context.roamingSettings.saveAsync();
+    } catch {
+      // Caching is best effort.
+    }
   } catch {
     setStatus(`CloudShare ist derzeit nicht erreichbar (${API_BASE}).`, "error");
     return;
@@ -988,11 +981,6 @@ Office.onReady(async () => {
   await releaseIfLinksDeleted();
   window.addEventListener("focus", () => void releaseIfLinksDeleted());
   setInterval(() => void releaseIfLinksDeleted(), 4000);
-  optOutBox.checked = Boolean(state.optOut);
-  // Under "enforce" there is no way to send large attachments without CloudShare.
-  const enforce = serverConfig.attachmentPolicy === "enforce";
-  $<HTMLLabelElement>("opt-out-row").hidden = enforce;
-  $<HTMLParagraphElement>("opt-out-hint").hidden = enforce;
   expireInput.value = String(serverConfig.defaultExpireDays);
   expireInput.max = String(serverConfig.maxExpireDays);
 

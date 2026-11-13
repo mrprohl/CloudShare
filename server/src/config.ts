@@ -51,8 +51,7 @@ export const config = {
   /** From this size (per attachment) CloudShare suggests sending a link. No upper limit – the Nextcloud quota applies. */
   thresholdMb: number("ATTACHMENT_THRESHOLD_MB", 1),
   /**
-   * enforce: mails with attachments above the threshold can only be sent via CloudShare (no "Send anyway",
-   *          no opt-out per mail).
+   * enforce: mails with attachments above the threshold can only be sent via CloudShare (no "Send anyway").
    * suggest: info bar and a prompt on send that offers "Send anyway".
    */
   attachmentPolicy: oneOf<AttachmentPolicy>("ATTACHMENT_POLICY", ATTACHMENT_POLICIES, "enforce"),

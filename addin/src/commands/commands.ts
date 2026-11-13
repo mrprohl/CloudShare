@@ -15,7 +15,6 @@ import {
   TASKPANE_COMMAND_ID,
   TIMEOUTS,
   withTimeout,
-  type DraftState,
   type ServerConfig,
 } from "../shared/office";
 import { errorText } from "../shared/sso";
@@ -73,11 +72,20 @@ function trace(step: string, detail?: string) {
   try {
     const diagnostics = Office.context.diagnostics;
     const host = diagnostics ? `${diagnostics.platform} ${diagnostics.version}` : "?";
-    fetch(`${API_BASE}/api/trace`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ run: traceRun, step, ms: Date.now() - traceStart, host, detail }),
-    }).catch(() => undefined);
+    // Origin of the frame the handler runs in ("null" = sandboxed): decides whether POST requests are allowed.
+    const origin = typeof location !== "undefined" ? location.origin : "none";
+    const query = [
+      ["run", traceRun],
+      ["step", step],
+      ["ms", String(Date.now() - traceStart)],
+      ["host", host],
+      ["origin", origin],
+      ["detail", detail ?? ""],
+    ]
+      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+      .join("&");
+    // A plain GET without headers: no preflight, so it also gets through where POST requests are blocked.
+    fetch(`${API_BASE}/api/trace?${query}`).catch(() => undefined);
   } catch {
     // Diagnostics must never disturb sending.
   }
@@ -89,9 +97,6 @@ const supportsCustomAlert = () => Office.context.requirements.isSetSupported("Ma
 const largeAttachments = async (config: ServerConfig) =>
   (await getFileAttachments()).filter((a) => a.size > config.thresholdMb * MB);
 
-/** Whether CloudShare has to step in: always under "enforce", under "suggest" unless the user opted out. */
-const applies = (config: ServerConfig, state: DraftState) => config.attachmentPolicy === "enforce" || !state.optOut;
-
 /**
  * OnMessageAttachmentsChanged: Outlook does not allow add-ins to open the taskpane themselves.
  * Instead an info bar with the button "Mit CloudShare senden" appears above the mail (UI text is German).
@@ -99,9 +104,9 @@ const applies = (config: ServerConfig, state: DraftState) => config.attachmentPo
 async function onAttachmentsChangedHandler(event: LaunchEvent) {
   const messages = composeItem().notificationMessages;
   try {
-    const [config, state] = await Promise.all([getConfigCached(), readDraftState()]);
+    const config = await getConfigCached();
     const large = await largeAttachments(config);
-    if (large.length > 0 && applies(config, state)) {
+    if (large.length > 0) {
       const what = large.length === 1 ? `„${large[0].name}“ ist` : `${large.length} Anhänge sind`;
       const tail =
         config.attachmentPolicy === "enforce"
@@ -200,7 +205,7 @@ async function onMessageSendHandler(event: LaunchEvent) {
     // No configuration known (server never reached) → no attachment check.
   }
   trace("attachments", String(large.length));
-  const mustAct = config !== undefined && large.length > 0 && applies(config, state);
+  const mustAct = config !== undefined && large.length > 0;
   const names = shorten(large.map((a) => a.name).join(", "));
 
   // enforce: block first – the handler runs again on the next send attempt.

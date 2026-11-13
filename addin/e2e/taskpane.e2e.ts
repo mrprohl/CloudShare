@@ -216,8 +216,6 @@ test("preselects large attachments and proposes a random password", async ({ pag
   expect((await password.inputValue()).length).toBe(20);
   await expect(page.locator("#max-access")).toHaveValue("3");
   await expect(page.locator("#expire")).toHaveValue("14");
-  await expect(page.locator("#opt-out-row")).toBeHidden(); // enforce: no way around CloudShare
-  await expect(page.locator("#opt-out-hint")).toBeHidden();
   await expect(page.locator("#account")).toHaveText("max [12,5 GB von 50 GB frei]");
 
   await expectAccessible(page);
