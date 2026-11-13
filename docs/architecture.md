@@ -53,12 +53,12 @@ backend does not use Entra tokens for Nextcloud but one app password per user.
 6. On send the Smart Alert runs (`OnMessageSend`, manifest `SendMode="SoftBlock"`). Behaviour depends on
    `ATTACHMENT_POLICY` (env, default `enforce`; delivered to the add-in via `/api/config`, so switching needs no
    redeployment of the add-in):
-   - **`enforce`** – large attachments remaining → sending is **blocked**, there is no "Send anyway" and no
-     per-mail opt-out (the checkbox is hidden). The alert offers "CloudShare öffnen" (opens the taskpane,
+   - **`enforce`** – large attachments remaining → sending is **blocked**, there is no "Send anyway".
+     The alert offers "CloudShare öffnen" (opens the taskpane,
      Mailbox 1.14+); older clients are told to use the ribbon button.
    - **`suggest`** – the password mail is armed first (see below), then a prompt with "CloudShare öffnen" or
      "Send anyway" (SoftBlock relaxed via `sendModeOverride: PromptUser`, Mailbox 1.14+; older clients are not
-     prompted). The checkbox "Große Anhänge normal mitsenden (nicht als Link)" (Anhänge section) skips info bar and prompt.
+     prompted). "Send anyway" sends the attachments normally.
    - Pending job → the handler only **arms** it (`/api/jobs/:id/arm`): the backend stores a delegated Graph token
      (Mail.Read + Mail.Send). If arming fails, the mail is blocked.
 7. **Password mail only after the mail was really sent** (`server/src/jobs.ts`): the taskpane tags the draft with

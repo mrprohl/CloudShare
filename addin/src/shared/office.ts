@@ -200,7 +200,7 @@ export async function tagDraft(jobId: string): Promise<void> {
 }
 
 // Per-draft state in sessionData (Mailbox 1.11): pending password job, its password
-// (all files of one mail share password and password mail) and whether the user opted out of CloudShare.
+// (all files of one mail share password and password mail), the inserted links and the "Ohne Kennwort" choice.
 const STATE_KEY = "cloudshare-state";
 
 export interface DraftState {
@@ -208,7 +208,6 @@ export interface DraftState {
   password?: string;
   /** How often the password link can be opened – changeable until sending (PATCH /api/jobs/:id). */
   maxAccess?: number;
-  optOut?: boolean;
   /** Links of this mail were shared "Ohne Kennwort" – no password job, no password mail. */
   noPassword?: boolean;
   /**
@@ -260,7 +259,7 @@ export async function releaseDraftIfLinksGone(): Promise<boolean> {
     props.remove(JOB_PROPERTY);
     await officeAsync<void>((cb) => props.saveAsync(cb));
   }
-  const fresh: DraftState = { optOut: state.optOut };
+  const fresh: DraftState = {};
   await officeAsync<void>((cb) => composeItem().sessionData.setAsync(STATE_KEY, JSON.stringify(fresh), cb));
   return true;
 }

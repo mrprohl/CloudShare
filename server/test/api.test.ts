@@ -130,6 +130,7 @@ describe("authentication", () => {
   it("has no trace route unless CLIENT_TRACE is set", async () => {
     const res = await app.inject({ method: "POST", url: "/api/trace", payload: { run: "abc", step: "start" } });
     expect(res.statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url: "/api/trace?run=abc&step=start" })).statusCode).toBe(404);
     expect((await app.inject({ method: "GET", url: "/api/config" })).json().trace).toBe(false);
   });
 
