@@ -17,6 +17,7 @@ interface Server {
   policy: "enforce" | "suggest";
   reachable: boolean;
   armStatus: number;
+  trace?: boolean;
 }
 let server: Server;
 const requests: Array<{ url: string; body: unknown }> = [];
@@ -29,7 +30,7 @@ function installFetch() {
       if (!server.reachable) throw new TypeError("Failed to fetch");
       if (url.endsWith("/api/config")) {
         return new Response(
-          JSON.stringify({ thresholdMb: 1, attachmentPolicy: server.policy, defaultExpireDays: 14, maxExpireDays: 90, chunkSize: 10 * MB, mailFooter: "" }),
+          JSON.stringify({ thresholdMb: 1, attachmentPolicy: server.policy, defaultExpireDays: 14, maxExpireDays: 90, chunkSize: 10 * MB, mailFooter: "", trace: server.trace === true }),
         );
       }
       if (url.includes("/arm")) {
@@ -158,6 +159,30 @@ describe("send – password mail", () => {
     expect(office.state.customProps.cloudshareJob).toBe("job-1");
   });
 
+  it("still arms the job while one of the inserted links is in the mail", async () => {
+    draft({ jobId: "job-1", links: ["tokA", "tokB"] });
+    office.state.body = '<a href="https://cloud.example.test/s/tokB">Herunterladen</a>';
+    expect(await send()).toEqual({ allowEvent: true });
+    expect(armed()).toHaveLength(1);
+  });
+
+  it("sends no password mail when all inserted links were deleted from the mail", async () => {
+    draft({ jobId: "job-1", password: "geheim", links: ["tokA"], optOut: true });
+    office.state.customProps.cloudshareJob = "job-1";
+    office.state.body = "<p>Nur Text, kein Link mehr</p>";
+    expect(await send()).toEqual({ allowEvent: true });
+    expect(armed()).toHaveLength(0);
+    expect(office.state.customProps.cloudshareJob).toBeUndefined();
+    expect(JSON.parse(office.state.session["cloudshare-state"])).toEqual({ optOut: true });
+  });
+
+  it("never releases drafts without recorded links (inserted before this version)", async () => {
+    draft({ jobId: "job-1" });
+    office.state.body = "";
+    await send();
+    expect(armed()).toHaveLength(1);
+  });
+
   it("reports a shared mailbox in the From field", async () => {
     draft({ jobId: "job-1" });
     office.state.from = "Info@Example.test";
@@ -206,6 +231,27 @@ describe("send – password mail", () => {
     expect(result.errorMessage).toContain("kein Anmeldetoken für CloudShare");
     expect(result.errorMessage).toContain("(Code 13007)");
     expect(result.errorMessage).not.toContain("[object Object]");
+  });
+});
+
+describe("send – diagnostics (CLIENT_TRACE)", () => {
+  const traces = () =>
+    requests.filter((r) => r.url.endsWith("/api/trace")).map((r) => (r.body as { step: string }).step);
+
+  it("stays silent unless the server switched tracing on", async () => {
+    draft({ jobId: "job-1" });
+    await send();
+    expect(traces()).toEqual([]);
+  });
+
+  it("reports every step of the send handler once tracing is on", async () => {
+    office.state.roaming["cloudshare-config"] = { trace: true }; // cached from an earlier /api/config
+    server.trace = true;
+    draft({ jobId: "job-1" });
+    expect(await send()).toEqual({ allowEvent: true });
+    expect(traces()).toEqual([
+      "start", "state", "config", "attachments", "arm:tag", "arm:from", "arm:token", "arm:server", "arm:done", "completed",
+    ]);
   });
 });
 

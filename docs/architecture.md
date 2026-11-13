@@ -47,7 +47,9 @@ backend does not use Entra tokens for Nextcloud but one app password per user.
    (technical limit 10,000 chunks ≈ 100 GB).
 5. One public link per file (password + expiry date). The number of times the password link (Vaultwarden Send) can be opened is set per mail in the taskpane ("Kennwort abrufbar … mal", default `SEND_MAX_ACCESS_COUNT` = 3, limited to `SEND_MAX_ACCESS_LIMIT` = 20 by the server). It stays changeable until sending: afterwards `PATCH /api/jobs/:id` updates the existing Send via `bw serve` (`GET`/`PUT /object/send/:id`, the job keeps the Send ID; jobs from before this version cannot be changed, `SEND_FIXED`); the password mail states the current value ("bis zu 3 Abrufe"). The user chooses a **random password** (default, 20 characters from 67 symbols ≈ 121 bits, CSPRNG with rejection sampling, all four character classes) or an **own password** (min. 12 characters, at least 3 of 4 character classes, no repetition/simple sequence; live check in the taskpane, same rules enforced by the server in `server/src/password.ts`; Nextcloud's password policy applies on top). **All files of one mail share one password, one Vaultwarden
    Send and one password mail.** Job ID and password live in `item.sessionData`; the password field is locked after
-   the first file.
+   the first file. If the user deletes all inserted links from the mail again, the draft is released (the taskpane
+   checks on focus and every 4 s while locked, the send handler before arming): password options unlock, the
+   `cloudshareJob` tag is removed and no password mail goes out. Drafts from before link tracking are never released.
 6. On send the Smart Alert runs (`OnMessageSend`, manifest `SendMode="SoftBlock"`). Behaviour depends on
    `ATTACHMENT_POLICY` (env, default `enforce`; delivered to the add-in via `/api/config`, so switching needs no
    redeployment of the add-in):
@@ -155,7 +157,8 @@ The taskpane is meant to look like part of Outlook, not like an external tool:
   creates the public share without password and no Vaultwarden Send or password job (`jobId: null`); the card omits
   the password note and the send handler has nothing to arm. The choice is fixed for the whole mail after the first
   link (`DraftState.noPassword`); upload links always keep a password. If Nextcloud enforces passwords for link
-  shares, its error message is shown.
+  shares (capability `files_sharing.public.password.enforced`, evaluated per user incl. group exceptions, reported
+  as `passwordEnforced` by `/api/nextcloud/status`), the option is hidden.
 - **Upload links ("Dateien von Empfängern erhalten", button "Link zum Hochladen einfügen")**: `POST /api/requests` creates `NEXTCLOUD_REQUEST_FOLDER/<date>_<id>` and a
   create-only public share (permissions 4, "file drop", label "Dateianforderung") with the same password/expiry
   rules. It joins the draft's password job, so files and upload link share one password mail. Nextcloud must

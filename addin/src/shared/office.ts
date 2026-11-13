@@ -15,6 +15,8 @@ export interface ServerConfig {
   sendMaxAccessLimit: number;
   /** Optional footer line of the card inserted into the mail. */
   mailFooter: string;
+  /** Diagnostics switch (CLIENT_TRACE): the send handler reports its steps to the server. */
+  trace?: boolean;
 }
 
 /** Office SSO: "a previous getAccessToken call is still in progress". */
@@ -138,7 +140,7 @@ export async function api<T>(path: string, init: RequestInit = {}, token?: strin
 
 export const getConfig = () => api<ServerConfig>("/api/config");
 
-const CONFIG_CACHE_KEY = "cloudshare-config";
+export const CONFIG_CACHE_KEY = "cloudshare-config";
 
 /**
  * Server configuration for the event handlers. The last known value is kept in roamingSettings so that the
@@ -209,6 +211,11 @@ export interface DraftState {
   optOut?: boolean;
   /** Links of this mail were shared "Ohne Kennwort" – no password job, no password mail. */
   noPassword?: boolean;
+  /**
+   * Share tokens of the links CloudShare inserted (last URL segment). If none of them is left in the body, the user
+   * deleted the links: password, job and tag are released. Drafts from before this field are never released.
+   */
+  links?: string[];
 }
 
 export async function readDraftState(): Promise<DraftState> {
@@ -224,4 +231,36 @@ export async function updateDraftState(patch: DraftState): Promise<DraftState> {
   const next = { ...(await readDraftState()), ...patch };
   await officeAsync<void>((cb) => composeItem().sessionData.setAsync(STATE_KEY, JSON.stringify(next), cb));
   return next;
+}
+
+/** Remembers a link CloudShare is about to insert (see DraftState.links). */
+export async function rememberLink(token: string): Promise<void> {
+  const state = await readDraftState();
+  const links = state.links ?? [];
+  if (!links.includes(token)) await updateDraftState({ links: [...links, token] });
+}
+
+/**
+ * All CloudShare links deleted from the mail? Then the draft starts over: no password, no job, no tag – so neither a
+ * password mail goes out nor is the password option locked. Returns true if the draft was released.
+ * Unreadable body or drafts without recorded links: nothing is released (a password mail must never get lost).
+ */
+export async function releaseDraftIfLinksGone(): Promise<boolean> {
+  const state = await readDraftState();
+  if (!state.links?.length || (!state.jobId && !state.noPassword)) return false;
+  let body: string;
+  try {
+    body = await officeAsync<string>((cb) => composeItem().body.getAsync(Office.CoercionType.Html, cb));
+  } catch {
+    return false;
+  }
+  if (state.links.some((token) => body.includes(token))) return false;
+  if (state.jobId) {
+    const props = await officeAsync<Office.CustomProperties>((cb) => composeItem().loadCustomPropertiesAsync(cb));
+    props.remove(JOB_PROPERTY);
+    await officeAsync<void>((cb) => props.saveAsync(cb));
+  }
+  const fresh: DraftState = { optOut: state.optOut };
+  await officeAsync<void>((cb) => composeItem().sessionData.setAsync(STATE_KEY, JSON.stringify(fresh), cb));
+  return true;
 }

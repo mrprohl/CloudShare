@@ -87,6 +87,7 @@
             cb(ok({
               get: (key) => log.customProps[key],
               set: (key, value) => { log.customProps[key] = value; },
+              remove: (key) => { delete log.customProps[key]; },
               saveAsync: (done) => done(ok()),
             }));
           },

@@ -7,13 +7,13 @@
            xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
            xsi:type="MailApp">
   <Id>8f3c2a71-5d4e-4b9a-9e2f-6c1d7a0b3e54</Id>
-  <Version>1.0.2.0</Version>
+  <Version>1.0.3.0</Version>
   <ProviderName>CloudShare</ProviderName>
   <DefaultLocale>de-DE</DefaultLocale>
   <DisplayName DefaultValue="CloudShare"/>
   <Description DefaultValue="Sendet große Dateien als kennwortgeschützten Link aus Ihrer Nextcloud."/>
-  <IconUrl DefaultValue="%%PUBLIC_BASE_URL%%/assets/icon-64.png"/>
-  <HighResolutionIconUrl DefaultValue="%%PUBLIC_BASE_URL%%/assets/icon-128.png"/>
+  <IconUrl DefaultValue="%%PUBLIC_BASE_URL%%/assets/icon-64.png?v=1.0.3"/>
+  <HighResolutionIconUrl DefaultValue="%%PUBLIC_BASE_URL%%/assets/icon-128.png?v=1.0.3"/>
   <SupportUrl DefaultValue="%%PUBLIC_BASE_URL%%/"/>
   <AppDomains>
     <AppDomain>%%PUBLIC_BASE_URL%%</AppDomain>
@@ -92,9 +92,9 @@
       </Hosts>
       <Resources>
         <bt:Images>
-          <bt:Image id="Icon.16" DefaultValue="%%PUBLIC_BASE_URL%%/assets/icon-16.png"/>
-          <bt:Image id="Icon.32" DefaultValue="%%PUBLIC_BASE_URL%%/assets/icon-32.png"/>
-          <bt:Image id="Icon.80" DefaultValue="%%PUBLIC_BASE_URL%%/assets/icon-80.png"/>
+          <bt:Image id="Icon.16" DefaultValue="%%PUBLIC_BASE_URL%%/assets/icon-16.png?v=1.0.3"/>
+          <bt:Image id="Icon.32" DefaultValue="%%PUBLIC_BASE_URL%%/assets/icon-32.png?v=1.0.3"/>
+          <bt:Image id="Icon.80" DefaultValue="%%PUBLIC_BASE_URL%%/assets/icon-80.png?v=1.0.3"/>
         </bt:Images>
         <bt:Urls>
           <bt:Url id="Commands.Url" DefaultValue="%%PUBLIC_BASE_URL%%/commands.html"/>

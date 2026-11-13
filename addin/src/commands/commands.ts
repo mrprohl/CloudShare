@@ -5,9 +5,12 @@ import {
   getFileAttachments,
   getToken,
   MB,
+  API_BASE,
+  CONFIG_CACHE_KEY,
   NOTIFICATION_ID,
   officeAsync,
   readDraftState,
+  releaseDraftIfLinksGone,
   tagDraft,
   TASKPANE_COMMAND_ID,
   TIMEOUTS,
@@ -44,6 +47,40 @@ function withinLimits(options: CompletedOptions): CompletedOptions {
   }
   if (result.cancelLabel && result.cancelLabel.length > MAX_LABEL) result.cancelLabel = result.cancelLabel.slice(0, MAX_LABEL);
   return result;
+}
+
+// --- Diagnostics (CLIENT_TRACE=true on the server) ----------------------------------------------------------------
+// Reports each step of the send handler to POST /api/trace, so the server log shows where a client hangs.
+// Fire-and-forget: never waits, never throws. Off unless the server configuration says otherwise.
+
+let traceOn = false;
+let traceRun = "";
+let traceStart = 0;
+
+function startTrace() {
+  traceRun = Math.random().toString(36).slice(2, 10);
+  traceStart = Date.now();
+  try {
+    const cached = Office.context.roamingSettings.get(CONFIG_CACHE_KEY) as ServerConfig | undefined;
+    traceOn = cached?.trace === true;
+  } catch {
+    traceOn = false;
+  }
+}
+
+function trace(step: string, detail?: string) {
+  if (!traceOn) return;
+  try {
+    const diagnostics = Office.context.diagnostics;
+    const host = diagnostics ? `${diagnostics.platform} ${diagnostics.version}` : "?";
+    fetch(`${API_BASE}/api/trace`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ run: traceRun, step, ms: Date.now() - traceStart, host, detail }),
+    }).catch(() => undefined);
+  } catch {
+    // Diagnostics must never disturb sending.
+  }
 }
 
 /** Custom Smart Alert buttons and sendModeOverride need Mailbox 1.14. */
@@ -108,14 +145,19 @@ async function onAttachmentsChangedHandler(event: LaunchEvent) {
  */
 async function armPasswordMail(jobId: string) {
   // Normally already done by the taskpane – make sure the sent copy carries the tag.
+  trace("arm:tag");
   await withTimeout(tagDraft(jobId), TIMEOUTS.office, "Outlook (Markieren des Entwurfs)");
+  trace("arm:from");
   const from = await withTimeout(sharedSender(), TIMEOUTS.office, "Outlook (Absender lesen)");
+  trace("arm:token");
   const token = await withTimeout(getToken(), TIMEOUTS.token, "Die Anmeldung bei Microsoft (SSO)");
+  trace("arm:server");
   await withTimeout(
     api(`/api/jobs/${encodeURIComponent(jobId)}/arm`, { method: "POST", body: JSON.stringify(from ? { from } : {}) }, token),
     TIMEOUTS.server,
     "Der CloudShare-Server",
   );
+  trace("arm:done");
 }
 
 /**
@@ -143,16 +185,21 @@ const shorten = (names: string) => (names.length > 200 ? names.slice(0, 200) + "
  */
 async function onMessageSendHandler(event: LaunchEvent) {
   // Every step has a time limit: a step that never answers would leave Outlook at "takes longer than expected".
+  trace("start");
   const state = await withTimeout(readDraftState(), TIMEOUTS.office, "Outlook (Entwurfsdaten lesen)");
+  trace("state", state.jobId ? "job" : state.noPassword ? "no-password" : "none");
 
   let config: ServerConfig | undefined;
   let large: Office.AttachmentDetailsCompose[] = [];
   try {
     config = await getConfigCached();
+    traceOn = config.trace === true;
+    trace("config", config.attachmentPolicy);
     large = await withTimeout(largeAttachments(config), TIMEOUTS.office, "Outlook (Anhänge lesen)");
   } catch {
     // No configuration known (server never reached) → no attachment check.
   }
+  trace("attachments", String(large.length));
   const mustAct = config !== undefined && large.length > 0 && applies(config, state);
   const names = shorten(large.map((a) => a.name).join(", "));
 
@@ -178,10 +225,15 @@ async function onMessageSendHandler(event: LaunchEvent) {
   // Arm the password mail for links already inserted. Under "suggest" this must happen before the prompt,
   // because "Send anyway" sends the mail without calling this handler again. Arming is harmless if the user
   // cancels: the password mail only goes out once the mail appears in "Sent Items".
-  if (state.jobId) {
+  // Links deleted from the mail again: no password mail for a mail without links.
+  const released =
+    state.jobId !== undefined &&
+    (await withTimeout(releaseDraftIfLinksGone(), TIMEOUTS.office, "Outlook (Nachrichtentext lesen)").catch(() => false));
+  if (state.jobId && !released) {
     try {
       await armPasswordMail(state.jobId);
     } catch (err) {
+      trace("arm:failed", errorText(err));
       event.completed({
         allowEvent: false,
         errorMessage: `CloudShare kann das Kennwort für diese Nachricht nicht vorbereiten: ${errorText(err)}`,
@@ -213,7 +265,13 @@ async function onMessageSendHandler(event: LaunchEvent) {
 Office.actions.associate("onAttachmentsChangedHandler", onAttachmentsChangedHandler);
 // Anything unexpected still completes the event with a message instead of leaving the send dialog hanging.
 Office.actions.associate("onMessageSendHandler", (event: LaunchEvent) => {
-  const safe: LaunchEvent = { completed: (options) => event.completed(options ? withinLimits(options) : options) };
+  startTrace();
+  const safe: LaunchEvent = {
+    completed: (options) => {
+      trace("completed", options?.allowEvent ? "allow" : (options?.errorMessage ?? "block").slice(0, 200));
+      event.completed(options ? withinLimits(options) : options);
+    },
+  };
   return onMessageSendHandler(safe).catch((err) =>
     safe.completed({ allowEvent: false, errorMessage: `CloudShare konnte die Nachricht nicht prüfen: ${errorText(err)}` }),
   );

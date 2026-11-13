@@ -173,7 +173,31 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     sendMaxAccessCount: config.sendMaxAccessCount,
     sendMaxAccessLimit: config.sendMaxAccessLimit,
     mailFooter: config.mailFooter,
+    trace: config.clientTrace,
   }));
+
+  /**
+   * Diagnostics (CLIENT_TRACE=true only): steps of the Smart Alert, to find where sending hangs in a client.
+   * No login – the handler may be stuck exactly at the sign-in. Only short, validated fields are logged.
+   */
+  app.post<{ Body: { run?: unknown; step?: unknown; ms?: unknown; detail?: unknown; host?: unknown } }>(
+    "/api/trace",
+    async (req, reply) => {
+      if (!config.clientTrace) return reply.status(404).send({ error: "Not Found" });
+      const text = (value: unknown, pattern: RegExp) => (typeof value === "string" && pattern.test(value) ? value : "?");
+      req.log.info(
+        {
+          trace: text(req.body?.run, /^[a-z0-9]{1,12}$/),
+          step: text(req.body?.step, /^[a-z0-9:._-]{1,40}$/),
+          ms: typeof req.body?.ms === "number" ? Math.round(req.body.ms) : null,
+          host: text(req.body?.host, /^[A-Za-z0-9 ._-]{1,40}$/),
+          detail: typeof req.body?.detail === "string" ? req.body.detail.slice(0, 300) : undefined,
+        },
+        "Smart Alert trace",
+      );
+      return { ok: true };
+    },
+  );
 
   /** Sender's Microsoft 365 profile – fills the placeholders of MAIL_FOOTER in the taskpane. */
   app.get("/api/profile", async (req) => {
@@ -189,8 +213,20 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     const creds = getCredentials(user.oid);
     if (!creds) return { connected: false };
     try {
-      const { free, used, total } = await nextcloudFor(user).userInfo();
-      return { connected: true, loginName: creds.loginName, freeBytes: free, usedBytes: used, totalBytes: total };
+      const nc = nextcloudFor(user);
+      const [{ free, used, total }, passwordEnforced] = await Promise.all([
+        nc.userInfo(),
+        // Unknown → offer "Ohne Kennwort"; Nextcloud's own error message still explains a refusal.
+        nc.linkPasswordEnforced().catch(() => false),
+      ]);
+      return {
+        connected: true,
+        loginName: creds.loginName,
+        freeBytes: free,
+        usedBytes: used,
+        totalBytes: total,
+        passwordEnforced,
+      };
     } catch (err) {
       // App password revoked → nextcloudFor has already removed the connection.
       if (err instanceof HttpError && err.code === NOT_CONNECTED) return { connected: false };

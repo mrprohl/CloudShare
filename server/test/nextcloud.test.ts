@@ -28,6 +28,19 @@ describe("NextcloudClient", () => {
     expect(await new NextcloudClient(creds).userInfo()).toEqual({ id: "max-uid", free: 900, used: 20, total: null });
   });
 
+  it("reads the enforced link password from the capabilities", async () => {
+    const { call } = mockFetch(
+      ocs({ capabilities: { files_sharing: { public: { password: { enforced: true } } } } }),
+      ocs({ capabilities: { files_sharing: { public: { password: { enforced: false } } } } }),
+      ocs({ capabilities: {} }),
+    );
+    const client = new NextcloudClient(creds);
+    expect(await client.linkPasswordEnforced()).toBe(true);
+    expect(await client.linkPasswordEnforced()).toBe(false);
+    expect(await client.linkPasswordEnforced()).toBe(false);
+    expect(call(0).url).toBe("https://cloud.example.test/ocs/v2.php/cloud/capabilities?format=json");
+  });
+
   it("treats negative quota values as unlimited", async () => {
     mockFetch(ocs({ id: "max-uid", quota: { free: -3 } }));
     expect((await new NextcloudClient(creds).userInfo()).free).toBeNull();

@@ -23,6 +23,8 @@ export interface OfficeState {
   from: string;
   userEmail: string;
   notifications: { replaced: Array<Record<string, unknown>>; removed: string[] };
+  /** HTML body of the draft. */
+  body: string;
 }
 
 type Handler = (event: { completed: (options?: unknown) => void }) => Promise<void>;
@@ -51,12 +53,14 @@ export function installOfficeMock() {
     from: "max@example.test",
     userEmail: "max@example.test",
     notifications: { replaced: [], removed: [] },
+    body: "",
   };
   const handlers: Record<string, Handler> = {};
 
   type Callback = (result: unknown) => void;
   const item = {
     getAttachmentsAsync: (cb: Callback) => cb(ok(state.attachments)),
+    body: { getAsync: (_type: string, cb: Callback) => cb(ok(state.body)) },
     sessionData: {
       getAsync: (key: string, cb: Callback) => cb(key in state.session ? ok(state.session[key]) : failed()),
       setAsync: (key: string, value: string, cb: Callback) => {
@@ -70,6 +74,9 @@ export function installOfficeMock() {
           get: (key: string) => state.customProps[key],
           set: (key: string, value: unknown) => {
             state.customProps[key] = value;
+          },
+          remove: (key: string) => {
+            delete state.customProps[key];
           },
           saveAsync: (done: Callback) => done(ok()),
         }),
@@ -89,6 +96,7 @@ export function installOfficeMock() {
 
   (globalThis as Record<string, unknown>).Office = {
     AsyncResultStatus: { Succeeded: "succeeded", Failed: "failed" },
+    CoercionType: { Html: "html", Text: "text" },
     MailboxEnums: {
       AttachmentType: { File: "file", Item: "item", Cloud: "cloud" },
       ItemNotificationMessageType: { InsightMessage: "insightMessage" },
@@ -133,6 +141,7 @@ export function installOfficeMock() {
       from: "max@example.test",
       userEmail: "max@example.test",
       notifications: { replaced: [], removed: [] },
+      body: "",
     });
   }
 
