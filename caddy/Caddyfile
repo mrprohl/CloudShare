@@ -1,0 +1,27 @@
+# ============================================================================
+# CloudShare – Caddy in the CloudShare stack (mounted read-only from /opt/cloudshare/caddy/Caddyfile)
+# The host name comes from CLOUDSHARE_HOST in env/versions.env. Caddy gets a Let's Encrypt certificate
+# automatically and redirects HTTP to HTTPS – ports 80 and 443 of the host must be reachable from the internet.
+# After changes:  docker exec cloudshare-caddy caddy reload --config /etc/caddy/Caddyfile
+#
+# No X-Frame-Options / frame-ancestors here: new Outlook and Outlook on the web show the taskpane in an iframe.
+# ============================================================================
+
+{$CLOUDSHARE_HOST} {
+	encode zstd gzip
+
+	# Uploads arrive in chunks of 10 MiB (plus headroom) – larger requests are never needed
+	request_body {
+		max_size 12MB
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy no-referrer
+		X-Robots-Tag "noindex, nofollow"
+		-Server
+	}
+
+	reverse_proxy cloudshare:3000
+}

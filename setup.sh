@@ -1,30 +1,20 @@
 #!/usr/bin/env bash
 # ============================================================================
-# CloudShare – setup wizard for a Docker host with a central Caddy (see README)
-# Creates the internal network cloudshare-proxy (<PROXY_NET>.0/24, central Caddy = <PROXY_NET>.2), writes env/
-# (directory 700, files 600): versions.env, cloudshare.env – and caddy/cloudshare.caddy from the template.
+# CloudShare – setup wizard
+# Writes env/ (directory 700, files 600): versions.env (Compose variables incl. CLOUDSHARE_HOST for Caddy)
+# and cloudshare.env (app settings and secrets).
 # Enter accepts the default shown in [brackets]. Secrets are prompted without echo.
 # Location: /opt/cloudshare (fixed, as in docker-compose.yml)
-# Other network: PROXY_NET=10.99.0 ./setup.sh   (first three octets of a free /24)
 # ============================================================================
 set -euo pipefail
 cd "$(dirname "$0")"
 [ "$(pwd)" = /opt/cloudshare ] || echo "Note: package is in $(pwd), Compose expects /opt/cloudshare." >&2
-PROXY_NET=${PROXY_NET:-172.30.13}
-
-# Internal network shared with the central Caddy; containers get .128 and up, so .2 stays free for Caddy
-if command -v docker >/dev/null; then
-  docker network inspect cloudshare-proxy >/dev/null 2>&1 || {
-    docker network create --internal --subnet "$PROXY_NET.0/24" --ip-range "$PROXY_NET.128/25" cloudshare-proxy >/dev/null \
-      && echo "Network cloudshare-proxy ($PROXY_NET.0/24, internal) created."; }
-fi
 chmod -R a+rX caddy
 
 init_versions() {   # create env/versions.env from the template (an existing one stays unchanged)
   umask 077; mkdir -p env; chmod 700 env
   if [ -f env/versions.env ]; then echo "env/versions.env exists – unchanged."
-  else sed "s/^PROXY_IP=.*/PROXY_IP=$PROXY_NET.2/" versions.env.example > env/versions.env
-       echo "env/versions.env created (template)."; fi
+  else cp versions.env.example env/versions.env; echo "env/versions.env created (template)."; fi
   chmod 600 env/versions.env
 }
 init_versions
@@ -61,7 +51,6 @@ ask ENTRA_CLIENT_ID     "Application (client) ID"   ""
 ask_secret ENTRA_CLIENT_SECRET "Client secret (value)"
 echo; echo "-- Nextcloud --"
 ask NEXTCLOUD_URL    "Nextcloud address"        "https://cloud.example.com"
-ask NEXTCLOUD_LOCAL  "Nextcloud behind the same central Caddy (y/n)" "y"
 ask NEXTCLOUD_FOLDER "Folder for attachments"   "Outlook-Anhaenge"
 ask NEXTCLOUD_REQUEST_FOLDER "Folder for upload links" "Outlook-Dateianforderungen"
 echo; echo "-- Vaultwarden service account (own user, e.g. cloudshare@<your domain>) --"
@@ -77,7 +66,6 @@ for var in PUBLIC_BASE_URL ENTRA_TENANT_ID ENTRA_CLIENT_ID NEXTCLOUD_URL VAULTWA
   [ -n "${!var}" ] || { echo "$var must not be empty." >&2; exit 1; }
 done
 case "$ATTACHMENT_POLICY" in enforce|suggest) ;; *) echo "ATTACHMENT_POLICY must be enforce or suggest." >&2; exit 1;; esac
-case "$NEXTCLOUD_LOCAL" in y|n) ;; *) echo "Answer y or n for the Nextcloud question." >&2; exit 1;; esac
 for var in PUBLIC_BASE_URL NEXTCLOUD_URL VAULTWARDEN_URL; do
   case "${!var}" in https://*) ;; *) echo "$var must start with https://." >&2; exit 1;; esac
 done
@@ -102,18 +90,12 @@ umask 077
 chmod 700 env; chmod 600 env/*
 chmod 755 setup.sh
 
-# Nextcloud behind the same Caddy → reach it internally via extra_hosts (env/versions.env)
-NEXTCLOUD_HOST=${NEXTCLOUD_URL#https://}; NEXTCLOUD_HOST=${NEXTCLOUD_HOST%%/*}
-if [ "$NEXTCLOUD_LOCAL" = y ]; then sed -i "s|^#\?NEXTCLOUD_HOST=.*|NEXTCLOUD_HOST=$NEXTCLOUD_HOST|" env/versions.env
-else sed -i "s|^NEXTCLOUD_HOST=|#NEXTCLOUD_HOST=|" env/versions.env; fi
-
-# Site block for the central Caddy from the template
+# Host name for Caddy (only on a new env/versions.env from the template)
 PUBLIC_HOST=${PUBLIC_BASE_URL#https://}; PUBLIC_HOST=${PUBLIC_HOST%%/*}
-if [ -f caddy/cloudshare.caddy ]; then echo "caddy/cloudshare.caddy exists – unchanged."
-else sed "s/cloudshare\.example\.com/$PUBLIC_HOST/g" caddy/cloudshare.caddy.example > caddy/cloudshare.caddy
-     chmod 644 caddy/cloudshare.caddy; echo "caddy/cloudshare.caddy written for $PUBLIC_HOST."; fi
+sed -i "s|^CLOUDSHARE_HOST=cloudshare.example.com$|CLOUDSHARE_HOST=$PUBLIC_HOST|" env/versions.env
+echo "CLOUDSHARE_HOST in env/versions.env: $(grep ^CLOUDSHARE_HOST= env/versions.env)"
 
 echo; echo "env/ written:"; ls -l env | sed 's/^/  /'
 echo "Store CREDENTIAL_KEY in your password manager (without it all users have to reconnect):"
 echo "  grep CREDENTIAL_KEY env/cloudshare.env"
-echo "Next: add cloudshare-proxy and /opt/cloudshare/caddy to the central Caddy (README), then deploy the stack."
+echo "Next: DNS for $PUBLIC_HOST → this server, ports 80/443 open, then deploy the stack (README)."

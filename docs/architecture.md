@@ -15,7 +15,7 @@ Outlook (classic / new)
                                     OnMessageSend: trigger password mail, prompt on large attachments
         │  Office SSO token (Entra ID, scope access_as_user)
         ▼
-central Caddy (Let's Encrypt) ─► network cloudshare-proxy (internal)
+Caddy in the stack (ports 80/443, Let's Encrypt) ─► network internal
         ▼
 Docker container "cloudshare"
   ├─ Node/Fastify backend  (server/)  – also serves the add-in files + manifest.xml
@@ -88,8 +88,8 @@ backend does not use Entra tokens for Nextcloud but one app password per user.
 ### Nextcloud
 - No change to the login method (`user_oidc`, LDAP, local) needed. Public links must be allowed (for "Dateien
   anfordern" also public upload); password policy/expiry as desired.
-- If CloudShare runs on the same host as Nextcloud, it reaches it through the central Caddy (`extra_hosts`
-  `NEXTCLOUD_HOST` → `PROXY_IP` in `env/versions.env`). Request body limit there ≥ 12 MB (chunk size). No CORS needed, as only the backend talks
+- CloudShare reaches Nextcloud through its public address (`NEXTCLOUD_URL`). If Nextcloud runs behind a proxy, its
+  request body limit must be ≥ 12 MB (chunk size). No CORS needed, as only the backend talks
   to Nextcloud (server to server). The login flow (`/index.php/login/v2…`) must be reachable.
 
 ### Vaultwarden
@@ -99,8 +99,8 @@ backend does not use Entra tokens for Nextcloud but one app password per user.
   master password → `BW_PASSWORD`.
 
 ### Deployment
-- On the Docker host as described in the [README](../README.md): `/opt/cloudshare`, `./setup.sh` (creates the network
-  `cloudshare-proxy`, generates
+- On the Docker host as described in the [README](../README.md): `/opt/cloudshare`, `./setup.sh` (writes `env/`,
+  generates
   `CREDENTIAL_KEY` – keep it safe), Portainer stack. GitHub Actions builds the image `ghcr.io/mrprohl/cloudshare`
   on every push to `main`; updates by re-pull. Include the volume `cloudshare_data` (encrypted app passwords) in
   backups.

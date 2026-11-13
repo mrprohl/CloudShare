@@ -34,18 +34,17 @@ for upload links, expired links, **Link kopieren** and **Zurückziehen** (with c
 - Microsoft 365 / Exchange Online, classic Outlook (Windows) or new Outlook / Outlook on the web
 - Nextcloud with public link sharing (any login method – users connect once via Login Flow v2)
 - Vaultwarden with Sends enabled and a service account for CloudShare
-- A Docker host with Docker Compose ≥ 2.20 and a **central Caddy** acting as reverse proxy for several stacks
-  (Let's Encrypt). Nextcloud can run behind the same Caddy – CloudShare then reaches it internally.
+- A Docker host with Docker Compose ≥ 2.20, a public DNS name and ports 80/443 reachable from the internet
 
 ## Deployment
 
-The examples use `cloudshare.example.com` (CloudShare), `cloud.example.com` (Nextcloud) and
-`vault.example.com` (Vaultwarden) – replace them with your own names.
+The stack is self-contained: its own Caddy terminates TLS (Let's Encrypt) and forwards to CloudShare.
+Nextcloud, Vaultwarden and Microsoft are reached through their public addresses. The examples use
+`cloudshare.example.com` (CloudShare), `cloud.example.com` (Nextcloud) and `vault.example.com` (Vaultwarden).
 
 ```
-Outlook add-in ─HTTPS─► central Caddy (Let's Encrypt) ─cloudshare-proxy─► cloudshare:3000
-cloudshare ─cloudshare-proxy─► central Caddy ─► Nextcloud (same host, via extra_hosts – optional)
-cloudshare ─egress─► Entra ID/Graph (password mail) · Vaultwarden (Send)
+Outlook add-in ─HTTPS─► caddy (ports 80/443, Let's Encrypt) ─internal─► cloudshare:3000
+cloudshare ─egress─► Entra ID/Graph (password mail) · Nextcloud (upload, links) · Vaultwarden (Send)
 ```
 
 ## Layout `/opt/cloudshare` (Git clone)
@@ -53,53 +52,35 @@ cloudshare ─egress─► Entra ID/Graph (password mail) · Vaultwarden (Send)
 | Path | Content |
 |---|---|
 | `docker-compose.yml` | stub for Portainer/Dockhand (`include` + variables) |
-| `compose.yml` | CloudShare container |
-| `caddy/cloudshare.caddy` | site block for the central Caddy (mounted read-only at the same path), written by `setup.sh` from `caddy/cloudshare.caddy.example` |
-| `env/versions.env` | `CLOUDSHARE_VERSION` (`latest`), `NEXTCLOUD_HOST`, `PROXY_IP` |
+| `compose.yml` | Caddy and CloudShare containers |
+| `caddy/Caddyfile` | site configuration; host name from `CLOUDSHARE_HOST` |
+| `env/versions.env` | `CLOUDSHARE_HOST`, `CLOUDSHARE_VERSION` (`latest`), `CADDY_VERSION` |
 | `env/cloudshare.env` | Entra ID, Nextcloud, Vaultwarden service account, `CREDENTIAL_KEY` – **secrets** |
 | volume `cloudshare_data` | users' encrypted Nextcloud app passwords – **back up** |
-| `setup.sh` | new installation: creates the network `cloudshare-proxy`, writes `env/` and the Caddy site block |
+| volume `cloudshare_caddy_data` | certificates |
+| `setup.sh` | new installation: asks for all settings and writes `env/` |
 
 GitHub builds the image `ghcr.io/mrprohl/cloudshare` on every push to `main` (`.github/workflows/image.yml`) –
-nothing is built on the server. `env/` and `caddy/cloudshare.caddy` are not in Git.
+nothing is built on the server. `env/` is not in Git.
 
-Hardening: read-only, `cap_drop: ALL`, `no-new-privileges`, limits, log rotation, no `ports:`, runs as user 1000.
-Networks: `cloudshare-proxy` (internal, default 172.30.13.0/24, central Caddy = 172.30.13.2) and `egress`
-(outbound). `bw serve` listens on 127.0.0.1 inside the container only. The site block sets no `X-Frame-Options`,
-because new Outlook and Outlook on the web show the taskpane in an iframe.
+Hardening: both containers read-only, `cap_drop: ALL` (Caddy only gets `NET_BIND_SERVICE`), `no-new-privileges`,
+limits, log rotation; CloudShare runs as user 1000 and publishes no ports. Networks: `internal` (Caddy ↔ CloudShare,
+no outbound access), `edge` (Caddy, published ports) and `egress` (CloudShare, outbound). `bw serve` listens on
+127.0.0.1 inside the container only. The Caddyfile sets no `X-Frame-Options`, because new Outlook and Outlook on
+the web show the taskpane in an iframe.
 
 ## New installation
 
 ### 1. Clone and set up
 ```bash
 git clone https://github.com/mrprohl/CloudShare.git /opt/cloudshare
-cd /opt/cloudshare && ./setup.sh     # creates cloudshare-proxy, asks for Entra, Nextcloud, Vaultwarden
+cd /opt/cloudshare && ./setup.sh     # asks for address, Entra ID, Nextcloud, Vaultwarden
 grep CREDENTIAL_KEY env/cloudshare.env   # store in your password manager
 ```
-The network defaults to 172.30.13.0/24; if that is taken, run `PROXY_NET=10.99.0 ./setup.sh` (first three octets
-of a free /24).
 
-### 2. Central Caddy (`/opt/caddy/compose.yml`)
-Add the network and the site directory:
-```yaml
-    networks:
-      # …
-      cloudshare-proxy: { ipv4_address: 172.30.13.2 }
-    volumes:
-      # …
-      - /opt/cloudshare/caddy:/opt/cloudshare/caddy:ro
-
-networks:
-  # …
-  cloudshare-proxy:
-    external: true            # created by cloudshare/setup.sh
-```
-If the central `Caddyfile` imports the services one by one, add `import /opt/cloudshare/caddy/*.caddy`. Then
-recreate the Caddy stack (new network and mount need a redeploy, a reload is not enough).
-
-### 3. DNS and deployment
-- DNS: `cloudshare.example.com` → public address of the Docker host (A/AAAA or CNAME). Ports 80/443 must reach the
-  central Caddy (directly or forwarded by an upstream proxy); Caddy fetches the certificate on the first request.
+### 2. DNS and deployment
+- DNS: `cloudshare.example.com` → public address of the Docker host (A/AAAA or CNAME); open ports 80 and 443
+  (TCP, 443 also UDP for HTTP/3). Caddy fetches the certificate on the first start.
 - Portainer/Dockhand: stack "cloudshare" → contents of `/opt/cloudshare/docker-compose.yml` → Deploy
   (or `cd /opt/cloudshare && docker compose up -d`).
 - Vaultwarden: `SENDS_ALLOWED=true`.
@@ -107,6 +88,11 @@ recreate the Caddy stack (new network and mount need a redeploy, a reload is not
   `https://cloudshare.example.com/manifest.xml` (first only for your own account). Alternative with a clear error
   message: Exchange Online PowerShell,
   `New-App -OrganizationApp -Url https://cloudshare.example.com/manifest.xml -ProvidedTo Everyone -DefaultStateForUser Enabled`.
+
+Behind an existing reverse proxy instead: remove the `caddy` service and its `ports:` from `compose.yml`, put
+`cloudshare` into the proxy's network and forward the host name to `cloudshare:3000` with the settings from
+`caddy/Caddyfile` (request body ≥ 12 MB, no `X-Frame-Options`).
+
 ## Tests
 
 Backend and add-in have automated tests (vitest) in `server/test/` and `addin/test/`:
@@ -127,20 +113,20 @@ cd addin && npm install && npm test
 
 ## Updating
 
-- **Application:** stack "cloudshare" → "Update the stack" with **re-pull**. To pin a state:
-  `CLOUDSHARE_VERSION=sha-<commit>` in `env/versions.env`.
-- **compose.yml from the repository:** `cd /opt/cloudshare && git pull`, then update the stack.
-  `caddy/cloudshare.caddy` is local – if `caddy/cloudshare.caddy.example` changed, carry the change over and run
-  `docker exec caddy caddy reload --config /etc/caddy/Caddyfile`.
+- **Application and Caddy:** stack "cloudshare" → "Update the stack" with **re-pull**. To pin a state:
+  `CLOUDSHARE_VERSION=sha-<commit>` (or `CADDY_VERSION`) in `env/versions.env`.
+- **compose.yml / Caddyfile from the repository:** `cd /opt/cloudshare && git pull`, then update the stack; after a
+  Caddyfile change alone `docker exec cloudshare-caddy caddy reload --config /etc/caddy/Caddyfile` is enough.
 - **Settings:** edit `env/cloudshare.env` → update the stack.
 
 ## Checks
 
 ```bash
-docker ps --filter name=cloudshare                         # "healthy"
+docker ps --filter name=cloudshare                         # cloudshare "healthy", cloudshare-caddy "Up"
 docker logs cloudshare 2>&1 | grep -i vault                # "Vaultwarden vault unlocked"
+docker logs cloudshare-caddy 2>&1 | grep -i certificate    # "certificate obtained successfully"
 docker exec cloudshare wget -qO- http://127.0.0.1:3000/api/config
 curl -s https://cloudshare.example.com/api/config         # from outside: same JSON
 ```
-Note for Nextcloud: all requests from CloudShare arrive from one internal address (cloudshare-proxy). If Nextcloud's
-brute-force protection ever throttles them, allow the cloudshare-proxy subnet (default `172.30.13.0/24`) in the "Brute-force settings" app.
+Note for Nextcloud: all requests from CloudShare arrive from the server's public address. If Nextcloud's
+brute-force protection ever throttles them, allow that address in the "Brute-force settings" app.
