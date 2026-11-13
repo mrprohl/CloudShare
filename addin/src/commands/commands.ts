@@ -272,9 +272,8 @@ async function onMessageSendHandler(event: LaunchEvent) {
   event.completed({ allowEvent: true });
 }
 
-Office.actions.associate("onAttachmentsChangedHandler", onAttachmentsChangedHandler);
 // Anything unexpected still completes the event with a message instead of leaving the send dialog hanging.
-Office.actions.associate("onMessageSendHandler", (event: LaunchEvent) => {
+function sendHandler(event: LaunchEvent) {
   startTrace();
   const safe: LaunchEvent = {
     completed: (options) => {
@@ -285,4 +284,30 @@ Office.actions.associate("onMessageSendHandler", (event: LaunchEvent) => {
   return onMessageSendHandler(safe).catch((err) =>
     safe.completed({ allowEvent: false, errorMessage: `CloudShare konnte die Nachricht nicht prüfen: ${errorText(err)}` }),
   );
-});
+}
+
+function registerHandlers() {
+  Office.actions.associate("onAttachmentsChangedHandler", onAttachmentsChangedHandler);
+  Office.actions.associate("onMessageSendHandler", sendHandler);
+}
+
+// Classic Outlook (JavaScript-only runtime) has Office.js preloaded: register right away.
+// Outlook on the web / new Outlook (browser runtime): office.js loads the Outlook API (Office.actions) only after this
+// script ran – registering now fails, and Outlook would wait for a handler that never exists ("CloudShare dauert
+// länger als erwartet"). So register again once office.js is ready; associating twice just replaces the mapping.
+try {
+  registerHandlers();
+} catch {
+  // Office.actions not there yet – see Office.onReady below.
+}
+try {
+  void Office.onReady(() => {
+    try {
+      registerHandlers();
+    } catch {
+      // Nothing more to do – the event cannot be handled in this runtime.
+    }
+  });
+} catch {
+  // No Office.onReady in this runtime (classic Outlook ignores it).
+}

@@ -16,6 +16,8 @@ import {
   armJob,
   createJob,
   createSeparateJob,
+  findPart,
+  addFileToPart,
   getJob,
   setJobMaxAccess,
   setJobPasswordTo,
@@ -59,8 +61,8 @@ interface ShareRequest {
   expireDays?: unknown;
   /** How often the password link (Vaultwarden Send) can be opened. */
   maxAccess?: unknown;
-  /** true: "Für jede Datei ein eigenes Kennwort" – own Send and own password mail for this share. */
-  separate?: unknown;
+  /** ID of the "Als Link einfügen" step (one password and one password mail per step, see attachToJob). */
+  step?: unknown;
 }
 
 /**
@@ -78,11 +80,11 @@ function shareSettings(body: ShareRequest | undefined, withPassword = true) {
 }
 
 /**
- * Adds a share to the draft's password job (same password, same Send → one password mail) or creates a new job.
- * The password mail only goes out after the mail was really sent, so a job stays open until then.
- * The number of accesses comes from the first share of the mail (one Send for all) and can be changed later via
- * PATCH /api/jobs/:id until the password mail went out. With `separate`, every share gets its own Send and its own
- * password mail instead (the mode is fixed by the first share of the mail).
+ * Adds a share to the draft's password job or creates a new job. The password mail only goes out after the mail was
+ * really sent, so a job stays open until then.
+ * `step` (one ID per "Als Link einfügen" click, sent by the taskpane): every step gets its own password, its own Send
+ * and its own password mail; further files of the same step join it. Without `step` (drafts and cached clients from
+ * before) all shares of the mail share one password, one Send and one password mail as before.
  */
 async function attachToJob(
   user: User,
@@ -90,27 +92,36 @@ async function attachToJob(
   itemName: string,
   password: string,
   maxAccess: number,
-  /** "Für jede Datei ein eigenes Kennwort": own Send and own password mail for this share. */
-  separate = false,
+  requestedStep: unknown,
 ) {
+  const step = typeof requestedStep === "string" && /^[A-Za-z0-9-]{1,40}$/.test(requestedStep) ? requestedStep : undefined;
   const id = typeof requestedJobId === "string" ? requestedJobId : undefined;
   const existing = id ? getJob(id) : undefined;
   if (id && existing && existing.owner === user.oid && !existing.dispatched) {
-    if (Boolean(existing.separate) !== separate) {
-      throw new HttpError(409, "Für diese Nachricht ist bereits festgelegt, ob alle Dateien ein gemeinsames Kennwort haben.");
-    }
-    if (!separate) {
+    // A mail started with one shared password (before this version) keeps it.
+    if (!existing.separate) {
       await addFileToJob(id, itemName);
       return id;
     }
+    if (step && findPart(id, step)) {
+      await addFileToPart(id, step, itemName);
+      return id;
+    }
     const send = await createPasswordSend(`CloudShare: ${itemName}`, password, maxAccess);
-    await addSeparatePart(id, { fileName: itemName, sendUrl: send.url, sendId: send.id, maxAccessCount: maxAccess });
+    await addSeparatePart(id, {
+      step: step ?? randomUUID(),
+      fileNames: [itemName],
+      sendUrl: send.url,
+      sendId: send.id,
+      maxAccessCount: maxAccess,
+    });
     return id;
   }
   const send = await createPasswordSend(`CloudShare: ${itemName}`, password, maxAccess);
-  if (separate) {
+  if (step) {
     return createSeparateJob(user.oid, user.upn, {
-      fileName: itemName,
+      step,
+      fileNames: [itemName],
       sendUrl: send.url,
       sendId: send.id,
       maxAccessCount: maxAccess,
@@ -385,7 +396,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       uploads.delete(req.params.id);
 
       const shareUrl = await nc.createPublicShare(upload.target, noPassword ? undefined : password, expireDate);
-      const jobId = noPassword ? null : await attachToJob(user, req.body?.jobId, upload.fileName, password, maxAccess, req.body?.separate === true);
+      const jobId = noPassword ? null : await attachToJob(user, req.body?.jobId, upload.fileName, password, maxAccess, req.body?.step);
       req.log.info({ user: user.upn, file: upload.fileName, noPassword }, "Share created");
       return { shareUrl, expireDate, jobId, fileName: upload.fileName, size: upload.size };
     },
@@ -406,7 +417,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     await nc.ensureFolder(uid, folder);
     // Create-only share ("file drop"): recipients can upload but cannot see or download anything.
     const shareUrl = await nc.createPublicShare(folder, password, expireDate, 4, "Dateianforderung");
-    const jobId = await attachToJob(user, req.body?.jobId, UPLOAD_LINK_ITEM, password, maxAccess, req.body?.separate === true);
+    const jobId = await attachToJob(user, req.body?.jobId, UPLOAD_LINK_ITEM, password, maxAccess, req.body?.step);
     req.log.info({ user: user.upn, folder: folder.join("/") }, "Upload link created");
     return { shareUrl, expireDate, jobId };
   });
@@ -488,7 +499,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         : await nc.createPublicShare(segments, noPassword ? undefined : password, expireDate);
       const jobId = noPassword
         ? null
-        : await attachToJob(user, req.body?.jobId, request ? UPLOAD_LINK_ITEM : fileName, password, maxAccess, req.body?.separate === true);
+        : await attachToJob(user, req.body?.jobId, request ? UPLOAD_LINK_ITEM : fileName, password, maxAccess, req.body?.step);
       req.log.info({ user: user.upn, path: share.path, noPassword }, "Share linked again");
       return { kind: request ? "request" : "file", shareUrl, expireDate, jobId, fileName, size: share.size };
     },

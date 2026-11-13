@@ -222,32 +222,39 @@ describe("uploads", () => {
     expect(createPasswordSend).not.toHaveBeenCalled();
   });
 
-  it("gives every file its own password and Send with 'separate', in one job per mail", async () => {
-    const first = await startUpload("anna");
-    await putChunk("anna", first.body.uploadId, 1);
-    const { jobId } = (await complete("anna", first.body.uploadId, { separate: true, maxAccess: 2 })).json();
-
+  it("gives every 'Als Link einfügen' step its own password and Send; files of one step share them", async () => {
+    const upload = async (name: string, body: Record<string, unknown>) => {
+      const started = await startUpload("anna", name);
+      await putChunk("anna", started.body.uploadId, 1);
+      return (await complete("anna", started.body.uploadId, body)).json();
+    };
+    // Step 1: two files selected together.
+    const { jobId } = await upload("a.pdf", { step: "s1", maxAccess: 2 });
+    await upload("b.pdf", { step: "s1", jobId, maxAccess: 2 });
+    // Step 2: another click with a new password.
     const OTHER = "Zr8!mQ4#vT1x_Lp9Wk2s";
-    const second = await startUpload("anna", "b.pdf");
-    await putChunk("anna", second.body.uploadId, 1);
-    const res = await complete("anna", second.body.uploadId, { separate: true, jobId, password: OTHER, maxAccess: 5 });
-    expect(res.json().jobId).toBe(jobId);
+    const res = await upload("c.pdf", { step: "s2", jobId, password: OTHER, maxAccess: 5 });
+    expect(res.jobId).toBe(jobId);
 
     expect(createPasswordSend.mock.calls.map((c) => [c[1], c[2]])).toEqual([[STRONG, 2], [OTHER, 5]]);
-    expect(getJob(jobId)?.separate?.map((p) => [p.fileName, p.maxAccessCount])).toEqual([["a.pdf", 2], ["b.pdf", 5]]);
-    expect(getJob(jobId)?.fileNames).toEqual(["a.pdf", "b.pdf"]);
+    expect(getJob(jobId)?.separate?.map((p) => [p.step, p.fileNames, p.maxAccessCount])).toEqual([
+      ["s1", ["a.pdf", "b.pdf"], 2],
+      ["s2", ["c.pdf"], 5],
+    ]);
+    expect(getJob(jobId)?.fileNames).toEqual(["a.pdf", "b.pdf", "c.pdf"]);
   });
 
-  it("does not mix one shared password and separate passwords in one mail", async () => {
+  it("keeps one shared password for mails started without steps (drafts from before)", async () => {
     const first = await startUpload("anna");
     await putChunk("anna", first.body.uploadId, 1);
     const { jobId } = (await complete("anna", first.body.uploadId)).json();
 
     const second = await startUpload("anna", "b.pdf");
     await putChunk("anna", second.body.uploadId, 1);
-    const res = await complete("anna", second.body.uploadId, { separate: true, jobId });
-    expect(res.statusCode).toBe(409);
-    expect(getJob(jobId)?.fileNames).toEqual(["a.pdf"]);
+    expect((await complete("anna", second.body.uploadId, { step: "s9", jobId })).json().jobId).toBe(jobId);
+    expect(getJob(jobId)?.separate).toBeUndefined();
+    expect(getJob(jobId)?.fileNames).toEqual(["a.pdf", "b.pdf"]);
+    expect(createPasswordSend).toHaveBeenCalledOnce();
   });
 
   it("only accepts noPassword as a real boolean", async () => {

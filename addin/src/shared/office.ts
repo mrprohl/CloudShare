@@ -212,7 +212,7 @@ export interface DraftState {
   noPassword?: boolean;
   /** "Kennwort an andere Adresse": the password mail goes only to this address (set on the job by the taskpane). */
   passwordTo?: string;
-  /** "Für jede Datei ein eigenes Kennwort": every link has its own password and password mail (fixed per mail). */
+  /** Mail with one password per "Als Link einfügen" step (every step has its own password and password mail). */
   separate?: boolean;
   /**
    * Share tokens of the links CloudShare inserted (last URL segment). If none of them is left in the body, the user
