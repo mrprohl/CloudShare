@@ -204,9 +204,11 @@ const STATE_KEY = "cloudshare-state";
 export interface DraftState {
   jobId?: string;
   password?: string;
-  /** How often the password link can be opened – fixed together with the password. */
+  /** How often the password link can be opened – changeable until sending (PATCH /api/jobs/:id). */
   maxAccess?: number;
   optOut?: boolean;
+  /** Links of this mail were shared "Ohne Kennwort" – no password job, no password mail. */
+  noPassword?: boolean;
 }
 
 export async function readDraftState(): Promise<DraftState> {

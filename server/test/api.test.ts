@@ -34,7 +34,8 @@ vi.mock("../src/auth.js", async (importOriginal) => {
   };
 });
 vi.mock("../src/vaultwarden.js", () => ({
-  createPasswordSend: vi.fn(async () => "https://vault.example.test/#/send/abc"),
+  createPasswordSend: vi.fn(async () => ({ url: "https://vault.example.test/#/send/abc", id: "send-1" })),
+  setSendMaxAccess: vi.fn(async () => undefined),
   initVault: vi.fn(),
 }));
 vi.mock("../src/nextcloud.js", async (importOriginal) => {
@@ -53,11 +54,13 @@ const { saveCredentials } = await import("../src/credentials.js");
 const { createJob, getJob } = await import("../src/jobs.js");
 const vaultwarden = await import("../src/vaultwarden.js");
 const createPasswordSend = vi.mocked(vaultwarden.createPasswordSend);
+const setSendMaxAccess = vi.mocked(vaultwarden.setSendMaxAccess);
 
 const app = await buildApp({ logger: false });
 const as = (user: string) => ({ authorization: `Bearer user-${user}` });
 const STRONG = "kT7#pQ2m!xV9wR4e_Hn3";
 const MiB = 1024 * 1024;
+const DAY = 86_400_000;
 
 beforeAll(async () => {
   await saveCredentials("oid-anna", { loginName: "anna", appPassword: "pw-anna" });
@@ -70,6 +73,7 @@ beforeEach(() => {
   nc.userInfo.mockResolvedValue({ id: "uid", free: null });
   nc.createPublicShare.mockResolvedValue("https://cloud.example.test/s/abc");
   createPasswordSend.mockClear();
+  setSendMaxAccess.mockClear();
 });
 
 async function startUpload(user: string, fileName = "a.pdf", size = 100) {
@@ -185,6 +189,25 @@ describe("uploads", () => {
     expect(nc.createPublicShare).not.toHaveBeenCalled();
   });
 
+  it("shares without password on request – no Send, no password job", async () => {
+    const { body } = await startUpload("anna");
+    await putChunk("anna", body.uploadId, 1);
+    const res = await complete("anna", body.uploadId, { password: "", noPassword: true, jobId: "job-x" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().jobId).toBeNull();
+    expect(res.json().shareUrl).toBe("https://cloud.example.test/s/abc");
+    expect(nc.createPublicShare.mock.calls[0][1]).toBeUndefined();
+    expect(createPasswordSend).not.toHaveBeenCalled();
+  });
+
+  it("only accepts noPassword as a real boolean", async () => {
+    const { body } = await startUpload("anna");
+    await putChunk("anna", body.uploadId, 1);
+    const res = await complete("anna", body.uploadId, { password: "", noPassword: "true" });
+    expect(res.statusCode).toBe(400);
+    expect(nc.createPublicShare).not.toHaveBeenCalled();
+  });
+
   it("limits validity and password-link accesses to the configured maximum", async () => {
     const { body } = await startUpload("anna");
     await putChunk("anna", body.uploadId, 1);
@@ -227,9 +250,11 @@ describe("upload links", () => {
 
 describe("my shares", () => {
   const shares = [
-    { id: "1", path: "/Outlook-Anhaenge/2026-11-13_ab/a.pdf", url: "u1", expiration: "2026-11-27", sharedAt: 2, fileId: 11, isFolder: false, permissions: 1, label: "" },
-    { id: "2", path: "/Outlook-Dateianforderungen/2026-11-13_cd", url: "u2", expiration: null, sharedAt: 3, fileId: 12, isFolder: true, permissions: 4, label: "Dateianforderung" },
-    { id: "3", path: "/Privat/urlaub.jpg", url: "u3", expiration: null, sharedAt: 4, fileId: 13, isFolder: false, permissions: 1, label: "" },
+    { id: "1", path: "/Outlook-Anhaenge/2026-11-13_ab/a.pdf", url: "u1", expiration: "2026-11-27", sharedAt: Date.now() - 2 * DAY, fileId: 11, isFolder: false, permissions: 1, label: "", size: 4096, hasPassword: true },
+    { id: "2", path: "/Outlook-Dateianforderungen/2026-11-13_cd", url: "u2", expiration: null, sharedAt: Date.now() - DAY, fileId: 12, isFolder: true, permissions: 4, label: "Dateianforderung", size: null, hasPassword: true },
+    { id: "3", path: "/Privat/urlaub.jpg", url: "u3", expiration: null, sharedAt: Date.now(), fileId: 13, isFolder: false, permissions: 1, label: "", size: 4096, hasPassword: false },
+    { id: "4", path: "/Outlook-Anhaenge/2026-09-01_ef/alt.pdf", url: "u4", expiration: null, sharedAt: Date.now() - 31 * DAY, fileId: 14, isFolder: false, permissions: 1, label: "", size: 1, hasPassword: false },
+    { id: "5", path: "/Outlook-Anhaenge/2026-11-13_gh/offen.pdf", url: "u5", expiration: null, sharedAt: Date.now() - 3 * DAY, fileId: 15, isFolder: false, permissions: 1, label: "", size: 1, hasPassword: false },
   ];
 
   it("lists only CloudShare links with their status", async () => {
@@ -238,9 +263,11 @@ describe("my shares", () => {
     nc.countFiles.mockResolvedValue(3);
     const res = await app.inject({ method: "GET", url: "/api/shares", headers: as("anna") });
     expect(res.statusCode).toBe(200);
+    // Newest first, only CloudShare folders, only the last 30 days ("alt.pdf" is 31 days old).
     expect(res.json()).toEqual([
-      expect.objectContaining({ id: "2", kind: "request", name: "Dateianforderung", received: 3, downloads: null }),
-      expect.objectContaining({ id: "1", kind: "file", name: "a.pdf", downloads: { count: 2, last: "2026-11-13T10:20:00+00:00" } }),
+      expect.objectContaining({ id: "2", kind: "request", name: "Dateianforderung", received: 3, downloads: null, protected: true }),
+      expect.objectContaining({ id: "1", kind: "file", name: "a.pdf", downloads: { count: 2, last: "2026-11-13T10:20:00+00:00" }, protected: true }),
+      expect.objectContaining({ id: "5", kind: "file", name: "offen.pdf", protected: false }),
     ]);
   });
 
@@ -255,6 +282,47 @@ describe("my shares", () => {
     const own = await app.inject({ method: "DELETE", url: "/api/shares/1", headers: as("anna") });
     expect(own.statusCode).toBe(200);
     expect(nc.deleteShare).toHaveBeenCalledWith("1");
+  });
+
+  const link = (id: string, body: Record<string, unknown>) =>
+    app.inject({ method: "POST", url: `/api/shares/${id}/link`, headers: as("anna"), payload: body });
+
+  it("links a shared file again: new link with this mail's password and a password job", async () => {
+    nc.listPublicShares.mockResolvedValue(shares);
+    const res = await link("1", { password: STRONG, expireDays: 7 });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ kind: "file", fileName: "a.pdf", size: 4096 });
+    const [segments, password, , permissions] = nc.createPublicShare.mock.calls[0];
+    expect(segments).toEqual(["Outlook-Anhaenge", "2026-11-13_ab", "a.pdf"]);
+    expect(password).toBe(STRONG);
+    expect(permissions).toBeUndefined(); // read-only default
+    expect(getJob(res.json().jobId)?.fileNames).toEqual(["a.pdf"]);
+    expect(nc.deleteShare).not.toHaveBeenCalled(); // the old link stays valid
+  });
+
+  it("links a file again without password – no job", async () => {
+    nc.listPublicShares.mockResolvedValue(shares);
+    const res = await link("1", { noPassword: true });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().jobId).toBeNull();
+    expect(nc.createPublicShare.mock.calls[0][1]).toBeUndefined();
+    expect(createPasswordSend).not.toHaveBeenCalled();
+  });
+
+  it("links an upload folder again only with password, as a create-only share", async () => {
+    nc.listPublicShares.mockResolvedValue(shares);
+    expect((await link("2", { noPassword: true })).statusCode).toBe(400);
+    const res = await link("2", { password: STRONG });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().kind).toBe("request");
+    expect(nc.createPublicShare.mock.calls[0][3]).toBe(4);
+  });
+
+  it("only links CloudShare shares again and checks the password", async () => {
+    nc.listPublicShares.mockResolvedValue(shares);
+    expect((await link("3", { password: STRONG })).statusCode).toBe(404);
+    expect((await link("1", { password: "kurz" })).statusCode).toBe(400);
+    expect(nc.createPublicShare).not.toHaveBeenCalled();
   });
 });
 
@@ -275,6 +343,41 @@ describe("arming the password mail", () => {
     await app.inject({ method: "POST", url: `/api/jobs/${odd}/arm`, headers: as("anna"), payload: { from: "../users/x" } });
     expect(getJob(odd)?.armed).toBeDefined();
     expect(getJob(odd)?.armed?.mailbox).toBeUndefined();
+  });
+});
+
+describe("changing 'Kennwort abrufbar' after the first link", () => {
+  const change = (user: string, id: string, maxAccess: unknown) =>
+    app.inject({ method: "PATCH", url: `/api/jobs/${id}`, headers: as(user), payload: { maxAccess } });
+
+  it("updates the Send and the number in the password mail, within the limit", async () => {
+    const id = await createJob("oid-anna", "anna@example.test", "a.pdf", "https://vault/#/send/x", 3, "send-9");
+    const res = await change("anna", id, 500);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ maxAccess: 20 });
+    expect(setSendMaxAccess).toHaveBeenCalledWith("send-9", 20);
+    expect(getJob(id)?.maxAccessCount).toBe(20);
+  });
+
+  it("refuses other users, sent jobs and jobs without a known Send", async () => {
+    const id = await createJob("oid-anna", "anna@example.test", "a.pdf", "https://vault/#/send/x", 3, "send-9");
+    expect((await change("bernd", id, 5)).statusCode).toBe(404);
+
+    const old = await createJob("oid-anna", "anna@example.test", "a.pdf", "https://vault/#/send/x", 3);
+    const fixed = await change("anna", old, 5);
+    expect(fixed.statusCode).toBe(409);
+    expect(fixed.json().code).toBe("SEND_FIXED");
+
+    getJob(id)!.dispatched = true;
+    expect((await change("anna", id, 5)).statusCode).toBe(409);
+    expect(setSendMaxAccess).not.toHaveBeenCalled();
+  });
+
+  it("remembers the Send of a new share", async () => {
+    const { body } = await startUpload("anna");
+    await putChunk("anna", body.uploadId, 1);
+    const { jobId } = (await complete("anna", body.uploadId)).json();
+    expect(getJob(jobId)?.sendId).toBe("send-1");
   });
 });
 

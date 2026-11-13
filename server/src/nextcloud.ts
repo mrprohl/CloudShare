@@ -9,6 +9,10 @@ export interface UserInfo {
   id: string;
   /** Free space in bytes; null = unlimited or unknown. */
   free: number | null;
+  /** Used space in bytes; null = unknown. */
+  used: number | null;
+  /** Total space (quota) in bytes; null = unlimited or unknown. */
+  total: number | null;
 }
 
 const encodePath = (segments: string[]) => segments.map(encodeURIComponent).join("/");
@@ -145,12 +149,16 @@ export class NextcloudClient {
   async userInfo(): Promise<UserInfo> {
     const data = (await this.ocs("GET", "/ocs/v2.php/cloud/user")) as {
       id?: string;
-      quota?: { free?: number };
+      quota?: { free?: number; used?: number; total?: number; quota?: number };
     };
     if (!data?.id) throw new HttpError(502, "Nextcloud: Benutzer-ID nicht ermittelbar");
     // Negative values mean "unlimited" or "not computed" in Nextcloud.
-    const free = typeof data.quota?.free === "number" && data.quota.free >= 0 ? data.quota.free : null;
-    return { id: data.id, free };
+    const bytes = (value: unknown) => (typeof value === "number" && value >= 0 ? value : null);
+    const free = bytes(data.quota?.free);
+    const used = bytes(data.quota?.used);
+    // With a quota "total" is the quota itself; without one Nextcloud reports free disk space + used.
+    const total = bytes(data.quota?.quota) !== null ? bytes(data.quota?.total) : null;
+    return { id: data.id, free, used, total };
   }
 
   /** Revokes the app password this client is using. */
@@ -201,7 +209,8 @@ export class NextcloudClient {
    */
   async createPublicShare(
     target: string[],
-    password: string,
+    /** undefined: link without password (only for file links "Ohne Kennwort"). */
+    password: string | undefined,
     expireDate: string,
     permissions: 1 | 4 = 1,
     label?: string,
@@ -210,9 +219,9 @@ export class NextcloudClient {
       path: "/" + target.join("/"),
       shareType: "3",
       permissions: String(permissions),
-      password,
       expireDate,
     });
+    if (password !== undefined) params.set("password", password);
     if (label) params.set("label", label);
     const data = (await this.ocs("POST", "/ocs/v2.php/apps/files_sharing/api/v1/shares", params)) as { url?: string };
     if (!data?.url) throw new HttpError(502, "Nextcloud: Freigabelink fehlt in der Antwort");
@@ -232,6 +241,9 @@ export class NextcloudClient {
       item_type: string;
       permissions: number;
       label?: string;
+      item_size?: number;
+      /** null without password, otherwise "redacted" (older versions: the hash). */
+      password?: string | null;
     }>;
     return (data ?? [])
       .filter((s) => Number(s.share_type) === 3)
@@ -245,6 +257,8 @@ export class NextcloudClient {
         isFolder: s.item_type === "folder",
         permissions: Number(s.permissions),
         label: s.label ?? "",
+        size: typeof s.item_size === "number" && s.item_size >= 0 ? s.item_size : null,
+        hasPassword: Boolean(s.password),
       }));
   }
 
@@ -301,4 +315,8 @@ export interface PublicShare {
   isFolder: boolean;
   permissions: number;
   label: string;
+  /** File size in bytes (Nextcloud "item_size"); null if not reported. */
+  size: number | null;
+  /** Whether the link is password-protected (Nextcloud does not tell random from own passwords). */
+  hasPassword: boolean;
 }

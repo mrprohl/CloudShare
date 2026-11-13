@@ -10,7 +10,7 @@ import { authenticate, HttpError, onBehalfOf, type User } from "./auth.js";
 import { config } from "./config.js";
 import { getCredentials, removeCredentials, saveCredentials } from "./credentials.js";
 import { fetchProfile, GRAPH_PROFILE_SCOPES, GRAPH_SCOPES } from "./graph.js";
-import { addFileToJob, armJob, createJob, getJob } from "./jobs.js";
+import { addFileToJob, armJob, createJob, getJob, setJobMaxAccess } from "./jobs.js";
 import {
   NextcloudClient,
   NOT_CONNECTED,
@@ -22,7 +22,7 @@ import {
 import { clampInt } from "./limits.js";
 import { passwordProblem } from "./password.js";
 import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } from "./store.js";
-import { createPasswordSend } from "./vaultwarden.js";
+import { createPasswordSend, setSendMaxAccess } from "./vaultwarden.js";
 
 function nextcloudFor(user: User): NextcloudClient {
   const creds = getCredentials(user.oid);
@@ -52,10 +52,13 @@ interface ShareRequest {
   maxAccess?: unknown;
 }
 
-/** Validated password, expiry date (YYYY-MM-DD) and number of password-link accesses for a new share. */
-function shareSettings(body: ShareRequest | undefined) {
-  const password = String(body?.password ?? "");
-  const weakness = passwordProblem(password);
+/**
+ * Validated password, expiry date (YYYY-MM-DD) and number of password-link accesses for a new share.
+ * `withPassword: false` (file links "Ohne Kennwort") skips the password check; the password is then ignored.
+ */
+function shareSettings(body: ShareRequest | undefined, withPassword = true) {
+  const password = withPassword ? String(body?.password ?? "") : "";
+  const weakness = withPassword ? passwordProblem(password) : undefined;
   if (weakness) throw new HttpError(400, weakness);
   const expireDays = clampInt(body?.expireDays, config.defaultExpireDays, 1, config.maxExpireDays);
   const expireDate = new Date(Date.now() + expireDays * 86_400_000).toISOString().slice(0, 10);
@@ -66,7 +69,8 @@ function shareSettings(body: ShareRequest | undefined) {
 /**
  * Adds a share to the draft's password job (same password, same Send → one password mail) or creates a new job.
  * The password mail only goes out after the mail was really sent, so a job stays open until then.
- * The number of accesses is fixed by the first share of the mail (one Send for all).
+ * The number of accesses comes from the first share of the mail (one Send for all) and can be changed later via
+ * PATCH /api/jobs/:id until the password mail went out.
  */
 async function attachToJob(
   user: User,
@@ -81,8 +85,8 @@ async function attachToJob(
     await addFileToJob(id, itemName);
     return id;
   }
-  const sendUrl = await createPasswordSend(`CloudShare: ${itemName}`, password, maxAccess);
-  return createJob(user.oid, user.upn, itemName, sendUrl, maxAccess);
+  const send = await createPasswordSend(`CloudShare: ${itemName}`, password, maxAccess);
+  return createJob(user.oid, user.upn, itemName, send.url, maxAccess, send.id);
 }
 
 const formatBytes = (bytes: number) =>
@@ -185,8 +189,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     const creds = getCredentials(user.oid);
     if (!creds) return { connected: false };
     try {
-      const { free } = await nextcloudFor(user).userInfo();
-      return { connected: true, loginName: creds.loginName, freeBytes: free };
+      const { free, used, total } = await nextcloudFor(user).userInfo();
+      return { connected: true, loginName: creds.loginName, freeBytes: free, usedBytes: used, totalBytes: total };
     } catch (err) {
       // App password revoked → nextcloudFor has already removed the connection.
       if (err instanceof HttpError && err.code === NOT_CONNECTED) return { connected: false };
@@ -293,22 +297,24 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     return { ok: true };
   });
 
-  app.post<{ Params: { id: string }; Body: ShareRequest & { jobId?: string } }>(
+  app.post<{ Params: { id: string }; Body: ShareRequest & { jobId?: string; noPassword?: unknown } }>(
     "/api/uploads/:id/complete",
     async (req) => {
       const user = await authenticate(req);
       const upload = ownUpload(req.params.id, user);
       if (upload.received.size !== upload.totalChunks) throw new HttpError(409, "Es fehlen noch Blöcke");
 
-      const { password, expireDate, maxAccess } = shareSettings(req.body);
+      // "Ohne Kennwort": plain public link – no Vaultwarden Send, no password job, no password mail.
+      const noPassword = req.body?.noPassword === true;
+      const { password, expireDate, maxAccess } = shareSettings(req.body, !noPassword);
 
       const nc = nextcloudFor(user);
       await nc.finishUpload(upload.uid, req.params.id, upload.target, upload.size);
       uploads.delete(req.params.id);
 
-      const shareUrl = await nc.createPublicShare(upload.target, password, expireDate);
-      const jobId = await attachToJob(user, req.body?.jobId, upload.fileName, password, maxAccess);
-      req.log.info({ user: user.upn, file: upload.fileName }, "Share created");
+      const shareUrl = await nc.createPublicShare(upload.target, noPassword ? undefined : password, expireDate);
+      const jobId = noPassword ? null : await attachToJob(user, req.body?.jobId, upload.fileName, password, maxAccess);
+      req.log.info({ user: user.upn, file: upload.fileName, noPassword }, "Share created");
       return { shareUrl, expireDate, jobId, fileName: upload.fileName, size: upload.size };
     },
   );
@@ -338,15 +344,21 @@ export async function buildApp(options: { logger?: boolean } = {}) {
   const isCloudShareShare = (s: PublicShare) =>
     s.path.startsWith(`/${config.nextcloudFolder}/`) || s.path.startsWith(`/${config.requestFolder}/`);
 
-  /** CloudShare's public links of the user (newest first) with download/upload status. */
+  /** "Meine Freigaben" shows the links of the last 30 days. */
+  const SHARES_DAYS = 30;
+  /** Upper bound per request: every file link costs one activity lookup in Nextcloud. */
+  const SHARES_MAX = 100;
+
+  /** CloudShare's public links of the last 30 days (newest first) with download/upload status. */
   app.get("/api/shares", async (req) => {
     const user = await authenticate(req);
     const nc = nextcloudFor(user);
     const { id: uid } = await nc.userInfo();
+    const since = Date.now() - SHARES_DAYS * 86_400_000;
     const shares = (await nc.listPublicShares())
-      .filter(isCloudShareShare)
+      .filter((s) => isCloudShareShare(s) && s.sharedAt >= since)
       .sort((a, b) => b.sharedAt - a.sharedAt)
-      .slice(0, 30);
+      .slice(0, SHARES_MAX);
 
     return Promise.all(
       shares.map(async (s) => {
@@ -359,6 +371,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
           url: s.url,
           sharedAt: s.sharedAt,
           expiration: s.expiration,
+          protected: s.hasPassword,
           downloads: request ? null : await nc.publicDownloads(s.fileId).catch(() => null),
           received: request ? await nc.countFiles(uid, segments).catch(() => null) : null,
         };
@@ -375,6 +388,57 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     await nc.deleteShare(share.id);
     req.log.info({ user: user.upn, path: share.path }, "Share revoked");
     return { ok: true };
+  });
+
+  /**
+   * "Als Link einfügen": a new public link to the same file or upload folder for the mail being written, with this
+   * mail's settings – its password and password mail (joins the draft's job), or no password for files. The original
+   * password cannot be recovered (Nextcloud only keeps a hash), and the old link stays valid for its recipients.
+   */
+  app.post<{ Params: { id: string }; Body: ShareRequest & { jobId?: string; noPassword?: unknown } }>(
+    "/api/shares/:id/link",
+    { config: { rateLimit: strictLimit } },
+    async (req) => {
+      const user = await authenticate(req);
+      const nc = nextcloudFor(user);
+      const share = (await nc.listPublicShares()).find((s) => s.id === req.params.id);
+      if (!share || !isCloudShareShare(share)) throw new HttpError(404, "Freigabe nicht gefunden");
+
+      const request = share.permissions === 4 && share.isFolder;
+      const noPassword = req.body?.noPassword === true;
+      if (request && noPassword) throw new HttpError(400, "Links zum Hochladen brauchen immer ein Kennwort.");
+      const { password, expireDate, maxAccess } = shareSettings(req.body, !noPassword);
+
+      const segments = share.path.split("/").filter(Boolean);
+      const fileName = segments[segments.length - 1];
+      const shareUrl = request
+        ? await nc.createPublicShare(segments, password, expireDate, 4, "Dateianforderung")
+        : await nc.createPublicShare(segments, noPassword ? undefined : password, expireDate);
+      const jobId = noPassword
+        ? null
+        : await attachToJob(user, req.body?.jobId, request ? UPLOAD_LINK_ITEM : fileName, password, maxAccess);
+      req.log.info({ user: user.upn, path: share.path, noPassword }, "Share linked again");
+      return { kind: request ? "request" : "file", shareUrl, expireDate, jobId, fileName, size: share.size };
+    },
+  );
+
+  /**
+   * "Kennwort abrufbar" changed after the first link: updates the mail's Send and the number in the password mail.
+   * Only until the password mail went out, and only for jobs that know their Send (created by this version on).
+   */
+  app.patch<{ Params: { id: string }; Body: { maxAccess?: unknown } }>("/api/jobs/:id", async (req) => {
+    const user = await authenticate(req);
+    const job = getJob(req.params.id);
+    if (!job || job.owner !== user.oid) throw new HttpError(404, "Auftrag nicht gefunden");
+    if (job.dispatched) throw new HttpError(409, "Das Kennwort wurde bereits verschickt.");
+    if (!job.sendId) {
+      throw new HttpError(409, "Für diese Nachricht lässt sich die Anzahl der Abrufe nicht mehr ändern.", "SEND_FIXED");
+    }
+    const maxAccess = clampInt(req.body?.maxAccess, config.sendMaxAccessCount, 1, config.sendMaxAccessLimit);
+    await setSendMaxAccess(job.sendId, maxAccess);
+    await setJobMaxAccess(req.params.id, maxAccess);
+    req.log.info({ user: user.upn, jobId: req.params.id, maxAccess }, "Password-link accesses changed");
+    return { maxAccess };
   });
 
   /**

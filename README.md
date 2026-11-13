@@ -6,12 +6,12 @@ How it works and how Entra ID, Nextcloud and Vaultwarden are set up: [docs/archi
 
 ## What it looks like in Outlook
 
-![CloudShare in a new-Outlook compose window: the CloudShare button in the ribbon, the inserted card with download buttons and profile footer in the mail, and the CloudShare taskpane on the right](docs/images/outlook-compose.png)
+![CloudShare in a new-Outlook compose window: "CloudShare" in the ribbon, the inserted card with download buttons and profile footer in the mail, and the CloudShare taskpane on the right](docs/images/outlook-compose.png)
 
-*Composing a mail: the ribbon button **Dateien oder Nachrichten sicher versenden oder abrufen** (CloudShare) opens the taskpane. Files are uploaded to the sender's
+*Composing a mail: the ribbon button **CloudShare** opens the taskpane. Files are uploaded to the sender's
 Nextcloud and inserted as a card – one row per file with a download button, expiry date and a footer filled from
 the sender's Microsoft 365 profile (`MAIL_FOOTER`). The password follows automatically in a second mail after
-sending. The taskpane offers a random or own password, link validity and **Dateien anfordern** (upload link).*
+sending. The taskpane offers a random or own password (or none for file links), link validity and **Dateien von Empfängern erhalten** (upload link).*
 
 <img src="docs/images/outlook-my-shares.png" alt="CloudShare taskpane, tab 'Meine Freigaben' with download status, received uploads, expired links and revoke confirmation" width="376" align="right">
 
@@ -110,7 +110,7 @@ Network calls are mocked.
 | Stage | Checks |
 |---|---|
 | test | type check and tests for both packages · `npm audit` (runtime dependencies, high/critical) · manifest validation (`npm run validate:manifest`) · ShellCheck · deployment files: `setup.sh` run with dummy answers (file modes, generated host/key), `docker compose config` for the stub and `compose.yml`, `caddy validate` |
-| ui | taskpane in Chromium (Playwright, `addin/e2e`), Office.js and API mocked: connect flow, preselection of large attachments, chunked upload and inserted card (HTML and plain text), own password rules, upload link, revoked connection, "Meine Freigaben" with revoke confirmation, dark theme, 320 px width, **accessibility** (axe, WCAG 2 A/AA, no serious/critical findings); report with screenshots as artifact `ui-test-report` |
+| ui | taskpane in Chromium (Playwright, `addin/e2e`), Office.js and API mocked: connect flow, preselection of large attachments, chunked upload and inserted card (HTML and plain text), own password rules, links without password, upload link, revoked connection, "Meine Freigaben" with revoke confirmation and inserting a link again, dark theme, 320 px width, **accessibility** (axe, WCAG 2 A/AA, no serious/critical findings); report with screenshots as artifact `ui-test-report` |
 | build | image build · Trivy scan (critical/high with an available fix) · **stack smoke test**: the new image and Caddy are started with `compose.yml` and dummy settings (Bitwarden CLI replaced by a mock, `ci/fake-bw`) and tested from outside – TLS and HTTP→HTTPS redirect, security headers (no `X-Frame-Options`), add-in files with replaced placeholders, `/api/config`, 401 without login, 413 above 12 MB, read-only/user/capabilities/ports/internal network |
 | | **upgrade test**: the currently published image writes Nextcloud connections and password jobs into the data volume, the new image must read them unchanged and start on them (no reconnect after an update) |
 | | **load test** (k6, `ci/load/upload.js`): 10 users upload 2 × 45 MiB each in parallel through Caddy, Nextcloud and Microsoft token keys mocked (`ci/mocks`) – no failed request, p95 < 3 s per chunk, every byte arrives, memory below 80 % of `mem_limit`, no restart |

@@ -51,7 +51,11 @@ async function send() {
   const completed = vi.fn();
   await office.handlers.onMessageSendHandler({ completed });
   expect(completed).toHaveBeenCalledOnce();
-  return completed.mock.calls[0][0] as Record<string, unknown>;
+  const options = completed.mock.calls[0][0] as Record<string, unknown>;
+  // Outlook on the web rejects longer values and leaves the send dialog spinning.
+  expect(String(options.cancelLabel ?? "").length).toBeLessThanOrEqual(20);
+  expect(String(options.errorMessage ?? "").length).toBeLessThanOrEqual(500);
+  return options;
 }
 
 const armed = () => requests.filter((r) => r.url.includes("/arm"));
@@ -71,9 +75,16 @@ describe("send – policy enforce", () => {
     expect(result.allowEvent).toBe(false);
     expect(result.errorMessage).toMatch(/dürfen nur mit CloudShare/);
     expect(result.errorMessage).toContain("Fotos.zip");
-    expect(result.cancelLabel).toBe("Mit CloudShare senden");
+    expect(result.cancelLabel).toBe("CloudShare öffnen");
     expect(result.commandId).toBe("cloudshareOpenPane");
     expect(result.sendModeOverride).toBeUndefined(); // no "Send anyway"
+  });
+
+  it("stays within Outlook's 500 characters for many long attachment names", async () => {
+    office.state.attachments = Array.from({ length: 20 }, (_, i) => ({ ...big, id: `a${i}`, name: `${"x".repeat(80)}-${i}.zip` }));
+    const result = await send();
+    expect(result.allowEvent).toBe(false);
+    expect(result.errorMessage).toMatch(/dürfen nur mit CloudShare/);
   });
 
   it("points older clients to the ribbon button", async () => {
@@ -81,7 +92,7 @@ describe("send – policy enforce", () => {
     office.state.supported = { Mailbox: "1.12" };
     const result = await send();
     expect(result.allowEvent).toBe(false);
-    expect(result.errorMessage).toContain("„Dateien oder Nachrichten sicher versenden oder abrufen“ in der Menüleiste");
+    expect(result.errorMessage).toContain("„CloudShare“ in der Menüleiste");
     expect(result.cancelLabel).toBeUndefined();
   });
 
@@ -121,7 +132,7 @@ describe("send – policy suggest", () => {
     expect(armed()).toHaveLength(1);
     expect(result.allowEvent).toBe(false);
     expect(result.sendModeOverride).toBe("promptUser");
-    expect(result.cancelLabel).toBe("Mit CloudShare senden");
+    expect(result.cancelLabel).toBe("CloudShare öffnen");
   });
 
   it("respects the per-mail opt-out", async () => {
