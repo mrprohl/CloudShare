@@ -6,7 +6,8 @@
 
 export interface CardFile {
   name: string;
-  size: number;
+  /** Bytes; null if unknown (links inserted again from "Meine Freigaben") – the size is then left out. */
+  size: number | null;
   url: string;
 }
 
@@ -72,6 +73,8 @@ export function filesCard(
   expireDate: string,
   footer: string,
   formatSize: (bytes: number) => string,
+  /** false for links "Ohne Kennwort" – then there is no password mail to point to. */
+  withPassword = true,
 ): string {
   const rows = files
     .map(
@@ -82,16 +85,19 @@ export function filesCard(
         `<td valign="middle" style="padding:8px 12px 8px 0;font-family:${FONT};">` +
         `<div style="font-size:14px;line-height:20px;font-weight:600;color:#242424;word-break:break-all;">` +
         `${escapeHtml(f.name)}</div>` +
-        `<div style="font-size:12px;line-height:16px;color:#616161;">${escapeHtml(formatSize(f.size))}</div></td>` +
+        (f.size === null
+          ? ""
+          : `<div style="font-size:12px;line-height:16px;color:#616161;">${escapeHtml(formatSize(f.size))}</div>`) +
+        `</td>` +
         `<td valign="middle" align="right" style="padding:8px 0;">${button(f.url, "Herunterladen")}</td>` +
         `</tr></table>`,
     )
     .join("");
-  const title = files.length === 1 ? "Eine Datei für Sie bereitgestellt" : `${files.length} Dateien für Sie bereitgestellt`;
-  return frame(title, rows, `Gültig bis ${expireDate} · ${PASSWORD_NOTE}`, footer);
+  const title = files.length === 1 ? "Eine Datei wurde für Sie bereitgestellt" : `${files.length} Dateien wurden für Sie bereitgestellt`;
+  return frame(title, rows, `Gültig bis ${expireDate}` + (withPassword ? ` · ${PASSWORD_NOTE}` : ""), footer);
 }
 
-/** Card for an upload link ("Dateien anfordern"). */
+/** Card for an upload link ("Dateien von Empfängern erhalten"). */
 export function requestCard(url: string, expireDate: string, footer: string): string {
   const rows =
     `<div style="font-size:14px;line-height:20px;color:#424242;margin:0 0 12px;">` +
@@ -108,10 +114,12 @@ export function filesText(
   expireDate: string,
   footer: string,
   formatSize: (bytes: number) => string,
+  withPassword = true,
 ): string {
-  const lines = files.map((f) => `- ${f.name} (${formatSize(f.size)}): ${f.url}`);
+  const lines = files.map((f) => `- ${f.name}${f.size === null ? "" : ` (${formatSize(f.size)})`}: ${f.url}`);
   return (
-    `\nDateien für Sie bereitgestellt (gültig bis ${expireDate}):\n${lines.join("\n")}\n${PASSWORD_NOTE}\n` +
+    `\nFür Sie bereitgestellte Dateien (gültig bis ${expireDate}):\n${lines.join("\n")}\n` +
+    (withPassword ? `${PASSWORD_NOTE}\n` : "") +
     textFooter(footer)
   );
 }

@@ -11,11 +11,21 @@ describe("NextcloudClient", () => {
   it("uses Basic auth with the app password and the OCS header", async () => {
     const { call } = mockFetch(ocs({ id: "max-uid", quota: { free: 5_000_000 } }));
     const info = await new NextcloudClient(creds).userInfo();
-    expect(info).toEqual({ id: "max-uid", free: 5_000_000 });
+    expect(info).toEqual({ id: "max-uid", free: 5_000_000, used: null, total: null });
     const headers = call(0).init.headers as Record<string, string>;
     expect(headers.Authorization).toBe(`Basic ${Buffer.from("max:app-pass").toString("base64")}`);
     expect(headers["OCS-APIRequest"]).toBe("true");
     expect(call(0).url).toBe("https://cloud.example.test/ocs/v2.php/cloud/user?format=json");
+  });
+
+  it("reports free, used and total space for a user with a quota", async () => {
+    mockFetch(ocs({ id: "max-uid", quota: { free: 30, used: 20, total: 50, quota: 50 } }));
+    expect(await new NextcloudClient(creds).userInfo()).toEqual({ id: "max-uid", free: 30, used: 20, total: 50 });
+  });
+
+  it("has no total without a quota (Nextcloud's total is then just disk space)", async () => {
+    mockFetch(ocs({ id: "max-uid", quota: { free: 900, used: 20, total: 920, quota: -3 } }));
+    expect(await new NextcloudClient(creds).userInfo()).toEqual({ id: "max-uid", free: 900, used: 20, total: null });
   });
 
   it("treats negative quota values as unlimited", async () => {
@@ -59,6 +69,14 @@ describe("NextcloudClient", () => {
     expect(second.get("label")).toBe("Dateianforderung");
   });
 
+  it("creates a link without password when none is given (file links 'Ohne Kennwort')", async () => {
+    const { call } = mockFetch(ocs({ url: "https://cloud.example.test/s/open" }));
+    await new NextcloudClient(creds).createPublicShare(["Outlook-Anhaenge", "x", "a.pdf"], undefined, "2026-11-27");
+    const params = new URLSearchParams(String(call(0).init.body));
+    expect(params.has("password")).toBe(false);
+    expect(params.get("expireDate")).toBe("2026-11-27");
+  });
+
   it("passes Nextcloud's own error message through (e.g. password policy)", async () => {
     mockFetch(ocs(null, 400, "Das Passwort ist zu häufig verwendet"));
     await expect(new NextcloudClient(creds).createPublicShare(["a"], "pw", "2026-11-27")).rejects.toThrow(
@@ -69,7 +87,7 @@ describe("NextcloudClient", () => {
   it("lists only public links", async () => {
     mockFetch(
       ocs([
-        { id: 1, share_type: 3, path: "/Outlook-Anhaenge/x/a.pdf", url: "u1", expiration: "2026-11-27 00:00:00", stime: 1_794_000_000, item_source: 11, item_type: "file", permissions: 1 },
+        { id: 1, share_type: 3, path: "/Outlook-Anhaenge/x/a.pdf", url: "u1", expiration: "2026-11-27 00:00:00", stime: 1_794_000_000, item_source: 11, item_type: "file", permissions: 1, item_size: 4096, password: "redacted" },
         { id: 2, share_type: 0, path: "/privat.txt", stime: 1, item_source: 12, item_type: "file", permissions: 1 },
       ]),
     );
@@ -85,6 +103,8 @@ describe("NextcloudClient", () => {
         isFolder: false,
         permissions: 1,
         label: "",
+        size: 4096,
+        hasPassword: true,
       },
     ]);
   });

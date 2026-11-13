@@ -39,7 +39,7 @@
         <div id="panel-shares" class="panel" role="tabpanel" aria-labelledby="tab-shares" hidden>
           <div class="content">
             <div class="toolbar">
-              <span class="caption" id="shares-hint">Ihre CloudShare-Links der letzten Zeit</span>
+              <span class="caption" id="shares-hint">Ihre CloudShare-Links der letzten 30 Tage</span>
               <button type="button" id="refresh-shares" class="btn btn-icon" title="Aktualisieren" aria-label="Aktualisieren">
                 <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
                   <path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -65,6 +65,13 @@
           </button>
           <input type="file" id="file" multiple hidden />
 
+          <label class="checkbox" id="opt-out-row">
+            <input type="checkbox" id="opt-out" aria-describedby="opt-out-hint" />
+            <span class="box" aria-hidden="true"></span>
+            <span>Große Anhänge normal mitsenden (nicht als Link)</span>
+          </label>
+          <p class="hint opt-out-hint" id="opt-out-hint">CloudShare fragt bei dieser Nachricht beim Senden nicht mehr nach.</p>
+
           <h2 class="section-title">Freigabe</h2>
           <div class="field" role="radiogroup" aria-labelledby="password-label">
             <span class="label" id="password-label">Kennwort</span>
@@ -78,7 +85,12 @@
               <span class="dot" aria-hidden="true"></span>
               <span>Eigenes Kennwort</span>
             </label>
-            <div class="input-group">
+            <label class="radio">
+              <input type="radio" name="password-mode" id="mode-none" value="none" />
+              <span class="dot" aria-hidden="true"></span>
+              <span>Ohne Kennwort</span>
+            </label>
+            <div class="input-group" id="password-group">
               <input type="text" id="password" class="input mono" autocomplete="new-password" spellcheck="false"
                 aria-labelledby="password-label" aria-describedby="password-rules password-hint" />
               <button type="button" id="generate" class="btn btn-icon" title="Neues Kennwort erzeugen" aria-label="Neues Kennwort erzeugen">
@@ -109,7 +121,7 @@
             </div>
           </div>
 
-          <div class="field">
+          <div class="field" id="max-access-field">
             <label for="max-access" class="label">Kennwort abrufbar</label>
             <div class="input-group input-narrow">
               <input type="number" id="max-access" class="input" min="1" aria-describedby="max-access-hint" />
@@ -118,23 +130,17 @@
             <p class="hint" id="max-access-hint">So oft können die Empfänger den Link zum Kennwort öffnen, danach ist er gesperrt.</p>
           </div>
 
-          <h2 class="section-title">Dateien anfordern</h2>
+          <h2 class="section-title">Dateien von Empfängern erhalten</h2>
           <p class="caption request-text">
-            Fügen Sie einen Upload-Link ein, über den die Empfänger Ihnen Dateien senden können – mit demselben
-            Kennwort und Ablaufdatum. Die Dateien landen in Ihrer Nextcloud.
+            Die Empfänger bekommen einen Link, über den sie Ihnen Dateien hochladen können – auch große. Die Dateien
+            landen in Ihrer Nextcloud. Kennwort und Gültigkeit wie oben.
           </p>
           <button type="button" id="request" class="btn">
             <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
               <path d="M10 13V4m0 0L6.5 7.5M10 4l3.5 3.5M4 12v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            Upload-Link einfügen
+            Link zum Hochladen einfügen
           </button>
-
-          <label class="checkbox" id="opt-out-row">
-            <input type="checkbox" id="opt-out" />
-            <span class="box" aria-hidden="true"></span>
-            <span>Diese Nachricht ohne CloudShare senden</span>
-          </label>
         </div>
 
         <footer class="footer">

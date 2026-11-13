@@ -114,7 +114,7 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
   background: var(--bg1);
   border-top: 1px solid var(--stroke2);
 }
-.footer .account { margin-top: 8px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.footer .account { margin-top: 8px; text-align: center; overflow-wrap: anywhere; }
 
 .empty-state { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 24px; text-align: center; }
 .empty-icon { width: 48px; height: 48px; color: var(--brand-fg); }
@@ -308,6 +308,8 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 4px; }
 .panel { display: flex; flex-direction: column; flex: 1; }
 .request-text { margin: 0 0 8px; }
+/* Aligned with the checkbox label (16 px box + 8 px gap). */
+.opt-out-hint { margin: -4px 0 0 24px; }
 
 /* --- My shares ----------------------------------------------------------------------- */
 .toolbar { display: flex; align-items: center; justify-content: space-between; margin: 0 0 8px; }
@@ -327,7 +329,7 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .share-state .dot-state { width: 8px; height: 8px; border-radius: 50%; background: var(--stroke1); flex: none; }
 .share-state.done .dot-state { background: var(--success-fg); }
 .share-state.expired { color: var(--fg3); }
-.share-actions { display: flex; gap: 4px; margin-top: 6px; margin-left: -8px; }
+.share-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; margin-left: -8px; }
 .share-actions .btn { height: 28px; min-width: 0; padding: 3px 8px; font-weight: 400; font-size: 13px; }
 .btn-danger { color: var(--danger-fg); }
 .btn-danger.confirm { background: var(--danger-bg); border-color: var(--danger-stroke); }

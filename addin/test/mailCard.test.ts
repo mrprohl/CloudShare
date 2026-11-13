@@ -12,7 +12,7 @@ describe("filesCard", () => {
   const html = filesCard(files, "27.11.2026", "Max Mustermann\nMuster GmbH", formatSize);
 
   it("has one download button per file and a plural title", () => {
-    expect(html).toContain("3 Dateien für Sie bereitgestellt");
+    expect(html).toContain("3 Dateien wurden für Sie bereitgestellt");
     expect(html.match(/>Herunterladen</g)).toHaveLength(3);
     for (const f of files) expect(html).toContain(`href="${f.url}"`);
   });
@@ -29,6 +29,19 @@ describe("filesCard", () => {
     expect(html).toContain("Max Mustermann<br>Muster GmbH");
   });
 
+  it("leaves out the password note for links without password", () => {
+    const open = filesCard(files, "27.11.2026", "", formatSize, false);
+    expect(open).toContain("Gültig bis 27.11.2026");
+    expect(open).not.toContain("Kennwort");
+    expect(filesText(files, "27.11.2026", "", formatSize, false)).not.toContain("Kennwort");
+  });
+
+  it("leaves out an unknown size (links inserted again from 'Meine Freigaben')", () => {
+    const file = { name: "Angebot.pdf", size: null, url: "https://cloud.example.test/s/a" };
+    expect(filesCard([file], "27.11.2026", "", formatSize)).not.toContain(" B<");
+    expect(filesText([file], "27.11.2026", "", formatSize)).toContain("- Angebot.pdf: https://cloud.example.test/s/a");
+  });
+
   it("uses only inline styles and tables (mail-client safe)", () => {
     expect(html).not.toMatch(/class=|<style|<script/);
     expect(html.startsWith("<table")).toBe(true);
@@ -36,7 +49,7 @@ describe("filesCard", () => {
 
   it("uses the singular title for one file and omits an empty footer", () => {
     const one = filesCard([files[0]], "27.11.2026", "", formatSize);
-    expect(one).toContain("Eine Datei für Sie bereitgestellt");
+    expect(one).toContain("Eine Datei wurde für Sie bereitgestellt");
     expect(one).not.toContain("border-top:1px solid #f0f0f0;padding-top:8px");
   });
 

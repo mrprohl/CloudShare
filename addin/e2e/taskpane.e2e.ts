@@ -81,7 +81,9 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
         department: "", company: "Beispiel GmbH", email: "max.mustermann@example.com", phone: "", mobile: "", office: "" });
     }
     if (route_ === "GET /api/nextcloud/status") {
-      return json(connected ? { connected: true, loginName: "max", freeBytes: 12 * 1024 ** 3 } : { connected: false });
+      return json(connected
+        ? { connected: true, loginName: "max", freeBytes: 12.5 * 1024 ** 3, usedBytes: 37.5 * 1024 ** 3, totalBytes: 50 * 1024 ** 3 }
+        : { connected: false });
     }
     if (route_ === "POST /api/nextcloud/connect") {
       return json({ connectId: "c1", loginUrl: "https://cloud.example.com/login/v2/flow/abc" });
@@ -101,13 +103,22 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     if (/^POST \/api\/uploads\/u\d+\/complete$/.test(route_)) {
       const id = call.path.split("/")[3];
       const { fileName, size } = uploads.get(id)!;
-      return json({ shareUrl: `https://cloud.example.com/s/${id}`, expireDate: "2026-12-01", jobId: "job-1", fileName, size });
+      const jobId = JSON.parse(call.body!.toString()).noPassword === true ? null : "job-1";
+      return json({ shareUrl: `https://cloud.example.com/s/${id}`, expireDate: "2026-12-01", jobId, fileName, size });
     }
     if (route_ === "POST /api/requests") {
       return json({ shareUrl: "https://cloud.example.com/s/request", expireDate: "2026-12-01", jobId: "job-1" });
     }
     if (route_ === "GET /api/shares") return json(scenario.shares ?? []);
     if (/^DELETE \/api\/shares\/.+$/.test(route_)) return json({ ok: true });
+    if (/^PATCH \/api\/jobs\/[^/]+$/.test(route_)) return json({ maxAccess: JSON.parse(call.body!.toString()).maxAccess });
+    if (/^POST \/api\/shares\/\d+\/link$/.test(route_)) {
+      const id = call.path.split("/")[3];
+      const share = (scenario.shares as Array<{ id: string; kind: string; name: string }> | undefined)?.find((s) => s.id === id);
+      const jobId = JSON.parse(call.body!.toString()).noPassword === true ? null : "job-1";
+      return json({ kind: share?.kind ?? "file", shareUrl: `https://cloud.example.com/s/new-${id}`, expireDate: "2026-12-01",
+        jobId, fileName: share?.name ?? "x", size: share?.kind === "request" ? null : 3 * MiB });
+    }
     return json({ error: `not mocked: ${route_}` }, 404);
   });
 
@@ -203,6 +214,8 @@ test("preselects large attachments and proposes a random password", async ({ pag
   await expect(page.locator("#max-access")).toHaveValue("3");
   await expect(page.locator("#expire")).toHaveValue("14");
   await expect(page.locator("#opt-out-row")).toBeHidden(); // enforce: no way around CloudShare
+  await expect(page.locator("#opt-out-hint")).toBeHidden();
+  await expect(page.locator("#account")).toHaveText("max [12,5 GB von 50 GB frei]");
 
   await expectAccessible(page);
   await expectNoHorizontalScroll(page);
@@ -235,8 +248,16 @@ test("uploads a large attachment in chunks, removes it and inserts the card", as
   // From now on the password applies to the whole mail.
   await expect(page.locator("#mode-random")).toBeDisabled();
   await expect(page.locator("#mode-own")).toBeDisabled();
-  await expect(page.locator("#max-access")).toHaveAttribute("readonly", "");
   await shot(page, "after-upload");
+
+  // "Kennwort abrufbar" stays changeable until sending – it updates the existing Send.
+  await page.fill("#max-access", "7");
+  await page.press("#max-access", "Tab");
+  await expect(page.locator("#status")).toContainText("jetzt 7-mal abrufbar");
+  const patch = calls.find((c) => c.method === "PATCH")!;
+  expect(patch.path).toBe("/api/jobs/job-1");
+  expect(JSON.parse(patch.body!.toString())).toEqual({ maxAccess: 7 });
+  expect(JSON.parse((await officeLog(page)).session["cloudshare-state"]).maxAccess).toBe(7);
 });
 
 test("cursor never in the body (new Outlook): the card goes to the top of the mail", async ({ page }) => {
@@ -306,11 +327,41 @@ test("own password: live rule check, weak passwords are not accepted", async ({ 
   expect(JSON.parse(complete.body!.toString()).password).toBe(STRONG);
 });
 
-test("Dateien anfordern inserts an upload link with the same password", async ({ page }) => {
+test("Ohne Kennwort: plain link, no password mail, upload links stay protected", async ({ page }) => {
+  const calls = await openTaskpane(page, { attachments: [attachment("a1", "Flyer.pdf", 1.5 * MiB)] });
+  await page.check("#mode-none");
+  await expect(page.locator("#password-group")).toBeHidden();
+  await expect(page.locator("#max-access-field")).toBeHidden();
+  await expect(page.locator("#password-hint")).toContainText("Jeder, der den Link kennt");
+  await expectAccessible(page);
+
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("ohne Kennwort abrufbar");
+  const complete = calls.find((c) => c.path.endsWith("/complete"))!;
+  const body = JSON.parse(complete.body!.toString());
+  expect(body).toMatchObject({ noPassword: true, expireDays: 14 });
+  expect(body.password).toBeUndefined();
+
+  const log = await officeLog(page);
+  expect(log.inserted[0].data).toContain("https://cloud.example.com/s/u1");
+  expect(log.inserted[0].data).not.toContain("Kennwort");
+  expect(log.customProps.cloudshareJob).toBeUndefined(); // nothing for the send handler to arm
+  expect(JSON.parse(log.session["cloudshare-state"])).toEqual({ noPassword: true });
+
+  // The whole mail stays without password; an upload link would need one.
+  await expect(page.locator("#mode-random")).toBeDisabled();
+  await expect(page.locator("#mode-none")).toBeChecked();
+  await page.click("#request");
+  await expect(page.locator("#status")).toContainText("Links zum Hochladen brauchen immer ein Kennwort");
+  expect(calls.some((c) => c.path === "/api/requests")).toBe(false);
+  await shot(page, "no-password");
+});
+
+test("Dateien von Empfängern erhalten inserts an upload link with the same password", async ({ page }) => {
   const calls = await openTaskpane(page);
   const password = await page.locator("#password").inputValue();
   await page.click("#request");
-  await expect(page.locator("#status")).toContainText("Der Upload-Link wurde eingefügt.");
+  await expect(page.locator("#status")).toContainText("Der Link zum Hochladen wurde eingefügt.");
   expect(JSON.parse(calls.find((c) => c.path === "/api/requests")!.body!.toString()).password).toBe(password);
   expect((await officeLog(page)).inserted[0].data).toContain("https://cloud.example.com/s/request");
 });
@@ -330,9 +381,9 @@ test("revoked Nextcloud app password: returns to the connect view", async ({ pag
 
 const SHARES = [
   { id: "11", kind: "file", name: "Präsentation.pptx", url: "https://cloud.example.com/s/a", sharedAt: Date.parse("2026-11-10"),
-    expiration: "2099-11-24", downloads: { count: 2, last: "2026-11-11T09:30:00Z" }, received: null },
+    expiration: "2099-11-24", downloads: { count: 2, last: "2026-11-11T09:30:00Z" }, received: null, protected: true },
   { id: "12", kind: "file", name: "Angebot.pdf", url: "https://cloud.example.com/s/b", sharedAt: Date.parse("2026-11-12"),
-    expiration: "2099-11-26", downloads: { count: 0, last: null }, received: null },
+    expiration: "2099-11-26", downloads: { count: 0, last: null }, received: null, protected: false },
   { id: "13", kind: "request", name: "Upload-Link", url: "https://cloud.example.com/s/c", sharedAt: Date.parse("2026-11-01"),
     expiration: "2099-11-15", downloads: null, received: 3 },
   { id: "14", kind: "file", name: "Alt.zip", url: "https://cloud.example.com/s/d", sharedAt: Date.parse("2020-01-01"),
@@ -348,6 +399,8 @@ test("Meine Freigaben: shows the state of each link and revokes after confirmati
   await expect(rows.nth(1).locator(".state-text")).toHaveText("Noch nicht heruntergeladen");
   await expect(rows.nth(2).locator(".state-text")).toHaveText("3 Dateien empfangen");
   await expect(rows.nth(3).locator(".state-text")).toHaveText("Abgelaufen");
+  await expect(rows.nth(0).locator(".share-meta")).toContainText("mit Kennwort");
+  await expect(rows.nth(1).locator(".share-meta")).toContainText("ohne Kennwort");
   await expectAccessible(page);
   await expectNoHorizontalScroll(page);
   await shot(page, "shares-light");
@@ -360,6 +413,32 @@ test("Meine Freigaben: shows the state of each link and revokes after confirmati
   await expect(rows).toHaveCount(3);
   expect(calls.filter((c) => c.method === "DELETE").map((c) => c.path)).toEqual(["/api/shares/12"]);
   await expect(page.locator("#status")).toContainText("„Angebot.pdf“ ist nicht mehr abrufbar.");
+});
+
+test("Meine Freigaben: Als Link einfügen creates a new link with this mail's password", async ({ page }) => {
+  const calls = await openTaskpane(page, { shares: SHARES });
+  const password = await page.locator("#password").inputValue();
+  await page.click("#tab-shares");
+  await page.locator("#shares .share").nth(1).locator(".insert").click();
+
+  await expect(page.locator("#status")).toContainText("Ein neuer Link zu „Angebot.pdf“ wurde eingefügt.");
+  const link = calls.find((c) => c.path === "/api/shares/12/link")!;
+  expect(JSON.parse(link.body!.toString())).toMatchObject({ password, expireDays: 14, maxAccess: 3 });
+  const log = await officeLog(page);
+  expect(log.inserted[0].data).toContain("https://cloud.example.com/s/new-12");
+  expect(log.inserted[0].data).toContain("Angebot.pdf");
+  expect(log.inserted[0].data).toContain("Das Kennwort erhalten Sie in einer separaten Nachricht.");
+  expect(log.customProps.cloudshareJob).toBe("job-1"); // the password mail goes out with this mail
+  expect(calls.some((c) => c.method === "DELETE")).toBe(false); // the old link stays
+});
+
+test("Meine Freigaben: upload links are not inserted again without password", async ({ page }) => {
+  const calls = await openTaskpane(page, { shares: SHARES });
+  await page.check("#mode-none");
+  await page.click("#tab-shares");
+  await page.locator("#shares .share").nth(2).locator(".insert").click();
+  await expect(page.locator("#status")).toContainText("Links zum Hochladen brauchen immer ein Kennwort");
+  expect(calls.some((c) => c.path.endsWith("/link"))).toBe(false);
 });
 
 // --- Look ----------------------------------------------------------------------------------------------------------

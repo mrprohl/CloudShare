@@ -32,6 +32,8 @@ export interface PasswordJob {
   ownerUpn: string;
   fileNames: string[];
   sendUrl: string;
+  /** Vaultwarden Send ID – lets the number of accesses change until sending (jobs created before: none). */
+  sendId?: string;
   /** How often the password link can be opened (jobs created before this field existed: unknown). */
   maxAccessCount?: number;
   dispatched: boolean;
@@ -72,6 +74,7 @@ export async function createJob(
   fileName: string,
   sendUrl: string,
   maxAccessCount?: number,
+  sendId?: string,
 ): Promise<string> {
   const id = randomUUID();
   jobs.set(id, {
@@ -80,6 +83,7 @@ export async function createJob(
     fileNames: [fileName],
     sendUrl,
     maxAccessCount,
+    sendId,
     dispatched: false,
     expiresAt: Date.now() + JOB_TTL,
   });
@@ -89,6 +93,12 @@ export async function createJob(
 
 export async function addFileToJob(id: string, fileName: string): Promise<void> {
   jobs.get(id)!.fileNames.push(fileName);
+  await persist();
+}
+
+/** New number of password-link accesses (the Send itself is updated by the caller). */
+export async function setJobMaxAccess(id: string, maxAccessCount: number): Promise<void> {
+  jobs.get(id)!.maxAccessCount = maxAccessCount;
   await persist();
 }
 

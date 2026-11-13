@@ -28,6 +28,24 @@ interface LaunchEvent {
 }
 type CompletedOptions = NonNullable<Parameters<LaunchEvent["completed"]>[0]>;
 
+/**
+ * Outlook's limits for event.completed (Smart Alerts): button text at most 20 characters, message at most 500.
+ * Outlook on the web rejects anything longer and leaves the send dialog spinning.
+ */
+const ALERT_BUTTON = "CloudShare öffnen";
+const MAX_LABEL = 20;
+const MAX_MESSAGE = 500;
+
+/** Keeps every completion within Outlook's limits, whatever the handler built. */
+function withinLimits(options: CompletedOptions): CompletedOptions {
+  const result = { ...options };
+  if (result.errorMessage && result.errorMessage.length > MAX_MESSAGE) {
+    result.errorMessage = result.errorMessage.slice(0, MAX_MESSAGE - 2) + " …";
+  }
+  if (result.cancelLabel && result.cancelLabel.length > MAX_LABEL) result.cancelLabel = result.cancelLabel.slice(0, MAX_LABEL);
+  return result;
+}
+
 /** Custom Smart Alert buttons and sendModeOverride need Mailbox 1.14. */
 const supportsCustomAlert = () => Office.context.requirements.isSetSupported("Mailbox", "1.14");
 
@@ -146,11 +164,11 @@ async function onMessageSendHandler(event: LaunchEvent) {
         `Anhänge über ${config!.thresholdMb} MB dürfen nur mit CloudShare als kennwortgeschützter Nextcloud-Link ` +
         `versendet werden: ${names}. ` +
         (supportsCustomAlert()
-          ? `Bitte „Mit CloudShare senden“ wählen.`
-          : `Bitte über „Dateien oder Nachrichten sicher versenden oder abrufen“ in der Menüleiste versenden.`),
+          ? `Bitte „${ALERT_BUTTON}“ wählen.`
+          : `Bitte über „CloudShare“ in der Menüleiste versenden.`),
     };
     if (supportsCustomAlert()) {
-      options.cancelLabel = "Mit CloudShare senden";
+      options.cancelLabel = ALERT_BUTTON;
       options.commandId = TASKPANE_COMMAND_ID;
     }
     event.completed(options);
@@ -181,7 +199,7 @@ async function onMessageSendHandler(event: LaunchEvent) {
           `Anhänge über ${config!.thresholdMb} MB: ${names}. ` +
           `Mit CloudShare werden sie als kennwortgeschützter Nextcloud-Link gesendet. ` +
           `Mit „Trotzdem senden“ werden sie als normale Anhänge gesendet.`,
-        cancelLabel: "Mit CloudShare senden",
+        cancelLabel: ALERT_BUTTON,
         commandId: TASKPANE_COMMAND_ID,
         sendModeOverride: Office.MailboxEnums.SendModeOverride.PromptUser,
       });
@@ -194,8 +212,9 @@ async function onMessageSendHandler(event: LaunchEvent) {
 
 Office.actions.associate("onAttachmentsChangedHandler", onAttachmentsChangedHandler);
 // Anything unexpected still completes the event with a message instead of leaving the send dialog hanging.
-Office.actions.associate("onMessageSendHandler", (event: LaunchEvent) =>
-  onMessageSendHandler(event).catch((err) =>
-    event.completed({ allowEvent: false, errorMessage: `CloudShare konnte die Nachricht nicht prüfen: ${errorText(err)}` }),
-  ),
-);
+Office.actions.associate("onMessageSendHandler", (event: LaunchEvent) => {
+  const safe: LaunchEvent = { completed: (options) => event.completed(options ? withinLimits(options) : options) };
+  return onMessageSendHandler(safe).catch((err) =>
+    safe.completed({ allowEvent: false, errorMessage: `CloudShare konnte die Nachricht nicht prüfen: ${errorText(err)}` }),
+  );
+});

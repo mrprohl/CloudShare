@@ -40,6 +40,9 @@ const generateButton = $<HTMLButtonElement>("generate");
 const revealButton = $<HTMLButtonElement>("reveal");
 const modeRandom = $<HTMLInputElement>("mode-random");
 const modeOwn = $<HTMLInputElement>("mode-own");
+const modeNone = $<HTMLInputElement>("mode-none");
+const passwordGroup = $<HTMLDivElement>("password-group");
+const maxAccessField = $<HTMLDivElement>("max-access-field");
 const rulesList = $<HTMLUListElement>("password-rules");
 const requestButton = $<HTMLButtonElement>("request");
 const tabSend = $<HTMLButtonElement>("tab-send");
@@ -125,14 +128,31 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 // --- Nextcloud connection ------------------------------------------------------
 
-interface ConnectionStatus { connected: boolean; loginName?: string; freeBytes?: number | null }
+interface ConnectionStatus {
+  connected: boolean;
+  loginName?: string;
+  /** Nextcloud storage in bytes; null = unlimited or unknown. */
+  freeBytes?: number | null;
+  usedBytes?: number | null;
+  totalBytes?: number | null;
+}
+
+/** Storage behind the account: "[12,3 GB von 50 GB frei]", "[12,3 GB frei]" (no quota) or "[3,2 GB belegt]". */
+function storageText(status: ConnectionStatus): string {
+  const isBytes = (value: unknown): value is number => typeof value === "number" && value >= 0;
+  if (isBytes(status.freeBytes) && isBytes(status.totalBytes)) {
+    return ` [${formatSize(status.freeBytes)} von ${formatSize(status.totalBytes)} frei]`;
+  }
+  if (isBytes(status.freeBytes)) return ` [${formatSize(status.freeBytes)} frei]`;
+  if (isBytes(status.usedBytes)) return ` [${formatSize(status.usedBytes)} belegt]`;
+  return "";
+}
 
 function showConnection(status: ConnectionStatus) {
   connectView.hidden = status.connected;
   sendView.hidden = !status.connected;
   connectHint.hidden = true;
-  const free = typeof status.freeBytes === "number" ? ` · ${formatSize(status.freeBytes)} frei` : "";
-  accountText.textContent = `${status.loginName ?? ""}${free}`;
+  accountText.textContent = `${status.loginName ?? ""}${storageText(status)}`;
 }
 
 async function refreshConnection() {
@@ -277,7 +297,8 @@ async function readAttachment(id: string): Promise<Blob> {
 // --- Upload and share ---------------------------------------------------------
 
 interface UploadStart { uploadId: string; chunkSize: number; totalChunks: number }
-interface UploadResult { shareUrl: string; expireDate: string; jobId: string; fileName: string; size: number }
+/** jobId is null for links "Ohne Kennwort" – no password mail. */
+interface UploadResult { shareUrl: string; expireDate: string; jobId: string | null; fileName: string; size: number }
 
 async function upload(blob: Blob, fileName: string): Promise<UploadResult> {
   const start = await api<UploadStart>(
@@ -304,25 +325,51 @@ async function upload(blob: Blob, fileName: string): Promise<UploadResult> {
     throw err;
   }
 
-  const state = await readDraftState();
   const result = await api<UploadResult>(
     `/api/uploads/${start.uploadId}/complete`,
-    {
-      method: "POST",
-      body: JSON.stringify({
-        password: passwordInput.value,
-        expireDays: Number(expireInput.value),
-        maxAccess: maxAccessValue(),
-        jobId: state.jobId,
-      }),
-    },
+    { method: "POST", body: JSON.stringify(await shareSettingsBody()) },
     await getToken(),
   );
-  // From the first file on, the password applies to the whole mail.
-  await updateDraftState({ jobId: result.jobId, password: passwordInput.value, maxAccess: maxAccessValue() });
-  await tagDraft(result.jobId);
-  lockPassword();
+  await rememberShareChoice(result.jobId);
   return result;
+}
+
+/** Password settings of the "Senden" tab for a new link of this mail (upload, upload link, link again). */
+async function shareSettingsBody() {
+  const expireDays = Number(expireInput.value);
+  if (withoutPassword()) return { noPassword: true, expireDays };
+  const state = await readDraftState();
+  return { password: passwordInput.value, expireDays, maxAccess: maxAccessValue(), jobId: state.jobId };
+}
+
+/** From the first link on, the choice (this password or none) applies to the whole mail. */
+async function rememberShareChoice(jobId: string | null) {
+  if (jobId === null) {
+    await updateDraftState({ noPassword: true });
+    lockNoPassword();
+    return;
+  }
+  await updateDraftState({ jobId, password: passwordInput.value, maxAccess: maxAccessValue() });
+  await tagDraft(jobId);
+  lockPassword();
+}
+
+/**
+ * Why a new link cannot be created with the current settings, or null. Upload links always need a password;
+ * an own password must meet the rules.
+ */
+function settingsProblem(kind: "file" | "request"): string | null {
+  if (kind === "request" && withoutPassword()) {
+    return modeNone.disabled
+      ? "Links zum Hochladen brauchen immer ein Kennwort. Diese Nachricht enthält bereits Links ohne Kennwort – " +
+          "bitte dafür eine neue Nachricht verwenden."
+      : "Links zum Hochladen brauchen immer ein Kennwort – bitte „Zufälliges Kennwort“ oder „Eigenes Kennwort“ wählen.";
+  }
+  if (!passwordInput.readOnly && !checkPassword(passwordInput.value).ok) {
+    renderRules();
+    return "Das Kennwort erfüllt noch nicht alle Anforderungen.";
+  }
+  return null;
 }
 
 const formatDate = (isoDate: string) => new Date(isoDate).toLocaleDateString("de-DE");
@@ -398,15 +445,23 @@ async function insertIntoBody(html: string, text: string, marker: string) {
 async function insertLinks(results: UploadResult[]) {
   const files = results.map((r) => ({ name: r.fileName, size: r.size, url: r.shareUrl }));
   const expire = formatDate(results[0].expireDate);
+  const withPassword = results[0].jobId !== null;
   await footerReady;
   await insertIntoBody(
-    filesCard(files, expire, mailFooter, formatSize),
-    filesText(files, expire, mailFooter, formatSize),
+    filesCard(files, expire, mailFooter, formatSize, withPassword),
+    filesText(files, expire, mailFooter, formatSize, withPassword),
     shareToken(results[0].shareUrl),
   );
 }
 
-// --- Password: random (recommended) or own ---------------------------------------
+// --- Password: random (recommended), own or none -----------------------------------
+
+const PASSWORD_HINT = "Die Empfänger erhalten das Kennwort nach dem Senden automatisch in einer separaten Nachricht.";
+const NO_PASSWORD_HINT =
+  "Jeder, der den Link kennt, kann die Dateien herunterladen. Es wird keine Nachricht mit Kennwort verschickt.";
+
+/** "Ohne Kennwort" selected (file links only – upload links always keep a password). */
+const withoutPassword = () => modeNone.checked;
 
 function setRevealed(revealed: boolean) {
   passwordInput.type = revealed ? "text" : "password";
@@ -427,16 +482,26 @@ function renderRules() {
   });
 }
 
-/** Random: generated, visible, read-only. Own: hidden input with "show" toggle and live rule check. */
-function setPasswordMode(mode: "random" | "own") {
+/**
+ * Random: generated, visible, read-only. Own: hidden input with "show" toggle and live rule check.
+ * None: no password field, no "Kennwort abrufbar" – a plain link without password mail.
+ */
+function setPasswordMode(mode: "random" | "own" | "none") {
   const own = mode === "own";
-  modeRandom.checked = !own;
+  const none = mode === "none";
+  modeRandom.checked = mode === "random";
   modeOwn.checked = own;
+  modeNone.checked = none;
+  passwordGroup.hidden = none;
+  maxAccessField.hidden = none;
+  passwordHint.textContent = none ? NO_PASSWORD_HINT : PASSWORD_HINT;
   passwordInput.readOnly = !own;
   generateButton.hidden = own;
   revealButton.hidden = !own;
   rulesList.hidden = !own;
-  if (own) {
+  if (none) {
+    passwordInput.value = "";
+  } else if (own) {
     passwordInput.value = "";
     setRevealed(false);
     renderRules();
@@ -449,6 +514,7 @@ function setPasswordMode(mode: "random" | "own") {
 
 modeRandom.addEventListener("change", () => setPasswordMode("random"));
 modeOwn.addEventListener("change", () => setPasswordMode("own"));
+modeNone.addEventListener("change", () => setPasswordMode("none"));
 passwordInput.addEventListener("input", renderRules);
 revealButton.addEventListener("click", () => setRevealed(passwordInput.type === "password"));
 
@@ -457,14 +523,23 @@ function lockPassword() {
   passwordInput.readOnly = true;
   modeRandom.disabled = true;
   modeOwn.disabled = true;
+  modeNone.disabled = true;
   generateButton.hidden = true;
   rulesList.hidden = true;
   revealButton.hidden = false;
   setRevealed(false);
-  // One Vaultwarden Send per mail – its number of accesses is fixed together with the password.
-  maxAccessInput.readOnly = true;
   passwordHint.textContent =
     "Dieses Kennwort gilt für alle Dateien dieser Nachricht. Die Empfänger erhalten es nach dem Senden automatisch.";
+}
+
+/** After the first link without password the whole mail stays without password (no mix in one mail). */
+function lockNoPassword() {
+  setPasswordMode("none");
+  modeRandom.disabled = true;
+  modeOwn.disabled = true;
+  modeNone.disabled = true;
+  passwordHint.textContent =
+    "Die Links dieser Nachricht sind ohne Kennwort – jeder, der sie kennt, kann die Dateien herunterladen.";
 }
 
 /** Number of accesses within the allowed range (the server limits it again). */
@@ -474,6 +549,35 @@ function maxAccessValue(): number {
   return Math.min(value, serverConfig.sendMaxAccessLimit);
 }
 
+/**
+ * "Kennwort abrufbar" changed: before the first link it only applies to the next one; afterwards the mail's
+ * Vaultwarden Send already exists and is updated on the server (until the password mail went out).
+ */
+maxAccessInput.addEventListener("change", async () => {
+  const maxAccess = maxAccessValue();
+  maxAccessInput.value = String(maxAccess);
+  const state = await readDraftState();
+  if (!state.jobId || state.maxAccess === maxAccess) return;
+  try {
+    const result = await api<{ maxAccess: number }>(
+      `/api/jobs/${encodeURIComponent(state.jobId)}`,
+      { method: "PATCH", body: JSON.stringify({ maxAccess }) },
+      await getToken(),
+    );
+    maxAccessInput.value = String(result.maxAccess);
+    await updateDraftState({ maxAccess: result.maxAccess });
+    setStatus(
+      `Der Link zum Kennwort ist jetzt ${result.maxAccess === 1 ? "einmal" : `${result.maxAccess}-mal`} abrufbar.`,
+      "success",
+    );
+  } catch (err) {
+    // Not changeable (e.g. links inserted before this version): show the value that actually applies.
+    maxAccessInput.value = String(state.maxAccess ?? serverConfig.sendMaxAccessCount);
+    if (err instanceof ApiError && err.code === "SEND_FIXED") maxAccessInput.readOnly = true;
+    setStatus(`„Kennwort abrufbar“ konnte nicht geändert werden: ${errorMessage(err)}`, "error");
+  }
+});
+
 submitButton.addEventListener("click", async () => {
   const selectedAttachments = Array.from(attachmentList.querySelectorAll<HTMLInputElement>("input:checked"));
   const selectedFiles = Array.from(pickedList.querySelectorAll<HTMLInputElement>("input:checked")).map(
@@ -482,10 +586,10 @@ submitButton.addEventListener("click", async () => {
   if (selectedAttachments.length + selectedFiles.length === 0) {
     return setStatus("Wählen Sie mindestens eine Datei aus.", "error");
   }
-  if (!passwordInput.readOnly && !checkPassword(passwordInput.value).ok) {
-    renderRules();
+  const problem = settingsProblem("file");
+  if (problem) {
     passwordInput.focus();
-    return setStatus("Das Kennwort erfüllt noch nicht alle Anforderungen.", "error");
+    return setStatus(problem, "error");
   }
 
   submitButton.disabled = true;
@@ -519,7 +623,9 @@ submitButton.addEventListener("click", async () => {
         if (!failed) {
           setStatus(
             `${results.length === 1 ? "Der Link wurde" : `${results.length} Links wurden`} eingefügt. ` +
-              `Das Kennwort wird nach dem Senden automatisch verschickt.`,
+              (results[0].jobId === null
+                ? `${results.length === 1 ? "Die Datei ist" : "Die Dateien sind"} ohne Kennwort abrufbar.`
+                : `Das Kennwort wird nach dem Senden automatisch verschickt.`),
             "success",
           );
         }
@@ -539,35 +645,25 @@ generateButton.addEventListener("click", () => {
   passwordInput.value = generatePassword();
 });
 
-// --- Upload link ("Dateien anfordern") ----------------------------------------------
+// --- Upload link ("Dateien von Empfängern erhalten") ----------------------------------------------
 
 requestButton.addEventListener("click", async () => {
-  if (!passwordInput.readOnly && !checkPassword(passwordInput.value).ok) {
-    renderRules();
-    passwordInput.focus();
-    return setStatus("Das Kennwort erfüllt noch nicht alle Anforderungen.", "error");
+  // Upload links always need a password – otherwise anyone with the link could put files into the Nextcloud.
+  const problem = settingsProblem("request");
+  if (problem) {
+    if (!withoutPassword()) passwordInput.focus();
+    return setStatus(problem, "error");
   }
   requestButton.disabled = true;
   try {
-    setStatus("Upload-Link wird erstellt …");
-    const state = await readDraftState();
+    setStatus("Link zum Hochladen wird erstellt …");
     const result = await api<{ shareUrl: string; expireDate: string; jobId: string }>(
       "/api/requests",
-      {
-        method: "POST",
-        body: JSON.stringify({
-          password: passwordInput.value,
-          expireDays: Number(expireInput.value),
-          maxAccess: maxAccessValue(),
-          jobId: state.jobId,
-        }),
-      },
+      { method: "POST", body: JSON.stringify(await shareSettingsBody()) },
       await getToken(),
     );
     // Same password and password mail as the files of this mail.
-    await updateDraftState({ jobId: result.jobId, password: passwordInput.value, maxAccess: maxAccessValue() });
-    await tagDraft(result.jobId);
-    lockPassword();
+    await rememberShareChoice(result.jobId);
     const expire = formatDate(result.expireDate);
     await footerReady;
     await insertIntoBody(
@@ -575,7 +671,7 @@ requestButton.addEventListener("click", async () => {
       requestText(result.shareUrl, expire, mailFooter),
       shareToken(result.shareUrl),
     );
-    setStatus("Der Upload-Link wurde eingefügt. Das Kennwort wird nach dem Senden automatisch verschickt.", "success");
+    setStatus("Der Link zum Hochladen wurde eingefügt. Das Kennwort wird nach dem Senden automatisch verschickt.", "success");
   } catch (err) {
     if (err instanceof ApiError && err.code === NOT_CONNECTED) showConnection({ connected: false });
     setStatus(errorMessage(err), "error");
@@ -609,6 +705,8 @@ interface ShareItem {
   expiration: string | null;
   downloads: { count: number; last: string | null } | null;
   received: number | null;
+  /** Password-protected link (Nextcloud cannot tell random from own passwords). */
+  protected?: boolean;
 }
 
 const REQUEST_ICON =
@@ -670,13 +768,15 @@ function shareRow(share: ShareItem): HTMLElement {
     `<span class="dot-state" aria-hidden="true"></span><span class="state-text"></span></div>` +
     `<div class="share-actions">` +
     `<button type="button" class="btn btn-subtle copy">Link kopieren</button>` +
+    `<button type="button" class="btn btn-subtle insert">Als Link einfügen</button>` +
     `<button type="button" class="btn btn-subtle btn-danger revoke">Zurückziehen</button>` +
     `</div></div>`;
   row.querySelector<HTMLElement>(".share-name")!.textContent = share.name;
   row.querySelector<HTMLElement>(".share-name")!.title = share.name;
   row.querySelector<HTMLElement>(".share-meta")!.textContent =
     `Freigegeben am ${new Date(share.sharedAt).toLocaleDateString("de-DE")}` +
-    (share.expiration ? ` · gültig bis ${formatDate(share.expiration)}` : "");
+    (share.expiration ? ` · gültig bis ${formatDate(share.expiration)}` : "") +
+    (share.protected === undefined ? "" : share.protected ? " · mit Kennwort" : " · ohne Kennwort");
   row.querySelector<HTMLElement>(".state-text")!.textContent = state.text;
 
   const copy = row.querySelector<HTMLButtonElement>(".copy")!;
@@ -684,6 +784,12 @@ function shareRow(share: ShareItem): HTMLElement {
     await copyText(share.url);
     copy.textContent = "Kopiert";
     setTimeout(() => (copy.textContent = "Link kopieren"), 2000);
+  });
+
+  // A new link for this mail with the settings of the "Senden" tab – the original password cannot be recovered.
+  const insert = row.querySelector<HTMLButtonElement>(".insert")!;
+  insert.addEventListener("click", () => {
+    linkAgain(share, insert).catch(() => undefined);
   });
 
   // Two-step confirmation instead of a modal dialog (add-ins cannot show native dialogs).
@@ -716,6 +822,65 @@ function shareRow(share: ShareItem): HTMLElement {
   return row;
 }
 
+interface LinkAgainResult {
+  kind: "file" | "request";
+  shareUrl: string;
+  expireDate: string;
+  jobId: string | null;
+  fileName: string;
+  size: number | null;
+}
+
+/**
+ * "Als Link einfügen" in "Meine Freigaben": creates a new link to the same file or upload folder with this mail's
+ * settings (password and password mail, or "Ohne Kennwort" for files) and inserts it like a fresh one.
+ */
+async function linkAgain(share: ShareItem, button: HTMLButtonElement) {
+  const problem = settingsProblem(share.kind);
+  if (problem) {
+    setStatus(`${problem} (Einstellungen unter „Senden“)`, "error");
+    return;
+  }
+  button.disabled = true;
+  try {
+    setStatus(`Neuer Link zu „${share.name}“ wird erstellt …`);
+    const result = await api<LinkAgainResult>(
+      `/api/shares/${encodeURIComponent(share.id)}/link`,
+      { method: "POST", body: JSON.stringify(await shareSettingsBody()) },
+      await getToken(),
+    );
+    await rememberShareChoice(result.jobId);
+    const expire = formatDate(result.expireDate);
+    const withPassword = result.jobId !== null;
+    await footerReady;
+    if (result.kind === "request") {
+      await insertIntoBody(
+        requestCard(result.shareUrl, expire, mailFooter),
+        requestText(result.shareUrl, expire, mailFooter),
+        shareToken(result.shareUrl),
+      );
+    } else {
+      const files = [{ name: result.fileName, size: result.size, url: result.shareUrl }];
+      await insertIntoBody(
+        filesCard(files, expire, mailFooter, formatSize, withPassword),
+        filesText(files, expire, mailFooter, formatSize, withPassword),
+        shareToken(result.shareUrl),
+      );
+    }
+    setStatus(
+      `Ein neuer Link zu „${share.name}“ wurde eingefügt. ` +
+        (withPassword ? "Das Kennwort wird nach dem Senden automatisch verschickt." : "Er ist ohne Kennwort abrufbar."),
+      "success",
+    );
+    loadShares().catch(() => undefined); // the new link shows up in the list
+  } catch (err) {
+    if (err instanceof ApiError && err.code === NOT_CONNECTED) showConnection({ connected: false });
+    setStatus(`Der Link konnte nicht eingefügt werden: ${errorMessage(err)}`, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function loadShares() {
   refreshSharesButton.disabled = true;
   try {
@@ -738,7 +903,7 @@ optOutBox.addEventListener("change", async () => {
     await officeAsync<void>((cb) => composeItem().notificationMessages.removeAsync(NOTIFICATION_ID, cb)).catch(
       () => undefined,
     );
-    setStatus("Diese Nachricht wird ohne CloudShare gesendet.");
+    setStatus("Große Anhänge werden bei dieser Nachricht normal mitgesendet.");
   } else {
     setStatus("");
   }
@@ -766,12 +931,16 @@ Office.onReady(async () => {
   if (state.password) {
     passwordInput.value = state.password;
     lockPassword();
+  } else if (state.noPassword) {
+    lockNoPassword();
   } else {
     setPasswordMode("random");
   }
   optOutBox.checked = Boolean(state.optOut);
   // Under "enforce" there is no way to send large attachments without CloudShare.
-  $<HTMLLabelElement>("opt-out-row").hidden = serverConfig.attachmentPolicy === "enforce";
+  const enforce = serverConfig.attachmentPolicy === "enforce";
+  $<HTMLLabelElement>("opt-out-row").hidden = enforce;
+  $<HTMLParagraphElement>("opt-out-hint").hidden = enforce;
   expireInput.value = String(serverConfig.defaultExpireDays);
   expireInput.max = String(serverConfig.maxExpireDays);
 

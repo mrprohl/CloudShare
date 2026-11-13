@@ -33,12 +33,38 @@ export async function initVault(log: (msg: string) => void, attempts = 30): Prom
   }
 }
 
-/** Creates a hidden text Send containing the password (opened at most `maxAccessCount` times) and returns its URL. */
+/** Runs a vault call; if it fails (vault locked, e.g. after bw serve restarted), unlocks once and retries. */
+async function withUnlock<T>(call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch {
+    try {
+      await unlockVault();
+      return await call();
+    } catch (err) {
+      throw new HttpError(502, `Vaultwarden-Send fehlgeschlagen: ${(err as Error).message}`);
+    }
+  }
+}
+
+/** Changes how often an existing Send can be opened (until the mail is sent, "Kennwort abrufbar"). */
+export async function setSendMaxAccess(id: string, maxAccessCount: number): Promise<void> {
+  const path = `/object/send/${encodeURIComponent(id)}`;
+  await withUnlock(async () => {
+    const send = await bw<Record<string, unknown>>("GET", path);
+    await bw("PUT", path, { ...send, maxAccessCount });
+  });
+}
+
+/**
+ * Creates a hidden text Send containing the password (opened at most `maxAccessCount` times) and returns its URL
+ * and ID (the ID allows changing the number of accesses later).
+ */
 export async function createPasswordSend(
   label: string,
   password: string,
   maxAccessCount: number = config.sendMaxAccessCount,
-): Promise<string> {
+): Promise<{ url: string; id: string | undefined }> {
   const deletionDate = new Date(Date.now() + config.sendExpireDays * 86_400_000).toISOString();
   const send = {
     name: label,
@@ -54,19 +80,7 @@ export async function createPasswordSend(
     hideEmail: true,
   };
 
-  const create = () => bw<{ accessUrl?: string }>("POST", "/object/send", send);
-  let data;
-  try {
-    data = await create();
-  } catch {
-    // Vault may be locked (e.g. after bw serve restarted) – unlock once and retry.
-    try {
-      await unlockVault();
-      data = await create();
-    } catch (err) {
-      throw new HttpError(502, `Vaultwarden-Send fehlgeschlagen: ${(err as Error).message}`);
-    }
-  }
+  const data = await withUnlock(() => bw<{ accessUrl?: string; id?: string }>("POST", "/object/send", send));
   if (!data?.accessUrl) throw new HttpError(502, "Vaultwarden: Send-URL fehlt in der Antwort");
-  return data.accessUrl;
+  return { url: data.accessUrl, id: typeof data.id === "string" ? data.id : undefined };
 }

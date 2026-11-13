@@ -45,18 +45,18 @@ backend does not use Entra tokens for Nextcloud but one app password per user.
 4. Upload in 10 MiB chunks through the backend using Nextcloud chunked upload v2 (`/remote.php/dav/uploads/…`),
    target `Outlook-Anhaenge/<date>_<id>/<file>`. No fixed maximum: the free Nextcloud quota is checked up front
    (technical limit 10,000 chunks ≈ 100 GB).
-5. One public link per file (password + expiry date). The number of times the password link (Vaultwarden Send) can be opened is set per mail in the taskpane ("Kennwort abrufbar … mal", default `SEND_MAX_ACCESS_COUNT` = 3, limited to `SEND_MAX_ACCESS_LIMIT` = 20 by the server) and fixed together with the password; the password mail states it ("bis zu 3 Abrufe"). The user chooses a **random password** (default, 20 characters from 67 symbols ≈ 121 bits, CSPRNG with rejection sampling, all four character classes) or an **own password** (min. 12 characters, at least 3 of 4 character classes, no repetition/simple sequence; live check in the taskpane, same rules enforced by the server in `server/src/password.ts`; Nextcloud's password policy applies on top). **All files of one mail share one password, one Vaultwarden
+5. One public link per file (password + expiry date). The number of times the password link (Vaultwarden Send) can be opened is set per mail in the taskpane ("Kennwort abrufbar … mal", default `SEND_MAX_ACCESS_COUNT` = 3, limited to `SEND_MAX_ACCESS_LIMIT` = 20 by the server). It stays changeable until sending: afterwards `PATCH /api/jobs/:id` updates the existing Send via `bw serve` (`GET`/`PUT /object/send/:id`, the job keeps the Send ID; jobs from before this version cannot be changed, `SEND_FIXED`); the password mail states the current value ("bis zu 3 Abrufe"). The user chooses a **random password** (default, 20 characters from 67 symbols ≈ 121 bits, CSPRNG with rejection sampling, all four character classes) or an **own password** (min. 12 characters, at least 3 of 4 character classes, no repetition/simple sequence; live check in the taskpane, same rules enforced by the server in `server/src/password.ts`; Nextcloud's password policy applies on top). **All files of one mail share one password, one Vaultwarden
    Send and one password mail.** Job ID and password live in `item.sessionData`; the password field is locked after
    the first file.
 6. On send the Smart Alert runs (`OnMessageSend`, manifest `SendMode="SoftBlock"`). Behaviour depends on
    `ATTACHMENT_POLICY` (env, default `enforce`; delivered to the add-in via `/api/config`, so switching needs no
    redeployment of the add-in):
    - **`enforce`** – large attachments remaining → sending is **blocked**, there is no "Send anyway" and no
-     per-mail opt-out (the checkbox is hidden). The alert offers "Mit CloudShare senden" (opens the taskpane,
+     per-mail opt-out (the checkbox is hidden). The alert offers "CloudShare öffnen" (opens the taskpane,
      Mailbox 1.14+); older clients are told to use the ribbon button.
-   - **`suggest`** – the password mail is armed first (see below), then a prompt with "Mit CloudShare senden" or
+   - **`suggest`** – the password mail is armed first (see below), then a prompt with "CloudShare öffnen" or
      "Send anyway" (SoftBlock relaxed via `sendModeOverride: PromptUser`, Mailbox 1.14+; older clients are not
-     prompted). The checkbox "Diese Nachricht ohne CloudShare senden" skips info bar and prompt.
+     prompted). The checkbox "Große Anhänge normal mitsenden (nicht als Link)" (Anhänge section) skips info bar and prompt.
    - Pending job → the handler only **arms** it (`/api/jobs/:id/arm`): the backend stores a delegated Graph token
      (Mail.Read + Mail.Send). If arming fails, the mail is blocked.
 7. **Password mail only after the mail was really sent** (`server/src/jobs.ts`): the taskpane tags the draft with
@@ -118,7 +118,9 @@ backend does not use Entra tokens for Nextcloud but one app password per user.
 4. Attachments already in Outlook are subject to the Outlook/Exchange limit (approx. 35 MB) and are loaded into
    memory completely during transfer. Pick larger files via "Dateien vom Computer hinzufügen".
 5. Smart Alerts require Mailbox requirement set 1.12 (current Microsoft 365 / new Outlook); the custom
-   "Mit CloudShare senden" button and the "Send anyway" option under `suggest` need 1.14.
+   "CloudShare öffnen" button and the "Send anyway" option under `suggest` need 1.14. Outlook limits the button
+   text to 20 characters and the message to 500 (`withinLimits` in `commands.ts`); longer values make Outlook on
+   the web reject the result and leave the send dialog spinning.
    Under `enforce`, a server outage means large attachments cannot be sent at all until CloudShare is back.
    Classic Outlook on Windows runs the handlers from `commands.js` in a JavaScript-only runtime, which only allows
    SSO and network requests for scripts listed in `/.well-known/microsoft-officeaddins-allowed.json` (served by the
@@ -149,11 +151,19 @@ The taskpane is meant to look like part of Outlook, not like an external tool:
 ` = new line; " · "-separated segments whose placeholders are all empty are dropped, see `addin/src/taskpane/footer.ts`). Tables and inline styles only, so it works in classic
   Outlook (degrades to a bordered box), Outlook on the web, Gmail and on phones. Text mails get a plain-text
   version.
-- **Upload links ("Dateien anfordern")**: `POST /api/requests` creates `NEXTCLOUD_REQUEST_FOLDER/<date>_<id>` and a
+- **"Ohne Kennwort"** (third password option, always available, file links only): `/complete` with `noPassword: true`
+  creates the public share without password and no Vaultwarden Send or password job (`jobId: null`); the card omits
+  the password note and the send handler has nothing to arm. The choice is fixed for the whole mail after the first
+  link (`DraftState.noPassword`); upload links always keep a password. If Nextcloud enforces passwords for link
+  shares, its error message is shown.
+- **Upload links ("Dateien von Empfängern erhalten", button "Link zum Hochladen einfügen")**: `POST /api/requests` creates `NEXTCLOUD_REQUEST_FOLDER/<date>_<id>` and a
   create-only public share (permissions 4, "file drop", label "Dateianforderung") with the same password/expiry
   rules. It joins the draft's password job, so files and upload link share one password mail. Nextcloud must
   allow public uploads (Settings → Sharing).
 - **"Meine Freigaben"** (second tab): `GET /api/shares` lists the user's public links below the two CloudShare
-  folders (newest 30) with expiry and status – downloads from the activity app (type `public_links`) for files,
-  number of received files (WebDAV PROPFIND) for upload links. "Link kopieren" and "Zurückziehen"
-  (`DELETE /api/shares/:id`, two-step confirmation) – the share ends, the file stays in the user's Nextcloud.
+  folders from the last 30 days (newest first, at most 100) with expiry, password status (Nextcloud reports only
+  whether a link has a password, not whether it was random or own) and status – downloads from the activity app (type `public_links`) for files,
+  number of received files (WebDAV PROPFIND) for upload links. "Link kopieren", "Als Link einfügen" and "Zurückziehen"
+  (`DELETE /api/shares/:id`, two-step confirmation) – the share ends, the file stays in the user's Nextcloud. "Als Link einfügen" (`POST /api/shares/:id/link`) creates a
+  *new* link to the same file or upload folder with the current mail’s settings (password + password mail via the draft’s job, or
+  "Ohne Kennwort" for files) – the original password cannot be recovered (Nextcloud stores a hash), the old link stays valid.
