@@ -271,3 +271,53 @@ describe("arming the password mail", () => {
     expect(getJob(odd)?.armed?.mailbox).toBeUndefined();
   });
 });
+
+// Last on purpose: exhausts the strict limit of POST /api/nextcloud/connect for the test client address.
+describe("rate limiting", () => {
+  /** Unsigned token with an oid – only decoded for the rate-limit bucket, authenticate() still rejects it. */
+  const tokenFor = (oid: string) =>
+    ["{\"alg\":\"none\"}", JSON.stringify({ oid })].map((part) => Buffer.from(part).toString("base64url")).join(".") + ".";
+
+  it("limits expensive actions per client and answers 429 with a German message", async () => {
+    const statuses: number[] = [];
+    let last;
+    for (let i = 0; i < 12; i++) {
+      last = await app.inject({ method: "POST", url: "/api/nextcloud/connect" });
+      statuses.push(last.statusCode);
+    }
+    expect(statuses).toContain(401); // the first requests reach the route (no login)
+    expect(last!.statusCode).toBe(429);
+    expect(last!.json()).toMatchObject({ code: "RATE_LIMITED", error: expect.stringContaining("Zu viele Anfragen") });
+    expect(last!.headers["retry-after"]).toBeDefined();
+  });
+
+  it("keeps separate buckets per user (oid from the token)", async () => {
+    const other = await app.inject({
+      method: "POST",
+      url: "/api/nextcloud/connect",
+      headers: { authorization: `Bearer ${tokenFor("oid-someone-else")}` },
+    });
+    expect(other.statusCode).toBe(401); // not limited – own bucket, then rejected by authenticate()
+  });
+
+  it("ignores X-Forwarded-For from clients outside private networks", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/nextcloud/connect",
+      remoteAddress: "127.0.0.1",
+      headers: { "x-forwarded-for": "203.0.113.7" },
+    });
+    expect(res.statusCode).toBe(401); // loopback proxy is trusted → new client address, own bucket
+    // A public sender cannot pick a fresh address per request: all of them count for 198.51.100.9.
+    let spoofed;
+    for (let i = 0; i < 12; i++) {
+      spoofed = await app.inject({
+        method: "POST",
+        url: "/api/nextcloud/connect",
+        remoteAddress: "198.51.100.9",
+        headers: { "x-forwarded-for": `203.0.113.${100 + i}` },
+      });
+    }
+    expect(spoofed!.statusCode).toBe(429);
+  });
+});

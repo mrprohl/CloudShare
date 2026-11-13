@@ -62,6 +62,12 @@ export const config = {
   sendMaxAccessLimit: number("SEND_MAX_ACCESS_LIMIT", 20),
   sendExpireDays: number("SEND_EXPIRE_DAYS", 7),
 
+  /**
+   * Requests per minute and user (oid from the Microsoft token) or, without one, per client address. Generous on
+   * purpose – a 5 GB upload is about 500 chunk requests. Expensive actions (Nextcloud login, upload links) get 1/60.
+   */
+  rateLimitPerMinute: number("RATE_LIMIT_PER_MINUTE", 600),
+
   /** Nextcloud chunking v2: at least 5 MiB per chunk (except the last), at most 10,000 chunks. */
   chunkSizeBytes: 10 * 1024 * 1024,
 };
