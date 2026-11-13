@@ -7,7 +7,7 @@ import { installOfficeMock, type Attachment } from "./officeMock";
 
 const office = installOfficeMock();
 await import("../src/commands/commands");
-const { resetTokenCache } = await import("../src/shared/office");
+const { resetTokenCache, TIMEOUTS } = await import("../src/shared/office");
 
 const MB = 1024 * 1024;
 const big: Attachment = { id: "a1", name: "Fotos.zip", size: 5 * MB, attachmentType: "file", isInline: false };
@@ -167,6 +167,22 @@ describe("send – password mail", () => {
     const result = await send();
     expect(result.allowEvent).toBe(false);
     expect(result.errorMessage).toMatch(/nicht vorbereiten.*Graph nicht erreichbar/);
+  });
+
+  it("does not hang when the Microsoft sign-in never answers – names the step instead", async () => {
+    draft({ jobId: "job-1" });
+    const auth = (globalThis as unknown as { Office: { auth: { getAccessToken: ReturnType<typeof vi.fn> } } }).Office.auth;
+    auth.getAccessToken.mockImplementationOnce(() => new Promise(() => undefined)); // never settles
+    const saved = TIMEOUTS.token;
+    TIMEOUTS.token = 50;
+    try {
+      const result = await send();
+      expect(result.allowEvent).toBe(false);
+      expect(result.errorMessage).toContain("Zeitüberschreitung: Die Anmeldung bei Microsoft (SSO)");
+      expect(armed()).toHaveLength(0);
+    } finally {
+      TIMEOUTS.token = saved;
+    }
   });
 
   it("shows Office SSO errors with a readable text and their code (not [object Object])", async () => {
