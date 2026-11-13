@@ -1,0 +1,7 @@
+#!/bin/sh
+# CI only – stands in for the Bitwarden CLI in the stack smoke test (ci/stack.sh), so the real entrypoint and
+# backend can start without a Vaultwarden server. "bw serve" starts a mock of the Vault Management API.
+case "${1:-}" in
+  serve) exec node /ci/fake-bw/serve.mjs ;;
+  *)     exit 0 ;;   # logout, config server, login --apikey
+esac

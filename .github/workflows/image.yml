@@ -17,6 +17,11 @@ on:
       - "docker/**"
       - "Dockerfile"
       - "setup.sh"
+      - "compose.yml"
+      - "docker-compose.yml"
+      - "versions.env.example"
+      - "caddy/**"
+      - "ci/**"
       - ".github/workflows/image.yml"
   workflow_dispatch: {}
 
@@ -61,7 +66,12 @@ jobs:
 
       # ShellCheck is preinstalled on the runner; info/style notes do not fail the build.
       - name: ShellCheck
-        run: shellcheck --severity=warning setup.sh docker/entrypoint.sh
+        run: shellcheck --severity=warning setup.sh docker/entrypoint.sh ci/stack.sh ci/fake-bw/bw
+
+      # setup.sh with dummy answers (file modes, generated values), docker compose config for the stub and
+      # compose.yml, caddy validate for the Caddyfile.
+      - name: Deployment files – setup.sh, Compose, Caddyfile
+        run: ci/stack.sh validate
 
   build:
     needs: test
@@ -115,7 +125,12 @@ jobs:
           vuln-type: os,library
           exit-code: "1"
 
-      # 3. Push – reuses the layers from step 1 via the build cache.
+      # 3. Start the real stack (this image + Caddy, dummy settings, Bitwarden CLI mocked) and test it from outside:
+      #    TLS and redirect, security headers, add-in files and placeholders, API, request size limit, hardening.
+      - name: Stack smoke test
+        run: ci/stack.sh smoke cloudshare scan
+
+      # 4. Push – reuses the layers from step 1 via the build cache.
       - name: Push image
         uses: docker/build-push-action@v6
         with:

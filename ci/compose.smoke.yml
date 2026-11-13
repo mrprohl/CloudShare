@@ -1,0 +1,8 @@
+# CI only – override for the stack smoke test (ci/stack.sh): replaces the Bitwarden CLI with a mock so the stack
+# starts without a Vaultwarden server. Everything else (image, Caddy, hardening, networks) is the real compose.yml.
+services:
+  cloudshare:
+    volumes:
+      - /opt/cloudshare/ci/fake-bw:/ci/fake-bw:ro
+    environment:
+      PATH: /ci/fake-bw:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

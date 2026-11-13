@@ -103,12 +103,22 @@ Backend and add-in have automated tests (vitest) in `server/test/` and `addin/te
   prompt, Mailbox 1.12 vs 1.14, shared mailboxes, server unreachable (cached configuration), info bar.
 - Password rules and generator, encryption, Graph, Nextcloud client, password-job flow, footer template, mail card.
 
-Network calls are mocked. Before every image build GitHub runs: type check and tests for both packages,
-`npm audit` (runtime dependencies, high/critical), manifest validation (`npm run validate:manifest`), ShellCheck for
-the shell scripts, and a Trivy scan of the image (critical/high with an available fix) before it is pushed. Locally:
+Network calls are mocked.
+
+**CI pipeline** (`.github/workflows/image.yml`, on every push to `main` and on `v*` tags):
+
+| Stage | Checks |
+|---|---|
+| test | type check and tests for both packages · `npm audit` (runtime dependencies, high/critical) · manifest validation (`npm run validate:manifest`) · ShellCheck · deployment files: `setup.sh` run with dummy answers (file modes, generated host/key), `docker compose config` for the stub and `compose.yml`, `caddy validate` |
+| build | image build · Trivy scan (critical/high with an available fix) · **stack smoke test**: the new image and Caddy are started with `compose.yml` and dummy settings (Bitwarden CLI replaced by a mock, `ci/fake-bw`) and tested from outside – TLS and HTTP→HTTPS redirect, security headers (no `X-Frame-Options`), add-in files with replaced placeholders, `/api/config`, 401 without login, 413 above 12 MB, read-only/user/capabilities/ports/internal network |
+| push | only if everything passed: `ghcr.io/mrprohl/cloudshare` (`latest`, `sha-<commit>`, version tags) |
+
+Deployment stays manual (re-pull, see *Updating*). Locally:
 ```bash
 cd server && npm install && npm test
 cd addin && npm install && npm test
+ci/stack.sh validate        # test machine with Docker only – links the repo to /opt/cloudshare, writes dummy env/
+ci/stack.sh smoke ghcr.io/mrprohl/cloudshare latest
 ```
 
 ## Updating
