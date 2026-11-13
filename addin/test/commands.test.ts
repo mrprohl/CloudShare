@@ -171,6 +171,12 @@ describe("send – password mail", () => {
     expect(armed()).toHaveLength(1);
   });
 
+  it("passes the other password recipient along when arming", async () => {
+    draft({ jobId: "job-1", passwordTo: "kollege@example.test" });
+    await send();
+    expect(armed()[0].body).toEqual({ passwordTo: "kollege@example.test" });
+  });
+
   it("reports a shared mailbox in the From field", async () => {
     draft({ jobId: "job-1" });
     office.state.from = "Info@Example.test";

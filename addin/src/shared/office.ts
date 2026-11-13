@@ -210,6 +210,10 @@ export interface DraftState {
   maxAccess?: number;
   /** Links of this mail were shared "Ohne Kennwort" – no password job, no password mail. */
   noPassword?: boolean;
+  /** "Kennwort an andere Adresse": the password mail goes only to this address (set on the job by the taskpane). */
+  passwordTo?: string;
+  /** "Für jede Datei ein eigenes Kennwort": every link has its own password and password mail (fixed per mail). */
+  separate?: boolean;
   /**
    * Share tokens of the links CloudShare inserted (last URL segment). If none of them is left in the body, the user
    * deleted the links: password, job and tag are released. Drafts from before this field are never released.
@@ -259,7 +263,8 @@ export async function releaseDraftIfLinksGone(): Promise<boolean> {
     props.remove(JOB_PROPERTY);
     await officeAsync<void>((cb) => props.saveAsync(cb));
   }
-  const fresh: DraftState = {};
+  // The other password recipient is a setting of the mail, not of the deleted links – keep it.
+  const fresh: DraftState = state.passwordTo ? { passwordTo: state.passwordTo } : {};
   await officeAsync<void>((cb) => composeItem().sessionData.setAsync(STATE_KEY, JSON.stringify(fresh), cb));
   return true;
 }

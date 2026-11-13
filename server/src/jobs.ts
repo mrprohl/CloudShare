@@ -27,13 +27,27 @@ export interface ArmedSend {
   mailbox?: string;
 }
 
+/** "Für jede Datei ein eigenes Kennwort": one Send and one password mail per file. */
+export interface SeparatePart {
+  fileName: string;
+  sendUrl: string;
+  sendId?: string;
+  maxAccessCount: number;
+  /** Its password mail went out (the others may still be pending after an error). */
+  dispatched?: boolean;
+}
+
 export interface PasswordJob {
   owner: string;
   ownerUpn: string;
   fileNames: string[];
+  /** Set for mails with one password per file; the top-level Send fields then describe the first file. */
+  separate?: SeparatePart[];
   sendUrl: string;
   /** Vaultwarden Send ID – lets the number of accesses change until sending (jobs created before: none). */
   sendId?: string;
+  /** Password mail only to this address instead of the mail's recipients ("Kennwort an andere Adresse"). */
+  passwordTo?: string;
   /** How often the password link can be opened (jobs created before this field existed: unknown). */
   maxAccessCount?: number;
   dispatched: boolean;
@@ -96,6 +110,37 @@ export async function addFileToJob(id: string, fileName: string): Promise<void> 
   await persist();
 }
 
+/** First file of a mail with one password per file (see SeparatePart). */
+export async function createSeparateJob(owner: string, ownerUpn: string, part: SeparatePart): Promise<string> {
+  const id = randomUUID();
+  jobs.set(id, {
+    owner,
+    ownerUpn,
+    fileNames: [part.fileName],
+    separate: [part],
+    sendUrl: part.sendUrl,
+    maxAccessCount: part.maxAccessCount,
+    dispatched: false,
+    expiresAt: Date.now() + JOB_TTL,
+  });
+  await persist();
+  return id;
+}
+
+/** Further file with its own password and password mail. */
+export async function addSeparatePart(id: string, part: SeparatePart): Promise<void> {
+  const job = jobs.get(id)!;
+  job.fileNames.push(part.fileName);
+  (job.separate ??= []).push(part);
+  await persist();
+}
+
+/** Alternative recipient of the password mail; undefined = the recipients of the mail. */
+export async function setJobPasswordTo(id: string, passwordTo: string | undefined): Promise<void> {
+  jobs.get(id)!.passwordTo = passwordTo;
+  await persist();
+}
+
 /** New number of password-link accesses (the Send itself is updated by the caller). */
 export async function setJobMaxAccess(id: string, maxAccessCount: number): Promise<void> {
   jobs.get(id)!.maxAccessCount = maxAccessCount;
@@ -115,7 +160,7 @@ const accessText = (count?: number) =>
   count === undefined ? "begrenzte Anzahl Abrufe" : count === 1 ? "nur einmal abrufbar" : `bis zu ${count} Abrufe`;
 
 /** The password mail goes to German-speaking recipients, so its text stays German. */
-function passwordMailHtml(job: PasswordJob, subject: string): string {
+function passwordMailHtml(job: Pick<PasswordJob, "fileNames" | "sendUrl" | "maxAccessCount">, subject: string): string {
   const files = job.fileNames.map((f) => `<li>${escapeHtml(f)}</li>`).join("");
   return (
     `<p>Guten Tag,</p>` +
@@ -163,12 +208,28 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
       }
       if (!sent) continue;
       // Same sender as the main mail – for a shared mailbox the password mail is sent as / on behalf of it.
-      await sendMail(armed.graphToken, sent.recipients, `Kennwort für: ${sent.subject || job.fileNames[0]}`,
-        passwordMailHtml(job, sent.subject), sent.from ?? armed.mailbox);
+      // "Kennwort an andere Adresse": only that address gets the password, not the recipients of the mail.
+      const recipients = job.passwordTo ? { to: [job.passwordTo], cc: [], bcc: [] } : sent.recipients;
+      const sender = sent.from ?? armed.mailbox;
+      if (job.separate?.length) {
+        // One password per file: one password mail per file, each naming its file. Parts already sent stay sent,
+        // so a retry after an error does not send them twice.
+        for (const part of job.separate) {
+          if (part.dispatched) continue;
+          await sendMail(armed.graphToken, recipients, `Kennwort für „${part.fileName}“: ${sent.subject || part.fileName}`,
+            passwordMailHtml({ fileNames: [part.fileName], sendUrl: part.sendUrl, maxAccessCount: part.maxAccessCount },
+              sent.subject), sender);
+          part.dispatched = true;
+          changed = true;
+        }
+      } else {
+        await sendMail(armed.graphToken, recipients, `Kennwort für: ${sent.subject || job.fileNames[0]}`,
+          passwordMailHtml(job, sent.subject), sender);
+      }
       job.dispatched = true;
       job.armed = undefined;
       changed = true;
-      log.info({ user: job.ownerUpn, from: sent.from, files: job.fileNames }, "Password mail sent");
+      log.info({ user: job.ownerUpn, from: sent.from, files: job.fileNames, other: Boolean(job.passwordTo) }, "Password mail sent");
     } catch (err) {
       log.warn({ err, user: job.ownerUpn, jobId: id }, "Password mail check failed, retrying");
     }

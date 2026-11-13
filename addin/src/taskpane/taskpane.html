@@ -104,6 +104,11 @@
               <li data-rule="variety">Keine Wiederholung oder einfache Zeichenfolge</li>
             </ul>
             <p class="hint" id="password-hint">Die Empfänger erhalten das Kennwort nach dem Senden automatisch in einer separaten Nachricht.</p>
+            <label class="checkbox" id="separate-row">
+              <input type="checkbox" id="separate" />
+              <span class="box" aria-hidden="true"></span>
+              <span>Für jede Datei ein eigenes Kennwort</span>
+            </label>
           </div>
 
           <div class="field">
@@ -121,6 +126,17 @@
               <span class="suffix">mal</span>
             </div>
             <p class="hint" id="max-access-hint">So oft können die Empfänger den Link zum Kennwort öffnen, danach ist er gesperrt.</p>
+          </div>
+
+          <div class="field" id="password-to-field">
+            <label class="checkbox">
+              <input type="checkbox" id="password-to-toggle" aria-controls="password-to" />
+              <span class="box" aria-hidden="true"></span>
+              <span>Kennwort an eine andere E-Mail-Adresse senden</span>
+            </label>
+            <input type="email" id="password-to" class="input" placeholder="name@beispiel.de" autocomplete="email"
+              spellcheck="false" aria-label="E-Mail-Adresse für das Kennwort" aria-describedby="password-to-hint" hidden />
+            <p class="hint" id="password-to-hint" hidden>Nur diese Adresse erhält das Kennwort – die Empfänger der Nachricht nicht.</p>
           </div>
 
           <h2 class="section-title">Dateien von Empfängern erhalten</h2>

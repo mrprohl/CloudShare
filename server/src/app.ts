@@ -10,7 +10,16 @@ import { authenticate, HttpError, onBehalfOf, type User } from "./auth.js";
 import { config } from "./config.js";
 import { getCredentials, removeCredentials, saveCredentials } from "./credentials.js";
 import { fetchProfile, GRAPH_PROFILE_SCOPES, GRAPH_SCOPES } from "./graph.js";
-import { addFileToJob, armJob, createJob, getJob, setJobMaxAccess } from "./jobs.js";
+import {
+  addFileToJob,
+  addSeparatePart,
+  armJob,
+  createJob,
+  createSeparateJob,
+  getJob,
+  setJobMaxAccess,
+  setJobPasswordTo,
+} from "./jobs.js";
 import {
   NextcloudClient,
   NOT_CONNECTED,
@@ -19,7 +28,7 @@ import {
   startLoginFlow,
   type PublicShare,
 } from "./nextcloud.js";
-import { clampInt } from "./limits.js";
+import { clampInt, isEmailAddress } from "./limits.js";
 import { passwordProblem } from "./password.js";
 import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } from "./store.js";
 import { createPasswordSend, setSendMaxAccess } from "./vaultwarden.js";
@@ -50,6 +59,8 @@ interface ShareRequest {
   expireDays?: unknown;
   /** How often the password link (Vaultwarden Send) can be opened. */
   maxAccess?: unknown;
+  /** true: "Für jede Datei ein eigenes Kennwort" – own Send and own password mail for this share. */
+  separate?: unknown;
 }
 
 /**
@@ -70,7 +81,8 @@ function shareSettings(body: ShareRequest | undefined, withPassword = true) {
  * Adds a share to the draft's password job (same password, same Send → one password mail) or creates a new job.
  * The password mail only goes out after the mail was really sent, so a job stays open until then.
  * The number of accesses comes from the first share of the mail (one Send for all) and can be changed later via
- * PATCH /api/jobs/:id until the password mail went out.
+ * PATCH /api/jobs/:id until the password mail went out. With `separate`, every share gets its own Send and its own
+ * password mail instead (the mode is fixed by the first share of the mail).
  */
 async function attachToJob(
   user: User,
@@ -78,14 +90,32 @@ async function attachToJob(
   itemName: string,
   password: string,
   maxAccess: number,
+  /** "Für jede Datei ein eigenes Kennwort": own Send and own password mail for this share. */
+  separate = false,
 ) {
   const id = typeof requestedJobId === "string" ? requestedJobId : undefined;
   const existing = id ? getJob(id) : undefined;
   if (id && existing && existing.owner === user.oid && !existing.dispatched) {
-    await addFileToJob(id, itemName);
+    if (Boolean(existing.separate) !== separate) {
+      throw new HttpError(409, "Für diese Nachricht ist bereits festgelegt, ob alle Dateien ein gemeinsames Kennwort haben.");
+    }
+    if (!separate) {
+      await addFileToJob(id, itemName);
+      return id;
+    }
+    const send = await createPasswordSend(`CloudShare: ${itemName}`, password, maxAccess);
+    await addSeparatePart(id, { fileName: itemName, sendUrl: send.url, sendId: send.id, maxAccessCount: maxAccess });
     return id;
   }
   const send = await createPasswordSend(`CloudShare: ${itemName}`, password, maxAccess);
+  if (separate) {
+    return createSeparateJob(user.oid, user.upn, {
+      fileName: itemName,
+      sendUrl: send.url,
+      sendId: send.id,
+      maxAccessCount: maxAccess,
+    });
+  }
   return createJob(user.oid, user.upn, itemName, send.url, maxAccess, send.id);
 }
 
@@ -355,7 +385,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       uploads.delete(req.params.id);
 
       const shareUrl = await nc.createPublicShare(upload.target, noPassword ? undefined : password, expireDate);
-      const jobId = noPassword ? null : await attachToJob(user, req.body?.jobId, upload.fileName, password, maxAccess);
+      const jobId = noPassword ? null : await attachToJob(user, req.body?.jobId, upload.fileName, password, maxAccess, req.body?.separate === true);
       req.log.info({ user: user.upn, file: upload.fileName, noPassword }, "Share created");
       return { shareUrl, expireDate, jobId, fileName: upload.fileName, size: upload.size };
     },
@@ -376,7 +406,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     await nc.ensureFolder(uid, folder);
     // Create-only share ("file drop"): recipients can upload but cannot see or download anything.
     const shareUrl = await nc.createPublicShare(folder, password, expireDate, 4, "Dateianforderung");
-    const jobId = await attachToJob(user, req.body?.jobId, UPLOAD_LINK_ITEM, password, maxAccess);
+    const jobId = await attachToJob(user, req.body?.jobId, UPLOAD_LINK_ITEM, password, maxAccess, req.body?.separate === true);
     req.log.info({ user: user.upn, folder: folder.join("/") }, "Upload link created");
     return { shareUrl, expireDate, jobId };
   });
@@ -458,36 +488,53 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         : await nc.createPublicShare(segments, noPassword ? undefined : password, expireDate);
       const jobId = noPassword
         ? null
-        : await attachToJob(user, req.body?.jobId, request ? UPLOAD_LINK_ITEM : fileName, password, maxAccess);
+        : await attachToJob(user, req.body?.jobId, request ? UPLOAD_LINK_ITEM : fileName, password, maxAccess, req.body?.separate === true);
       req.log.info({ user: user.upn, path: share.path, noPassword }, "Share linked again");
       return { kind: request ? "request" : "file", shareUrl, expireDate, jobId, fileName, size: share.size };
     },
   );
 
   /**
-   * "Kennwort abrufbar" changed after the first link: updates the mail's Send and the number in the password mail.
-   * Only until the password mail went out, and only for jobs that know their Send (created by this version on).
+   * Changes a mail's password job until the password mail went out:
+   *   maxAccess  – "Kennwort abrufbar": updates the Send (only jobs that know their Send, created by this version on)
+   *   passwordTo – "Kennwort an andere Adresse": the password mail goes only to this address; "" = the recipients
    */
-  app.patch<{ Params: { id: string }; Body: { maxAccess?: unknown } }>("/api/jobs/:id", async (req) => {
-    const user = await authenticate(req);
-    const job = getJob(req.params.id);
-    if (!job || job.owner !== user.oid) throw new HttpError(404, "Auftrag nicht gefunden");
-    if (job.dispatched) throw new HttpError(409, "Das Kennwort wurde bereits verschickt.");
-    if (!job.sendId) {
-      throw new HttpError(409, "Für diese Nachricht lässt sich die Anzahl der Abrufe nicht mehr ändern.", "SEND_FIXED");
-    }
-    const maxAccess = clampInt(req.body?.maxAccess, config.sendMaxAccessCount, 1, config.sendMaxAccessLimit);
-    await setSendMaxAccess(job.sendId, maxAccess);
-    await setJobMaxAccess(req.params.id, maxAccess);
-    req.log.info({ user: user.upn, jobId: req.params.id, maxAccess }, "Password-link accesses changed");
-    return { maxAccess };
-  });
+  app.patch<{ Params: { id: string }; Body: { maxAccess?: unknown; passwordTo?: unknown } }>(
+    "/api/jobs/:id",
+    async (req) => {
+      const user = await authenticate(req);
+      const job = getJob(req.params.id);
+      if (!job || job.owner !== user.oid) throw new HttpError(404, "Auftrag nicht gefunden");
+      if (job.dispatched) throw new HttpError(409, "Das Kennwort wurde bereits verschickt.");
+      const body = req.body ?? {};
+
+      if (body.passwordTo !== undefined) {
+        const passwordTo = typeof body.passwordTo === "string" ? body.passwordTo.trim() : null;
+        if (passwordTo === null || (passwordTo !== "" && !isEmailAddress(passwordTo))) {
+          throw new HttpError(400, "Bitte eine gültige E-Mail-Adresse für das Kennwort angeben.");
+        }
+        await setJobPasswordTo(req.params.id, passwordTo || undefined);
+        req.log.info({ user: user.upn, jobId: req.params.id, other: Boolean(passwordTo) }, "Password recipient changed");
+      }
+
+      if (body.maxAccess !== undefined) {
+        if (!job.sendId) {
+          throw new HttpError(409, "Für diese Nachricht lässt sich die Anzahl der Abrufe nicht mehr ändern.", "SEND_FIXED");
+        }
+        const maxAccess = clampInt(body.maxAccess, config.sendMaxAccessCount, 1, config.sendMaxAccessLimit);
+        await setSendMaxAccess(job.sendId, maxAccess);
+        await setJobMaxAccess(req.params.id, maxAccess);
+        req.log.info({ user: user.upn, jobId: req.params.id, maxAccess }, "Password-link accesses changed");
+      }
+      return { maxAccess: job.maxAccessCount, passwordTo: job.passwordTo ?? "" };
+    },
+  );
 
   /**
    * Called by the Smart Alert when the user presses "Send". Nothing is sent here: the job is armed and the watcher
    * (jobs.ts) sends the password mail once the tagged mail shows up in the user's "Sent Items".
    */
-  app.post<{ Params: { id: string }; Body: { from?: unknown } }>("/api/jobs/:id/arm", async (req) => {
+  app.post<{ Params: { id: string }; Body: { from?: unknown; passwordTo?: unknown } }>("/api/jobs/:id/arm", async (req) => {
     const user = await authenticate(req);
     const job = getJob(req.params.id);
     if (!job || job.owner !== user.oid) throw new HttpError(404, "Auftrag nicht gefunden");
@@ -496,6 +543,12 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     // Set by the add-in only if the "From" field differs from the user's own mailbox (shared mailbox, on behalf).
     const from = req.body?.from;
     const mailbox = typeof from === "string" && /^[^\s@/]+@[^\s@/]+$/.test(from) ? from.toLowerCase() : undefined;
+
+    // "Kennwort an andere Adresse" from the draft – normally already set by the taskpane, ignored if not valid.
+    const passwordTo = req.body?.passwordTo;
+    if (typeof passwordTo === "string" && isEmailAddress(passwordTo.trim())) {
+      await setJobPasswordTo(req.params.id, passwordTo.trim());
+    }
 
     const { token, expiresAt } = await onBehalfOf(user, GRAPH_SCOPES);
     await armJob(req.params.id, { graphToken: token, tokenExpiresAt: expiresAt, armedAt: Date.now(), mailbox });
