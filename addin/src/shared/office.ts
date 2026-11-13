@@ -93,9 +93,19 @@ async function requestToken(): Promise<string> {
  */
 export function getToken(): Promise<string> {
   if (cachedToken && cachedToken.expiresAt - 2 * 60_000 > Date.now()) return Promise.resolve(cachedToken.token);
-  pendingToken ??= requestToken().finally(() => {
-    pendingToken = null;
-  });
+  // No Promise.finally / Headers: the JavaScript-only runtime of classic Outlook is not a full browser.
+  if (!pendingToken) {
+    pendingToken = requestToken().then(
+      (token) => {
+        pendingToken = null;
+        return token;
+      },
+      (err) => {
+        pendingToken = null;
+        throw err;
+      },
+    );
+  }
   return pendingToken;
 }
 
@@ -117,9 +127,9 @@ export class ApiError extends Error {
 }
 
 export async function api<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
-  const headers = new Headers(init.headers);
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (init.body && typeof init.body === "string") headers.set("Content-Type", "application/json");
+  const headers: Record<string, string> = { ...(init.headers as Record<string, string> | undefined) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  if (init.body && typeof init.body === "string") headers["Content-Type"] = "application/json";
   const res = await fetch(API_BASE + path, { ...init, headers });
   const json = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
   if (!res.ok) throw new ApiError(json.error || `HTTP ${res.status}`, json.code);

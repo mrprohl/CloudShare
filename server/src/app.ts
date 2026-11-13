@@ -150,6 +150,15 @@ export async function buildApp(options: { logger?: boolean } = {}) {
   const publicDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../public");
   if (existsSync(publicDir)) await app.register(fastifyStatic, { root: publicDir });
 
+  /**
+   * Classic Outlook on Windows runs the event handlers in a JavaScript-only runtime that may only use SSO and
+   * network requests if the add-in's origin lists the handler script here. Without it the send handler never
+   * reaches the server and Outlook ends with "takes longer than expected" / timeout.
+   */
+  app.get("/.well-known/microsoft-officeaddins-allowed.json", async () => ({
+    allowed: [`${config.publicBaseUrl}/commands.js`],
+  }));
+
   /** Public configuration for the taskpane and the Smart Alert. */
   app.get("/api/config", async () => ({
     thresholdMb: config.thresholdMb,

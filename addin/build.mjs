@@ -7,15 +7,11 @@ import { cpSync, mkdirSync, rmSync } from "node:fs";
 rmSync("dist", { recursive: true, force: true });
 mkdirSync("dist", { recursive: true });
 
-await build({
-  entryPoints: { taskpane: "src/taskpane/taskpane.ts", commands: "src/commands/commands.ts" },
-  outdir: "dist",
-  bundle: true,
-  format: "iife",
-  target: "es2017",
-  minify: true,
-  sourcemap: false,
-});
+const common = { outdir: "dist", bundle: true, format: "iife", minify: true, sourcemap: false };
+await build({ ...common, entryPoints: { taskpane: "src/taskpane/taskpane.ts" }, target: "es2017" });
+// The event handlers run in classic Outlook's JavaScript-only runtime (no DOM, older engine): conservative syntax,
+// async/await is compiled to generators. test/bundle.test.ts checks the result.
+await build({ ...common, entryPoints: { commands: "src/commands/commands.ts" }, target: "es2016" });
 
 for (const file of ["src/taskpane/taskpane.html", "src/taskpane/taskpane.css", "src/commands/commands.html", "manifest.xml"]) {
   cpSync(file, `dist/${file.split("/").pop()}`);

@@ -120,6 +120,11 @@ backend does not use Entra tokens for Nextcloud but one app password per user.
 5. Smart Alerts require Mailbox requirement set 1.12 (current Microsoft 365 / new Outlook); the custom
    "Mit CloudShare senden" button and the "Send anyway" option under `suggest` need 1.14.
    Under `enforce`, a server outage means large attachments cannot be sent at all until CloudShare is back.
+   Classic Outlook on Windows runs the handlers from `commands.js` in a JavaScript-only runtime, which only allows
+   SSO and network requests for scripts listed in `/.well-known/microsoft-officeaddins-allowed.json` (served by the
+   backend). If the host name or a proxy in front of CloudShare does not deliver that file, the send dialog hangs at
+   "takes longer than expected". Classic Outlook caches the script: after an update, clear
+   `%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\` or restart Outlook.
 6. App passwords have full access to the user's Nextcloud account; protection depends on `CREDENTIAL_KEY` and the
    hardening of the container.
 7. Optional later: OIDC token exchange (e.g. Keycloak) instead of app passwords (no connect step, but a preview feature in
