@@ -10,7 +10,9 @@
     session: {},
     removedNotifications: [],
     openedUrls: [],
+    tokenRequests: 0,
   });
+  let tokenBusy = false;
   const ok = (value) => ({ status: "succeeded", value });
   const failed = (message) => ({ status: "failed", error: { message } });
   const attachments = (cfg.attachments || []).slice();
@@ -28,8 +30,17 @@
       setTimeout(() => callback && callback(info), 0);
       return Promise.resolve(info);
     },
-    // Office rejects SSO failures with a plain object { code, name, message }, not an Error.
-    auth: { getAccessToken: () => (cfg.tokenError ? Promise.reject(cfg.tokenError) : Promise.resolve("test-sso-token")) },
+    // Like Outlook: failures are plain objects { code, name, message }, not Errors, and only one call may run at a
+    // time – a second concurrent call is rejected with 13008.
+    auth: {
+      getAccessToken() {
+        if (cfg.tokenError) return Promise.reject(cfg.tokenError);
+        if (tokenBusy) return Promise.reject({ code: 13008, name: "Error", message: "getAccessToken already in progress" });
+        tokenBusy = true;
+        log.tokenRequests++;
+        return new Promise((resolve) => setTimeout(() => { tokenBusy = false; resolve("test-sso-token"); }, 50));
+      },
+    },
     context: {
       officeTheme: cfg.theme ? { bodyBackgroundColor: cfg.theme } : undefined,
       requirements: { isSetSupported: (name) => name === "OpenBrowserWindowApi" },

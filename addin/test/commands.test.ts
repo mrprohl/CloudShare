@@ -7,6 +7,7 @@ import { installOfficeMock, type Attachment } from "./officeMock";
 
 const office = installOfficeMock();
 await import("../src/commands/commands");
+const { resetTokenCache } = await import("../src/shared/office");
 
 const MB = 1024 * 1024;
 const big: Attachment = { id: "a1", name: "Fotos.zip", size: 5 * MB, attachmentType: "file", isInline: false };
@@ -57,6 +58,7 @@ const armed = () => requests.filter((r) => r.url.includes("/arm"));
 
 beforeEach(() => {
   office.reset();
+  resetTokenCache();
   server = { policy: "enforce", reachable: true, armStatus: 200 };
   requests.length = 0;
   installFetch();
