@@ -28,7 +28,8 @@
       setTimeout(() => callback && callback(info), 0);
       return Promise.resolve(info);
     },
-    auth: { getAccessToken: () => Promise.resolve("test-sso-token") },
+    // Office rejects SSO failures with a plain object { code, name, message }, not an Error.
+    auth: { getAccessToken: () => (cfg.tokenError ? Promise.reject(cfg.tokenError) : Promise.resolve("test-sso-token")) },
     context: {
       officeTheme: cfg.theme ? { bodyBackgroundColor: cfg.theme } : undefined,
       requirements: { isSetSupported: (name) => name === "OpenBrowserWindowApi" },

@@ -13,6 +13,7 @@ import {
   type DraftState,
   type ServerConfig,
 } from "../shared/office";
+import { errorText } from "../shared/sso";
 
 interface LaunchEvent {
   completed(options?: {
@@ -160,7 +161,7 @@ async function onMessageSendHandler(event: LaunchEvent) {
     } catch (err) {
       event.completed({
         allowEvent: false,
-        errorMessage: `CloudShare kann das Kennwort für diese Nachricht nicht vorbereiten: ${err instanceof Error ? err.message : err}`,
+        errorMessage: `CloudShare kann das Kennwort für diese Nachricht nicht vorbereiten: ${errorText(err)}`,
       });
       return;
     }

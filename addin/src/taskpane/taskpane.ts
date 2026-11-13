@@ -16,6 +16,7 @@ import {
   type ServerConfig,
 } from "../shared/office";
 import { checkPassword, generatePassword } from "../shared/password";
+import { errorText } from "../shared/sso";
 import { EMPTY_PROFILE, fillFooter, hasPlaceholders, type Profile } from "./footer";
 import { filesCard, filesText, requestCard, requestText } from "./mailCard";
 
@@ -111,7 +112,7 @@ function setProgress(percent: number | null) {
 
 // --- Helpers -------------------------------------------------------------------
 
-const errorMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
+const errorMessage = errorText;
 
 const formatSize = (bytes: number) =>
   bytes >= 1024 ** 3

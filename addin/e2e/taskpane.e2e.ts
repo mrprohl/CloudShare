@@ -29,6 +29,8 @@ interface Scenario {
   connected?: boolean;
   config?: Record<string, unknown> | "down";
   shares?: unknown[];
+  /** Office SSO failure (plain object as Office delivers it). */
+  tokenError?: { code: number; name: string; message: string };
   /** Error response for POST /api/uploads, e.g. Nextcloud connection revoked. */
   uploadError?: { status: number; error: string; code?: string };
 }
@@ -54,7 +56,7 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
 
   await page.addInitScript((cfg) => {
     (window as unknown as { __officeConfig: unknown }).__officeConfig = cfg;
-  }, { attachments: scenario.attachments ?? [], theme: scenario.theme, bodyType: scenario.bodyType });
+  }, { attachments: scenario.attachments ?? [], theme: scenario.theme, bodyType: scenario.bodyType, tokenError: scenario.tokenError });
   await page.route("https://appsforoffice.microsoft.com/**", (route) =>
     route.fulfill({ contentType: "text/javascript", body: officeMock }),
   );
@@ -151,6 +153,16 @@ test("not connected: shows the connect view and connects via the Nextcloud login
   await expect(page.locator("#status")).toContainText("Die Verbindung zu Nextcloud wurde hergestellt.");
   await expect(page.locator("#account")).toContainText("max");
   expect(calls.some((c) => c.path === "/api/nextcloud/connect/c1/poll")).toBe(true);
+});
+
+test("Microsoft sign-in fails: readable message with the Office code", async ({ page }) => {
+  await openTaskpane(page, { tokenError: { code: 13007, name: "Error", message: "An unexpected error occurred" } });
+  const status = page.locator("#status");
+  await expect(status).toContainText("Die Anmeldung ist fehlgeschlagen:");
+  await expect(status).toContainText("kein Anmeldetoken für CloudShare");
+  await expect(status).toContainText("(Code 13007)");
+  await expect(status).not.toContainText("[object Object]");
+  await shot(page, "sso-error");
 });
 
 test("server unreachable: says so instead of showing an empty pane", async ({ page }) => {

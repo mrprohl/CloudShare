@@ -1,3 +1,5 @@
+import { toSsoError } from "./sso";
+
 /** Replaced with the real base URL at container start (see docker/entrypoint.sh). */
 export const API_BASE = "%%PUBLIC_BASE_URL%%";
 
@@ -15,9 +17,16 @@ export interface ServerConfig {
   mailFooter: string;
 }
 
-/** SSO token for the backend (audience = our own app registration). */
-export function getToken(): Promise<string> {
-  return Office.auth.getAccessToken({ allowSignInPrompt: true, allowConsentPrompt: true, forMSGraphAccess: true });
+/**
+ * SSO token for the backend (audience = our own app registration). Office rejects with a plain object
+ * ({ code, message }); it is turned into an Error with a German message and the code (see sso.ts).
+ */
+export async function getToken(): Promise<string> {
+  try {
+    return await Office.auth.getAccessToken({ allowSignInPrompt: true, allowConsentPrompt: true, forMSGraphAccess: true });
+  } catch (err) {
+    throw toSsoError(err);
+  }
 }
 
 export const NOT_CONNECTED = "NEXTCLOUD_NOT_CONNECTED";
