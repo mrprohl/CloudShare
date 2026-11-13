@@ -145,6 +145,17 @@ export class NextcloudClient {
     return config.nextcloudUrl + this.davFiles(uid, segments);
   }
 
+  /**
+   * Whether Nextcloud enforces passwords for public links for this user (Settings → Sharing; capabilities are
+   * evaluated per user, so group exceptions count). Then "Ohne Kennwort" cannot work.
+   */
+  async linkPasswordEnforced(): Promise<boolean> {
+    const data = (await this.ocs("GET", "/ocs/v2.php/cloud/capabilities")) as {
+      capabilities?: { files_sharing?: { public?: { password?: { enforced?: boolean } } } };
+    };
+    return data?.capabilities?.files_sharing?.public?.password?.enforced === true;
+  }
+
   /** Internal user ID (may differ from the login name, e.g. with user_oidc) and free quota. */
   async userInfo(): Promise<UserInfo> {
     const data = (await this.ocs("GET", "/ocs/v2.php/cloud/user")) as {

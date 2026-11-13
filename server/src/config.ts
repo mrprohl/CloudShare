@@ -72,6 +72,8 @@ export const config = {
    * purpose – a 5 GB upload is about 500 chunk requests. Expensive actions (Nextcloud login, upload links) get 1/60.
    */
   rateLimitPerMinute: number("RATE_LIMIT_PER_MINUTE", 600),
+  /** Diagnostics: the Smart Alert reports its steps to POST /api/trace (logged). Off by default. */
+  clientTrace: process.env.CLIENT_TRACE === "true",
 
   /** Nextcloud chunking v2: at least 5 MiB per chunk (except the last), at most 10,000 chunks. */
   chunkSizeBytes: 10 * 1024 * 1024,

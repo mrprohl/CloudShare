@@ -18,6 +18,7 @@ const nc = vi.hoisted(() => ({
   publicDownloads: vi.fn(),
   countFiles: vi.fn(),
   revokeAppPassword: vi.fn(),
+  linkPasswordEnforced: vi.fn(),
 }));
 
 vi.mock("../src/auth.js", async (importOriginal) => {
@@ -71,6 +72,7 @@ afterAll(() => app.close());
 beforeEach(() => {
   for (const fn of Object.values(nc)) fn.mockReset();
   nc.userInfo.mockResolvedValue({ id: "uid", free: null });
+  nc.linkPasswordEnforced.mockResolvedValue(false);
   nc.createPublicShare.mockResolvedValue("https://cloud.example.test/s/abc");
   createPasswordSend.mockClear();
   setSendMaxAccess.mockClear();
@@ -123,6 +125,25 @@ describe("authentication", () => {
   ] as const)("rejects %s %s without a valid token", async (method, url) => {
     const res = await app.inject({ method, url, headers: { authorization: "Bearer fremd" } });
     expect(res.statusCode).toBe(401);
+  });
+
+  it("has no trace route unless CLIENT_TRACE is set", async () => {
+    const res = await app.inject({ method: "POST", url: "/api/trace", payload: { run: "abc", step: "start" } });
+    expect(res.statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url: "/api/config" })).json().trace).toBe(false);
+  });
+
+  it("reports storage and whether Nextcloud enforces link passwords", async () => {
+    nc.userInfo.mockResolvedValue({ id: "uid", free: 30, used: 20, total: 50 });
+    nc.linkPasswordEnforced.mockResolvedValue(true);
+    const res = await app.inject({ method: "GET", url: "/api/nextcloud/status", headers: as("anna") });
+    expect(res.json()).toEqual({
+      connected: true, loginName: "anna", freeBytes: 30, usedBytes: 20, totalBytes: 50, passwordEnforced: true,
+    });
+
+    nc.linkPasswordEnforced.mockRejectedValue(new Error("capabilities unavailable"));
+    const unknown = await app.inject({ method: "GET", url: "/api/nextcloud/status", headers: as("anna") });
+    expect(unknown.json().passwordEnforced).toBe(false);
   });
 
   it("asks users without Nextcloud connection to connect first", async () => {

@@ -36,6 +36,8 @@ interface Scenario {
   tokenError?: { code: number; name: string; message: string };
   /** Error response for POST /api/uploads, e.g. Nextcloud connection revoked. */
   uploadError?: { status: number; error: string; code?: string };
+  /** Nextcloud enforces passwords for public links. */
+  passwordEnforced?: boolean;
 }
 
 interface ApiCall { method: string; path: string; body: Buffer | null }
@@ -82,7 +84,8 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     }
     if (route_ === "GET /api/nextcloud/status") {
       return json(connected
-        ? { connected: true, loginName: "max", freeBytes: 12.5 * 1024 ** 3, usedBytes: 37.5 * 1024 ** 3, totalBytes: 50 * 1024 ** 3 }
+        ? { connected: true, loginName: "max", freeBytes: 12.5 * 1024 ** 3, usedBytes: 37.5 * 1024 ** 3, totalBytes: 50 * 1024 ** 3,
+            passwordEnforced: scenario.passwordEnforced ?? false }
         : { connected: false });
     }
     if (route_ === "POST /api/nextcloud/connect") {
@@ -260,6 +263,26 @@ test("uploads a large attachment in chunks, removes it and inserts the card", as
   expect(JSON.parse((await officeLog(page)).session["cloudshare-state"]).maxAccess).toBe(7);
 });
 
+test("links deleted from the mail again: password options unlock, no password mail", async ({ page }) => {
+  await openTaskpane(page, { attachments: [attachment("a1", "Bericht.pdf", 1.5 * MiB)] });
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
+  await expect(page.locator("#mode-random")).toBeDisabled();
+  expect(JSON.parse((await officeLog(page)).session["cloudshare-state"]).links).toEqual(["u1"]);
+
+  // The user deletes the card from the mail; the pane notices on focus.
+  await page.evaluate(() => {
+    (window as unknown as { __officeLog: { inserted: unknown[] } }).__officeLog.inserted.length = 0;
+    window.dispatchEvent(new Event("focus"));
+  });
+  await expect(page.locator("#status")).toContainText("Links wurden aus der Nachricht entfernt");
+  await expect(page.locator("#mode-random")).toBeEnabled();
+  await expect(page.locator("#mode-none")).toBeEnabled();
+  const log = await officeLog(page);
+  expect(log.customProps.cloudshareJob).toBeUndefined(); // the send handler has nothing to arm
+  expect(JSON.parse(log.session["cloudshare-state"])).toEqual({});
+});
+
 test("cursor never in the body (new Outlook): the card goes to the top of the mail", async ({ page }) => {
   await openTaskpane(page, { attachments: [attachment("a1", "Präsentation.pptx", 2.5 * MiB)], cursorOutsideBody: true });
   await page.click("#submit");
@@ -346,7 +369,7 @@ test("Ohne Kennwort: plain link, no password mail, upload links stay protected",
   expect(log.inserted[0].data).toContain("https://cloud.example.com/s/u1");
   expect(log.inserted[0].data).not.toContain("Kennwort");
   expect(log.customProps.cloudshareJob).toBeUndefined(); // nothing for the send handler to arm
-  expect(JSON.parse(log.session["cloudshare-state"])).toEqual({ noPassword: true });
+  expect(JSON.parse(log.session["cloudshare-state"])).toEqual({ noPassword: true, links: ["u1"] });
 
   // The whole mail stays without password; an upload link would need one.
   await expect(page.locator("#mode-random")).toBeDisabled();
@@ -355,6 +378,14 @@ test("Ohne Kennwort: plain link, no password mail, upload links stay protected",
   await expect(page.locator("#status")).toContainText("Links zum Hochladen brauchen immer ein Kennwort");
   expect(calls.some((c) => c.path === "/api/requests")).toBe(false);
   await shot(page, "no-password");
+});
+
+test("Nextcloud enforces link passwords: no 'Ohne Kennwort' option", async ({ page }) => {
+  await openTaskpane(page, { passwordEnforced: true });
+  await expect(page.locator("#account")).toContainText("max"); // connection status has arrived
+  await expect(page.locator("label:has(#mode-none)")).toBeHidden();
+  await expect(page.locator("#mode-random")).toBeChecked();
+  await expect(page.locator("#password-group")).toBeVisible();
 });
 
 test("Dateien von Empfängern erhalten inserts an upload link with the same password", async ({ page }) => {

@@ -154,3 +154,10 @@ curl -s https://cloudshare.example.com/api/config         # from outside: same J
 ```
 Note for Nextcloud: all requests from CloudShare arrive from the server's public address. If Nextcloud's
 brute-force protection ever throttles them, allow that address in the "Brute-force settings" app.
+
+**Sending hangs in a client** ("CloudShare dauert länger als erwartet"): set `CLIENT_TRACE=true` in
+`env/cloudshare.env`, recreate the stack, send once and read the steps of the send check:
+```bash
+docker logs --since 5m cloudshare 2>&1 | grep 'Smart Alert trace' | grep -oE '"trace":"[^"]+"|"step":"[^"]+"|"ms":[0-9]+|"host":"[^"]+"|"detail":"[^"]*"'
+```
+The last step shown is where it stops. Switch it off again afterwards (`CLIENT_TRACE` removed, stack recreated).

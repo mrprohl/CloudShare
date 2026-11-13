@@ -11,6 +11,8 @@ import {
   NOTIFICATION_ID,
   officeAsync,
   readDraftState,
+  releaseDraftIfLinksGone,
+  rememberLink,
   tagDraft,
   updateDraftState,
   type ServerConfig,
@@ -66,6 +68,10 @@ let mailFooter = "";
 let footerReady: Promise<void> = Promise.resolve();
 /** Files picked from the computer, not yet uploaded. */
 let pickedFiles: File[] = [];
+/** Uploads or insertions in progress – the check for deleted links waits meanwhile. */
+let busy = 0;
+/** Last known Nextcloud setting, re-applied when the password options are unlocked. */
+let passwordEnforced = false;
 
 // --- Theme ---------------------------------------------------------------------
 
@@ -135,6 +141,8 @@ interface ConnectionStatus {
   freeBytes?: number | null;
   usedBytes?: number | null;
   totalBytes?: number | null;
+  /** Nextcloud enforces passwords for public links – "Ohne Kennwort" is not possible then. */
+  passwordEnforced?: boolean;
 }
 
 /** Storage behind the account: "[12,3 GB von 50 GB frei]", "[12,3 GB frei]" (no quota) or "[3,2 GB belegt]". */
@@ -153,6 +161,15 @@ function showConnection(status: ConnectionStatus) {
   sendView.hidden = !status.connected;
   connectHint.hidden = true;
   accountText.textContent = `${status.loginName ?? ""}${storageText(status)}`;
+  applyPasswordPolicy(status.passwordEnforced === true);
+}
+
+/** Hides "Ohne Kennwort" when Nextcloud enforces link passwords (it would refuse such a link). */
+function applyPasswordPolicy(enforced: boolean) {
+  passwordEnforced = enforced;
+  modeNone.closest("label")!.hidden = enforced;
+  // Switch back unless this mail already contains links without password.
+  if (enforced && modeNone.checked && !modeNone.disabled) setPasswordMode("random");
 }
 
 async function refreshConnection() {
@@ -429,11 +446,13 @@ async function insertIntoBody(html: string, text: string, marker: string) {
   const data = isText ? text : html;
   const options = { coercionType: isText ? Office.CoercionType.Text : Office.CoercionType.Html };
 
+  // Only links that really landed in the mail are recorded: after a failed insertion the user may paste the link
+  // by hand ("Meine Freigaben"), so the draft must not be released then (see releaseDraftIfLinksGone).
   await officeAsync<void>((cb) => body.setSelectedDataAsync(data, options, cb));
-  if (await bodyContains(marker)) return;
+  if (await bodyContains(marker)) return rememberLink(marker);
 
   await officeAsync<void>((cb) => body.prependAsync(data, options, cb));
-  if (await bodyContains(marker)) return;
+  if (await bodyContains(marker)) return rememberLink(marker);
 
   throw new Error(
     "Outlook hat den Link nicht in die Nachricht übernommen. Bitte in den Nachrichtentext klicken und erneut " +
@@ -542,6 +561,29 @@ function lockNoPassword() {
     "Die Links dieser Nachricht sind ohne Kennwort – jeder, der sie kennt, kann die Dateien herunterladen.";
 }
 
+/** Password options as for a new mail (after all CloudShare links were deleted from it). */
+function unlockPassword() {
+  modeRandom.disabled = false;
+  modeOwn.disabled = false;
+  modeNone.disabled = false;
+  maxAccessInput.readOnly = false;
+  maxAccessInput.value = String(serverConfig.sendMaxAccessCount);
+  setPasswordMode("random");
+  applyPasswordPolicy(passwordEnforced);
+}
+
+/**
+ * The user may delete the inserted links from the mail again. Then the password choice no longer applies and must
+ * not stay locked, and no password mail must go out (the send handler checks this too).
+ */
+async function releaseIfLinksDeleted() {
+  if (busy > 0 || document.hidden || !modeRandom.disabled) return; // only while locked and idle
+  if (await releaseDraftIfLinksGone().catch(() => false)) {
+    unlockPassword();
+    setStatus("Die CloudShare-Links wurden aus der Nachricht entfernt. Kennwort und Optionen sind wieder frei wählbar.");
+  }
+}
+
 /** Number of accesses within the allowed range (the server limits it again). */
 function maxAccessValue(): number {
   const value = Math.floor(Number(maxAccessInput.value));
@@ -593,6 +635,7 @@ submitButton.addEventListener("click", async () => {
   }
 
   submitButton.disabled = true;
+  busy++;
   const results: UploadResult[] = [];
   let failed = false;
   try {
@@ -637,6 +680,7 @@ submitButton.addEventListener("click", async () => {
       await refreshConnection().catch(() => undefined); // refreshes the free quota
     }
     submitButton.disabled = false;
+    busy--;
     setProgress(null);
   }
 });
@@ -655,6 +699,7 @@ requestButton.addEventListener("click", async () => {
     return setStatus(problem, "error");
   }
   requestButton.disabled = true;
+  busy++;
   try {
     setStatus("Link zum Hochladen wird erstellt …");
     const result = await api<{ shareUrl: string; expireDate: string; jobId: string }>(
@@ -677,6 +722,7 @@ requestButton.addEventListener("click", async () => {
     setStatus(errorMessage(err), "error");
   } finally {
     requestButton.disabled = false;
+    busy--;
   }
 });
 
@@ -842,6 +888,7 @@ async function linkAgain(share: ShareItem, button: HTMLButtonElement) {
     return;
   }
   button.disabled = true;
+  busy++;
   try {
     setStatus(`Neuer Link zu „${share.name}“ wird erstellt …`);
     const result = await api<LinkAgainResult>(
@@ -878,6 +925,7 @@ async function linkAgain(share: ShareItem, button: HTMLButtonElement) {
     setStatus(`Der Link konnte nicht eingefügt werden: ${errorMessage(err)}`, "error");
   } finally {
     button.disabled = false;
+    busy--;
   }
 }
 
@@ -936,6 +984,10 @@ Office.onReady(async () => {
   } else {
     setPasswordMode("random");
   }
+  // Outlook has no "body changed" event: check when the pane gets focus and every few seconds while locked.
+  await releaseIfLinksDeleted();
+  window.addEventListener("focus", () => void releaseIfLinksDeleted());
+  setInterval(() => void releaseIfLinksDeleted(), 4000);
   optOutBox.checked = Boolean(state.optOut);
   // Under "enforce" there is no way to send large attachments without CloudShare.
   const enforce = serverConfig.attachmentPolicy === "enforce";
