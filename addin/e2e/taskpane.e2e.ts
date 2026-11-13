@@ -29,6 +29,9 @@ interface Scenario {
   connected?: boolean;
   config?: Record<string, unknown> | "down";
   shares?: unknown[];
+  /** New Outlook: cursor never in the body → setSelectedDataAsync inserts nothing; bodyRejectsInsert: nothing works. */
+  cursorOutsideBody?: boolean;
+  bodyRejectsInsert?: boolean;
   /** Office SSO failure (plain object as Office delivers it). */
   tokenError?: { code: number; name: string; message: string };
   /** Error response for POST /api/uploads, e.g. Nextcloud connection revoked. */
@@ -56,7 +59,8 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
 
   await page.addInitScript((cfg) => {
     (window as unknown as { __officeConfig: unknown }).__officeConfig = cfg;
-  }, { attachments: scenario.attachments ?? [], theme: scenario.theme, bodyType: scenario.bodyType, tokenError: scenario.tokenError });
+  }, { attachments: scenario.attachments ?? [], theme: scenario.theme, bodyType: scenario.bodyType, tokenError: scenario.tokenError,
+    cursorOutsideBody: scenario.cursorOutsideBody, bodyRejectsInsert: scenario.bodyRejectsInsert });
   await page.route("https://appsforoffice.microsoft.com/**", (route) =>
     route.fulfill({ contentType: "text/javascript", body: officeMock }),
   );
@@ -113,7 +117,7 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
 
 const officeLog = (page: Page) =>
   page.evaluate(() => (window as unknown as { __officeLog: {
-    inserted: { data: string; coercionType: string }[];
+    inserted: { data: string; coercionType: string; at: "cursor" | "top" }[];
     removed: string[];
     customProps: Record<string, string>;
     session: Record<string, string>;
@@ -233,6 +237,25 @@ test("uploads a large attachment in chunks, removes it and inserts the card", as
   await expect(page.locator("#mode-own")).toBeDisabled();
   await expect(page.locator("#max-access")).toHaveAttribute("readonly", "");
   await shot(page, "after-upload");
+});
+
+test("cursor never in the body (new Outlook): the card goes to the top of the mail", async ({ page }) => {
+  await openTaskpane(page, { attachments: [attachment("a1", "Präsentation.pptx", 2.5 * MiB)], cursorOutsideBody: true });
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
+  const log = await officeLog(page);
+  expect(log.inserted).toHaveLength(1);
+  expect(log.inserted[0].at).toBe("top");
+  expect(log.inserted[0].data).toContain("https://cloud.example.com/s/u1");
+});
+
+test("Outlook takes no insertion at all: honest error instead of a false success", async ({ page }) => {
+  await openTaskpane(page, { attachments: [attachment("a1", "Präsentation.pptx", 2.5 * MiB)], bodyRejectsInsert: true });
+  await page.click("#submit");
+  const status = page.locator("#status");
+  await expect(status).toContainText("Outlook hat den Link nicht in die Nachricht übernommen");
+  await expect(status).toContainText("Meine Freigaben");
+  await expect(status).not.toContainText("Der Link wurde eingefügt");
 });
 
 test("plain-text mail gets the links as text", async ({ page }) => {

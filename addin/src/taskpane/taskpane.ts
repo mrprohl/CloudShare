@@ -347,15 +347,50 @@ async function resolveFooter() {
   mailFooter = fillFooter(template, profile);
 }
 
-/** Inserts a card (HTML mail) or plain text (text mail) at the cursor. */
-async function insertIntoBody(html: string, text: string) {
+/** Token of a share link (last path segment) – survives escaping or rewriting of the host in the body. */
+const shareToken = (url: string) => url.replace(/\/+$/, "").split("/").pop() || url;
+
+/**
+ * Whether the body contains `marker` (a share URL). Retried briefly because the body may update asynchronously;
+ * if the body cannot be read at all, the insertion is assumed to have worked.
+ */
+async function bodyContains(marker: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let content: string;
+    try {
+      content = await officeAsync<string>((cb) => composeItem().body.getAsync(Office.CoercionType.Html, cb));
+    } catch {
+      return true;
+    }
+    if (content.includes(marker)) return true;
+    await sleep(300);
+  }
+  return false;
+}
+
+/**
+ * Inserts a card (HTML mail) or plain text (text mail) at the cursor. New Outlook reports success but inserts
+ * nothing when the cursor has never been in the body (e.g. only recipients and subject were filled in) – so the
+ * result is checked via `marker` and the card is put at the top of the mail instead. Throws if both fail.
+ */
+async function insertIntoBody(html: string, text: string, marker: string) {
   const body = composeItem().body;
   const type = await officeAsync<Office.CoercionType>((cb) => body.getTypeAsync(cb)).catch(
     () => Office.CoercionType.Html,
   );
   const isText = type === Office.CoercionType.Text;
-  await officeAsync<void>((cb) =>
-    body.setSelectedDataAsync(isText ? text : html, { coercionType: isText ? Office.CoercionType.Text : Office.CoercionType.Html }, cb),
+  const data = isText ? text : html;
+  const options = { coercionType: isText ? Office.CoercionType.Text : Office.CoercionType.Html };
+
+  await officeAsync<void>((cb) => body.setSelectedDataAsync(data, options, cb));
+  if (await bodyContains(marker)) return;
+
+  await officeAsync<void>((cb) => body.prependAsync(data, options, cb));
+  if (await bodyContains(marker)) return;
+
+  throw new Error(
+    "Outlook hat den Link nicht in die Nachricht übernommen. Bitte in den Nachrichtentext klicken und erneut " +
+      "einfügen – den Link können Sie auch unter „Meine Freigaben“ kopieren.",
   );
 }
 
@@ -367,6 +402,7 @@ async function insertLinks(results: UploadResult[]) {
   await insertIntoBody(
     filesCard(files, expire, mailFooter, formatSize),
     filesText(files, expire, mailFooter, formatSize),
+    shareToken(results[0].shareUrl),
   );
 }
 
@@ -537,6 +573,7 @@ requestButton.addEventListener("click", async () => {
     await insertIntoBody(
       requestCard(result.shareUrl, expire, mailFooter),
       requestText(result.shareUrl, expire, mailFooter),
+      shareToken(result.shareUrl),
     );
     setStatus("Der Upload-Link wurde eingefügt. Das Kennwort wird nach dem Senden automatisch verschickt.", "success");
   } catch (err) {
