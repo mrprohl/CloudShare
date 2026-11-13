@@ -172,6 +172,9 @@ The taskpane is meant to look like part of Outlook, not like an external tool:
   (`PATCH /api/jobs/:id` with `passwordTo`, "" = back to the recipients; also right after the first link), the send
   handler passes it again with `/arm` as a fallback. Validated server-side (`isEmailAddress`, a single address);
   kept when the links are deleted from the mail.
+- **Password mail** (`server/src/passwordMail.ts`): same look as the mail card (brand accent, file type badges, one
+  button "Kennwort anzeigen" → Vaultwarden Send, note with accesses and expiry), plus the plain link for clients
+  that do not render buttons. Colours and spacing are duplicated from `mailCard.ts` – keep both in sync.
 - **Upload links ("Dateien von Empfängern erhalten", button "Link zum Hochladen einfügen")**: `POST /api/requests` creates `NEXTCLOUD_REQUEST_FOLDER/<date>_<id>` and a
   create-only public share (permissions 4, "file drop", label "Dateianforderung") with the same password/expiry
   rules. It joins the draft's password job, so files and upload link share one password mail. Nextcloud must
@@ -179,7 +182,7 @@ The taskpane is meant to look like part of Outlook, not like an external tool:
 - **"Meine Freigaben"** (second tab): `GET /api/shares` lists the user's public links below the two CloudShare
   folders from the last 30 days (newest first, at most 100) with expiry, password status (Nextcloud reports only
   whether a link has a password, not whether it was random or own) and status – downloads from the activity app (type `public_links`) for files,
-  number of received files (WebDAV PROPFIND) for upload links. "Link kopieren", "Als Link einfügen" and "Zurückziehen"
+  number of received files (WebDAV PROPFIND) for upload links. "Kopieren", "Einfügen" (as a new link) and "Zurückziehen" (short labels for the narrow pane, full text as tooltip)
   (`DELETE /api/shares/:id`, two-step confirmation) – the share ends, the file stays in the user's Nextcloud. "Als Link einfügen" (`POST /api/shares/:id/link`) creates a
   *new* link to the same file or upload folder with the current mail’s settings (password + password mail via the draft’s job, or
   "Ohne Kennwort" for files) – the original password cannot be recovered (Nextcloud stores a hash), the old link stays valid.
