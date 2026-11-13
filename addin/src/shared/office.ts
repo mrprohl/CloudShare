@@ -37,6 +37,32 @@ function tokenExpiry(token: string): number {
 
 const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Time limits of the send handler (ms). Outlook only shows "takes longer than expected" when a step never
+ * answers; with a limit the user gets a message naming the step instead. Changeable for tests.
+ */
+export const TIMEOUTS = { config: 5_000, token: 15_000, server: 20_000, office: 5_000 };
+
+/** Rejects with a German message naming `step` if `promise` does not settle within `ms`. */
+export function withTimeout<T>(promise: Promise<T>, ms: number, step: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`Zeitüberschreitung: ${step} hat nach ${Math.round(ms / 1000)} s nicht geantwortet.`)),
+      ms,
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (err) => {
+        clearTimeout(timer);
+        reject(err);
+      },
+    );
+  });
+}
+
 async function requestToken(): Promise<string> {
   for (let attempt = 1; ; attempt++) {
     try {
@@ -110,7 +136,7 @@ const CONFIG_CACHE_KEY = "cloudshare-config";
  */
 export async function getConfigCached(): Promise<ServerConfig> {
   try {
-    const config = await getConfig();
+    const config = await withTimeout(getConfig(), TIMEOUTS.config, "Der CloudShare-Server");
     try {
       Office.context.roamingSettings.set(CONFIG_CACHE_KEY, config);
       Office.context.roamingSettings.saveAsync();

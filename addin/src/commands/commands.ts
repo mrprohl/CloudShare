@@ -10,6 +10,8 @@ import {
   readDraftState,
   tagDraft,
   TASKPANE_COMMAND_ID,
+  TIMEOUTS,
+  withTimeout,
   type DraftState,
   type ServerConfig,
 } from "../shared/office";
@@ -87,12 +89,14 @@ async function onAttachmentsChangedHandler(event: LaunchEvent) {
  * If the user cancels or sending fails, no password mail goes out and the job stays open for further files.
  */
 async function armPasswordMail(jobId: string) {
-  await tagDraft(jobId); // normally already done by the taskpane – make sure the sent copy carries the tag
-  const from = await sharedSender();
-  await api(
-    `/api/jobs/${encodeURIComponent(jobId)}/arm`,
-    { method: "POST", body: JSON.stringify(from ? { from } : {}) },
-    await getToken(),
+  // Normally already done by the taskpane – make sure the sent copy carries the tag.
+  await withTimeout(tagDraft(jobId), TIMEOUTS.office, "Outlook (Markieren des Entwurfs)");
+  const from = await withTimeout(sharedSender(), TIMEOUTS.office, "Outlook (Absender lesen)");
+  const token = await withTimeout(getToken(), TIMEOUTS.token, "Die Anmeldung bei Microsoft (SSO)");
+  await withTimeout(
+    api(`/api/jobs/${encodeURIComponent(jobId)}/arm`, { method: "POST", body: JSON.stringify(from ? { from } : {}) }, token),
+    TIMEOUTS.server,
+    "Der CloudShare-Server",
   );
 }
 
@@ -120,13 +124,14 @@ const shorten = (names: string) => (names.length > 200 ? names.slice(0, 200) + "
  * If the add-in cannot run at all, SoftBlock lets the mail through (otherwise a server outage would stop all mail).
  */
 async function onMessageSendHandler(event: LaunchEvent) {
-  const state = await readDraftState();
+  // Every step has a time limit: a step that never answers would leave Outlook at "takes longer than expected".
+  const state = await withTimeout(readDraftState(), TIMEOUTS.office, "Outlook (Entwurfsdaten lesen)");
 
   let config: ServerConfig | undefined;
   let large: Office.AttachmentDetailsCompose[] = [];
   try {
     config = await getConfigCached();
-    large = await largeAttachments(config);
+    large = await withTimeout(largeAttachments(config), TIMEOUTS.office, "Outlook (Anhänge lesen)");
   } catch {
     // No configuration known (server never reached) → no attachment check.
   }
@@ -188,4 +193,9 @@ async function onMessageSendHandler(event: LaunchEvent) {
 }
 
 Office.actions.associate("onAttachmentsChangedHandler", onAttachmentsChangedHandler);
-Office.actions.associate("onMessageSendHandler", onMessageSendHandler);
+// Anything unexpected still completes the event with a message instead of leaving the send dialog hanging.
+Office.actions.associate("onMessageSendHandler", (event: LaunchEvent) =>
+  onMessageSendHandler(event).catch((err) =>
+    event.completed({ allowEvent: false, errorMessage: `CloudShare konnte die Nachricht nicht prüfen: ${errorText(err)}` }),
+  ),
+);
