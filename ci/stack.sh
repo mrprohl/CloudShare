@@ -163,8 +163,11 @@ smoke() {
   inspect cloudshare '{{.HostConfig.SecurityOpt}}' | grep -q 'no-new-privileges:true' && ok "no-new-privileges" \
     || fail "no-new-privileges missing"
   [ "$(inspect cloudshare-caddy '{{.HostConfig.ReadonlyRootfs}}')" = true ] && ok "caddy read-only" || fail "caddy writable"
-  [ "$(inspect cloudshare-caddy '{{.HostConfig.CapAdd}}')" = "[NET_BIND_SERVICE]" ] \
-    && ok "caddy only gets NET_BIND_SERVICE" || fail "caddy capabilities"
+  local caps
+  caps=$(inspect cloudshare-caddy '{{.HostConfig.CapDrop}} {{.HostConfig.CapAdd}}')
+  # Docker may report capabilities with or without the CAP_ prefix
+  [[ "$caps" =~ ^\[ALL\]\ \[(CAP_)?NET_BIND_SERVICE\]$ ]] \
+    && ok "caddy drops all capabilities except NET_BIND_SERVICE" || fail "caddy capabilities: $caps"
   [ "$(docker network inspect -f '{{.Internal}}' cloudshare_internal)" = true ] \
     && ok "network internal has no outbound access" || fail "network internal is not internal"
 }
