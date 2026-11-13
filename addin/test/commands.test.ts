@@ -166,6 +166,18 @@ describe("send – password mail", () => {
     expect(result.allowEvent).toBe(false);
     expect(result.errorMessage).toMatch(/nicht vorbereiten.*Graph nicht erreichbar/);
   });
+
+  it("shows Office SSO errors with a readable text and their code (not [object Object])", async () => {
+    draft({ jobId: "job-1" });
+    const auth = (globalThis as unknown as { Office: { auth: { getAccessToken: ReturnType<typeof vi.fn> } } }).Office.auth;
+    // Office rejects with a plain object, not an Error.
+    auth.getAccessToken.mockRejectedValueOnce({ code: 13007, name: "Error", message: "An unexpected error occurred" });
+    const result = await send();
+    expect(result.allowEvent).toBe(false);
+    expect(result.errorMessage).toContain("kein Anmeldetoken für CloudShare");
+    expect(result.errorMessage).toContain("(Code 13007)");
+    expect(result.errorMessage).not.toContain("[object Object]");
+  });
 });
 
 describe("send – server unreachable", () => {
