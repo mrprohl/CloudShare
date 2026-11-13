@@ -2,3 +2,6 @@ node_modules/
 dist/
 .env
 env/
+# UI test output (addin)
+playwright-report/
+test-results/

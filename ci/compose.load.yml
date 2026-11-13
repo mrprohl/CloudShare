@@ -1,0 +1,24 @@
+# CI only – additional override for the load test (ci/stack.sh load), on top of compose.smoke.yml:
+# a mock of Microsoft's token keys and of Nextcloud (ci/mocks/server.mjs), CloudShare pointed at it.
+services:
+  mocks:
+    image: node:22-alpine
+    container_name: cloudshare-mocks
+    command: ["node", "/ci/mocks/server.mjs"]
+    user: "1000:1000"
+    read_only: true
+    environment:
+      ENTRA_TENANT_ID: 00000000-0000-0000-0000-000000000001
+      ENTRA_CLIENT_ID: 00000000-0000-0000-0000-000000000002
+    volumes:
+      - /opt/cloudshare/ci/mocks:/ci/mocks:ro
+    networks:
+      internal: {}                              # reachable by CloudShare as http://mocks:8080
+      edge: {}                                  # published port for k6 (tokens, statistics)
+    ports:
+      - "127.0.0.1:8099:8080"
+
+  cloudshare:
+    environment:
+      NEXTCLOUD_URL: http://mocks:8080
+      ENTRA_JWKS_URL: http://mocks:8080/jwks
