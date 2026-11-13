@@ -1,5 +1,7 @@
+import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
-import Fastify from "fastify";
+import Fastify, { type FastifyRequest } from "fastify";
+import { decodeJwt } from "jose";
 import { randomUUID } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -90,8 +92,45 @@ const formatBytes = (bytes: number) =>
  * Builds the Fastify app with all routes (no listening, no background jobs) – used by index.ts and by the
  * API tests, which call it with fastify.inject().
  */
+/**
+ * Rate-limit bucket: the user (oid from the Microsoft token) or, without a token, the client address. The token is
+ * only decoded, not verified – a forged oid merely gets its own bucket and is rejected by authenticate() anyway.
+ */
+function rateLimitKey(req: FastifyRequest): string {
+  const header = req.headers.authorization;
+  if (header?.startsWith("Bearer ")) {
+    try {
+      const { oid } = decodeJwt(header.slice("Bearer ".length));
+      if (typeof oid === "string" && oid) return `user:${oid}`;
+    } catch {
+      // not a JWT – fall back to the client address
+    }
+  }
+  return `ip:${req.ip}`;
+}
+
+/** Stricter limit for expensive actions (Nextcloud login flow, upload links). */
+const strictLimit = { max: Math.max(5, Math.ceil(config.rateLimitPerMinute / 60)), timeWindow: "1 minute" };
+
 export async function buildApp(options: { logger?: boolean } = {}) {
-  const app = Fastify({ logger: options.logger ?? true, bodyLimit: 1024 * 1024, trustProxy: true });
+  // Only proxies in private networks (Caddy, an upstream proxy in the LAN) may set X-Forwarded-For – otherwise a
+  // client could choose its own address and escape the rate limit.
+  const app = Fastify({
+    logger: options.logger ?? true,
+    bodyLimit: 1024 * 1024,
+    trustProxy: ["loopback", "linklocal", "uniquelocal"],
+  });
+
+  await app.register(rateLimit, {
+    max: config.rateLimitPerMinute,
+    timeWindow: "1 minute",
+    keyGenerator: rateLimitKey,
+    errorResponseBuilder: (_req, context) =>
+      Object.assign(
+        new HttpError(429, `Zu viele Anfragen – bitte in ${Math.ceil(context.ttl / 1000)} Sekunden erneut versuchen.`, "RATE_LIMITED"),
+        { statusCode: 429 },
+      ),
+  });
 
   app.addContentTypeParser(
     "application/octet-stream",
@@ -146,7 +185,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     }
   });
 
-  app.post("/api/nextcloud/connect", async (req) => {
+  app.post("/api/nextcloud/connect", { config: { rateLimit: strictLimit } }, async (req) => {
     const user = await authenticate(req);
     const flow = await startLoginFlow();
     const connectId = randomUUID();
@@ -270,7 +309,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
   /** Item name of an upload link in the password mail (German, shown to recipients). */
   const UPLOAD_LINK_ITEM = "Upload-Link für Ihre Dateien";
 
-  app.post<{ Body: ShareRequest & { jobId?: string } }>("/api/requests", async (req) => {
+  app.post<{ Body: ShareRequest & { jobId?: string } }>("/api/requests", { config: { rateLimit: strictLimit } }, async (req) => {
     const user = await authenticate(req);
     const { password, expireDate, maxAccess } = shareSettings(req.body);
 

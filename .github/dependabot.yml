@@ -9,6 +9,10 @@ updates:
     groups:
       server-minor-patch:
         update-types: [minor, patch]
+    # @types/node follows the Node.js major of the runtime image (node:22-alpine), not the newest Node.js
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
 
   - package-ecosystem: npm
     directory: /addin
