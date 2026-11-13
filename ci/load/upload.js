@@ -28,12 +28,14 @@ export const options = {
 };
 
 const json = (token) => ({ headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } });
+// Requests without a body carry no Content-Type – like the taskpane's api() helper.
+const bare = (token) => ({ headers: { Authorization: `Bearer ${token}` } });
 
 function connect(token) {
-  const start = http.post(`${BASE}/api/nextcloud/connect`, null, { ...json(token), tags: { step: "connect" } });
+  const start = http.post(`${BASE}/api/nextcloud/connect`, null, { ...bare(token), tags: { step: "connect" } });
   if (!check(start, { "connect started": (r) => r.status === 200 })) fail(`connect: ${start.status} ${start.body}`);
   const poll = http.post(`${BASE}/api/nextcloud/connect/${start.json("connectId")}/poll`, null, {
-    ...json(token),
+    ...bare(token),
     tags: { step: "connect" },
   });
   if (!check(poll, { "connected": (r) => r.json("connected") === true })) fail(`poll: ${poll.status} ${poll.body}`);
