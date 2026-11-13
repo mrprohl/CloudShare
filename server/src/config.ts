@@ -30,6 +30,11 @@ export const config = {
   tenantId: required("ENTRA_TENANT_ID"),
   clientId: required("ENTRA_CLIENT_ID"),
   clientSecret: required("ENTRA_CLIENT_SECRET"),
+  /**
+   * Signing keys of the Microsoft identity platform. Only the CI load test points this at a mock – never set it in
+   * production: whoever controls these keys can sign tokens the backend accepts.
+   */
+  jwksUrl: process.env.ENTRA_JWKS_URL ?? `https://login.microsoftonline.com/${required("ENTRA_TENANT_ID")}/discovery/v2.0/keys`,
 
   nextcloudUrl: required("NEXTCLOUD_URL").replace(/\/$/, ""),
   nextcloudFolder: process.env.NEXTCLOUD_FOLDER ?? "Outlook-Anhaenge",

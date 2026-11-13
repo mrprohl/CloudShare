@@ -90,8 +90,32 @@ jobs:
       - name: Deployment files – setup.sh, Compose, Caddyfile
         run: ci/stack.sh validate
 
+  # Taskpane in Chromium (Playwright): Office.js and API mocked; flows, mail changes, accessibility (axe, WCAG 2 AA),
+  # light/dark theme, taskpane width. Report with screenshots as artifact "ui-test-report".
+  ui:
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      - name: Add-in – UI tests (Playwright, Chromium)
+        working-directory: addin
+        run: npm install --no-audit --no-fund && npx playwright install --with-deps chromium && npm run test:ui
+
+      - name: Upload UI test report and screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ui-test-report
+          path: addin/playwright-report
+          retention-days: 14
+
   build:
-    needs: test
+    needs: [test, ui]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -149,7 +173,17 @@ jobs:
       - name: Stack smoke test
         run: ci/stack.sh smoke cloudshare scan
 
-      # 4. Push – reuses the layers from step 1 via the build cache.
+      # 4. Data written by the currently published image (connections, password jobs) must still be readable by
+      #    the new one, which must start on it – an update must never force users to reconnect.
+      - name: Upgrade test
+        run: ci/stack.sh upgrade ghcr.io/${{ github.repository_owner }}/cloudshare:latest cloudshare scan
+
+      # 5. k6: 10 users upload 2 × 45 MiB each in parallel through Caddy (Nextcloud and Microsoft token keys mocked):
+      #    no failed request, p95 < 3 s per chunk, every byte arrives, memory below 80 % of the container limit.
+      - name: Load test
+        run: ci/stack.sh load cloudshare scan
+
+      # 6. Push – reuses the layers from step 1 via the build cache.
       - name: Push image
         if: github.event_name != 'pull_request'
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0

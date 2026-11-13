@@ -22,9 +22,7 @@ export interface User {
   token: string;
 }
 
-const jwks = createRemoteJWKSet(
-  new URL(`https://login.microsoftonline.com/${config.tenantId}/discovery/v2.0/keys`),
-);
+const jwks = createRemoteJWKSet(new URL(config.jwksUrl));
 const appIdUri = `api://${new URL(config.publicBaseUrl).host}/${config.clientId}`;
 
 export async function authenticate(req: FastifyRequest): Promise<User> {

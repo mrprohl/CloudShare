@@ -110,7 +110,10 @@ Network calls are mocked.
 | Stage | Checks |
 |---|---|
 | test | type check and tests for both packages · `npm audit` (runtime dependencies, high/critical) · manifest validation (`npm run validate:manifest`) · ShellCheck · deployment files: `setup.sh` run with dummy answers (file modes, generated host/key), `docker compose config` for the stub and `compose.yml`, `caddy validate` |
+| ui | taskpane in Chromium (Playwright, `addin/e2e`), Office.js and API mocked: connect flow, preselection of large attachments, chunked upload and inserted card (HTML and plain text), own password rules, upload link, revoked connection, "Meine Freigaben" with revoke confirmation, dark theme, 320 px width, **accessibility** (axe, WCAG 2 A/AA, no serious/critical findings); report with screenshots as artifact `ui-test-report` |
 | build | image build · Trivy scan (critical/high with an available fix) · **stack smoke test**: the new image and Caddy are started with `compose.yml` and dummy settings (Bitwarden CLI replaced by a mock, `ci/fake-bw`) and tested from outside – TLS and HTTP→HTTPS redirect, security headers (no `X-Frame-Options`), add-in files with replaced placeholders, `/api/config`, 401 without login, 413 above 12 MB, read-only/user/capabilities/ports/internal network |
+| | **upgrade test**: the currently published image writes Nextcloud connections and password jobs into the data volume, the new image must read them unchanged and start on them (no reconnect after an update) |
+| | **load test** (k6, `ci/load/upload.js`): 10 users upload 2 × 45 MiB each in parallel through Caddy, Nextcloud and Microsoft token keys mocked (`ci/mocks`) – no failed request, p95 < 3 s per chunk, every byte arrives, memory below 80 % of `mem_limit`, no restart |
 | push | only if everything passed: `ghcr.io/mrprohl/cloudshare` (`latest`, `sha-<commit>`, version tags) |
 
 Pull requests (e.g. from Dependabot) run the same checks including the smoke test, but publish nothing.
@@ -127,6 +130,9 @@ cd server && npm install && npm test
 cd addin && npm install && npm test
 ci/stack.sh validate        # test machine with Docker only – links the repo to /opt/cloudshare, writes dummy env/
 ci/stack.sh smoke ghcr.io/mrprohl/cloudshare latest
+ci/stack.sh upgrade ghcr.io/mrprohl/cloudshare:sha-<older> ghcr.io/mrprohl/cloudshare latest
+ci/stack.sh load ghcr.io/mrprohl/cloudshare latest
+cd addin && npx playwright install chromium && npm run test:ui
 ```
 
 ## Updating
