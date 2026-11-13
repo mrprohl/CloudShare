@@ -1,0 +1,11 @@
+# ============================================================================
+# CloudShare – paste this file into Portainer/Dockhand (or: cd /opt/cloudshare && docker compose up -d)
+# Definition: /opt/cloudshare/compose.yml · versions: /opt/cloudshare/env/versions.env (setup.sh)
+# Image: ghcr.io/mrprohl/cloudshare (GitHub Actions) – if private: add registry ghcr.io in Portainer/Dockhand
+# Requires Docker Compose ≥ 2.20 (include with env_file) and read access to /opt.
+# ============================================================================
+name: cloudshare
+
+include:
+  - path: /opt/cloudshare/compose.yml
+    env_file: /opt/cloudshare/env/versions.env

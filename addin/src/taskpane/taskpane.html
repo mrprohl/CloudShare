@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CloudShare</title>
+    <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
+    <link rel="stylesheet" href="taskpane.css" />
+    <script src="taskpane.js" defer></script>
+  </head>
+  <body>
+    <main class="pane">
+      <div id="status" class="messagebar" role="status" hidden></div>
+
+      <!-- Shown until the user has connected CloudShare to Nextcloud once -->
+      <section id="connect-view" class="empty-state" hidden>
+        <svg class="empty-icon" viewBox="0 0 48 48" aria-hidden="true">
+          <path d="M14 36h21a8 8 0 0 0 1.4-15.9A11 11 0 0 0 15.2 18 9 9 0 0 0 14 36Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
+          <path d="M24 31V21m0 0-4 4m4-4 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h2 class="subtitle">Mit Nextcloud verbinden</h2>
+        <p class="body2">
+          Große Anhänge werden in Ihrer Nextcloud abgelegt und als kennwortgeschützter Link gesendet.
+          Dafür ist einmalig eine Verbindung nötig.
+        </p>
+        <button type="button" id="connect" class="btn btn-primary">Verbinden</button>
+        <p class="caption" id="connect-hint" hidden>
+          Schließen Sie die Anmeldung im Browser ab und bestätigen Sie „Zugriff erlauben“.
+          <a id="connect-link" href="#" target="_blank" rel="noopener">Anmeldeseite erneut öffnen</a>
+        </p>
+      </section>
+
+      <section id="send-view" class="send-view" hidden>
+        <div class="tabs" role="tablist" aria-label="CloudShare">
+          <button type="button" role="tab" id="tab-send" class="tab" aria-selected="true" aria-controls="panel-send">Senden</button>
+          <button type="button" role="tab" id="tab-shares" class="tab" aria-selected="false" aria-controls="panel-shares">Meine Freigaben</button>
+        </div>
+
+        <div id="panel-shares" class="panel" role="tabpanel" aria-labelledby="tab-shares" hidden>
+          <div class="content">
+            <div class="toolbar">
+              <span class="caption" id="shares-hint">Ihre CloudShare-Links der letzten Zeit</span>
+              <button type="button" id="refresh-shares" class="btn btn-icon" title="Aktualisieren" aria-label="Aktualisieren">
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+            <div id="shares" class="share-list" aria-live="polite"></div>
+            <p class="caption" id="no-shares" hidden>Sie haben noch keine Dateien mit CloudShare freigegeben.</p>
+          </div>
+        </div>
+
+        <div id="panel-send" class="panel" role="tabpanel" aria-labelledby="tab-send">
+        <div class="content">
+          <h2 class="section-title">Anhänge</h2>
+          <div id="attachments" class="list" role="group" aria-label="Anhänge dieser Nachricht"></div>
+          <div id="picked" class="list" role="group" aria-label="Dateien vom Computer"></div>
+          <p class="caption" id="no-attachments">Diese Nachricht enthält keine Dateianhänge.</p>
+          <button type="button" id="add-files" class="btn btn-subtle">
+            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M10 4v12M4 10h12" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+            Dateien vom Computer hinzufügen
+          </button>
+          <input type="file" id="file" multiple hidden />
+
+          <h2 class="section-title">Freigabe</h2>
+          <div class="field" role="radiogroup" aria-labelledby="password-label">
+            <span class="label" id="password-label">Kennwort</span>
+            <label class="radio">
+              <input type="radio" name="password-mode" id="mode-random" value="random" checked />
+              <span class="dot" aria-hidden="true"></span>
+              <span>Zufälliges Kennwort (empfohlen)</span>
+            </label>
+            <label class="radio">
+              <input type="radio" name="password-mode" id="mode-own" value="own" />
+              <span class="dot" aria-hidden="true"></span>
+              <span>Eigenes Kennwort</span>
+            </label>
+            <div class="input-group">
+              <input type="text" id="password" class="input mono" autocomplete="new-password" spellcheck="false"
+                aria-labelledby="password-label" aria-describedby="password-rules password-hint" />
+              <button type="button" id="generate" class="btn btn-icon" title="Neues Kennwort erzeugen" aria-label="Neues Kennwort erzeugen">
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <button type="button" id="reveal" class="btn btn-icon" title="Kennwort anzeigen" aria-label="Kennwort anzeigen" aria-pressed="false" hidden>
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M2 10s3-5.5 8-5.5 8 5.5 8 5.5-3 5.5-8 5.5S2 10 2 10Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
+                  <circle cx="10" cy="10" r="2.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                </svg>
+              </button>
+            </div>
+            <ul class="rules" id="password-rules" hidden>
+              <li data-rule="length">Mindestens 12 Zeichen</li>
+              <li data-rule="classes">Mindestens drei von: Großbuchstaben, Kleinbuchstaben, Ziffern, Sonderzeichen</li>
+              <li data-rule="variety">Keine Wiederholung oder einfache Zeichenfolge</li>
+            </ul>
+            <p class="hint" id="password-hint">Die Empfänger erhalten das Kennwort nach dem Senden automatisch in einer separaten Nachricht.</p>
+          </div>
+
+          <div class="field">
+            <label for="expire" class="label">Link gültig für</label>
+            <div class="input-group input-narrow">
+              <input type="number" id="expire" class="input" min="1" />
+              <span class="suffix">Tage</span>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="max-access" class="label">Kennwort abrufbar</label>
+            <div class="input-group input-narrow">
+              <input type="number" id="max-access" class="input" min="1" aria-describedby="max-access-hint" />
+              <span class="suffix">mal</span>
+            </div>
+            <p class="hint" id="max-access-hint">So oft können die Empfänger den Link zum Kennwort öffnen, danach ist er gesperrt.</p>
+          </div>
+
+          <h2 class="section-title">Dateien anfordern</h2>
+          <p class="caption request-text">
+            Fügen Sie einen Upload-Link ein, über den die Empfänger Ihnen Dateien senden können – mit demselben
+            Kennwort und Ablaufdatum. Die Dateien landen in Ihrer Nextcloud.
+          </p>
+          <button type="button" id="request" class="btn">
+            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M10 13V4m0 0L6.5 7.5M10 4l3.5 3.5M4 12v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+            Upload-Link einfügen
+          </button>
+
+          <label class="checkbox" id="opt-out-row">
+            <input type="checkbox" id="opt-out" />
+            <span class="box" aria-hidden="true"></span>
+            <span>Diese Nachricht ohne CloudShare senden</span>
+          </label>
+        </div>
+
+        <footer class="footer">
+          <div class="progress" id="progress" hidden><div class="progress-bar" id="progress-bar"></div></div>
+          <button type="button" id="submit" class="btn btn-primary btn-block">Als Link einfügen</button>
+          <p class="caption account">
+            <span id="account"></span> · <a href="#" id="disconnect">Verbindung trennen</a>
+          </p>
+        </footer>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

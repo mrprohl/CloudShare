@@ -1,0 +1,63 @@
+# ============================================================================
+# CloudShare – hardened; included by /opt/cloudshare/docker-compose.yml, variables from env/versions.env
+# Settings and secrets come from /opt/cloudshare/env/cloudshare.env (written by setup.sh). The deploy tool
+# (Portainer/Dockhand) needs read access to /opt. GitHub builds the image (.github/workflows/image.yml).
+#
+# Runs behind a central Caddy on the same host (reverse proxy for several stacks):
+#   /opt/cloudshare/caddy/cloudshare.caddy  site block, mounted into the central Caddy (same path, ro)
+#   Volume cloudshare_data -> /data         encrypted Nextcloud app passwords – back up
+# Networks:
+#   cloudshare-proxy – internal, created by setup.sh; the central Caddy has the address PROXY_IP in it.
+#                      If Nextcloud runs behind the same Caddy, CloudShare reaches it through this network
+#                      via extra_hosts (NEXTCLOUD_HOST → PROXY_IP) instead of the public IP.
+#   egress           – subnet assigned by Docker: Entra ID/Graph, Vaultwarden (and Nextcloud, if elsewhere)
+# ============================================================================
+
+x-hardening: &hardening
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "5" }
+
+services:
+  cloudshare:
+    <<: *hardening
+    container_name: cloudshare
+    hostname: cloudshare
+    image: ${CLOUDSHARE_IMAGE:-ghcr.io/mrprohl/cloudshare}:${CLOUDSHARE_VERSION:?set in env/versions.env}
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/public:uid=1000,gid=1000,mode=755        # add-in files, generated from the image at startup
+      - /home/node/.bw:uid=1000,gid=1000,mode=700     # Bitwarden CLI session, logged in again at every start
+    pids_limit: 200
+    mem_limit: 768m
+    networks:
+      cloudshare-proxy: {}                      # central Caddy (reverse proxy and route to Nextcloud)
+      egress: {}                                # Entra ID/Graph, Vaultwarden
+    extra_hosts:
+      # Nextcloud via the central Caddy, without the public IP. Nextcloud elsewhere: keep the default name.
+      - "${NEXTCLOUD_HOST:-nextcloud.invalid}:${PROXY_IP:-172.30.13.2}"
+    volumes:
+      - data:/data
+    # Entra ID, Nextcloud, Vaultwarden service account, CREDENTIAL_KEY (setup.sh)
+    env_file: [/opt/cloudshare/env/cloudshare.env]
+    environment:
+      TZ: "${TZ:-Europe/Berlin}"
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:3000/api/config"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+
+volumes:
+  data:
+
+networks:
+  cloudshare-proxy:
+    external: true                              # internal network, created by setup.sh
+  egress: {}                                    # Docker assigns the subnet

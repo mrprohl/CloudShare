@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Template: docker/entrypoint.sh inserts the public base URL and the Entra client ID at container start.
+     In the Microsoft 365 admin center, use the URL <public base URL>/manifest.xml. -->
+<OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
+           xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xmlns:bt="http://schemas.microsoft.com/office/officeappbasictypes/1.0"
+           xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
+           xsi:type="MailApp">
+  <Id>8f3c2a71-5d4e-4b9a-9e2f-6c1d7a0b3e54</Id>
+  <Version>1.0.0.0</Version>
+  <ProviderName>CloudShare</ProviderName>
+  <DefaultLocale>de-DE</DefaultLocale>
+  <DisplayName DefaultValue="CloudShare"/>
+  <Description DefaultValue="Sendet große Dateien als kennwortgeschützten Link aus Ihrer Nextcloud."/>
+  <IconUrl DefaultValue="%%PUBLIC_BASE_URL%%/assets/icon-64.png"/>
+  <HighResolutionIconUrl DefaultValue="%%PUBLIC_BASE_URL%%/assets/icon-128.png"/>
+  <SupportUrl DefaultValue="%%PUBLIC_BASE_URL%%/"/>
+  <AppDomains>
+    <AppDomain>%%PUBLIC_BASE_URL%%</AppDomain>
+  </AppDomains>
+  <Hosts>
+    <Host Name="Mailbox"/>
+  </Hosts>
+  <Requirements>
+    <Sets>
+      <Set Name="Mailbox" MinVersion="1.1"/>
+    </Sets>
+  </Requirements>
+  <FormSettings>
+    <Form xsi:type="ItemEdit">
+      <DesktopSettings>
+        <SourceLocation DefaultValue="%%PUBLIC_BASE_URL%%/taskpane.html"/>
+      </DesktopSettings>
+    </Form>
+  </FormSettings>
+  <Permissions>ReadWriteItem</Permissions>
+  <Rule xsi:type="RuleCollection" Mode="Or">
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Edit"/>
+  </Rule>
+  <DisableEntityHighlighting>false</DisableEntityHighlighting>
+
+  <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
+    <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides/1.1" xsi:type="VersionOverridesV1_1">
+      <Requirements>
+        <bt:Sets DefaultMinVersion="1.12">
+          <bt:Set Name="Mailbox"/>
+        </bt:Sets>
+      </Requirements>
+      <Hosts>
+        <Host xsi:type="MailHost">
+          <Runtimes>
+            <!-- New Outlook / web: HTML runtime; classic Outlook: JavaScript-only runtime -->
+            <Runtime resid="WebViewRuntime.Url">
+              <Override type="javascript" resid="JSRuntime.Url"/>
+            </Runtime>
+          </Runtimes>
+          <DesktopFormFactor>
+            <FunctionFile resid="Commands.Url"/>
+            <ExtensionPoint xsi:type="MessageComposeCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="cloudshareComposeGroup">
+                  <Label resid="Group.Label"/>
+                  <Control xsi:type="Button" id="cloudshareOpenPane">
+                    <Label resid="Button.Label"/>
+                    <Supertip>
+                      <Title resid="Button.Label"/>
+                      <Description resid="Button.Tooltip"/>
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="Icon.16"/>
+                      <bt:Image size="32" resid="Icon.32"/>
+                      <bt:Image size="80" resid="Icon.80"/>
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="Taskpane.Url"/>
+                    </Action>
+                  </Control>
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
+            <ExtensionPoint xsi:type="LaunchEvent">
+              <LaunchEvents>
+                <LaunchEvent Type="OnMessageAttachmentsChanged" FunctionName="onAttachmentsChangedHandler"/>
+                <!-- SoftBlock: a blocked mail cannot be sent ("enforce"); under ATTACHMENT_POLICY=suggest the handler
+                     relaxes it to PromptUser ("Send anyway"). If the add-in cannot run, sending stays possible. -->
+                <LaunchEvent Type="OnMessageSend" FunctionName="onMessageSendHandler" SendMode="SoftBlock"/>
+              </LaunchEvents>
+              <SourceLocation resid="WebViewRuntime.Url"/>
+            </ExtensionPoint>
+          </DesktopFormFactor>
+        </Host>
+      </Hosts>
+      <Resources>
+        <bt:Images>
+          <bt:Image id="Icon.16" DefaultValue="%%PUBLIC_BASE_URL%%/assets/icon-16.png"/>
+          <bt:Image id="Icon.32" DefaultValue="%%PUBLIC_BASE_URL%%/assets/icon-32.png"/>
+          <bt:Image id="Icon.80" DefaultValue="%%PUBLIC_BASE_URL%%/assets/icon-80.png"/>
+        </bt:Images>
+        <bt:Urls>
+          <bt:Url id="Commands.Url" DefaultValue="%%PUBLIC_BASE_URL%%/commands.html"/>
+          <bt:Url id="Taskpane.Url" DefaultValue="%%PUBLIC_BASE_URL%%/taskpane.html"/>
+          <bt:Url id="WebViewRuntime.Url" DefaultValue="%%PUBLIC_BASE_URL%%/commands.html"/>
+          <bt:Url id="JSRuntime.Url" DefaultValue="%%PUBLIC_BASE_URL%%/commands.js"/>
+        </bt:Urls>
+        <bt:ShortStrings>
+          <bt:String id="Group.Label" DefaultValue="Nextcloud"/>
+          <bt:String id="Button.Label" DefaultValue="CloudShare"/>
+        </bt:ShortStrings>
+        <bt:LongStrings>
+          <bt:String id="Button.Tooltip" DefaultValue="Große Dateien als kennwortgeschützten Link aus Ihrer Nextcloud senden."/>
+        </bt:LongStrings>
+      </Resources>
+      <WebApplicationInfo>
+        <Id>%%ENTRA_CLIENT_ID%%</Id>
+        <Resource>api://%%PUBLIC_HOST%%/%%ENTRA_CLIENT_ID%%</Resource>
+        <Scopes>
+          <Scope>openid</Scope>
+          <Scope>profile</Scope>
+          <Scope>User.Read</Scope>
+          <Scope>Mail.Read</Scope>
+          <Scope>Mail.Read.Shared</Scope>
+          <Scope>Mail.Send</Scope>
+          <Scope>Mail.Send.Shared</Scope>
+        </Scopes>
+      </WebApplicationInfo>
+    </VersionOverrides>
+  </VersionOverrides>
+</OfficeApp>

@@ -1,0 +1,43 @@
+/* Simplified chrome of a new-Outlook compose window around the real CloudShare taskpane (docs mockups only). */
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif; font-size: 14px; color: #242424; background: #f0f0f0; }
+.window { display: flex; flex-direction: column; height: 100vh; }
+
+.titlebar { height: 44px; background: #0f6cbd; color: #fff; display: flex; align-items: center; padding: 0 16px; gap: 16px; }
+.titlebar .app { font-weight: 600; font-size: 15px; }
+.titlebar .search { flex: 0 0 420px; height: 30px; margin: 0 auto; background: #fff; border-radius: 4px; color: #616161; display: flex; align-items: center; padding: 0 10px; font-size: 13px; }
+.titlebar .avatar { width: 30px; height: 30px; border-radius: 50%; background: #c7e0f4; color: #0f548c; display: grid; place-items: center; font-size: 12px; font-weight: 600; }
+
+.tabsbar { background: #fff; display: flex; gap: 22px; padding: 6px 20px 0; font-size: 14px; border-bottom: 1px solid #e0e0e0; }
+.tabsbar span { padding: 6px 0 9px; color: #424242; }
+.tabsbar span.on { color: #242424; font-weight: 600; border-bottom: 3px solid #0f6cbd; }
+
+.ribbon { background: #fff; display: flex; align-items: stretch; padding: 6px 12px 4px; gap: 2px; border-bottom: 1px solid #e0e0e0; height: 96px; }
+.rgroup { display: flex; flex-direction: column; align-items: center; padding: 0 10px; border-right: 1px solid #ededed; }
+.rgroup .items { display: flex; gap: 6px; flex: 1; align-items: flex-start; }
+.rgroup .glabel { font-size: 12px; color: #616161; padding-top: 2px; }
+.rbtn { display: flex; flex-direction: column; align-items: center; width: 70px; text-align: center; font-size: 12px; line-height: 15px; color: #242424; padding: 4px 2px; border-radius: 4px; }
+.rbtn.on { background: #ebf3fc; outline: 1px solid #b4d6fa; }
+.rbtn .ico { width: 32px; height: 32px; margin-bottom: 4px; display: grid; place-items: center; }
+.rsmall { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: #242424; padding-top: 4px; }
+.rsmall div { display: flex; align-items: center; gap: 6px; }
+.gly { width: 16px; height: 16px; border: 1.4px solid #424242; border-radius: 3px; display: inline-block; }
+
+.main { flex: 1; display: flex; min-height: 0; }
+.compose { flex: 1; background: #fff; margin: 8px 0 8px 8px; border-radius: 6px; box-shadow: 0 0 2px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.14); display: flex; flex-direction: column; min-width: 0; }
+.cbar { display: flex; align-items: center; gap: 10px; padding: 12px 18px 6px; }
+.send { background: #0f6cbd; color: #fff; font-weight: 600; border-radius: 4px; padding: 6px 16px; }
+.cfield { display: flex; align-items: center; gap: 12px; padding: 7px 18px; border-bottom: 1px solid #f0f0f0; }
+.cfield .k { width: 56px; color: #424242; }
+.chip { background: #f0f0f0; border-radius: 12px; padding: 2px 10px; font-size: 13px; }
+.subject { font-size: 16px; }
+.body { padding: 16px 22px; overflow: hidden; }
+.body p { margin: 0 0 12px; line-height: 20px; }
+
+.pane-wrap { width: 360px; margin: 8px; background: #fff; border-radius: 6px; box-shadow: 0 0 2px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.14); display: flex; flex-direction: column; overflow: hidden; }
+.pane-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px 10px 14px; border-bottom: 1px solid #e0e0e0; font-weight: 600; }
+.pane-head img { width: 20px; height: 20px; }
+.pane-head .x { margin-left: auto; color: #616161; font-weight: 400; }
+.pane-wrap .pane { flex: 1; overflow: auto; min-height: 0; }
+.pane-wrap body, .pane-wrap .pane { background: #fff; }

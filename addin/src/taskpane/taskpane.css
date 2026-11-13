@@ -1,0 +1,333 @@
+/*
+ * Look and feel of Outlook's own panes: Microsoft Fluent 2 design tokens (web), Segoe UI type ramp.
+ * The theme (light/dark) follows Office via data-theme, set from Office.context.officeTheme in taskpane.ts.
+ */
+:root {
+  --font: "Segoe UI Variable Text", "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, "Helvetica Neue", sans-serif;
+  --font-mono: Consolas, "Cascadia Mono", "Courier New", monospace;
+
+  --fg1: #242424;
+  --fg2: #424242;
+  --fg3: #616161;
+  --fg-disabled: #bdbdbd;
+  --fg-on-brand: #ffffff;
+  --bg1: #ffffff;
+  --bg1-hover: #f5f5f5;
+  --bg1-pressed: #e0e0e0;
+  --bg3: #f5f5f5;
+  --bg-disabled: #f0f0f0;
+  --stroke1: #d1d1d1;
+  --stroke1-hover: #c7c7c7;
+  --stroke2: #e0e0e0;
+  --stroke-accessible: #616161;
+  --stroke-disabled: #e0e0e0;
+  --brand-bg: #0f6cbd;
+  --brand-bg-hover: #115ea3;
+  --brand-bg-pressed: #0c3b5e;
+  --brand-fg: #0f6cbd;
+  --brand-fg-hover: #115ea3;
+  --brand-tint-bg: #ebf3fc;
+  --brand-tint-fg: #115ea3;
+  --brand-tint-stroke: #b4d6fa;
+  --focus: #000000;
+  --danger-bg: #fdf3f4;
+  --danger-stroke: #eeacb2;
+  --danger-fg: #b10e1c;
+  --success-bg: #f1faf1;
+  --success-stroke: #9fd89f;
+  --success-fg: #0e700e;
+  --shadow: 0 0 2px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.14);
+}
+
+:root[data-theme="dark"] {
+  --fg1: #ffffff;
+  --fg2: #d6d6d6;
+  --fg3: #adadad;
+  --fg-disabled: #5c5c5c;
+  --bg1: #292929;
+  --bg1-hover: #3d3d3d;
+  --bg1-pressed: #1f1f1f;
+  --bg3: #333333;
+  --bg-disabled: #141414;
+  --stroke1: #666666;
+  --stroke1-hover: #757575;
+  --stroke2: #525252;
+  --stroke-accessible: #adadad;
+  --stroke-disabled: #424242;
+  --brand-bg: #115ea3;
+  --brand-bg-hover: #0f6cbd;
+  --brand-bg-pressed: #0c3b5e;
+  --brand-fg: #479ef5;
+  --brand-fg-hover: #62abf5;
+  --brand-tint-bg: #082338;
+  --brand-tint-fg: #77b7f7;
+  --brand-tint-stroke: #0e4775;
+  --focus: #ffffff;
+  --danger-bg: #3b1013;
+  --danger-stroke: #6e0811;
+  --danger-fg: #dc626d;
+  --success-bg: #052505;
+  --success-stroke: #107c10;
+  --success-fg: #54b054;
+}
+
+/* Before Office reports its theme, follow the system setting. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --fg1: #ffffff; --fg2: #d6d6d6; --fg3: #adadad; --bg1: #292929; --bg1-hover: #3d3d3d; --bg3: #333333;
+    --stroke1: #666666; --stroke2: #525252; --stroke-accessible: #adadad; --brand-fg: #479ef5;
+  }
+}
+
+[hidden] { display: none !important; }
+* { box-sizing: border-box; }
+
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--fg1);
+  background: var(--bg1);
+  -webkit-font-smoothing: antialiased;
+}
+
+.pane { display: flex; flex-direction: column; min-height: 100%; }
+
+/* --- Type ramp ---------------------------------------------------------------- */
+.subtitle { font-size: 16px; line-height: 22px; font-weight: 600; margin: 0; }
+.section-title { font-size: 14px; line-height: 20px; font-weight: 600; margin: 20px 0 8px; }
+.section-title:first-child { margin-top: 4px; }
+.body2 { margin: 0; color: var(--fg2); }
+.caption, .hint { font-size: 12px; line-height: 16px; color: var(--fg3); margin: 4px 0 0; }
+a { color: var(--brand-fg); text-decoration: none; }
+a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
+
+/* --- Layout -------------------------------------------------------------------- */
+.content { flex: 1; padding: 12px 16px 16px; }
+.send-view { display: flex; flex-direction: column; flex: 1; }
+.footer {
+  position: sticky;
+  bottom: 0;
+  padding: 12px 16px;
+  background: var(--bg1);
+  border-top: 1px solid var(--stroke2);
+}
+.footer .account { margin-top: 8px; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.empty-state { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 24px; text-align: center; }
+.empty-icon { width: 48px; height: 48px; color: var(--brand-fg); }
+
+/* --- Buttons ------------------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 96px;
+  height: 32px;
+  padding: 5px 12px;
+  border: 1px solid var(--stroke1);
+  border-radius: 4px;
+  background: var(--bg1);
+  color: var(--fg1);
+  font: 600 14px/20px var(--font);
+  cursor: pointer;
+}
+.btn:hover { background: var(--bg1-hover); border-color: var(--stroke1-hover); }
+.btn:active { background: var(--bg1-pressed); }
+.btn:focus-visible, .checkbox input:focus-visible + .box, a:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+.btn-primary { background: var(--brand-bg); border-color: transparent; color: var(--fg-on-brand); }
+.btn-primary:hover { background: var(--brand-bg-hover); border-color: transparent; }
+.btn-primary:active { background: var(--brand-bg-pressed); }
+.btn-subtle { min-width: 0; padding: 5px 8px; margin-left: -8px; border-color: transparent; background: transparent; color: var(--fg2); font-weight: 400; }
+.btn-subtle:hover { background: var(--bg1-hover); border-color: transparent; color: var(--fg1); }
+.btn-subtle .icon { color: var(--brand-fg); }
+.btn-icon { min-width: 32px; width: 32px; padding: 0; }
+.btn-block { width: 100%; }
+.btn:disabled, .btn:disabled:hover {
+  background: var(--bg-disabled);
+  border-color: var(--stroke-disabled);
+  color: var(--fg-disabled);
+  cursor: default;
+}
+.btn-subtle:disabled { background: transparent; border-color: transparent; }
+.icon { width: 20px; height: 20px; flex: none; }
+
+/* --- Inputs -------------------------------------------------------------------- */
+.field { margin-bottom: 16px; }
+.label { display: block; margin-bottom: 4px; color: var(--fg1); }
+.input-group { display: flex; align-items: center; gap: 4px; }
+.input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--stroke1);
+  border-bottom-color: var(--stroke-accessible);
+  border-radius: 4px;
+  background: var(--bg1);
+  color: var(--fg1);
+  font: 400 14px/20px var(--font);
+}
+.input:hover { border-color: var(--stroke1-hover); border-bottom-color: var(--stroke-accessible); }
+.input:focus { outline: none; border-bottom-color: var(--brand-bg); box-shadow: inset 0 -1px 0 var(--brand-bg); }
+.input[readonly] { background: var(--bg3); border-color: var(--stroke2); color: var(--fg2); }
+.input.mono { font-family: var(--font-mono); letter-spacing: 0.02em; }
+.input-narrow .input { flex: 0 0 88px; }
+.suffix { color: var(--fg2); }
+
+/* --- Checkbox ------------------------------------------------------------------ */
+.checkbox { position: relative; display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; cursor: pointer; }
+.checkbox input { position: absolute; opacity: 0; width: 16px; height: 16px; margin: 2px 0 0; }
+.checkbox .box {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border: 1px solid var(--stroke-accessible);
+  border-radius: 2px;
+  background: var(--bg1);
+}
+.checkbox:hover .box { border-color: var(--fg2); }
+.checkbox input:checked + .box { background: var(--brand-bg); border-color: var(--brand-bg); position: relative; }
+.checkbox input:checked + .box::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--fg-on-brand);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+/* --- Attachment list ----------------------------------------------------------- */
+.list:empty { display: none; }
+.list-item { align-items: center; padding: 6px 8px; margin: 0 -8px; border-radius: 4px; }
+.list-item:hover { background: var(--bg1-hover); }
+.list-item .box { margin-top: 0; }
+.file-icon { width: 20px; height: 20px; flex: none; color: var(--fg3); }
+.file-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-size { font-size: 12px; line-height: 16px; color: var(--fg3); }
+.badge {
+  flex: none;
+  height: 20px;
+  padding: 0 6px;
+  border: 1px solid var(--brand-tint-stroke);
+  border-radius: 10px;
+  background: var(--brand-tint-bg);
+  color: var(--brand-tint-fg);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 600;
+}
+
+/* --- Message bar --------------------------------------------------------------- */
+.messagebar {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 16px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--stroke2);
+  border-radius: 4px;
+  background: var(--bg3);
+  color: var(--fg1);
+}
+.messagebar .icon { width: 16px; height: 16px; margin-top: 2px; color: var(--fg3); }
+.messagebar.error { background: var(--danger-bg); border-color: var(--danger-stroke); }
+.messagebar.error .icon { color: var(--danger-fg); }
+.messagebar.success { background: var(--success-bg); border-color: var(--success-stroke); }
+.messagebar.success .icon { color: var(--success-fg); }
+
+/* --- Progress bar -------------------------------------------------------------- */
+.progress { height: 2px; margin-bottom: 12px; background: var(--stroke2); border-radius: 1px; overflow: hidden; }
+.progress-bar { height: 100%; width: 0; background: var(--brand-bg); transition: width 0.2s ease; }
+
+/* --- Radio buttons (Fluent 2) --------------------------------------------------- */
+.radio { position: relative; display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; }
+.radio input { position: absolute; opacity: 0; width: 16px; height: 16px; margin: 0; }
+.radio .dot {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--stroke-accessible);
+  border-radius: 50%;
+  background: var(--bg1);
+  display: grid;
+  place-items: center;
+}
+.radio:hover .dot { border-color: var(--fg2); }
+.radio input:checked + .dot { border-color: var(--brand-bg); }
+.radio input:checked + .dot::after { content: ""; width: 10px; height: 10px; border-radius: 50%; background: var(--brand-bg); }
+.radio input:focus-visible + .dot { outline: 2px solid var(--focus); outline-offset: 1px; }
+.radio input:disabled + .dot, .radio input:disabled ~ span { opacity: 0.5; }
+.radio:has(input:disabled) { cursor: default; }
+.field .radio + .input-group { margin-top: 4px; }
+
+/* --- Password rules ------------------------------------------------------------- */
+.rules { list-style: none; margin: 6px 0 0; padding: 0; font-size: 12px; line-height: 16px; color: var(--fg3); }
+.rules li { position: relative; padding-left: 18px; margin-top: 2px; }
+.rules li::before { content: "○"; position: absolute; left: 2px; }
+.rules li.ok { color: var(--success-fg); }
+.rules li.ok::before { content: "✓"; }
+.rules li.fail { color: var(--danger-fg); }
+.rules li.fail::before { content: "✕"; }
+.btn-icon[aria-pressed="true"] { background: var(--bg1-pressed); }
+
+/* --- Tabs (Fluent 2 TabList) ------------------------------------------------------ */
+.tabs { display: flex; gap: 4px; padding: 4px 12px 0; border-bottom: 1px solid var(--stroke2); }
+.tab {
+  position: relative;
+  padding: 10px 10px 12px;
+  border: none;
+  background: transparent;
+  color: var(--fg2);
+  font: 400 14px/20px var(--font);
+  cursor: pointer;
+}
+.tab:hover { color: var(--fg1); }
+.tab[aria-selected="true"] { color: var(--fg1); font-weight: 600; }
+.tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--brand-bg);
+}
+.tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 4px; }
+.panel { display: flex; flex-direction: column; flex: 1; }
+.request-text { margin: 0 0 8px; }
+
+/* --- My shares ----------------------------------------------------------------------- */
+.toolbar { display: flex; align-items: center; justify-content: space-between; margin: 0 0 8px; }
+.toolbar .caption { margin: 0; }
+.share-list { display: flex; flex-direction: column; }
+.share {
+  display: flex;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--stroke2);
+}
+.share .file-icon { margin-top: 2px; }
+.share-body { flex: 1; min-width: 0; }
+.share-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-meta { font-size: 12px; line-height: 16px; color: var(--fg3); }
+.share-state { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; margin-top: 2px; color: var(--fg2); }
+.share-state .dot-state { width: 8px; height: 8px; border-radius: 50%; background: var(--stroke1); flex: none; }
+.share-state.done .dot-state { background: var(--success-fg); }
+.share-state.expired { color: var(--fg3); }
+.share-actions { display: flex; gap: 4px; margin-top: 6px; margin-left: -8px; }
+.share-actions .btn { height: 28px; min-width: 0; padding: 3px 8px; font-weight: 400; font-size: 13px; }
+.btn-danger { color: var(--danger-fg); }
+.btn-danger.confirm { background: var(--danger-bg); border-color: var(--danger-stroke); }

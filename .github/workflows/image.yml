@@ -1,0 +1,127 @@
+# ============================================================================
+# CloudShare – build the image and push it to the GitHub Container Registry
+#   ghcr.io/<owner>/cloudshare:latest      on every push to main (code changes)
+#   ghcr.io/<owner>/cloudshare:sha-<id>    additionally per commit – to pin or roll back
+#   ghcr.io/<owner>/cloudshare:<version>   on a Git tag v<version> (e.g. v1.2.0 → 1.2.0)
+# On the server: update the stack "cloudshare" with re-pull (like Vaultwarden).
+# ============================================================================
+name: Image
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+    paths:
+      - "addin/**"
+      - "server/**"
+      - "docker/**"
+      - "Dockerfile"
+      - "setup.sh"
+      - ".github/workflows/image.yml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Checks before anything is built – the image is only built if all of them pass.
+  test:
+    # Only the public repository builds and publishes the image; private copies (deployment forks) skip it.
+    if: ${{ !github.event.repository.private }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Backend – install, type check, tests
+        working-directory: server
+        run: npm install --no-audit --no-fund && npm run typecheck && npm test
+
+      # Runtime dependencies only – dev tools (vitest, typescript) are not part of the image.
+      - name: Backend – npm audit (high and critical)
+        working-directory: server
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Add-in – install, type check, tests
+        working-directory: addin
+        run: npm install --no-audit --no-fund && npm run typecheck && npm test
+
+      # Schema and Office validation service; placeholders are filled by the script.
+      - name: Add-in – validate manifest
+        working-directory: addin
+        run: npm run validate:manifest
+
+      # ShellCheck is preinstalled on the runner; info/style notes do not fail the build.
+      - name: ShellCheck
+        run: shellcheck --severity=warning setup.sh docker/entrypoint.sh
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/cloudshare
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=sha-
+            type=semver,pattern={{version}}
+          labels: |
+            org.opencontainers.image.title=CloudShare
+            org.opencontainers.image.description=Outlook add-in: large attachments as password-protected Nextcloud link
+
+      # 1. Build locally for the vulnerability scan (not pushed yet).
+      # amd64 only. For ARM hosts (e.g. Raspberry Pi) add linux/arm64 –
+      # the build then takes considerably longer because of emulation.
+      - name: Build image for scanning
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          push: false
+          tags: cloudshare:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 2. Trivy: fail on critical/high vulnerabilities that already have a fix (unfixed ones cannot be acted on).
+      - name: Trivy vulnerability scan
+        # Pinned to the commit of v0.36.0 (2026-04-22) – tags of this action were re-published in March 2026.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: cloudshare:scan
+          format: table
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+          vuln-type: os,library
+          exit-code: "1"
+
+      # 3. Push – reuses the layers from step 1 via the build cache.
+      - name: Push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
