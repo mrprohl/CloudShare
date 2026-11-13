@@ -141,7 +141,7 @@ async function onMessageSendHandler(event: LaunchEvent) {
         `versendet werden: ${names}. ` +
         (supportsCustomAlert()
           ? `Bitte „Mit CloudShare senden“ wählen.`
-          : `Bitte über „CloudShare“ in der Menüleiste versenden.`),
+          : `Bitte über „Dateien oder Nachrichten sicher versenden oder abrufen“ in der Menüleiste versenden.`),
     };
     if (supportsCustomAlert()) {
       options.cancelLabel = "Mit CloudShare senden";

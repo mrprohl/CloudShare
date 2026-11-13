@@ -79,7 +79,7 @@ describe("send – policy enforce", () => {
     office.state.supported = { Mailbox: "1.12" };
     const result = await send();
     expect(result.allowEvent).toBe(false);
-    expect(result.errorMessage).toContain("„CloudShare“ in der Menüleiste");
+    expect(result.errorMessage).toContain("„Dateien oder Nachrichten sicher versenden oder abrufen“ in der Menüleiste");
     expect(result.cancelLabel).toBeUndefined();
   });
 
