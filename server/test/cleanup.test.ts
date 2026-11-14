@@ -40,7 +40,7 @@ beforeEach(async () => {
 describe("cleanup of expired uploads", () => {
   it("only accepts upload folders below NEXTCLOUD_FOLDER", () => {
     expect(isUploadFolder(folder("ab12cd34"))).toBe(true);
-    expect(isUploadFolder(["CloudShare-Dateianforderungen", "2026-11-13_ab12cd34"])).toBe(false); // received files
+    expect(isUploadFolder(["CloudShare-File-Requests", "2026-11-13_ab12cd34"])).toBe(false); // received files
     expect(isUploadFolder(["CloudShare"])).toBe(false);
     expect(isUploadFolder(["CloudShare", ".."])).toBe(false);
     expect(isUploadFolder(["Privat", "2026-11-13_ab12cd34"])).toBe(false);
@@ -75,7 +75,7 @@ describe("cleanup of expired uploads", () => {
   });
 
   it("never registers received files or anything outside the upload folders", async () => {
-    await registerForCleanup("oid-anna", ["CloudShare-Dateianforderungen", "2026-11-13_aaaa0004"], "2026-11-27");
+    await registerForCleanup("oid-anna", ["CloudShare-File-Requests", "2026-11-13_aaaa0004"], "2026-11-27");
     await registerForCleanup("oid-anna", ["Privat", "x.pdf"], "2026-11-27");
     expect(cleanupEntries().some((e) => e.folder[0] !== "CloudShare")).toBe(false);
   });
@@ -99,7 +99,7 @@ describe("cleanup of expired uploads", () => {
     expect(deleted).toEqual([folder("aaaa0007")]);
     expect(cleanupEntries().some((e) => e.folder[1].endsWith("aaaa0007"))).toBe(false);
 
-    expect(await expireOnRevoke("oid-anna", ["CloudShare-Dateianforderungen", "x"], false, remove)).toBe("kept");
+    expect(await expireOnRevoke("oid-anna", ["CloudShare-File-Requests", "x"], false, remove)).toBe("kept");
   });
 
   it("retries later when Nextcloud is unreachable", async () => {

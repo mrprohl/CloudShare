@@ -50,7 +50,7 @@ de
 ci-dummy-secret
 https://cloud.example.com
 CloudShare
-CloudShare-Dateianforderungen
+CloudShare-File-Requests
 https://vault.example.com
 user.ci-dummy
 ci-dummy-client-secret

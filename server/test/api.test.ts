@@ -365,7 +365,7 @@ describe("upload links", () => {
     const res = await app.inject({ method: "POST", url: "/api/requests", headers: as("anna"), payload: { password: STRONG } });
     expect(res.statusCode).toBe(200);
     const [folder, , , permissions, label] = nc.createPublicShare.mock.calls[0];
-    expect(folder[0]).toBe("CloudShare-Dateianforderungen");
+    expect(folder[0]).toBe("CloudShare-File-Requests");
     expect(permissions).toBe(4);
     expect(label).toBe("Dateianforderung");
   });
@@ -444,7 +444,7 @@ describe("confidential messages", () => {
 describe("my shares", () => {
   const shares = [
     { id: "1", path: "/CloudShare/2026-11-13_ab/a.pdf", url: "u1", expiration: "2026-11-27", sharedAt: Date.now() - 2 * DAY, fileId: 11, isFolder: false, permissions: 1, label: "", size: 4096, hasPassword: true },
-    { id: "2", path: "/CloudShare-Dateianforderungen/2026-11-13_cd", url: "u2", expiration: null, sharedAt: Date.now() - DAY, fileId: 12, isFolder: true, permissions: 4, label: "Dateianforderung", size: null, hasPassword: true },
+    { id: "2", path: "/CloudShare-File-Requests/2026-11-13_cd", url: "u2", expiration: null, sharedAt: Date.now() - DAY, fileId: 12, isFolder: true, permissions: 4, label: "Dateianforderung", size: null, hasPassword: true },
     { id: "3", path: "/Privat/urlaub.jpg", url: "u3", expiration: null, sharedAt: Date.now(), fileId: 13, isFolder: false, permissions: 1, label: "", size: 4096, hasPassword: false },
     { id: "4", path: "/CloudShare/2026-09-01_ef/alt.pdf", url: "u4", expiration: null, sharedAt: Date.now() - 31 * DAY, fileId: 14, isFolder: false, permissions: 1, label: "", size: 1, hasPassword: false },
     { id: "5", path: "/CloudShare/2026-11-13_gh/offen.pdf", url: "u5", expiration: null, sharedAt: Date.now() - 3 * DAY, fileId: 15, isFolder: false, permissions: 1, label: "", size: 1, hasPassword: false },
@@ -515,7 +515,7 @@ describe("my shares", () => {
 
     it("never deletes received files of an upload link", async () => {
       nc.listPublicShares.mockResolvedValue([
-        { ...fileShare("9", "/CloudShare-Dateianforderungen/2026-11-13_cd34ef56"), isFolder: true, permissions: 4 },
+        { ...fileShare("9", "/CloudShare-File-Requests/2026-11-13_cd34ef56"), isFolder: true, permissions: 4 },
       ]);
       expect((await revoke("9")).json().file).toBe("kept");
       expect(nc.deletePath).not.toHaveBeenCalled();
