@@ -543,7 +543,7 @@ const newStep = () => Math.random().toString(36).slice(2, 12);
 
 /** From the first link on, the choice (this password or none) applies to the whole mail. */
 async function rememberShareChoice(jobId: string | null, noPassword = jobId === null) {
-  if (noPassword) {
+  if (noPassword || jobId === null) {
     // Links without password. With the download confirmation the server keeps a job without password, which the
     // send handler arms like a password job (it only waits for the sent mail).
     await updateDraftState(jobId ? { noPassword: true, jobId } : { noPassword: true });
@@ -1144,7 +1144,7 @@ function showMessageSection(open: boolean) {
   messageSection.hidden = !open;
 }
 messageToggle.addEventListener("click", () => {
-  const open = messageSection.hidden;
+  const open = messageSection.hidden === true;
   showMessageSection(open);
   if (open) messageInput.focus();
 });

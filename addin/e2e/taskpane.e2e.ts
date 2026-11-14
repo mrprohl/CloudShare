@@ -361,7 +361,7 @@ test("Kennwort per SMS: number required, normalized to E.164 and stored on the j
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)], config: { smsEnabled: true, smsDefaultCountry: "49" } });
   await page.check("#channel-sms");
   await expect(page.locator("#password-sms")).toBeVisible();
-  await expect(page.locator("#password-to-hint")).toContainText("per SMS an diese Nummer");
+  await expect(page.locator("#password-to-hint")).toContainText("in einer SMS an diese Nummer");
 
   await page.click("#submit");
   await expect(page.locator("#status")).toContainText("Bitte die Mobilnummer angeben");
