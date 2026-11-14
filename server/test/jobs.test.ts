@@ -22,6 +22,7 @@ const { quietLog } = await import("./helpers.js");
 const vaultwarden = await import("../src/vaultwarden.js");
 const sms = await import("../src/sms.js");
 const { deliveryFor } = await import("../src/deliveries.js");
+const { passwordRefFor } = await import("../src/passwordRefs.js");
 const { pendingNotices } = await import("../src/notices.js");
 const sendSms = vi.mocked(sms.sendSms);
 const deleteSend = vi.mocked(vaultwarden.deleteSend);
@@ -245,7 +246,7 @@ describe("password by SMS, deliveries and download notices", () => {
     return id;
   };
 
-  it("sends the password of a step by SMS instead of a mail and deletes the Send", async () => {
+  it("sends the password of a step by SMS instead of a mail and keeps the Send for sending it again", async () => {
     const id = await smsJob("tok-sms-1");
     await arm(id);
     sentOnlyFor(id);
@@ -257,12 +258,13 @@ describe("password by SMS, deliveries and download notices", () => {
     const [to, text] = sendSms.mock.calls[0];
     expect(to).toBe("+491701234567");
     expect(text).toContain("KateGeteFi45"); // read from the Send right before sending
-    expect(deleteSend).toHaveBeenCalledWith("send-a");
+    expect(deleteSend).not.toHaveBeenCalled(); // the password stays readable until the links expire
     expect(deliveryFor("tok-sms-1", "oid")).toMatchObject({ channel: "sms", to: "+49 170 •••• 67", messageId: "77000001", status: "submitted" });
+    expect(passwordRefFor("tok-sms-1", "oid")).toMatchObject({ sendId: "send-a", sms: "+491701234567", subject: "Unterlagen" });
     expect(getJob(id)?.dispatched).toBe(true);
   });
 
-  it("sends the password mail to the sender when the SMS fails – never silently to the recipients", async () => {
+  it("sends no password another way when the SMS fails – only a note without password to the sender", async () => {
     const id = await smsJob("tok-sms-2");
     await arm(id);
     sentOnlyFor(id);
@@ -271,11 +273,16 @@ describe("password by SMS, deliveries and download notices", () => {
     await checkJobs(quietLog());
 
     expect(sendMail).toHaveBeenCalledOnce();
-    const [, recipients, subject] = sendMail.mock.calls[0];
+    const [, recipients, subject, html] = sendMail.mock.calls[0];
     expect(recipients).toEqual({ to: ["max@example.test"], cc: [], bcc: [] });
-    expect(subject).toMatch(/^SMS nicht versendet – Kennwort für „a\.pdf“/);
-    expect(deleteSend).not.toHaveBeenCalled(); // the sender's mail still needs the Send
+    expect(subject).toBe("SMS nicht versendet – Unterlagen");
+    expect(html).toContain("konnte nicht versendet werden: seven.io: no credit");
+    expect(html).toContain("„Kennwort“");
+    expect(html).not.toContain("KateGeteFi45"); // neither the password …
+    expect(html).not.toContain("vault/#/send"); // … nor a link to it
     expect(deliveryFor("tok-sms-2", "oid")).toMatchObject({ channel: "sms", status: "failed" });
+    expect(passwordRefFor("tok-sms-2", "oid")?.sendId).toBe("send-a"); // can be sent again
+    expect(getJob(id)?.dispatched).toBe(true); // no retry of the SMS
   });
 
   it("records mail deliveries per link and registers the links for the download confirmation", async () => {
@@ -295,6 +302,12 @@ describe("password by SMS, deliveries and download notices", () => {
     const notices = new Map(pendingNotices());
     expect(notices.get("tok-mail-1")).toMatchObject({ fileName: "a.pdf", subject: "Unterlagen", notifyTo: "max@example.test" });
     expect(notices.get("tok-mail-2")?.fileName).toBe("b.png");
+    // The password can be sent again later; the mail's recipients are suggested.
+    expect(passwordRefFor("tok-mail-2", "oid")).toMatchObject({
+      sendId: "send-a", tokens: ["tok-mail-1", "tok-mail-2"], fileNames: ["a.pdf", "b.png"],
+      mailTo: ["erika@example.test", "chef@example.test"], maxAccessCount: 3,
+    });
+    expect(passwordRefFor("tok-mail-2", "someone-else")).toBeNull();
   });
 
   it("links without password: no password mail, no SMS – only the download confirmation once the mail was sent", async () => {

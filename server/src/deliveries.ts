@@ -55,17 +55,26 @@ export const deliveryFor = (token: string, owner: string) => {
   return d && d.owner === owner ? d : undefined;
 };
 
-/** Delivery report of seven.io (idempotent: the same report twice changes nothing). Returns false if unknown. */
-export async function updateSmsStatus(messageId: string, status: SmsStatus, at = Date.now()): Promise<boolean> {
-  let found = false;
-  for (const d of deliveries.values()) {
+/**
+ * Delivery report of seven.io (idempotent: the same report twice changes nothing). `known`: the message ID belongs to
+ * a recorded SMS; `failedTokens`: links whose SMS just turned out as not delivered (the sender is told once).
+ */
+export async function updateSmsStatus(
+  messageId: string,
+  status: SmsStatus,
+  at = Date.now(),
+): Promise<{ known: boolean; failedTokens: string[] }> {
+  let known = false;
+  const failedTokens: string[] = [];
+  for (const [token, d] of deliveries) {
     if (d.messageId !== messageId) continue;
-    found = true;
+    known = true;
     // A final state is not overwritten by a late intermediate report.
     if (d.status === "delivered" || d.status === "failed") continue;
     d.status = status;
     if (status === "delivered") d.deliveredAt = at;
+    if (status === "failed") failedTokens.push(token);
   }
-  if (found) await persist();
-  return found;
+  if (known) await persist();
+  return { known, failedTokens };
 }

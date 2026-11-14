@@ -125,6 +125,13 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     if (route_ === "GET /api/shares") return json(scenario.shares ?? []);
     if (/^DELETE \/api\/shares\/.+$/.test(route_)) return json({ ok: true });
     if (/^PATCH \/api\/jobs\/[^/]+$/.test(route_)) return json({ maxAccess: JSON.parse(call.body!.toString()).maxAccess });
+    if (/^GET \/api\/shares\/\d+\/password$/.test(route_)) {
+      return json({ password: "KateGeteFi45", mailTo: ["erika@example.com"], sms: "+491701234567" });
+    }
+    if (/^POST \/api\/shares\/\d+\/password\/send$/.test(route_)) {
+      const { channel, to } = JSON.parse(call.body!.toString());
+      return json({ channel, to: channel === "sms" ? "+49 171 •••• 21" : to });
+    }
     if (/^POST \/api\/shares\/\d+\/link$/.test(route_)) {
       const id = call.path.split("/")[3];
       const share = (scenario.shares as Array<{ id: string; kind: string; name: string }> | undefined)?.find((s) => s.id === id);
@@ -873,6 +880,46 @@ test("Meine Freigaben: shows the state of each link and revokes after confirmati
   await expect(page.locator("#status")).toContainText("„Angebot.pdf“ ist nicht mehr abrufbar.");
 });
 
+test("Meine Freigaben: a failed SMS says whether it was sent at all, and how to send the password again", async ({ page }) => {
+  const sms = { channel: "sms", to: "+49 170 •••• 67", status: "failed", at: Date.parse("2026-11-10T10:00:00Z"), deliveredAt: null };
+  const share = (id: string, name: string, refused: boolean) => ({ ...SHARES[0], id, name, url: `https://cloud.example.com/s/${id}`,
+    password: { ...sms, refused }, passwordAvailable: true });
+  await openTaskpane(page, { shares: [share("21", "Refused.pdf", true), share("22", "Lost.pdf", false)] });
+  await page.click("#tab-shares");
+  const rows = page.locator("#shares .share");
+  // seven.io refused it right away (key, credit, limit).
+  await expect(rows.nth(0).locator(".share-password")).toHaveText("Kennwort per SMS an +49 170 •••• 67 – nicht versendet – bitte über „Kennwort“ erneut senden");
+  // seven.io accepted it and reported "not delivered" later.
+  await expect(rows.nth(1).locator(".share-password")).toHaveText("Kennwort per SMS an +49 170 •••• 67 – nicht zugestellt – bitte über „Kennwort“ erneut senden");
+  await expect(rows.nth(1).locator(".share-password")).toHaveClass(/failed/);
+});
+
+test("Meine Freigaben: Kennwort shows the password and sends it again – by SMS or mail", async ({ page }) => {
+  const calls = await openTaskpane(page, { shares: [{ ...SHARES[0], passwordAvailable: true }, SHARES[1]], config: { smsEnabled: true } });
+  await page.click("#tab-shares");
+  const rows = page.locator("#shares .share");
+  await expect(rows.nth(1).locator(".show-password")).toBeHidden(); // no password to show (link without password)
+  const toggle = rows.nth(0).locator(".show-password");
+  await expect(toggle).toHaveText("Kennwort");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  const panel = rows.nth(0).locator(".password-panel");
+  await expect(panel.locator("input.mono")).toHaveValue("KateGeteFi45");
+  // The password went by SMS: SMS to the same number is suggested.
+  await expect(panel.locator("select")).toHaveValue("sms");
+  await expect(panel.locator(".channel-input")).toHaveValue("+491701234567");
+  await expectAccessible(page);
+  await shot(page, "password-panel");
+
+  await panel.locator("select").selectOption("mail");
+  await expect(panel.locator(".channel-input")).toHaveValue("erika@example.com");
+  await panel.locator(".channel-input").fill("erika@example.com, chef@example.com");
+  await panel.locator(".send-password").click();
+  await expect(page.locator("#status")).toHaveText("Das Kennwort wurde an erika@example.com, chef@example.com geschickt.");
+  const sent = calls.find((c) => c.path === "/api/shares/11/password/send")!;
+  expect(JSON.parse(sent.body!.toString())).toEqual({ channel: "mail", to: "erika@example.com, chef@example.com" });
+});
+
 test("Meine Freigaben: Als Link einfügen creates a new link with this mail's password", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: SHARES });
   const password = await page.locator("#password").inputValue();
@@ -1005,10 +1052,15 @@ test.describe("README pictures (English)", () => {
   });
 
   test("My shares", async ({ page }) => {
-    await openTaskpane(page, { lang: "en", shares: SHARES_EN, config: README_CONFIG });
+    const shares = SHARES_EN.map((share, i) => (i === 0 ? { ...share, passwordAvailable: true } : share));
+    await openTaskpane(page, { lang: "en", shares, config: README_CONFIG });
     await page.click("#tab-shares");
     await expect(page.locator("#shares .share")).toHaveCount(4);
     await expect(page.locator("#shares .share").nth(1).locator(".state-text")).toHaveText("Not downloaded yet");
+    // "Password" opened at the first link: the password and "Send again to".
+    await page.locator("#shares .share").nth(0).locator(".show-password").click();
+    await expect(page.locator("#shares .share").nth(0).locator(".password-panel input.mono")).toHaveValue("KateGeteFi45");
+    await expectAccessible(page);
     await readmeShot(page, "shares");
   });
 

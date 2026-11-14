@@ -1,15 +1,15 @@
 import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
-import Fastify, { type FastifyRequest } from "fastify";
+import Fastify, { type FastifyBaseLogger, type FastifyRequest } from "fastify";
 import { decodeJwt } from "jose";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
-import { authenticate, HttpError, onBehalfOf, type User } from "./auth.js";
-import { config } from "./config.js";
+import { appGraphToken, authenticate, HttpError, onBehalfOf, type User } from "./auth.js";
+import { config, SEND_DAYS_LIMIT } from "./config.js";
 import { getCredentials, removeCredentials, saveCredentials } from "./credentials.js";
-import { fetchProfile, GRAPH_PROFILE_SCOPES, GRAPH_SCOPES } from "./graph.js";
+import { fetchProfile, GRAPH_PROFILE_SCOPES, GRAPH_SCOPES, sendMail, sendMailAsApp } from "./graph.js";
 import {
   addFileToJob,
   addNoticeShare,
@@ -25,6 +25,7 @@ import {
   setJobPasswordTo,
   setJobSender,
   setPartsExpiry,
+  takeSmsQuota,
   type StepShare,
 } from "./jobs.js";
 import {
@@ -36,13 +37,24 @@ import {
   type PublicShare,
 } from "./nextcloud.js";
 import { expireOnRevoke, registerForCleanup } from "./cleanup.js";
-import { deliveryFor, updateSmsStatus } from "./deliveries.js";
-import { mapReportStatus, maskPhone, normalizePhone, parseDeliveryReport, smsEnabled } from "./sms.js";
+import { deliveryFor, recordDelivery, updateSmsStatus } from "./deliveries.js";
+import { forgetPasswordToken, passwordRefFor, passwordRefsForTokens, updatePasswordRef, type PasswordRef } from "./passwordRefs.js";
+import { passwordMailHtml, smsProblemMailHtml } from "./passwordMail.js";
+import { mapReportStatus, maskPhone, normalizePhone, parseDeliveryReport, sendSms, smsEnabled } from "./sms.js";
+import { defaultTemplates, render, templatesFor } from "./templates.js";
 import { clampInt, isEmailAddress } from "./limits.js";
-import { locale, t } from "./i18n.js";
+import { formatDate, locale, t } from "./i18n.js";
 import { passwordProblem } from "./password.js";
 import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } from "./store.js";
-import { createMessageSend, createPasswordSend, MESSAGE_MAX_LENGTH, setSendExpiry, setSendMaxAccess } from "./vaultwarden.js";
+import {
+  createMessageSend,
+  createPasswordSend,
+  deleteSend,
+  MESSAGE_MAX_LENGTH,
+  readSendPassword,
+  setSendExpiry,
+  setSendMaxAccess,
+} from "./vaultwarden.js";
 
 function nextcloudFor(user: User): NextcloudClient {
   const creds = getCredentials(user.oid);
@@ -76,25 +88,36 @@ interface ShareRequest {
   step?: unknown;
 }
 
-/** The password link of a step: how often and for how many days it can be opened. */
+/** The password link of a step: how often and for how many days it can be opened, and how long its Send lives. */
 interface PasswordLink {
   maxAccess: number;
   days: number;
+  /** Expiry of the links (ms): the Send – and so the password for "Kennwort erneut senden" – lives until then. */
+  keepUntil: number;
 }
 
 /**
- * Validated password, expiry date (YYYY-MM-DD) and password link (accesses, days) for a new share.
- * `withPassword: false` (file links "Ohne Kennwort") skips the password check; the password is then ignored.
+ * Longest validity of a link with password: it lasts only as long as its password in Vaultwarden, and Vaultwarden
+ * keeps a Send at most 31 days. Links "Ohne Kennwort" may last up to SHARE_MAX_EXPIRE_DAYS.
+ */
+const passwordLinkMaxDays = () => Math.min(config.maxExpireDays, SEND_DAYS_LIMIT);
+
+/**
+ * Validated password, expiry date (YYYY-MM-DD) and password link (accesses, days, lifetime of the Send) for a new
+ * share. `withPassword: false` (file links "Ohne Kennwort") skips the password check; the password is then ignored.
  */
 function shareSettings(body: ShareRequest | undefined, withPassword = true) {
   const password = withPassword ? String(body?.password ?? "") : "";
   const weakness = withPassword ? passwordProblem(password) : undefined;
   if (weakness) throw new HttpError(400, weakness);
-  const expireDays = clampInt(body?.expireDays, config.defaultExpireDays, 1, config.maxExpireDays);
-  const expireDate = new Date(Date.now() + expireDays * 86_400_000).toISOString().slice(0, 10);
+  const maxDays = withPassword ? passwordLinkMaxDays() : config.maxExpireDays;
+  const expireDays = clampInt(body?.expireDays, Math.min(config.defaultExpireDays, maxDays), 1, maxDays);
+  const keepUntil = Date.now() + expireDays * 86_400_000;
+  const expireDate = new Date(keepUntil).toISOString().slice(0, 10);
   const maxAccess = clampInt(body?.maxAccess, config.sendMaxAccessCount, 1, config.sendMaxAccessLimit);
-  const days = clampInt(body?.passwordDays, config.sendExpireDays, 1, config.sendMaxExpireDays);
-  return { password, expireDate, passwordLink: { maxAccess, days } satisfies PasswordLink };
+  // The recipients' access to the password ends at the latest with the link.
+  const days = Math.min(clampInt(body?.passwordDays, config.sendExpireDays, 1, config.sendMaxExpireDays), expireDays);
+  return { password, expireDate, passwordLink: { maxAccess, days, keepUntil } satisfies PasswordLink };
 }
 
 /**
@@ -118,7 +141,7 @@ async function attachToJob(
   const id = typeof requestedJobId === "string" ? requestedJobId : undefined;
   const existing = id ? getJob(id) : undefined;
   if (id && existing && existing.owner === user.oid && !existing.dispatched) {
-    // Password by SMS: the Send only holds the password until the mail is sent – as long as possible.
+    // Password by SMS: the link of the Send is never sent – its access may last as long as the Send itself.
     if (existing.passwordSms) link = { ...link, days: config.sendMaxExpireDays };
     // A mail started with one shared password (before this version) keeps it.
     if (!existing.separate) {
@@ -129,7 +152,7 @@ async function attachToJob(
       await addFileToPart(id, step, itemName, share);
       return id;
     }
-    const send = await createPasswordSend(`CloudShare: ${itemName}`, password, link.maxAccess, link.days);
+    const send = await createPasswordSend(`CloudShare: ${itemName}`, password, link.maxAccess, link.days, link.keepUntil);
     await addSeparatePart(id, {
       step: step ?? randomUUID(),
       fileNames: [itemName],
@@ -137,11 +160,12 @@ async function attachToJob(
       sendId: send.id,
       maxAccessCount: link.maxAccess,
       sendExpiresAt: send.expiresAt,
+      sendKeepUntil: link.keepUntil,
       shares: share ? [share] : undefined,
     });
     return id;
   }
-  const send = await createPasswordSend(`CloudShare: ${itemName}`, password, link.maxAccess, link.days);
+  const send = await createPasswordSend(`CloudShare: ${itemName}`, password, link.maxAccess, link.days, link.keepUntil);
   if (step) {
     return createSeparateJob(user.oid, user.upn, {
       step,
@@ -150,6 +174,7 @@ async function attachToJob(
       sendId: send.id,
       maxAccessCount: link.maxAccess,
       sendExpiresAt: send.expiresAt,
+      sendKeepUntil: link.keepUntil,
       shares: share ? [share] : undefined,
     });
   }
@@ -171,10 +196,45 @@ async function attachNoticeJob(user: User, requestedJobId: unknown, share: StepS
   return createNoticeJob(user.oid, user.upn, share);
 }
 
-/** How the password of a link went out, for "Meine Freigaben" (null before sending or for older links). */
+/** Share token: the last segment of a link URL. */
+const tokenOf = (url: string) => url.replace(/\/+$/, "").split("/").pop() ?? "";
+
+/**
+ * How the password of a link went out, for "Meine Freigaben" (null before sending or for older links).
+ * `refused`: seven.io did not take the SMS at all (no message ID: key, credit, daily limit) – as opposed to an SMS
+ * reported later as not delivered. Either way nothing went out another way; the sender sends the password again.
+ */
 function passwordDelivery(url: string, owner: string) {
-  const d = deliveryFor(url.replace(/\/+$/, "").split("/").pop() ?? "", owner);
-  return d ? { channel: d.channel, to: d.to, status: d.status ?? null, at: d.at, deliveredAt: d.deliveredAt ?? null } : null;
+  const d = deliveryFor(tokenOf(url), owner);
+  return d
+    ? {
+        channel: d.channel,
+        to: d.to,
+        status: d.status ?? null,
+        at: d.at,
+        deliveredAt: d.deliveredAt ?? null,
+        refused: d.channel === "sms" && d.status === "failed" && !d.messageId,
+      }
+    : null;
+}
+
+/**
+ * seven.io reported an SMS as not delivered: tell the sender – without password or link – so they send it again in
+ * CloudShare. No user token exists at that point; only CloudShare's own app token can send, which needs the application
+ * permission of the download confirmation (DOWNLOAD_NOTICE=true). Without it "Meine Freigaben" shows "nicht zugestellt".
+ */
+async function noteUndeliveredSms(refs: PasswordRef[], log: Pick<FastifyBaseLogger, "warn">) {
+  if (!config.downloadNotice || refs.length === 0) return;
+  try {
+    const token = await appGraphToken();
+    for (const ref of refs) {
+      const files = t("mail.files", { count: ref.fileNames.length, name: ref.fileNames[0] });
+      const html = smsProblemMailHtml({ files, subject: ref.subject, to: ref.sms ? maskPhone(ref.sms) : "" });
+      await sendMailAsApp(token, ref.owner, ref.from ?? ref.ownerUpn, t("mail.smsUndeliveredSubject", { subject: ref.subject || files }), html);
+    }
+  } catch (err) {
+    log.warn({ err }, "Note about an undelivered SMS not sent");
+  }
 }
 
 /** Token (last URL segment), name and expiry of a link just created. */
@@ -271,6 +331,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     attachmentPolicy: config.attachmentPolicy,
     defaultExpireDays: config.defaultExpireDays,
     maxExpireDays: config.maxExpireDays,
+    // Links with password last at most as long as their password in Vaultwarden.
+    passwordLinkMaxDays: passwordLinkMaxDays(),
     chunkSize: config.chunkSizeBytes,
     sendMaxAccessCount: config.sendMaxAccessCount,
     sendMaxAccessLimit: config.sendMaxAccessLimit,
@@ -328,8 +390,9 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       }
       const report = parseDeliveryReport(req.body, req.query);
       if (!report) return { ok: true, ignored: true }; // other events (e.g. inbound SMS) are not used
-      const known = await updateSmsStatus(report.messageId, mapReportStatus(report.status));
+      const { known, failedTokens } = await updateSmsStatus(report.messageId, mapReportStatus(report.status));
       req.log.info({ messageId: report.messageId, status: report.status, known }, "SMS delivery report");
+      if (failedTokens.length > 0) await noteUndeliveredSms(passwordRefsForTokens(failedTokens), req.log);
       return { ok: true };
     },
   });
@@ -533,7 +596,9 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     const expireDate = expiresAt.toISOString().slice(0, 10);
     const item = t("server.messageItem");
     const send = await createMessageSend(item, text, password, expiresAt);
-    const jobId = await attachToJob(user, req.body?.jobId, item, password, passwordLink, req.body?.step);
+    // The password is needed exactly as long as the message can be read.
+    const link = { ...passwordLink, days: Math.min(passwordLink.days, days), keepUntil: expiresAt.getTime() };
+    const jobId = await attachToJob(user, req.body?.jobId, item, password, link, req.body?.step);
     req.log.info({ user: user.upn, days, length: text.length }, "Confidential message created");
     return { shareUrl: send.url, expireDate, jobId };
   });
@@ -573,6 +638,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
           protected: s.hasPassword,
           // How the password went out (after sending): channel, masked recipient, SMS delivery status.
           password: passwordDelivery(s.url, user.oid),
+          // Its password can still be shown and sent again ("Kennwort" in the list).
+          passwordAvailable: passwordRefFor(tokenOf(s.url), user.oid) !== null,
           downloads: request ? null : await nc.publicDownloads(s.fileId).catch(() => null),
           received: request ? await nc.countFiles(uid, segments).catch(() => null) : null,
         };
@@ -588,6 +655,10 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     const share = shares.find((s) => s.id === req.params.id);
     if (!share || !isCloudShareShare(share)) throw new HttpError(404, t("server.shareNotFound"));
     await nc.deleteShare(share.id);
+    // The password is no longer needed once no link of its step is left – delete its Sends right away.
+    for (const sendId of await forgetPasswordToken(tokenOf(share.url), user.oid)) {
+      await deleteSend(sendId).catch((err) => req.log.warn({ err, user: user.upn }, "Send of a revoked link not deleted"));
+    }
 
     // A revoked file link counts as expired: the upload folder goes to the trash (CLEANUP_AFTER_DAYS) unless another
     // valid link still points to it. Received files of an upload link are never deleted.
@@ -607,6 +678,75 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     req.log.info({ user: user.upn, path: share.path, file }, "Share revoked");
     return { ok: true, file, deleteAfterDays: config.cleanupAfterDays };
   });
+
+  /** The user's CloudShare link with this ID and the entry of its password (404 if it has none any more). */
+  async function ownPasswordRef(user: User, id: string): Promise<PasswordRef> {
+    const share = (await nextcloudFor(user).listPublicShares()).find((s) => s.id === id);
+    if (!share || !isCloudShareShare(share)) throw new HttpError(404, t("server.shareNotFound"));
+    const ref = passwordRefFor(tokenOf(share.url), user.oid);
+    if (!ref) throw new HttpError(404, t("server.passwordUnavailable"));
+    return ref;
+  }
+
+  /**
+   * "Kennwort" in "Meine Freigaben": the password of a sent link, read from its Send – only for its sender and only
+   * until the link expires – plus where it went (suggested for sending it again).
+   */
+  app.get<{ Params: { id: string } }>("/api/shares/:id/password", { config: { rateLimit: strictLimit } }, async (req) => {
+    const user = await authenticate(req);
+    const ref = await ownPasswordRef(user, req.params.id);
+    const password = await readSendPassword(ref.sendId);
+    req.log.info({ user: user.upn, shareId: req.params.id }, "Password shown to its sender");
+    return { password, mailTo: ref.mailTo, sms: ref.sms ?? "" };
+  });
+
+  /**
+   * "Kennwort erneut senden": by SMS to a number, or as a password mail to addresses – never as plain text in a mail.
+   * The mail gets a new Send with the same password (the recipients' access to the first one may have ended), deleted
+   * with the links; it goes out as the sender through Graph like the first password mail.
+   */
+  app.post<{ Params: { id: string }; Body: { channel?: unknown; to?: unknown } }>(
+    "/api/shares/:id/password/send",
+    { config: { rateLimit: strictLimit } },
+    async (req) => {
+      const user = await authenticate(req);
+      const ref = await ownPasswordRef(user, req.params.id);
+      const target = typeof req.body?.to === "string" ? req.body.to : "";
+      const templates = templatesFor({ upn: ref.ownerUpn, department: ref.department });
+
+      if (req.body?.channel === "sms") {
+        if (!smsEnabled()) throw new HttpError(409, t("server.smsNotConfigured"));
+        const number = normalizePhone(target);
+        if (!number) throw new HttpError(400, t("server.phoneInvalid"));
+        if (!takeSmsQuota(user.oid)) throw new HttpError(429, t("server.smsDailyLimit", { max: config.smsMaxPerDay }));
+        const password = await readSendPassword(ref.sendId);
+        const messageId = await sendSms(number, render(templates.sms_template, { password, sender_name: ref.senderName ?? "" }));
+        await recordDelivery(ref.tokens, { owner: user.oid, channel: "sms", to: maskPhone(number), at: Date.now(), messageId, status: "submitted" });
+        await updatePasswordRef(ref.sendId, { sms: number });
+        req.log.info({ user: user.upn, to: maskPhone(number), messageId }, "Password sent again by SMS");
+        return { channel: "sms", to: maskPhone(number) };
+      }
+
+      if (req.body?.channel !== "mail") throw new HttpError(400, t("server.channelInvalid"));
+      const addresses = [...new Set(target.split(/[\s,;]+/).filter(Boolean))];
+      if (addresses.length === 0 || addresses.length > 20 || !addresses.every(isEmailAddress)) {
+        throw new HttpError(400, t("server.recipientsInvalid", { max: 20 }));
+      }
+      const password = await readSendPassword(ref.sendId);
+      const send = await createPasswordSend(`CloudShare: ${ref.fileNames[0]}`, password, ref.maxAccessCount, config.sendExpireDays, ref.keepUntil);
+      const files = t("mail.files", { count: ref.fileNames.length, name: ref.fileNames[0] });
+      const customIntro = templates.mail_password_intro !== defaultTemplates().mail_password_intro ? templates.mail_password_intro : undefined;
+      const subject = render(templates.mail_password_subject, { files, subject: ref.subject || ref.fileNames[0], sender_name: ref.senderName ?? "" });
+      const html = passwordMailHtml({ fileNames: ref.fileNames, sendUrl: send.url, maxAccessCount: ref.maxAccessCount, subject: ref.subject,
+        expireDays: config.sendExpireDays, introTemplate: customIntro, senderName: ref.senderName, expiresOn: formatDate(send.expiresAt) });
+      const { token } = await onBehalfOf(user, GRAPH_SCOPES);
+      await sendMail(token, { to: addresses, cc: [], bcc: [] }, subject, html, ref.from);
+      await recordDelivery(ref.tokens, { owner: user.oid, channel: "mail", to: addresses.join(", "), at: Date.now() });
+      await updatePasswordRef(ref.sendId, { mailTo: addresses, resentSend: send.id });
+      req.log.info({ user: user.upn, recipients: addresses.length }, "Password sent again by mail");
+      return { channel: "mail", to: addresses.join(", ") };
+    },
+  );
 
   /**
    * "Als Link einfügen": a new public link to the same file or upload folder for the mail being written, with this
@@ -662,7 +802,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         if (!smsEnabled()) throw new HttpError(409, t("server.smsNotConfigured"));
         if (!number) throw new HttpError(400, t("server.phoneInvalid"));
         await setJobPasswordTo(req.params.id, undefined, number);
-        // The Sends of the steps not sent yet only hold the password until sending – keep them as long as possible.
+        // The link of an SMS step's Send is never sent: let its access last as long as the Send (until the links expire).
         const expiresAt = Date.now() + config.sendMaxExpireDays * 86_400_000;
         for (const part of job.separate ?? []) {
           if (part.dispatched || !part.sendId) continue;

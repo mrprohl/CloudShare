@@ -10,6 +10,8 @@ export interface ServerConfig {
   attachmentPolicy: "enforce" | "suggest";
   defaultExpireDays: number;
   maxExpireDays: number;
+  /** Longest validity of a link with password (as long as its password in Vaultwarden, at most 30); older servers: none. */
+  passwordLinkMaxDays?: number;
   chunkSize: number;
   /** Default and upper limit for how often the password link (Vaultwarden Send) can be opened. */
   sendMaxAccessCount: number;

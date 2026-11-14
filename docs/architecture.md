@@ -121,10 +121,15 @@ password mail shows an envelope badge. Always with a password; at most 1000 char
 Sends). Its lifetime is chosen separately ("Message valid for", `messageDays`): `SEND_EXPIRE_DAYS` (default 5) up to
 `SEND_MAX_EXPIRE_DAYS` (at most 30 – Vaultwarden refuses deletion dates more than 31 days ahead).
 
-**"Password link valid for"** (`passwordDays`, same limits): lifetime of the step's password Send. It is created with
-the first link of the step, so it counts from inserting, not from sending; the date is stored with the step
-(`sendExpiresAt`) and named in the password mail ("expires on …"). After it the password can no longer be fetched,
-even if the download link is still valid – recipients who opened it in time keep the password. Messages are not listed in "My shares" (they are no Nextcloud shares) and get no
+**"Password link valid for"** (`passwordDays`, same limits, at most the link's validity): how long the recipients can
+open the step's password Send – its *expiration date*. It is created with the first link of the step, so it counts
+from inserting, not from sending; the date is stored with the step (`sendExpiresAt`) and named in the password mail
+("expires on …"). After it the recipients can no longer fetch the password, even if the download link is still valid
+– those who opened it in time keep it. The Send itself lives until the links expire (its *deletion date*,
+`sendKeepUntil`), so the sender can still see and resend the password (2.10). Vaultwarden accepts deletion dates at
+most 31 days ahead, hence **a link with password lasts at most 30 days** (`passwordLinkMaxDays`, also in
+`/api/config`); links "Ohne Kennwort" up to `SHARE_MAX_EXPIRE_DAYS`. A confidential message's password Send lives as
+long as the message. Messages are not listed in "My shares" (they are no Nextcloud shares) and get no
 download confirmation.
 
 ### 2.3 Send and password mail
@@ -173,14 +178,19 @@ wins) – Nextcloud's housekeeping deletes expired shares, so the date could not
 - **Mobile number (SMS)** (only with `SEVEN_API_KEY`, otherwise not in the list) – one SMS per step via seven.io (`sms.ts`), sent by the watcher after the
   mail appeared in "Sent Items", like the password mail. The number is entered in the pane and normalised to E.164
   (`0170 …` → `+49170…`, `SMS_DEFAULT_COUNTRY`). The password exists in readable form only in the step's Vaultwarden
-  Send; the watcher reads it from there right before sending (`readSendPassword`) and deletes the Send afterwards.
-  So the password-link settings do not apply (the pane hides "Password can be opened" and "Password link valid for"):
-  the Send of an SMS step always gets the maximum lifetime (`SEND_MAX_EXPIRE_DAYS`), also when SMS is chosen after
-  links were inserted (`PATCH` extends the Sends of steps not sent yet), so a draft can wait that long. The password
-  in the SMS works as long as the link.
-  If seven.io refuses the SMS (or `SMS_MAX_PER_DAY` is reached), the password mail goes **to the sender** instead –
-  never automatically to the recipients by another channel. Delivery reports arrive at `/webhooks/seven` (secret in
-  the query, compared in constant time, idempotent, webhook and classic form callback) and update `deliveries.ts`.
+  Send; the watcher reads it from there right before sending (`readSendPassword`). The Send stays until the links
+  expire (2.10). The password-link settings do not apply (the pane hides "Password can be opened" and "Password link
+  valid for"): the link of an SMS step's Send is never sent, so its access lasts as long as the Send (`PATCH` sets
+  this also for steps inserted before SMS was chosen). The password in the SMS works as long as the link.
+  **If the SMS fails, the password goes out no other way** – not to the recipients, not to the sender. The sender
+  gets a note without password or link (`smsProblemMailHtml`) and sends it again (2.10). Two cases, told apart in
+  `GET /api/shares` by `password.refused` (failed without seven.io message ID):
+  - seven.io refuses it (key, credit, `SMS_MAX_PER_DAY`): the watcher sends the note with the armed delegated token;
+    the step counts as done (no retry of the SMS on every pass).
+  - seven.io reports it later as not delivered: delivery reports arrive at `/webhooks/seven` (secret in the query,
+    compared in constant time, idempotent, webhook and classic form callback) and update `deliveries.ts`; a newly
+    failed SMS triggers the note with CloudShare's app token (`sendMailAsApp`) – only with `DOWNLOAD_NOTICE=true`
+    (application permission `Mail.Send`), otherwise "My shares" shows it only.
 
 How the password of each link went out (channel, masked recipient, SMS status) is shown in "My shares".
 
@@ -264,6 +274,26 @@ links of other people or other sites in the mail are ignored. Confidential messa
 Sends, not Nextcloud shares). While the pane is pinned, `ItemChanged` reloads the list for the selected mail. Copy
 and Revoke work as in the compose pane; Insert is hidden.
 
+### 2.10 Showing and sending the password again
+
+Once a step's mail was sent, the watcher records where its password lives: `passwordRefs.ts`,
+`/data/password-refs.json` (encrypted like the jobs) with the **Send ID** – never the password –, the links' tokens,
+file names, subject, where the password went (addresses, SMS number) and the sender. It is kept until the links
+expire (`keepUntil`, the Send's deletion date) and only ever returned to its owner.
+
+In "My shares" and in the read mode (2.9) such links get **Password** (`passwordAvailable` in `GET /api/shares`):
+
+- `GET /api/shares/:id/password` – the server reads the password from the Send with the service account
+  (`readSendPassword`; also after the recipients' access ended) and returns it with the suggested targets.
+- `POST /api/shares/:id/password/send` – `{ channel: "sms", to }`: SMS to that number (same template and daily limit
+  as the first one); `{ channel: "mail", to }`: a **new** Send with the same password (default access and days,
+  deleted with the links) and a password mail to up to 20 addresses, sent as the user via Graph (delegated, like the
+  first one, also from a shared mailbox). The mail never contains the password itself. The delivery shown in
+  "My shares" is updated.
+
+Revoking the last link of a step deletes its Sends at once (`forgetPasswordToken`); otherwise Vaultwarden deletes them
+when the links expire. Steps sent before this version have no entry – their password cannot be shown.
+
 ## 3. State and data
 
 | Where | What | Lifetime |
@@ -274,6 +304,7 @@ and Revoke work as in the compose pane; Insert is hidden.
 | `/data/password-jobs.json` | Password jobs: owner, sender name and department, file names, Sends and links per step (`separate`), `passwordTo` / `passwordSms`, armed Graph token | 7 days |
 | `/data/cleanup.json` | Upload folders with expiry date per owner | Until deleted |
 | `/data/deliveries.json` | Per link: channel, masked recipient, SMS message ID and status | 120 days |
+| `/data/password-refs.json` | Per sent step: Send ID (never the password), link tokens, file names, subject, where the password went (addresses, SMS number), sender | Until the links expire |
 | `/data/download-notices.json` | Links waiting for their first download (sender, subject, recipients, expiry) | Until downloaded / expired |
 | Memory (`store.ts`) | Running uploads (12 h), pending Nextcloud logins (20 min) | Lost on restart → single instance only |
 | `roamingSettings` | Last server configuration (for the handlers) | Per mailbox |
@@ -300,6 +331,7 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `POST /api/requests` | Upload link ("Receive files from recipients") |
 | `POST /api/messages` | Confidential message: text → password-protected Vaultwarden Send, joins the mail's password job |
 | `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "My shares": list (30 days, max. 100), revoke, insert again; also the read mode (2.9) |
+| `GET /api/shares/:id/password`, `POST /api/shares/:id/password/send` | The password of a sent link (owner only, until the link expires) and sending it again by SMS or password mail (2.10) |
 | `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send), `passwordTo` or `passwordSms` until the password went out |
 | `POST /api/jobs/:id/arm` | Arm the password mail (send handler); also reads the sender's name and department for the templates |
 | `GET/POST /webhooks/seven?token=…` | seven.io delivery reports (no login, secret `SEVEN_WEBHOOK_SECRET`) |
@@ -356,7 +388,10 @@ Alert trace". Off by default.
   bits from the browser's CSPRNG). That is low for offline attacks but sufficient here: an attacker needs the link
   first, Nextcloud throttles failed attempts on public links, and links expire. Own passwords need ≥ 12 characters and
   three character classes (checked in the taskpane and again by the server). The password exists in readable form
-  only in the Vaultwarden Send (limited accesses, 5 days by default, at most 30) and briefly in the taskpane.
+  only in the Vaultwarden Send and briefly in the taskpane. The recipients can open the Send a limited number of
+  times for a few days (5 by default); the Send itself lives until the links expire (at most 30 days), so its
+  sender can see and resend the password in "My shares" (2.10) – the server reads it with the service account and
+  returns it only to the link's owner. CloudShare stores only the Send ID.
 - **Graph:** delegated permissions for everything the user triggers; the armed token is stored encrypted for at most
   15 minutes of use, and the `.Shared` permissions reach only mailboxes the user already has rights to. Only the
   optional download confirmation uses an **application** permission (`Mail.Send`) – restrict it to the CloudShare
@@ -365,9 +400,10 @@ Alert trace". Off by default.
   (the Bitwarden CLI encrypts before upload) and deletes them at expiry. Anyone with link and password can read them
   until then – like a file link.
 - **SMS:** the API key and the webhook secret stay on the server; the add-in never talks to seven.io. The SMS carries
-  the password in plain text (it is the second channel); the password is read from the Send only for sending and
-  the Send is deleted afterwards. Numbers are stored masked in the status; `SMS_MAX_PER_DAY` limits costs and abuse.
-  Conclude a data processing agreement with seven.io.
+  the password in plain text (it is the second channel); the password is read from the Send only for sending. A
+  failed SMS never falls back to another channel on its own. Numbers are stored masked in the status (the full
+  number only in the encrypted entry for sending again); `SMS_MAX_PER_DAY` limits costs and abuse, also for SMS sent
+  again. Conclude a data processing agreement with seven.io.
 - **Language files** are data, not markup: every text is escaped where it is inserted (HTML, XML, JavaScript string),
   so a language file cannot add script or markup to the pane, the manifest or a mail. `LANGUAGE` must be a language
   code (no paths).

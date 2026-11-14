@@ -851,6 +851,7 @@ function setPasswordMode(mode: "random" | "own" | "none") {
   modeNone.checked = none;
   passwordGroup.hidden = none;
   passwordToField.hidden = none;
+  applyLinkMax();
   passwordInput.readOnly = !own;
   generateButton.hidden = own;
   revealButton.hidden = !own;
@@ -987,12 +988,12 @@ const sentences = (...parts: string[]) => parts.filter(Boolean).join(" ");
 
 /** "Link gültig für": applies to the next links; above the maximum it is capped with a note (like the server does). */
 expireInput.addEventListener("change", async () => {
-  const { value, capped } = boundedNumber(expireInput, serverConfig.defaultExpireDays, serverConfig.maxExpireDays);
+  const { value, capped } = boundedNumber(expireInput, Math.min(serverConfig.defaultExpireDays, linkMaxDays()), linkMaxDays());
   expireInput.value = String(value);
   const state = await readDraftState();
   setStatus(
     sentences(
-      capped ? t("expire.capped", { max: serverConfig.maxExpireDays }) : "",
+      capped ? t("expire.capped", { max: linkMaxDays() }) : "",
       t("expire.changed", { count: value }),
       state.links?.length ? t("expire.keepExisting") : "",
     ),
@@ -1123,17 +1124,31 @@ function renderValidity() {
   messageDaysField.hidden = kind !== "message";
   maxAccessField.hidden = !passwordLink;
   passwordDaysField.hidden = !passwordLink;
-  const parts = [
-    kind === "message"
-      ? t("validity.message", { count: sendDays(messageDaysInput).value })
-      : t("validity.link", {
-          count: boundedNumber(expireInput, serverConfig.defaultExpireDays, serverConfig.maxExpireDays).value,
-        }),
-  ];
+  const lifetime = kind === "message" ? sendDays(messageDaysInput).value : linkDays();
+  const parts = [t(kind === "message" ? "validity.message" : "validity.link", { count: lifetime })];
   if (passwordLink) {
-    parts.push(t("validity.password", { count: sendDays(passwordDaysInput).value, times: timesText(maxAccessValue()) }));
+    // The recipients' access to the password ends at the latest with the link (the server caps it the same way).
+    const days = Math.min(sendDays(passwordDaysInput).value, lifetime);
+    parts.push(t("validity.password", { count: days, times: timesText(maxAccessValue()) }));
   }
   validitySummary.textContent = parts.join(" · ");
+}
+
+/**
+ * Longest "Link gültig für": a link with password lasts only as long as its password in Vaultwarden (at most 30 days,
+ * `passwordLinkMaxDays`); links "Ohne Kennwort" up to SHARE_MAX_EXPIRE_DAYS.
+ */
+const linkMaxDays = () =>
+  withoutPassword() ? serverConfig.maxExpireDays : Math.min(serverConfig.maxExpireDays, serverConfig.passwordLinkMaxDays ?? serverConfig.maxExpireDays);
+
+/** Days of the next link within the allowed range. */
+const linkDays = () => boundedNumber(expireInput, Math.min(serverConfig.defaultExpireDays, linkMaxDays()), linkMaxDays()).value;
+
+/** Keeps "Link gültig für" within the maximum of the chosen password mode (e.g. back from "Ohne Kennwort"). */
+function applyLinkMax() {
+  if (!serverConfig) return;
+  expireInput.max = String(linkMaxDays());
+  if (Number(expireInput.value) > linkMaxDays()) expireInput.value = String(linkMaxDays());
 }
 
 validityToggle.addEventListener("click", () => {
@@ -1348,7 +1363,17 @@ interface ShareItem {
   /** Password-protected link (Nextcloud cannot tell random from own passwords). */
   protected?: boolean;
   /** How the password went out after sending (mail or SMS with delivery status); null before / for older links. */
-  password?: { channel: "mail" | "sms"; to: string; status: "submitted" | "delivered" | "failed" | "unknown" | null; at: number; deliveredAt: number | null } | null;
+  password?: {
+    channel: "mail" | "sms";
+    to: string;
+    status: "submitted" | "delivered" | "failed" | "unknown" | null;
+    at: number;
+    deliveredAt: number | null;
+    /** Failed SMS: seven.io did not take it at all (false: it reported "not delivered" later). */
+    refused?: boolean;
+  } | null;
+  /** The password can still be shown and sent again ("Kennwort"). */
+  passwordAvailable?: boolean;
 }
 
 /** "Kennwort per SMS an +49 170 •••• 78 – zugestellt um 14:05" for the "Meine Freigaben" list. */
@@ -1358,7 +1383,7 @@ function passwordText(p: NonNullable<ShareItem["password"]>): string {
   const status =
     p.status === "delivered"
       ? p.deliveredAt ? t("shares.smsDeliveredAt", { time: time(p.deliveredAt) }) : t("shares.smsDelivered")
-      : p.status === "failed" ? t("shares.smsFailed")
+      : p.status === "failed" ? t(p.refused ? "shares.smsFailed" : "shares.smsUndelivered")
       : t("shares.smsSubmitted");
   return t("shares.passwordSms", { to: p.to, status });
 }
@@ -1409,6 +1434,100 @@ async function copyText(text: string) {
   }
 }
 
+const COPY_ICON =
+  '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="7" width="9" height="10" rx="1.5" fill="none" ' +
+  'stroke="currentColor" stroke-width="1.4"/><path d="M13 4.5V4a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h.5" ' +
+  'fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
+
+interface SentPassword {
+  password: string;
+  /** Where the password mail went – suggested for sending it again by mail. */
+  mailTo: string[];
+  /** Number of the SMS (E.164, "" if none) – suggested for sending it again by SMS. */
+  sms: string;
+}
+
+/**
+ * "Kennwort" at a sent link: the password (read from its Vaultwarden Send by the server, only for its sender) and
+ * "Erneut senden an" – by SMS, or as a password mail with a link to the password (never as plain text in a mail).
+ * Loaded on every opening, so it always shows the current state.
+ */
+async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
+  const note = document.createElement("p");
+  note.className = "caption";
+  note.textContent = t("resend.loading");
+  panel.replaceChildren(note);
+  let sent: SentPassword;
+  try {
+    sent = await api<SentPassword>(`/api/shares/${encodeURIComponent(share.id)}/password`, {}, await getToken());
+  } catch (err) {
+    note.textContent = t("resend.loadFailed", { error: errorMessage(err) });
+    return;
+  }
+
+  const id = panel.id;
+  panel.innerHTML =
+    `<label class="label" for="${id}-value"></label>` +
+    `<div class="input-group"><input type="text" id="${id}-value" class="input mono" readonly spellcheck="false" />` +
+    `<button type="button" class="btn btn-icon copy-password">${COPY_ICON}</button></div>` +
+    `<label class="label" for="${id}-channel"></label>` +
+    `<div class="select-wrap"><select id="${id}-channel" class="input select"></select></div>` +
+    `<input id="${id}-to" class="input channel-input" spellcheck="false" aria-describedby="${id}-hint" />` +
+    `<p class="hint" id="${id}-hint"></p>` +
+    `<button type="button" class="btn send-password"></button>`;
+  const [passwordLabel, channelLabel] = Array.from(panel.querySelectorAll("label"));
+  passwordLabel.textContent = t("resend.password");
+  channelLabel.textContent = t("resend.channel");
+  panel.querySelector<HTMLInputElement>(`#${id}-value`)!.value = sent.password;
+
+  const copy = panel.querySelector<HTMLButtonElement>(".copy-password")!;
+  copy.title = t("resend.copy");
+  copy.setAttribute("aria-label", t("resend.copy"));
+  copy.addEventListener("click", async () => {
+    await copyText(sent.password);
+    setStatus(t("resend.copied"), "success");
+  });
+
+  const channel = panel.querySelector<HTMLSelectElement>(`#${id}-channel`)!;
+  const options: Array<["mail" | "sms", string]> = [["mail", t("resend.mail")]];
+  if (serverConfig.smsEnabled) options.push(["sms", t("resend.sms")]);
+  for (const [value, text] of options) channel.add(new Option(text, value));
+  channel.value = share.password?.channel === "sms" && serverConfig.smsEnabled ? "sms" : "mail";
+
+  const target = panel.querySelector<HTMLInputElement>(`#${id}-to`)!;
+  const hint = panel.querySelector<HTMLParagraphElement>(`#${id}-hint`)!;
+  const showChannel = () => {
+    const sms = channel.value === "sms";
+    target.type = sms ? "tel" : "text";
+    target.autocomplete = sms ? "tel" : "email";
+    target.value = sms ? sent.sms : sent.mailTo.join(", ");
+    target.placeholder = t(sms ? "channel.smsPlaceholder" : "resend.mailPlaceholder");
+    target.setAttribute("aria-label", t(sms ? "resend.smsLabel" : "resend.mailLabel"));
+    hint.textContent = t(sms ? "resend.smsHint" : "resend.mailHint");
+  };
+  channel.addEventListener("change", showChannel);
+  showChannel();
+
+  const send = panel.querySelector<HTMLButtonElement>(".send-password")!;
+  send.textContent = t("resend.send");
+  send.addEventListener("click", async () => {
+    send.disabled = true;
+    setStatus(t("resend.sending"));
+    try {
+      const result = await api<{ channel: "mail" | "sms"; to: string }>(
+        `/api/shares/${encodeURIComponent(share.id)}/password/send`,
+        { method: "POST", body: JSON.stringify({ channel: channel.value, to: target.value }) },
+        await getToken(),
+      );
+      setStatus(t(result.channel === "sms" ? "resend.sentSms" : "resend.sentMail", { to: result.to }), "success");
+      loadShares().catch(() => undefined); // shows the new state of the password
+    } catch (err) {
+      setStatus(t("resend.failed", { error: errorMessage(err) }), "error");
+      send.disabled = false;
+    }
+  });
+}
+
 function shareRow(share: ShareItem): HTMLElement {
   const row = document.createElement("div");
   row.className = "share";
@@ -1423,9 +1542,10 @@ function shareRow(share: ShareItem): HTMLElement {
     `<div class="share-actions">` +
     // Short labels: the taskpane is narrow (Outlook sets its width); the full text is in title / aria-label.
     `<button type="button" class="btn btn-subtle copy"></button>` +
+    `<button type="button" class="btn btn-subtle show-password" aria-expanded="false" hidden></button>` +
     `<button type="button" class="btn btn-subtle insert"></button>` +
     `<button type="button" class="btn btn-subtle btn-danger revoke"></button>` +
-    `</div></div>`;
+    `</div><div class="password-panel" hidden></div></div>`;
   const label = (button: HTMLButtonElement, text: string, full: string) => {
     button.textContent = text;
     button.title = full;
@@ -1449,6 +1569,22 @@ function shareRow(share: ShareItem): HTMLElement {
     line.textContent = passwordText(share.password);
     line.hidden = false;
     line.classList.toggle("failed", share.password.status === "failed");
+  }
+
+  // "Kennwort": show the password of a sent link and send it again (until the link expires).
+  if (share.passwordAvailable) {
+    const toggle = row.querySelector<HTMLButtonElement>(".show-password")!;
+    const panel = row.querySelector<HTMLDivElement>(".password-panel")!;
+    panel.id = `password-panel-${share.id.replace(/\W/g, "")}`;
+    toggle.setAttribute("aria-controls", panel.id);
+    toggle.hidden = false;
+    label(toggle, t("shares.password"), t("shares.passwordLabel", { name: share.name }));
+    toggle.addEventListener("click", () => {
+      const open = panel.hidden === true;
+      toggle.setAttribute("aria-expanded", String(open));
+      panel.hidden = !open;
+      if (open) void fillPasswordPanel(panel, share);
+    });
   }
 
   const copy = row.querySelector<HTMLButtonElement>(".copy")!;
@@ -1661,7 +1797,7 @@ Office.onReady(async () => {
 
   const state = await readDraftState();
   expireInput.value = String(serverConfig.defaultExpireDays);
-  expireInput.max = String(serverConfig.maxExpireDays);
+  applyLinkMax();
   maxAccessInput.max = String(serverConfig.sendMaxAccessLimit);
   for (const input of [passwordDaysInput, messageDaysInput]) {
     input.max = String(sendMaxDays());
