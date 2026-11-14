@@ -39,7 +39,7 @@ left the outbox.
 
 ## Using CloudShare
 
-<img src="docs/images/taskpane-send.png" alt="CloudShare pane, tab Senden: one large attachment preselected, password options, link validity and the button Als Link einfügen" width="300" align="right">
+<img src="docs/images/taskpane-send.png" alt="CloudShare pane, tab Senden: one large attachment preselected, password options, link validity, how the password is delivered, upload link, confidential message and the button Als Link einfügen" width="300" align="right">
 
 **Once:** open the pane with the **CloudShare** button in the ribbon and click **"Verbinden"** – the Nextcloud login
 opens in the browser (usually without typing anything, thanks to single sign-on). CloudShare remembers the
