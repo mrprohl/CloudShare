@@ -217,6 +217,9 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .list:empty { display: none; }
 .list-item { align-items: center; padding: 6px 8px; margin: 0 -8px; border-radius: 4px; }
 .list-item:hover { background: var(--bg1-hover); }
+/* Remove button of a file picked from the computer: right edge of the row, compact. */
+.list-item .remove-file { flex: 0 0 auto; width: 28px; min-width: 28px; height: 28px; margin: 0 -4px 0 4px; color: var(--fg3); }
+.list-item .remove-file:hover { color: var(--fg1); background: var(--bg1-pressed); }
 .list-item .box { margin-top: 0; }
 .file-icon { width: 20px; height: 20px; flex: none; color: var(--fg3); }
 .file-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }

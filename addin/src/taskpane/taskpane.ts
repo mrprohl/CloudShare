@@ -257,7 +257,15 @@ const FILE_ICON =
   '<path d="M10.5 2.5v4h4" fill="none" stroke="currentColor"/></svg>';
 
 /** One row in Outlook's list style: checkbox, file icon, name, size and an optional "Groß" badge. */
-function fileRow(name: string, size: number, value: string, checked: boolean, large: boolean): HTMLLabelElement {
+function fileRow(
+  name: string,
+  size: number,
+  value: string,
+  checked: boolean,
+  large: boolean,
+  /** Files picked from the computer can be removed from the list again (mail attachments are removed in Outlook). */
+  onRemove?: () => void,
+): HTMLLabelElement {
   const row = document.createElement("label");
   row.className = "checkbox list-item";
   row.innerHTML =
@@ -271,6 +279,25 @@ function fileRow(name: string, size: number, value: string, checked: boolean, la
   row.querySelector(".file-name")!.textContent = name;
   row.querySelector<HTMLElement>(".file-name")!.title = name;
   row.querySelector(".file-size")!.textContent = formatSize(size);
+  // Own name for the checkbox: otherwise a remove button inside the label would become part of it.
+  box.setAttribute("aria-label", `${name}, ${formatSize(size)}`);
+  if (onRemove) {
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "btn btn-icon btn-subtle remove-file";
+    remove.title = `„${name}“ entfernen`;
+    remove.setAttribute("aria-label", `„${name}“ aus der Liste entfernen`);
+    remove.innerHTML =
+      `<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5.5 5.5l9 9m0-9-9 9" fill="none" ` +
+      `stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
+    remove.addEventListener("click", (event) => {
+      // Inside the row's label: do not toggle the checkbox.
+      event.preventDefault();
+      event.stopPropagation();
+      onRemove();
+    });
+    row.append(remove);
+  }
   return row;
 }
 
@@ -285,9 +312,24 @@ async function renderAttachments() {
 }
 
 function renderPicked() {
-  pickedList.replaceChildren(...pickedFiles.map((f, i) => fileRow(f.name, f.size, String(i), true, false)));
+  // Re-rendering renumbers the rows – keep the files the user unticked unticked.
+  const unticked = new Set(
+    Array.from(pickedList.querySelectorAll<HTMLInputElement>("input:not(:checked)")).map((box) => pickedRendered[Number(box.value)]),
+  );
+  pickedRendered = pickedFiles;
+  pickedList.replaceChildren(
+    ...pickedFiles.map((file, i) =>
+      fileRow(file.name, file.size, String(i), !unticked.has(file), false, () => {
+        pickedFiles = pickedFiles.filter((f) => f !== file);
+        renderPicked();
+      }),
+    ),
+  );
   noAttachments.hidden = attachmentList.childElementCount > 0 || pickedFiles.length > 0;
 }
+
+/** The files the rows of #picked currently show (their checkbox values are indexes into it). */
+let pickedRendered: File[] = [];
 
 
 /**
