@@ -39,6 +39,7 @@ run_setup() {
   rm -rf "$base/env"
   "$base/setup.sh" >/dev/null <<'EOF'
 https://localhost
+de
 1
 enforce
 14
@@ -156,6 +157,12 @@ smoke() {
   if curl -sk https://localhost/manifest.xml https://localhost/taskpane.html https://localhost/commands.js | grep -q '%%'; then
     fail "unreplaced %%placeholders%% in the add-in files"
   else ok "all placeholders replaced"; fi
+  local pane
+  pane=$(curl -sk https://localhost/taskpane.html)
+  if grep -q '<html lang="de">' <<<"$pane" && grep -q 'Als Link einfügen' <<<"$pane" \
+    && curl -sk https://localhost/commands.js | grep -q 'alert.button'; then
+    ok "texts of LANGUAGE=de in the add-in files"
+  else fail "language texts missing in the add-in files"; fi
   config=$(curl -sk https://localhost/api/config)
   jq -e '.attachmentPolicy == "enforce" and .thresholdMb == 1 and .sendMaxAccessCount == 3' <<<"$config" >/dev/null \
     && ok "/api/config reflects the settings" || fail "/api/config: $config"

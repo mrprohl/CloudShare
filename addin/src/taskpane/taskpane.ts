@@ -18,11 +18,13 @@ import {
   type ServerConfig,
 } from "../shared/office";
 import { checkPassword, generatePassword } from "../shared/password";
+import { locale, t } from "../shared/i18n";
 import { errorText } from "../shared/sso";
 import { EMPTY_PROFILE, fillFooter, hasPlaceholders, type Profile } from "./footer";
 import { filesCard, filesText, requestCard, requestText } from "./mailCard";
 
-// All visible texts are German and follow Outlook's terminology ("Nachricht", "Kennwort").
+// All visible texts come from locales/<language>.json (t(), see shared/i18n.ts) and follow Outlook's terminology
+// ("Nachricht"/"message", "Kennwort"/"password").
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -132,9 +134,9 @@ const errorMessage = errorText;
 
 const formatSize = (bytes: number) =>
   bytes >= 1024 ** 3
-    ? `${(bytes / 1024 ** 3).toLocaleString("de-DE", { maximumFractionDigits: 1 })} GB`
+    ? `${(bytes / 1024 ** 3).toLocaleString(locale(), { maximumFractionDigits: 1 })} GB`
     : bytes >= MB
-      ? `${(bytes / MB).toLocaleString("de-DE", { maximumFractionDigits: 1 })} MB`
+      ? `${(bytes / MB).toLocaleString(locale(), { maximumFractionDigits: 1 })} MB`
       : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -156,10 +158,10 @@ interface ConnectionStatus {
 function storageText(status: ConnectionStatus): string {
   const isBytes = (value: unknown): value is number => typeof value === "number" && value >= 0;
   if (isBytes(status.freeBytes) && isBytes(status.totalBytes)) {
-    return ` [${formatSize(status.freeBytes)} von ${formatSize(status.totalBytes)} frei]`;
+    return ` [${t("storage.freeOf", { free: formatSize(status.freeBytes), total: formatSize(status.totalBytes) })}]`;
   }
-  if (isBytes(status.freeBytes)) return ` [${formatSize(status.freeBytes)} frei]`;
-  if (isBytes(status.usedBytes)) return ` [${formatSize(status.usedBytes)} belegt]`;
+  if (isBytes(status.freeBytes)) return ` [${t("storage.free", { free: formatSize(status.freeBytes) })}]`;
+  if (isBytes(status.usedBytes)) return ` [${t("storage.used", { used: formatSize(status.usedBytes) })}]`;
   return "";
 }
 
@@ -225,18 +227,18 @@ connectButton.addEventListener("click", async () => {
       if (result.connected) {
         popup?.close();
         await refreshConnection();
-        setStatus("Die Verbindung zu Nextcloud wurde hergestellt.", "success");
+        setStatus(t("connect.done"), "success");
         return;
       }
     }
     if (attempt === connectAttempt) {
       connectHint.hidden = true;
-      setStatus("Die Anmeldung wurde nicht abgeschlossen. Bitte versuchen Sie es erneut.", "error");
+      setStatus(t("connect.incomplete"), "error");
     }
   } catch (err) {
     popup?.close();
     connectHint.hidden = true;
-    setStatus(`Die Verbindung ist fehlgeschlagen: ${errorMessage(err)}`, "error");
+    setStatus(t("connect.failed", { error: errorMessage(err) }), "error");
   } finally {
     connectButton.disabled = false;
   }
@@ -247,9 +249,9 @@ $<HTMLAnchorElement>("disconnect").addEventListener("click", async (e) => {
   try {
     await api("/api/nextcloud/connection", { method: "DELETE" }, await getToken());
     showConnection({ connected: false });
-    setStatus("Die Verbindung zu Nextcloud wurde getrennt.");
+    setStatus(t("disconnect.done"));
   } catch (err) {
-    setStatus(`Die Verbindung konnte nicht getrennt werden: ${errorMessage(err)}`, "error");
+    setStatus(t("disconnect.failed", { error: errorMessage(err) }), "error");
   }
 });
 
@@ -275,7 +277,7 @@ function fileRow(
   row.innerHTML =
     `<input type="checkbox" /><span class="box" aria-hidden="true"></span>${FILE_ICON}` +
     `<span class="file-text"><span class="file-name"></span><span class="file-size"></span></span>` +
-    (large ? `<span class="badge">Groß</span>` : "");
+    (large ? `<span class="badge"></span>` : "");
   const box = row.querySelector("input")!;
   box.value = value;
   box.checked = checked;
@@ -283,14 +285,16 @@ function fileRow(
   row.querySelector(".file-name")!.textContent = name;
   row.querySelector<HTMLElement>(".file-name")!.title = name;
   row.querySelector(".file-size")!.textContent = formatSize(size);
+  const badge = row.querySelector<HTMLElement>(".badge");
+  if (badge) badge.textContent = t("files.large");
   // Own name for the checkbox: otherwise a remove button inside the label would become part of it.
   box.setAttribute("aria-label", `${name}, ${formatSize(size)}`);
   if (onRemove) {
     const remove = document.createElement("button");
     remove.type = "button";
     remove.className = "btn btn-icon btn-subtle remove-file";
-    remove.title = `„${name}“ entfernen`;
-    remove.setAttribute("aria-label", `„${name}“ aus der Liste entfernen`);
+    remove.title = t("files.remove", { name });
+    remove.setAttribute("aria-label", t("files.removeLabel", { name }));
     remove.innerHTML =
       `<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5.5 5.5l9 9m0-9-9 9" fill="none" ` +
       `stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`;
@@ -424,7 +428,7 @@ dropZone.addEventListener("drop", (event) => {
   const files = Array.from(event.dataTransfer?.files ?? []).filter((f) => f.size > 0 || f.type !== "");
   addPickedFiles(files);
   if (files.length > 0) {
-    setStatus(`${files.length === 1 ? "Eine Datei wurde" : `${files.length} Dateien wurden`} hinzugefügt.`, "success");
+    setStatus(t("files.added", { count: files.length }), "success");
   }
 });
 // Dropping a file next to the drop zone must not navigate the taskpane away.
@@ -443,7 +447,7 @@ async function readAttachment(id: string): Promise<Blob> {
     composeItem().getAttachmentContentAsync(id, cb),
   );
   if (content.format !== Office.MailboxEnums.AttachmentContentFormat.Base64) {
-    throw new Error("Dieser Anhangstyp kann nicht übertragen werden.");
+    throw new Error(t("files.unsupported"));
   }
   return base64ToBlob(content.content);
 }
@@ -472,7 +476,7 @@ async function upload(blob: Blob, fileName: string, step: string): Promise<Uploa
       );
       const percent = Math.round((index / start.totalChunks) * 100);
       setProgress(percent);
-      setStatus(`„${fileName}“ wird hochgeladen … ${percent} %`);
+      setStatus(t("files.uploading", { name: fileName, percent }));
     }
   } catch (err) {
     await api(`/api/uploads/${start.uploadId}`, { method: "DELETE" }, await getToken()).catch(() => undefined);
@@ -550,11 +554,8 @@ function normalizePhone(input: string): string | null {
 type Channel = "recipients" | "mail" | "sms";
 const selectedChannel = (): Channel => (channelSms.checked ? "sms" : channelMail.checked ? "mail" : "recipients");
 
-const CHANNEL_HINTS: Record<Channel, string> = {
-  recipients: "",
-  mail: "Nur diese Adresse erhält das Kennwort – die Empfänger der Nachricht nicht.",
-  sms: "Das Kennwort geht nach dem Senden per SMS an diese Nummer – die Empfänger erhalten keine Kennwort-Nachricht.",
-};
+const channelHint = (channel: Channel) =>
+  channel === "mail" ? t("channel.hintMail") : channel === "sms" ? t("channel.hintSms") : "";
 
 function showChannel(channel: Channel) {
   channelRecipients.checked = channel === "recipients";
@@ -563,7 +564,7 @@ function showChannel(channel: Channel) {
   passwordToInput.hidden = channel !== "mail";
   passwordSmsInput.hidden = channel !== "sms";
   passwordToHint.hidden = channel === "recipients";
-  passwordToHint.textContent = CHANNEL_HINTS[channel];
+  passwordToHint.textContent = channelHint(channel);
 }
 
 /** The valid target of the chosen channel ({} = recipients), or null while the address / number is not valid. */
@@ -592,14 +593,14 @@ async function applyChannel(target: { passwordTo?: string; passwordSms?: string 
     }
     setStatus(
       target.passwordSms
-        ? `Das Kennwort geht nach dem Senden per SMS an ${target.passwordSms}.`
+        ? t("channel.savedSms", { to: target.passwordSms })
         : target.passwordTo
-          ? `Das Kennwort wird nur an ${target.passwordTo} geschickt.`
-          : "Das Kennwort geht an die Empfänger der Nachricht.",
+          ? t("channel.savedMail", { to: target.passwordTo })
+          : t("channel.savedRecipients"),
       "success",
     );
   } catch (err) {
-    setStatus(`Der Weg für das Kennwort konnte nicht gespeichert werden: ${errorMessage(err)}`, "error");
+    setStatus(t("channel.saveFailed", { error: errorMessage(err) }), "error");
   }
 }
 
@@ -619,7 +620,7 @@ passwordToInput.addEventListener("change", () => {
   passwordToInput.value = value;
   if (value && !looksLikeEmail(value)) {
     passwordToInput.setAttribute("aria-invalid", "true");
-    setStatus("Bitte genau eine gültige E-Mail-Adresse für das Kennwort angeben.", "error");
+    setStatus(t("channel.mailInvalid"), "error");
     return;
   }
   passwordToInput.removeAttribute("aria-invalid");
@@ -632,7 +633,7 @@ passwordSmsInput.addEventListener("change", () => {
   const number = normalizePhone(value);
   if (!number) {
     passwordSmsInput.setAttribute("aria-invalid", "true");
-    setStatus("Bitte eine gültige Mobilnummer angeben, z. B. 0170 1234567 oder +49 170 1234567.", "error");
+    setStatus(t("channel.smsInvalid"), "error");
     return;
   }
   passwordSmsInput.removeAttribute("aria-invalid");
@@ -646,15 +647,12 @@ passwordSmsInput.addEventListener("change", () => {
  */
 function settingsProblem(kind: "file" | "request"): string | null {
   if (kind === "request" && withoutPassword()) {
-    return modeNone.disabled
-      ? "Links zum Hochladen brauchen immer ein Kennwort. Diese Nachricht enthält bereits Links ohne Kennwort – " +
-          "bitte dafür eine neue Nachricht verwenden."
-      : "Links zum Hochladen brauchen immer ein Kennwort – bitte „Zufälliges Kennwort“ oder „Eigenes Kennwort“ wählen.";
+    return modeNone.disabled ? t("request.needsPasswordLocked") : t("request.needsPassword");
   }
   if (!passwordInput.readOnly && !checkPassword(passwordInput.value).ok) {
     renderRules();
     passwordInput.focus();
-    return "Das Kennwort erfüllt noch nicht alle Anforderungen.";
+    return t("password.weak");
   }
   // Another address / SMS chosen but not filled in: the password would silently go to the recipients instead – so no
   // link until it is there (or "an die Empfänger der Nachricht" is chosen).
@@ -663,19 +661,13 @@ function settingsProblem(kind: "file" | "request"): string | null {
     const input = sms ? passwordSmsInput : passwordToInput;
     input.setAttribute("aria-invalid", "true");
     input.focus();
-    if (sms) {
-      return input.value.trim()
-        ? "Bitte eine gültige Mobilnummer für das Kennwort angeben, z. B. 0170 1234567."
-        : "Bitte die Mobilnummer angeben, an die das Kennwort per SMS gehen soll – oder einen anderen Weg wählen.";
-    }
-    return input.value.trim()
-      ? "Bitte eine gültige E-Mail-Adresse für das Kennwort angeben."
-      : "Bitte die E-Mail-Adresse angeben, an die das Kennwort gehen soll – oder „an die Empfänger der Nachricht“ wählen.";
+    if (sms) return t(input.value.trim() ? "channel.smsInvalidShort" : "channel.smsMissing");
+    return t(input.value.trim() ? "channel.mailInvalidShort" : "channel.mailMissing");
   }
   return null;
 }
 
-const formatDate = (isoDate: string) => new Date(isoDate).toLocaleDateString("de-DE");
+const formatDate = (isoDate: string) => new Date(isoDate).toLocaleDateString(locale());
 
 /** Empty paragraph after an inserted card, so the cursor ends up below it (see insertIntoBody). */
 const AFTER_CARD = "<p style=\"margin:0;\"><br></p>";
@@ -745,10 +737,7 @@ async function insertIntoBody(html: string, text: string, marker: string) {
   await officeAsync<void>((cb) => body.prependAsync(data, options, cb));
   if (await bodyContains(marker)) return rememberLink(marker);
 
-  throw new Error(
-    "Outlook hat den Link nicht in die Nachricht übernommen. Bitte in den Nachrichtentext klicken und erneut " +
-      "einfügen – den Link können Sie auch unter „Meine Freigaben“ kopieren.",
-  );
+  throw new Error(t("insert.notTaken"));
 }
 
 /** Inserts the shared files as a card with download buttons (see mailCard.ts). */
@@ -766,12 +755,6 @@ async function insertLinks(results: UploadResult[]) {
 
 // --- Password: random (recommended), own or none -----------------------------------
 
-const PASSWORD_HINT = "Die Empfänger erhalten das Kennwort nach dem Senden automatisch in einer separaten Nachricht.";
-const NO_PASSWORD_HINT =
-  "Jeder, der den Link kennt, kann die Dateien herunterladen. Es wird keine Nachricht mit Kennwort verschickt.";
-const SEPARATE_HINT =
-  "Der nächste Link erhält ein neues Kennwort. Die Empfänger bekommen nach dem Senden für jeden Link eine eigene " +
-  "Nachricht mit dem Kennwort.";
 
 /** "Ohne Kennwort" selected (file links only – upload links always keep a password). */
 const withoutPassword = () => modeNone.checked;
@@ -779,7 +762,7 @@ const withoutPassword = () => modeNone.checked;
 function setRevealed(revealed: boolean) {
   passwordInput.type = revealed ? "text" : "password";
   revealButton.setAttribute("aria-pressed", String(revealed));
-  const label = revealed ? "Kennwort ausblenden" : "Kennwort anzeigen";
+  const label = t(revealed ? "password.hide" : "password.show");
   revealButton.title = label;
   revealButton.setAttribute("aria-label", label);
 }
@@ -808,7 +791,7 @@ function setPasswordMode(mode: "random" | "own" | "none") {
   passwordGroup.hidden = none;
   maxAccessField.hidden = none;
   passwordToField.hidden = none;
-  passwordHint.textContent = none ? NO_PASSWORD_HINT : perStep ? SEPARATE_HINT : PASSWORD_HINT;
+  passwordHint.textContent = t(none ? "password.hintNone" : perStep ? "password.hintSeparate" : "password.hint");
   passwordInput.readOnly = !own;
   generateButton.hidden = own;
   revealButton.hidden = !own;
@@ -842,8 +825,7 @@ function lockPassword() {
   rulesList.hidden = true;
   revealButton.hidden = false;
   setRevealed(false);
-  passwordHint.textContent =
-    "Dieses Kennwort gilt für alle Dateien dieser Nachricht. Die Empfänger erhalten es nach dem Senden automatisch.";
+  passwordHint.textContent = t("password.hintLocked");
 }
 
 /** The mail has links with a password per step: every further click gets a new password. */
@@ -856,7 +838,7 @@ let perStep = false;
 function lockSeparate() {
   perStep = true;
   modeNone.disabled = true;
-  passwordHint.textContent = SEPARATE_HINT;
+  passwordHint.textContent = t("password.hintSeparate");
 }
 
 /** After a step: a new random password for the next one, or an empty field for an own one. */
@@ -876,8 +858,7 @@ function lockNoPassword() {
   modeRandom.disabled = true;
   modeOwn.disabled = true;
   modeNone.disabled = true;
-  passwordHint.textContent =
-    "Die Links dieser Nachricht sind ohne Kennwort – jeder, der sie kennt, kann die Dateien herunterladen.";
+  passwordHint.textContent = t("password.hintLockedNone");
 }
 
 /** Password options as for a new mail (after all CloudShare links were deleted from it). */
@@ -901,7 +882,7 @@ async function releaseIfLinksDeleted() {
   if (busy > 0 || document.hidden || !(modeRandom.disabled || perStep)) return;
   if (await releaseDraftIfLinksGone().catch(() => false)) {
     unlockPassword();
-    setStatus("Die CloudShare-Links wurden aus der Nachricht entfernt. Kennwort und Optionen sind wieder frei wählbar.");
+    setStatus(t("password.released"));
   }
 }
 
@@ -917,8 +898,9 @@ function boundedNumber(input: HTMLInputElement, fallback: number, max: number): 
   return raw > max ? { value: max, capped: true } : { value: raw, capped: false };
 }
 
-const capNote = (max: number, unit: string) => `Höchstens ${max} ${unit} möglich – der Wert wurde auf ${max} gesetzt. `;
-const timesText = (count: number) => (count === 1 ? "einmal" : `${count}-mal`);
+const timesText = (count: number) => t("maxAccess.times", { count });
+/** Sentences of a status message, joined with a space (empty ones left out). */
+const sentences = (...parts: string[]) => parts.filter(Boolean).join(" ");
 
 /** "Link gültig für": applies to the next links; above the maximum it is capped with a note (like the server does). */
 expireInput.addEventListener("change", async () => {
@@ -926,9 +908,11 @@ expireInput.addEventListener("change", async () => {
   expireInput.value = String(value);
   const state = await readDraftState();
   setStatus(
-    (capped ? capNote(serverConfig.maxExpireDays, "Tage") : "") +
-      `Neue Links sind ${value} ${value === 1 ? "Tag" : "Tage"} gültig.` +
-      (state.links?.length ? " Bereits eingefügte Links behalten ihr Ablaufdatum." : ""),
+    sentences(
+      capped ? t("expire.capped", { max: serverConfig.maxExpireDays }) : "",
+      t("expire.changed", { count: value }),
+      state.links?.length ? t("expire.keepExisting") : "",
+    ),
     capped ? "info" : "success",
   );
 });
@@ -944,14 +928,12 @@ maxAccessInput.addEventListener("change", async () => {
     serverConfig.sendMaxAccessLimit,
   );
   maxAccessInput.value = String(maxAccess);
-  const note = capped ? capNote(serverConfig.sendMaxAccessLimit, "Abrufe") : "";
+  const note = capped ? t("maxAccess.capped", { max: serverConfig.sendMaxAccessLimit }) : "";
   const state = await readDraftState();
   // No link yet, or one password per step: the number applies to the next link, nothing to change on the server.
   if (!state.jobId || state.separate || state.maxAccess === maxAccess) {
     setStatus(
-      note +
-        `Der Link zum Kennwort ist ${timesText(maxAccess)} abrufbar` +
-        (state.separate ? " (für den nächsten Link)." : "."),
+      sentences(note, t(state.separate ? "maxAccess.nextStep" : "maxAccess.next", { times: timesText(maxAccess) })),
       capped ? "info" : "success",
     );
     return;
@@ -964,12 +946,12 @@ maxAccessInput.addEventListener("change", async () => {
     );
     maxAccessInput.value = String(result.maxAccess);
     await updateDraftState({ maxAccess: result.maxAccess });
-    setStatus(`${note}Der Link zum Kennwort ist jetzt ${timesText(result.maxAccess)} abrufbar.`, capped ? "info" : "success");
+    setStatus(sentences(note, t("maxAccess.now", { times: timesText(result.maxAccess) })), capped ? "info" : "success");
   } catch (err) {
     // Not changeable (e.g. links inserted before this version): show the value that actually applies.
     maxAccessInput.value = String(state.maxAccess ?? serverConfig.sendMaxAccessCount);
     if (err instanceof ApiError && err.code === "SEND_FIXED") maxAccessInput.readOnly = true;
-    setStatus(`„Kennwort abrufbar“ konnte nicht geändert werden: ${errorMessage(err)}`, "error");
+    setStatus(t("maxAccess.failed", { error: errorMessage(err) }), "error");
   }
 });
 
@@ -979,7 +961,7 @@ submitButton.addEventListener("click", async () => {
     (box) => pickedFiles[Number(box.value)],
   );
   if (selectedAttachments.length + selectedFiles.length === 0) {
-    return setStatus("Wählen Sie mindestens eine Datei aus.", "error");
+    return setStatus(t("submit.noneSelected"), "error");
   }
   const problem = settingsProblem("file");
   if (problem) {
@@ -994,16 +976,16 @@ submitButton.addEventListener("click", async () => {
   let failed = false;
   try {
     for (const box of selectedAttachments) {
-      const name = box.dataset.name ?? "Anhang";
+      const name = box.dataset.name ?? t("files.attachment");
       setProgress(0);
-      setStatus(`„${name}“ wird vorbereitet …`);
+      setStatus(t("files.preparing", { name }));
       const blob = await readAttachment(box.value);
       results.push(await upload(blob, name, step));
       // Remove from the mail only after a successful upload.
       await officeAsync<void>((cb) => composeItem().removeAttachmentAsync(box.value, cb));
     }
     for (const file of selectedFiles) {
-      if (file.size === 0) throw new Error(`„${file.name}“ ist leer.`);
+      if (file.size === 0) throw new Error(t("files.empty", { name: file.name }));
       setProgress(0);
       results.push(await upload(file, file.name, step));
       pickedFiles = pickedFiles.filter((f) => f !== file);
@@ -1019,15 +1001,17 @@ submitButton.addEventListener("click", async () => {
         await insertLinks(results);
         if (!failed) {
           setStatus(
-            `${results.length === 1 ? "Der Link wurde" : `${results.length} Links wurden`} eingefügt. ` +
-              (results[0].jobId === null
-                ? `${results.length === 1 ? "Die Datei ist" : "Die Dateien sind"} ohne Kennwort abrufbar.`
-                : `Das Kennwort wird nach dem Senden automatisch verschickt.`),
+            sentences(
+              t("submit.inserted", { count: results.length }),
+              results[0].jobId === null
+                ? t("submit.noPassword", { count: results.length })
+                : t("submit.passwordFollows"),
+            ),
             "success",
           );
         }
       } catch (err) {
-        setStatus(`Der Link konnte nicht eingefügt werden: ${errorMessage(err)}`, "error");
+        setStatus(t("insert.failed", { error: errorMessage(err) }), "error");
       }
       renderPicked();
       await renderAttachments().catch(() => undefined);
@@ -1055,7 +1039,7 @@ requestButton.addEventListener("click", async () => {
   requestButton.disabled = true;
   busy++;
   try {
-    setStatus("Link zum Hochladen wird erstellt …");
+    setStatus(t("request.creating"));
     const result = await api<{ shareUrl: string; expireDate: string; jobId: string }>(
       "/api/requests",
       { method: "POST", body: JSON.stringify(await shareSettingsBody(newStep())) },
@@ -1070,7 +1054,7 @@ requestButton.addEventListener("click", async () => {
       requestText(result.shareUrl, expire, mailFooter),
       shareToken(result.shareUrl),
     );
-    setStatus("Der Link zum Hochladen wurde eingefügt. Das Kennwort wird nach dem Senden automatisch verschickt.", "success");
+    setStatus(t("request.inserted"), "success");
   } catch (err) {
     if (err instanceof ApiError && err.code === NOT_CONNECTED) showConnection({ connected: false });
     setStatus(errorMessage(err), "error");
@@ -1114,13 +1098,14 @@ interface ShareItem {
 
 /** "Kennwort per SMS an +49 170 •••• 78 – zugestellt um 14:05" for the "Meine Freigaben" list. */
 function passwordText(p: NonNullable<ShareItem["password"]>): string {
-  const time = (ms: number) => new Date(ms).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
-  if (p.channel === "mail") return `Kennwort per Mail an ${p.to}`;
+  const time = (ms: number) => new Date(ms).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
+  if (p.channel === "mail") return t("shares.passwordMail", { to: p.to });
   const status =
-    p.status === "delivered" ? `zugestellt${p.deliveredAt ? ` um ${time(p.deliveredAt)}` : ""}`
-    : p.status === "failed" ? "nicht zugestellt – Kennwort-Link ging an Sie"
-    : "übermittelt";
-  return `Kennwort per SMS an ${p.to} – ${status}`;
+    p.status === "delivered"
+      ? p.deliveredAt ? t("shares.smsDeliveredAt", { time: time(p.deliveredAt) }) : t("shares.smsDelivered")
+      : p.status === "failed" ? t("shares.smsFailed")
+      : t("shares.smsSubmitted");
+  return t("shares.passwordSms", { to: p.to, status });
 }
 
 const REQUEST_ICON =
@@ -1129,28 +1114,28 @@ const REQUEST_ICON =
   'stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 const formatDateTime = (iso: string) =>
-  new Date(iso).toLocaleString("de-DE", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  new Date(iso).toLocaleString(locale(), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
 /** Status line: downloads for files, received uploads for upload links, or "abgelaufen". */
 function shareState(share: ShareItem): { text: string; done: boolean; expired: boolean } {
   const expired = share.expiration !== null && share.expiration < new Date().toISOString().slice(0, 10);
-  if (expired) return { text: "Abgelaufen", done: false, expired: true };
+  if (expired) return { text: t("shares.expired"), done: false, expired: true };
   if (share.kind === "request") {
-    if (share.received === null) return { text: "Status unbekannt", done: false, expired: false };
+    if (share.received === null) return { text: t("shares.statusUnknown"), done: false, expired: false };
     return share.received > 0
-      ? { text: `${share.received} ${share.received === 1 ? "Datei" : "Dateien"} empfangen`, done: true, expired: false }
-      : { text: "Noch keine Dateien empfangen", done: false, expired: false };
+      ? { text: t("shares.received", { count: share.received }), done: true, expired: false }
+      : { text: t("shares.noneReceived"), done: false, expired: false };
   }
-  if (!share.downloads) return { text: "Download-Status nicht verfügbar", done: false, expired: false };
+  if (!share.downloads) return { text: t("shares.downloadUnknown"), done: false, expired: false };
   return share.downloads.count > 0
     ? {
-        text:
-          `${share.downloads.count}× heruntergeladen` +
-          (share.downloads.last ? `, zuletzt ${formatDateTime(share.downloads.last)}` : ""),
+        text: share.downloads.last
+          ? t("shares.downloadedLast", { count: share.downloads.count, time: formatDateTime(share.downloads.last) })
+          : t("shares.downloaded", { count: share.downloads.count }),
         done: true,
         expired: false,
       }
-    : { text: "Noch nicht heruntergeladen", done: false, expired: false };
+    : { text: t("shares.notDownloaded"), done: false, expired: false };
 }
 
 /** Copies text; the async clipboard API is not available in every Outlook version. */
@@ -1182,18 +1167,27 @@ function shareRow(share: ShareItem): HTMLElement {
     `<span class="dot-state" aria-hidden="true"></span><span class="state-text"></span></div>` +
     `<div class="share-actions">` +
     // Short labels: the taskpane is narrow (Outlook sets its width); the full text is in title / aria-label.
-    `<button type="button" class="btn btn-subtle copy" title="Link kopieren" aria-label="Link kopieren">Kopieren</button>` +
-    `<button type="button" class="btn btn-subtle insert" title="Als neuen Link in diese Nachricht einfügen" ` +
-    `aria-label="Als neuen Link in diese Nachricht einfügen">Einfügen</button>` +
-    `<button type="button" class="btn btn-subtle btn-danger revoke" title="Freigabe zurückziehen" ` +
-    `aria-label="Freigabe zurückziehen">Zurückziehen</button>` +
+    `<button type="button" class="btn btn-subtle copy"></button>` +
+    `<button type="button" class="btn btn-subtle insert"></button>` +
+    `<button type="button" class="btn btn-subtle btn-danger revoke"></button>` +
     `</div></div>`;
+  const label = (button: HTMLButtonElement, text: string, full: string) => {
+    button.textContent = text;
+    button.title = full;
+    button.setAttribute("aria-label", full);
+  };
+  label(row.querySelector<HTMLButtonElement>(".copy")!, t("shares.copy"), t("shares.copyLabel"));
+  label(row.querySelector<HTMLButtonElement>(".insert")!, t("shares.insert"), t("shares.insertLabel"));
+  label(row.querySelector<HTMLButtonElement>(".revoke")!, t("shares.revoke"), t("shares.revokeLabel"));
   row.querySelector<HTMLElement>(".share-name")!.textContent = share.name;
   row.querySelector<HTMLElement>(".share-name")!.title = share.name;
-  row.querySelector<HTMLElement>(".share-meta")!.textContent =
-    `Freigegeben am ${new Date(share.sharedAt).toLocaleDateString("de-DE")}` +
-    (share.expiration ? ` · gültig bis ${formatDate(share.expiration)}` : "") +
-    (share.protected === undefined ? "" : share.protected ? " · mit Kennwort" : " · ohne Kennwort");
+  row.querySelector<HTMLElement>(".share-meta")!.textContent = [
+    t("shares.sharedOn", { date: new Date(share.sharedAt).toLocaleDateString(locale()) }),
+    share.expiration ? t("shares.validUntil", { date: formatDate(share.expiration) }) : "",
+    share.protected === undefined ? "" : t(share.protected ? "shares.withPassword" : "shares.withoutPassword"),
+  ]
+    .filter(Boolean)
+    .join(" · ");
   row.querySelector<HTMLElement>(".state-text")!.textContent = state.text;
   if (share.password) {
     const line = row.querySelector<HTMLElement>(".share-password")!;
@@ -1205,8 +1199,8 @@ function shareRow(share: ShareItem): HTMLElement {
   const copy = row.querySelector<HTMLButtonElement>(".copy")!;
   copy.addEventListener("click", async () => {
     await copyText(share.url);
-    copy.textContent = "Kopiert";
-    setTimeout(() => (copy.textContent = "Kopieren"), 2000);
+    copy.textContent = t("shares.copied");
+    setTimeout(() => (copy.textContent = t("shares.copy")), 2000);
   });
 
   // A new link for this mail with the settings of the "Senden" tab – the original password cannot be recovered.
@@ -1221,13 +1215,13 @@ function shareRow(share: ShareItem): HTMLElement {
   revoke.addEventListener("click", async () => {
     if (Date.now() > armedUntil) {
       armedUntil = Date.now() + 4000;
-      revoke.textContent = "Wirklich?";
-      revoke.setAttribute("aria-label", "Wirklich? Freigabe zurückziehen – zum Bestätigen erneut wählen.");
+      revoke.textContent = t("shares.confirm");
+      revoke.setAttribute("aria-label", t("shares.confirmLabel"));
       revoke.classList.add("confirm");
       setTimeout(() => {
         if (Date.now() >= armedUntil) {
-          revoke.textContent = "Zurückziehen";
-          revoke.setAttribute("aria-label", "Freigabe zurückziehen");
+          revoke.textContent = t("shares.revoke");
+          revoke.setAttribute("aria-label", t("shares.revokeLabel"));
           revoke.classList.remove("confirm");
         }
       }, 4100);
@@ -1244,17 +1238,17 @@ function shareRow(share: ShareItem): HTMLElement {
       // A revoked link counts as expired: the server moved the file to the trash or scheduled it (CLEANUP_AFTER_DAYS).
       const fate =
         share.kind === "request"
-          ? "Die empfangenen Dateien bleiben in Ihrer Nextcloud."
+          ? t("shares.fateRequest")
           : result.file === "deleted"
-            ? "Die Datei wurde in den Papierkorb Ihrer Nextcloud verschoben."
+            ? t("shares.fateDeleted")
             : result.file === "scheduled"
-              ? `Die Datei wird in ${result.deleteAfterDays} Tagen in den Papierkorb Ihrer Nextcloud verschoben.`
-              : "Die Datei bleibt in Ihrer Nextcloud.";
-      setStatus(`„${share.name}“ ist nicht mehr abrufbar. ${fate}`, "success");
+              ? t("shares.fateScheduled", { count: result.deleteAfterDays ?? 0 })
+              : t("shares.fateKept");
+      setStatus(t("shares.revoked", { name: share.name, fate }), "success");
       noShares.hidden = sharesList.childElementCount > 0;
     } catch (err) {
       revoke.disabled = false;
-      setStatus(`Die Freigabe konnte nicht zurückgezogen werden: ${errorMessage(err)}`, "error");
+      setStatus(t("shares.revokeFailed", { error: errorMessage(err) }), "error");
     }
   });
   return row;
@@ -1276,13 +1270,13 @@ interface LinkAgainResult {
 async function linkAgain(share: ShareItem, button: HTMLButtonElement) {
   const problem = settingsProblem(share.kind);
   if (problem) {
-    setStatus(`${problem} (Einstellungen unter „Senden“)`, "error");
+    setStatus(t("shares.settingsProblem", { problem }), "error");
     return;
   }
   button.disabled = true;
   busy++;
   try {
-    setStatus(`Neuer Link zu „${share.name}“ wird erstellt …`);
+    setStatus(t("shares.linking", { name: share.name }));
     const result = await api<LinkAgainResult>(
       `/api/shares/${encodeURIComponent(share.id)}/link`,
       { method: "POST", body: JSON.stringify(await shareSettingsBody(newStep())) },
@@ -1307,14 +1301,16 @@ async function linkAgain(share: ShareItem, button: HTMLButtonElement) {
       );
     }
     setStatus(
-      `Ein neuer Link zu „${share.name}“ wurde eingefügt. ` +
-        (withPassword ? "Das Kennwort wird nach dem Senden automatisch verschickt." : "Er ist ohne Kennwort abrufbar."),
+      sentences(
+        t("shares.linked", { name: share.name }),
+        t(withPassword ? "submit.passwordFollows" : "shares.linkedNoPassword"),
+      ),
       "success",
     );
     loadShares().catch(() => undefined); // the new link shows up in the list
   } catch (err) {
     if (err instanceof ApiError && err.code === NOT_CONNECTED) showConnection({ connected: false });
-    setStatus(`Der Link konnte nicht eingefügt werden: ${errorMessage(err)}`, "error");
+    setStatus(t("insert.failed", { error: errorMessage(err) }), "error");
   } finally {
     button.disabled = false;
     nextStepPassword();
@@ -1355,7 +1351,7 @@ Office.onReady(async () => {
       // Caching is best effort.
     }
   } catch {
-    setStatus(`CloudShare ist derzeit nicht erreichbar (${API_BASE}).`, "error");
+    setStatus(t("unreachable", { url: API_BASE }), "error");
     return;
   }
   footerReady = resolveFooter().catch(() => undefined); // in the background – needed when a link is inserted
@@ -1394,6 +1390,6 @@ Office.onReady(async () => {
   try {
     await refreshConnection();
   } catch (err) {
-    setStatus(`Die Anmeldung ist fehlgeschlagen: ${errorMessage(err)}`, "error");
+    setStatus(t("signInFailed", { error: errorMessage(err) }), "error");
   }
 });

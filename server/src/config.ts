@@ -47,7 +47,10 @@ export const config = {
 
   nextcloudUrl: required("NEXTCLOUD_URL").replace(/\/$/, ""),
   nextcloudFolder: process.env.NEXTCLOUD_FOLDER ?? "CloudShare",
-  /** Folder for upload links ("Dateien anfordern"); every request gets its own subfolder. */
+  /**
+   * Folder for upload links ("Dateien anfordern"); every request gets its own subfolder. Independent of LANGUAGE on
+   * purpose: "Meine Freigaben" recognises CloudShare's links by this folder.
+   */
   requestFolder: process.env.NEXTCLOUD_REQUEST_FOLDER ?? "Outlook-Dateianforderungen",
   /** Optional line at the bottom of the card inserted into the mail, e.g. the company name. */
   mailFooter: process.env.MAIL_FOOTER ?? "",
@@ -101,6 +104,12 @@ export const config = {
 
   /** Optional text templates (SMS, password mail, download confirmation): default → department → user. */
   templatesFile: process.env.TEMPLATES_FILE ?? "/config/templates.json",
+  /**
+   * Language of everything users and recipients see: locales/<LANGUAGE>.json (see i18n.ts, which reads LANGUAGE
+   * itself). Dates in mails are shown in this time zone (the container's TZ).
+   */
+  language: (process.env.LANGUAGE ?? "de").trim().toLowerCase() || "de",
+  timeZone: process.env.TZ || "Europe/Berlin",
 
   /**
    * Requests per minute and user (oid from the Microsoft token) or, without one, per client address. Generous on

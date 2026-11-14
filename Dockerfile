@@ -46,6 +46,8 @@ COPY --from=server /build/package.json ./
 COPY --from=server /build/node_modules ./node_modules
 COPY --from=server /build/dist ./dist
 COPY --from=addin /build/dist ./public.tpl
+# Language files (LANGUAGE picks one; own ones can be added under /config/locales, see server/src/i18n.ts)
+COPY locales/ ./locales/
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod 755 /entrypoint.sh \
  && mkdir -p /app/public /home/node/.bw /data \

@@ -1,6 +1,6 @@
 {
   "_comment": [
-    "Optional text templates for CloudShare. Copy to /opt/cloudshare/env/templates/templates.json (chmod 644) and",
+    "Optional text templates for CloudShare. Copy to /opt/cloudshare/env/config/templates.json (chmod 644) and",
     "update the stack. Without the file the built-in texts are used. Resolution per field: users (sender address /",
     "UPN) → groups (the sender's department in Microsoft 365) → default → built-in. Problems are logged at start.",
     "Fields and placeholders:",

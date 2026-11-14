@@ -30,8 +30,30 @@ describe("commands.js for the JavaScript-only runtime", () => {
     expect(code).not.toMatch(pattern);
   });
 
+  it("keeps the marker the server replaces with the texts of the configured language", () => {
+    expect(code).toContain('"%%CLOUDSHARE_I18N%%"');
+  });
+
   it("registers both handlers", () => {
     expect(code).toContain('"onMessageSendHandler"');
     expect(code).toContain('"onAttachmentsChangedHandler"');
+  });
+});
+
+describe("language injection into the minified bundles", () => {
+  it.each(["src/commands/commands.ts", "src/taskpane/taskpane.ts"])("%s keeps a replaceable marker", async (entry) => {
+    const { outputFiles: [bundle] } = await build({
+      entryPoints: [entry],
+      bundle: true,
+      format: "iife",
+      target: entry.includes("commands") ? "es2016" : "es2017",
+      minify: true,
+      write: false,
+    });
+    const { loadLocale, localize } = await import("../scripts/localize.mjs");
+    const localized: string = localize(bundle.text, ".js", loadLocale("en"), "en");
+    expect(localized).not.toContain("%%CLOUDSHARE_I18N%%");
+    expect(localized).toContain("Open CloudShare");
+    expect(() => new Function(localized)).not.toThrow(); // still valid JavaScript
   });
 });

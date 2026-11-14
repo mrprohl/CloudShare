@@ -66,8 +66,9 @@ services:
       egress: {}                                # Entra ID/Graph, Nextcloud, Vaultwarden
     volumes:
       - data:/data
-      # Optional text templates (templates.json: SMS, password mail, download confirmation) – see templates.example.json
-      - /opt/cloudshare/env/templates:/config:ro
+      # Optional: templates.json (texts of SMS, password mail, download confirmation – see templates.example.json) and
+      # locales/<language>.json (own languages or changed texts – see README)
+      - /opt/cloudshare/env/config:/config:ro
     # Entra ID, Nextcloud, Vaultwarden service account, CREDENTIAL_KEY (setup.sh)
     env_file: [/opt/cloudshare/env/cloudshare.env]
     environment:

@@ -2,6 +2,7 @@ import { ConfidentialClientApplication } from "@azure/msal-node";
 import type { FastifyRequest } from "fastify";
 import { createRemoteJWKSet, jwtVerify } from "jose";
 import { config } from "./config.js";
+import { t } from "./i18n.js";
 
 /** Error returned to the add-in; the message is shown to the user (German). */
 export class HttpError extends Error {
@@ -27,7 +28,7 @@ const appIdUri = `api://${new URL(config.publicBaseUrl).host}/${config.clientId}
 
 export async function authenticate(req: FastifyRequest): Promise<User> {
   const header = req.headers.authorization;
-  if (!header?.startsWith("Bearer ")) throw new HttpError(401, "Anmeldung erforderlich");
+  if (!header?.startsWith("Bearer ")) throw new HttpError(401, t("server.loginRequired"));
   const token = header.slice("Bearer ".length);
 
   let payload;
@@ -40,11 +41,11 @@ export async function authenticate(req: FastifyRequest): Promise<User> {
       ],
     }));
   } catch {
-    throw new HttpError(401, "Ungültiges oder abgelaufenes Token");
+    throw new HttpError(401, t("server.invalidToken"));
   }
 
   const scopes = String(payload.scp ?? "").split(" ");
-  if (!scopes.includes("access_as_user")) throw new HttpError(403, "Scope access_as_user fehlt");
+  if (!scopes.includes("access_as_user")) throw new HttpError(403, t("server.scopeMissing"));
 
   return {
     oid: String(payload.oid),
@@ -71,7 +72,7 @@ export async function appGraphToken(): Promise<string> {
     if (!result?.accessToken) throw new Error("empty response");
     return result.accessToken;
   } catch (err) {
-    throw new HttpError(403, `App-Token für Microsoft Graph nicht erhältlich (Anwendungsberechtigung Mail.Send prüfen): ${(err as Error).message}`);
+    throw new HttpError(403, t("server.appTokenUnavailable", { error: (err as Error).message }));
   }
 }
 
@@ -88,7 +89,7 @@ export async function onBehalfOf(user: User, scopes: string[]): Promise<{ token:
   } catch (err) {
     throw new HttpError(
       403,
-      `Token für ${scopes.join(" ")} nicht erhältlich (Administratorzustimmung prüfen): ${(err as Error).message}`,
+      t("server.tokenUnavailable", { scopes: scopes.join(" "), error: (err as Error).message }),
     );
   }
 }

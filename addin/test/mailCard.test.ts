@@ -20,7 +20,7 @@ describe("filesCard", () => {
   it("shows coloured type badges, also for upper-case and missing extensions", () => {
     expect(html).toContain("background:#c4314b"); // pdf
     expect(html).toMatch(/background:#107c41[^>]*>XLSX</); // xlsx, case-insensitive
-    expect(html).toContain(">DATE<"); // no extension → "DATEI" shortened to 4 characters
+    expect(html).toContain(">DATEI<"); // no extension → the "file" badge of the language
   });
 
   it("shows expiry, password note and a multi-line footer", () => {

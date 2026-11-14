@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEFAULT_TEMPLATES, gsmLength, isGsm, loadTemplates, render, renderHtml, templatesFor } from "../src/templates.js";
+import { defaultTemplates, gsmLength, isGsm, loadTemplates, render, renderHtml, templatesFor } from "../src/templates.js";
 
 const dir = mkdtempSync(path.join(tmpdir(), "cloudshare-templates-"));
 function file(content: unknown) {
@@ -15,9 +15,9 @@ describe("templates", () => {
   it("uses the built-in texts without a file", () => {
     const warnings: string[] = [];
     const t = templatesFor({ upn: "a@b.de" }, loadTemplates(path.join(dir, "missing.json"), (m) => warnings.push(m)));
-    expect(t).toEqual(DEFAULT_TEMPLATES);
+    expect(t).toEqual(defaultTemplates());
     expect(warnings).toEqual([]);
-    expect(isGsm(DEFAULT_TEMPLATES.sms_template)).toBe(true);
+    expect(isGsm(defaultTemplates().sms_template)).toBe(true);
   });
 
   it("resolves user → department → default per field", () => {
@@ -34,7 +34,7 @@ describe("templates", () => {
     const user = templatesFor({ upn: "max.mustermann@example.test", department: "ausbildungsberatung" }, loaded);
     expect(user.sms_template).toBe("Gruppe {password}"); // group beats default
     expect(user.download_notice_subject).toBe("Nur für mich"); // user beats default
-    expect(user.mail_password_subject).toBe(DEFAULT_TEMPLATES.mail_password_subject); // not set anywhere
+    expect(user.mail_password_subject).toBe(defaultTemplates().mail_password_subject); // not set anywhere
     expect(templatesFor({ upn: "x@example.de", department: "Andere" }, loaded).sms_template).toBe("Standard {password}");
   });
 
@@ -55,8 +55,8 @@ describe("templates", () => {
       (m) => warnings.push(m),
     );
     const t = templatesFor({ department: "x" }, loaded);
-    expect(t.mail_password_intro).toBe(DEFAULT_TEMPLATES.mail_password_intro);
-    expect(t.sms_template).toBe(DEFAULT_TEMPLATES.sms_template);
+    expect(t.mail_password_intro).toBe(defaultTemplates().mail_password_intro);
+    expect(t.sms_template).toBe(defaultTemplates().sms_template);
     expect(t.download_notice_body).toBe("Hallo {wer}");
     expect(warnings.join("\n")).toMatch(/must not contain \{password\}/);
     expect(warnings.join("\n")).toMatch(/must not contain the link or a file name/);
@@ -75,7 +75,7 @@ describe("templates", () => {
 
   it("falls back to the built-in texts for invalid JSON", () => {
     const warnings: string[] = [];
-    expect(templatesFor({}, loadTemplates(file("{ kaputt"), (m) => warnings.push(m)))).toEqual(DEFAULT_TEMPLATES);
+    expect(templatesFor({}, loadTemplates(file("{ kaputt"), (m) => warnings.push(m)))).toEqual(defaultTemplates());
     expect(warnings[0]).toMatch(/not valid JSON/);
   });
 

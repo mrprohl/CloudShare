@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Template: docker/entrypoint.sh inserts the public base URL and the Entra client ID at container start.
+<!-- Template: docker/entrypoint.sh inserts the public base URL and the Entra client ID at container start, the server
+     the texts and locale of the configured language (LANGUAGE, section "manifest" – server/src/i18n.ts).
      In the Microsoft 365 admin center, use the URL <public base URL>/manifest.xml. -->
 <OfficeApp xmlns="http://schemas.microsoft.com/office/appforoffice/1.1"
            xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -9,9 +10,9 @@
   <Id>8f3c2a71-5d4e-4b9a-9e2f-6c1d7a0b3e54</Id>
   <Version>1.0.3.0</Version>
   <ProviderName>CloudShare</ProviderName>
-  <DefaultLocale>de-DE</DefaultLocale>
+  <DefaultLocale>%%LOCALE%%</DefaultLocale>
   <DisplayName DefaultValue="CloudShare"/>
-  <Description DefaultValue="Sendet große Dateien als kennwortgeschützten Link aus Ihrer Nextcloud."/>
+  <Description DefaultValue="%%t:manifest.description%%"/>
   <IconUrl DefaultValue="%%PUBLIC_BASE_URL%%/assets/icon-64.png?v=1.0.3"/>
   <HighResolutionIconUrl DefaultValue="%%PUBLIC_BASE_URL%%/assets/icon-128.png?v=1.0.3"/>
   <SupportUrl DefaultValue="%%PUBLIC_BASE_URL%%/"/>
@@ -103,11 +104,11 @@
           <bt:Url id="JSRuntime.Url" DefaultValue="%%PUBLIC_BASE_URL%%/commands.js"/>
         </bt:Urls>
         <bt:ShortStrings>
-          <bt:String id="Group.Label" DefaultValue="Nextcloud"/>
+          <bt:String id="Group.Label" DefaultValue="%%t:manifest.group%%"/>
           <bt:String id="Button.Label" DefaultValue="CloudShare"/>
         </bt:ShortStrings>
         <bt:LongStrings>
-          <bt:String id="Button.Tooltip" DefaultValue="Große Dateien als kennwortgeschützten Link aus Ihrer Nextcloud senden."/>
+          <bt:String id="Button.Tooltip" DefaultValue="%%t:manifest.tooltip%%"/>
         </bt:LongStrings>
       </Resources>
       <WebApplicationInfo>

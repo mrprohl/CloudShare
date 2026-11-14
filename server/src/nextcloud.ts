@@ -1,6 +1,7 @@
 import { HttpError } from "./auth.js";
 import { config } from "./config.js";
 import type { NextcloudCredentials } from "./credentials.js";
+import { t } from "./i18n.js";
 
 export const NOT_CONNECTED = "NEXTCLOUD_NOT_CONNECTED";
 export const QUOTA_EXCEEDED = "NEXTCLOUD_QUOTA_EXCEEDED";
@@ -45,7 +46,7 @@ export async function startLoginFlow(): Promise<LoginFlow> {
     | { login?: string; poll?: { token?: string; endpoint?: string } }
     | null;
   if (!res.ok || !json?.login || !json.poll?.token || !json.poll.endpoint) {
-    throw new HttpError(502, `Nextcloud: Login-Flow konnte nicht gestartet werden (HTTP ${res.status})`);
+    throw new HttpError(502, t("server.nextcloudLoginStart", { status: res.status }));
   }
   return {
     loginUrl: toPublicUrl(json.login),
@@ -64,7 +65,7 @@ export async function pollLoginFlow(flow: LoginFlow): Promise<NextcloudCredentia
   if (res.status === 404) return null;
   const json = (await res.json().catch(() => null)) as { loginName?: string; appPassword?: string } | null;
   if (!res.ok || !json?.loginName || !json.appPassword) {
-    throw new HttpError(502, `Nextcloud: Login-Flow-Abfrage fehlgeschlagen (HTTP ${res.status})`);
+    throw new HttpError(502, t("server.nextcloudLoginPoll", { status: res.status }));
   }
   return { loginName: json.loginName, appPassword: json.appPassword };
 }
@@ -98,7 +99,7 @@ export class NextcloudClient {
     });
     if (res.status === 401) {
       await this.onUnauthorized?.();
-      throw new HttpError(409, "Die Nextcloud-Verbindung ist nicht mehr gültig. Bitte neu verbinden.", NOT_CONNECTED);
+      throw new HttpError(409, t("server.connectionInvalid"), NOT_CONNECTED);
     }
     return res;
   }
@@ -106,9 +107,9 @@ export class NextcloudClient {
   private async expect(res: Response, action: string, ...okStatus: number[]) {
     if (res.ok || okStatus.includes(res.status)) return;
     if (res.status === 507) {
-      throw new HttpError(507, "Nicht genügend Speicherplatz in Ihrer Nextcloud.", QUOTA_EXCEEDED);
+      throw new HttpError(507, t("server.quotaExceeded"), QUOTA_EXCEEDED);
     }
-    throw new HttpError(502, `Nextcloud: ${action} fehlgeschlagen (HTTP ${res.status})`);
+    throw new HttpError(502, t("server.nextcloudFailed", { action, status: res.status }));
   }
 
   private async ocs(method: string, path: string, body?: URLSearchParams) {
@@ -127,7 +128,7 @@ export class NextcloudClient {
       | null;
     if (!res.ok || !json?.ocs) {
       const message = json?.ocs?.meta?.message || `HTTP ${res.status}`;
-      throw new HttpError(res.status >= 500 ? 502 : 400, `Nextcloud: ${message}`);
+      throw new HttpError(res.status >= 500 ? 502 : 400, t("server.nextcloudMessage", { message }));
     }
     return json.ocs.data;
   }
@@ -162,7 +163,7 @@ export class NextcloudClient {
       id?: string;
       quota?: { free?: number; used?: number; total?: number; quota?: number };
     };
-    if (!data?.id) throw new HttpError(502, "Nextcloud: Benutzer-ID nicht ermittelbar");
+    if (!data?.id) throw new HttpError(502, t("server.nextcloudNoUserId"));
     // Negative values mean "unlimited" or "not computed" in Nextcloud.
     const bytes = (value: unknown) => (typeof value === "number" && value >= 0 ? value : null);
     const free = bytes(data.quota?.free);
@@ -180,14 +181,14 @@ export class NextcloudClient {
   /** Deletes a file or folder (it goes to the user's Nextcloud trash); already gone (404) is fine. */
   async deletePath(uid: string, segments: string[]) {
     const res = await this.request("DELETE", this.davFiles(uid, segments));
-    await this.expect(res, "Löschen", 404);
+    await this.expect(res, t("server.actionDelete"), 404);
   }
 
   /** Creates the folder chain; existing folders (405) are fine. */
   async ensureFolder(uid: string, segments: string[]) {
     for (let i = 1; i <= segments.length; i++) {
       const res = await this.request("MKCOL", this.davFiles(uid, segments.slice(0, i)));
-      await this.expect(res, "Ordner anlegen", 405);
+      await this.expect(res, t("server.actionCreateFolder"), 405);
     }
   }
 
@@ -195,7 +196,7 @@ export class NextcloudClient {
     const res = await this.request("MKCOL", this.davUpload(uid, uploadId), {
       Destination: this.destination(uid, target),
     });
-    await this.expect(res, "Upload starten");
+    await this.expect(res, t("server.actionUploadStart"));
   }
 
   async putChunk(uid: string, uploadId: string, index: number, target: string[], data: Buffer) {
@@ -205,7 +206,7 @@ export class NextcloudClient {
       { Destination: this.destination(uid, target), "Content-Type": "application/octet-stream" },
       data,
     );
-    await this.expect(res, `Block ${index} hochladen`);
+    await this.expect(res, t("server.actionUploadChunk", { index }));
   }
 
   async finishUpload(uid: string, uploadId: string, target: string[], totalLength: number) {
@@ -213,7 +214,7 @@ export class NextcloudClient {
       Destination: this.destination(uid, target),
       "OC-Total-Length": String(totalLength),
     });
-    await this.expect(res, "Upload abschließen");
+    await this.expect(res, t("server.actionUploadFinish"));
   }
 
   async abortUpload(uid: string, uploadId: string) {
@@ -241,7 +242,7 @@ export class NextcloudClient {
     if (password !== undefined) params.set("password", password);
     if (label) params.set("label", label);
     const data = (await this.ocs("POST", "/ocs/v2.php/apps/files_sharing/api/v1/shares", params)) as { url?: string };
-    if (!data?.url) throw new HttpError(502, "Nextcloud: Freigabelink fehlt in der Antwort");
+    if (!data?.url) throw new HttpError(502, t("server.nextcloudNoShareUrl"));
     return data.url;
   }
 

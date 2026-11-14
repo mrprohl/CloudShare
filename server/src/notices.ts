@@ -13,6 +13,7 @@ import type { FastifyBaseLogger } from "fastify";
 import { appGraphToken, HttpError } from "./auth.js";
 import { config } from "./config.js";
 import { getCredentials, removeCredentials } from "./credentials.js";
+import { locale, t } from "./i18n.js";
 import { sendMailAsApp } from "./graph.js";
 import { NextcloudClient, NOT_CONNECTED } from "./nextcloud.js";
 import { createAtomicWriter, seal, unseal, type Sealed } from "./storage.js";
@@ -61,9 +62,9 @@ export async function registerNotices(entries: Array<[string, Notice]>): Promise
 export const pendingNotices = () => [...notices.entries()];
 
 const tokenOf = (url: string) => url.replace(/\/+$/, "").split("/").pop() ?? "";
-const formatDay = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("de-DE", { timeZone: "Europe/Berlin" });
+const formatDay = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString(locale(), { timeZone: config.timeZone });
 const formatTime = (iso: string) =>
-  new Date(iso).toLocaleString("de-DE", { timeZone: "Europe/Berlin", dateStyle: "medium", timeStyle: "short" });
+  new Date(iso).toLocaleString(locale(), { timeZone: config.timeZone, dateStyle: "medium", timeStyle: "short" });
 
 /** One pass (exported for tests; normally driven by startNotices). */
 export async function runNotices(log: Pick<FastifyBaseLogger, "info" | "warn">, now = Date.now()) {
@@ -96,16 +97,16 @@ export async function runNotices(log: Pick<FastifyBaseLogger, "info" | "warn">, 
         // Only downloads after the password went out (earlier links of the same file do not count).
         if (!downloads?.last || Date.parse(downloads.last) < n.registeredAt - 60_000) continue;
         appToken ??= await appGraphToken();
-        const t = templatesFor({ upn: n.ownerUpn, department: n.department });
+        const texts = templatesFor({ upn: n.ownerUpn, department: n.department });
         const values = {
           filename: n.fileName,
-          subject: n.subject || "(ohne Betreff)",
+          subject: n.subject || t("mail.noSubject"),
           downloaded_at: formatTime(downloads.last),
           expires: formatDay(n.expireDate),
           recipients: n.recipients,
         };
         const style = "margin:0 0 12px;font-family:'Segoe UI',-apple-system,Helvetica,Arial,sans-serif;font-size:14px;line-height:20px;color:#242424;";
-        await sendMailAsApp(appToken, owner, n.notifyTo, render(t.download_notice_subject, values), renderHtml(t.download_notice_body, values, style));
+        await sendMailAsApp(appToken, owner, n.notifyTo, render(texts.download_notice_subject, values), renderHtml(texts.download_notice_body, values, style));
         notices.delete(token);
         changed = true;
         log.info({ user: n.ownerUpn, file: n.fileName }, "Download confirmation sent");

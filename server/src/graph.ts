@@ -1,5 +1,6 @@
 import { HttpError } from "./auth.js";
 import { config } from "./config.js";
+import { t } from "./i18n.js";
 
 /**
  * Delegated Graph permissions: read "Sent Items" to detect the sent mail, then send the password mail.
@@ -48,7 +49,7 @@ export async function fetchProfile(graphToken: string): Promise<Profile> {
   const res = await fetch(`https://graph.microsoft.com/v1.0/me?$select=${select}`, {
     headers: { Authorization: `Bearer ${graphToken}` },
   });
-  if (!res.ok) throw new HttpError(502, `Profil konnte nicht gelesen werden (HTTP ${res.status})`);
+  if (!res.ok) throw new HttpError(502, t("server.profileUnavailable", { status: res.status }));
   const me = (await res.json()) as Record<string, unknown>;
   const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
   return {
@@ -112,7 +113,7 @@ export async function sendMail(
   });
   if (res.status !== 202) {
     const text = await res.text().catch(() => "");
-    throw new HttpError(502, `Graph sendMail fehlgeschlagen (HTTP ${res.status}): ${text.slice(0, 300)}`);
+    throw new HttpError(502, `Graph sendMail failed (HTTP ${res.status}): ${text.slice(0, 300)}`);
   }
 }
 
@@ -131,7 +132,7 @@ export async function sendMailAsApp(appToken: string, userId: string, to: string
   });
   if (res.status !== 202) {
     const text = await res.text().catch(() => "");
-    throw new HttpError(502, `Graph sendMail (App) fehlgeschlagen (HTTP ${res.status}): ${text.slice(0, 300)}`);
+    throw new HttpError(502, `Graph sendMail (app) failed (HTTP ${res.status}): ${text.slice(0, 300)}`);
   }
 }
 

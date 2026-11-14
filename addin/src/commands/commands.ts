@@ -17,6 +17,7 @@ import {
   withTimeout,
   type ServerConfig,
 } from "../shared/office";
+import { t } from "../shared/i18n";
 import { errorText } from "../shared/sso";
 
 interface LaunchEvent {
@@ -34,7 +35,7 @@ type CompletedOptions = NonNullable<Parameters<LaunchEvent["completed"]>[0]>;
  * Outlook's limits for event.completed (Smart Alerts): button text at most 20 characters, message at most 500.
  * Outlook on the web rejects anything longer and leaves the send dialog spinning.
  */
-const ALERT_BUTTON = "CloudShare öffnen";
+const alertButton = () => t("alert.button");
 const MAX_LABEL = 20;
 const MAX_MESSAGE = 500;
 
@@ -99,7 +100,7 @@ const largeAttachments = async (config: ServerConfig) =>
 
 /**
  * OnMessageAttachmentsChanged: Outlook does not allow add-ins to open the taskpane themselves.
- * Instead an info bar with the button "Mit CloudShare senden" appears above the mail (UI text is German).
+ * Instead an info bar with the button "Mit CloudShare senden" appears above the mail.
  */
 async function onAttachmentsChangedHandler(event: LaunchEvent) {
   const messages = composeItem().notificationMessages;
@@ -107,14 +108,11 @@ async function onAttachmentsChangedHandler(event: LaunchEvent) {
     const config = await getConfigCached();
     const large = await largeAttachments(config);
     if (large.length > 0) {
-      const what = large.length === 1 ? `„${large[0].name}“ ist` : `${large.length} Anhänge sind`;
-      const tail =
-        config.attachmentPolicy === "enforce"
-          ? "kann nur als kennwortgeschützter Nextcloud-Link versendet werden."
-          : "Als kennwortgeschützten Nextcloud-Link senden?";
-      let message = `${what} größer als ${config.thresholdMb} MB – ${tail}`;
+      const action = t(config.attachmentPolicy === "enforce" ? "notify.enforce" : "notify.suggest");
+      let message = t("notify.large", { count: large.length, name: large[0].name, mb: config.thresholdMb, action });
       // Notification messages are limited to 150 characters.
-      if (message.length > 150) message = `Anhänge größer als ${config.thresholdMb} MB – ${tail}`;
+      if (message.length > 150) message = t("notify.largeShort", { mb: config.thresholdMb, action });
+      if (message.length > 150) message = message.slice(0, 149) + "…";
       await officeAsync<void>((cb) =>
         messages.replaceAsync(
           NOTIFICATION_ID,
@@ -125,7 +123,7 @@ async function onAttachmentsChangedHandler(event: LaunchEvent) {
             actions: [
               {
                 actionType: Office.MailboxEnums.ActionType.ShowTaskPane,
-                actionText: "Mit CloudShare senden",
+                actionText: t("notify.action"),
                 commandId: TASKPANE_COMMAND_ID,
                 contextData: "{}",
               },
@@ -151,11 +149,11 @@ async function onAttachmentsChangedHandler(event: LaunchEvent) {
 async function armPasswordMail(jobId: string, passwordTo?: string, passwordSms?: string) {
   // Normally already done by the taskpane – make sure the sent copy carries the tag.
   trace("arm:tag");
-  await withTimeout(tagDraft(jobId), TIMEOUTS.office, "Outlook (Markieren des Entwurfs)");
+  await withTimeout(tagDraft(jobId), TIMEOUTS.office, t("step.tagDraft"));
   trace("arm:from");
-  const from = await withTimeout(sharedSender(), TIMEOUTS.office, "Outlook (Absender lesen)");
+  const from = await withTimeout(sharedSender(), TIMEOUTS.office, t("step.readFrom"));
   trace("arm:token");
-  const token = await withTimeout(getToken(), TIMEOUTS.token, "Die Anmeldung bei Microsoft (SSO)");
+  const token = await withTimeout(getToken(), TIMEOUTS.token, t("step.signIn"));
   trace("arm:server");
   await withTimeout(
     api(
@@ -171,7 +169,7 @@ async function armPasswordMail(jobId: string, passwordTo?: string, passwordSms?:
       token,
     ),
     TIMEOUTS.server,
-    "Der CloudShare-Server",
+    t("step.server"),
   );
   trace("arm:done");
 }
@@ -202,7 +200,7 @@ const shorten = (names: string) => (names.length > 200 ? names.slice(0, 200) + "
 async function onMessageSendHandler(event: LaunchEvent) {
   // Every step has a time limit: a step that never answers would leave Outlook at "takes longer than expected".
   trace("start");
-  const state = await withTimeout(readDraftState(), TIMEOUTS.office, "Outlook (Entwurfsdaten lesen)");
+  const state = await withTimeout(readDraftState(), TIMEOUTS.office, t("step.readState"));
   trace("state", state.jobId ? "job" : state.noPassword ? "no-password" : "none");
 
   let config: ServerConfig | undefined;
@@ -211,7 +209,7 @@ async function onMessageSendHandler(event: LaunchEvent) {
     config = await getConfigCached();
     traceOn = config.trace === true;
     trace("config", config.attachmentPolicy);
-    large = await withTimeout(largeAttachments(config), TIMEOUTS.office, "Outlook (Anhänge lesen)");
+    large = await withTimeout(largeAttachments(config), TIMEOUTS.office, t("step.readAttachments"));
   } catch {
     // No configuration known (server never reached) → no attachment check.
   }
@@ -224,14 +222,12 @@ async function onMessageSendHandler(event: LaunchEvent) {
     const options: CompletedOptions = {
       allowEvent: false,
       errorMessage:
-        `Anhänge über ${config!.thresholdMb} MB dürfen nur mit CloudShare als kennwortgeschützter Nextcloud-Link ` +
-        `versendet werden: ${names}. ` +
-        (supportsCustomAlert()
-          ? `Bitte „${ALERT_BUTTON}“ wählen.`
-          : `Bitte über „CloudShare“ in der Menüleiste versenden.`),
+        t("alert.enforce", { mb: config!.thresholdMb, names }) +
+        " " +
+        (supportsCustomAlert() ? t("alert.chooseButton", { button: alertButton() }) : t("alert.useRibbon")),
     };
     if (supportsCustomAlert()) {
-      options.cancelLabel = ALERT_BUTTON;
+      options.cancelLabel = alertButton();
       options.commandId = TASKPANE_COMMAND_ID;
     }
     event.completed(options);
@@ -244,7 +240,7 @@ async function onMessageSendHandler(event: LaunchEvent) {
   // Links deleted from the mail again: no password mail for a mail without links.
   const released =
     state.jobId !== undefined &&
-    (await withTimeout(releaseDraftIfLinksGone(), TIMEOUTS.office, "Outlook (Nachrichtentext lesen)").catch(() => false));
+    (await withTimeout(releaseDraftIfLinksGone(), TIMEOUTS.office, t("step.readBody")).catch(() => false));
   if (state.jobId && !released) {
     try {
       await armPasswordMail(state.jobId, state.passwordTo, state.passwordSms);
@@ -252,7 +248,7 @@ async function onMessageSendHandler(event: LaunchEvent) {
       trace("arm:failed", errorText(err));
       event.completed({
         allowEvent: false,
-        errorMessage: `CloudShare kann das Kennwort für diese Nachricht nicht vorbereiten: ${errorText(err)}`,
+        errorMessage: t("alert.armFailed", { error: errorText(err) }),
       });
       return;
     }
@@ -263,11 +259,8 @@ async function onMessageSendHandler(event: LaunchEvent) {
     if (supportsCustomAlert()) {
       event.completed({
         allowEvent: false,
-        errorMessage:
-          `Anhänge über ${config!.thresholdMb} MB: ${names}. ` +
-          `Mit CloudShare werden sie als kennwortgeschützter Nextcloud-Link gesendet. ` +
-          `Mit „Trotzdem senden“ werden sie als normale Anhänge gesendet.`,
-        cancelLabel: ALERT_BUTTON,
+        errorMessage: t("alert.suggest", { mb: config!.thresholdMb, names }),
+        cancelLabel: alertButton(),
         commandId: TASKPANE_COMMAND_ID,
         sendModeOverride: Office.MailboxEnums.SendModeOverride.PromptUser,
       });
@@ -288,7 +281,7 @@ function sendHandler(event: LaunchEvent) {
     },
   };
   return onMessageSendHandler(safe).catch((err) =>
-    safe.completed({ allowEvent: false, errorMessage: `CloudShare konnte die Nachricht nicht prüfen: ${errorText(err)}` }),
+    safe.completed({ allowEvent: false, errorMessage: t("alert.checkFailed", { error: errorText(err) }) }),
   );
 }
 

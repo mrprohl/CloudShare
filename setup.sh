@@ -37,6 +37,7 @@ env_value() {
 echo "== CloudShare setup =="
 echo "-- General --"
 ask PUBLIC_BASE_URL         "Public address"                              "https://cloudshare.example.com"
+ask LANGUAGE                "Language (de, en – files in locales/)"       "de"
 ask ATTACHMENT_THRESHOLD_MB "CloudShare from attachment size (MB)"        "1"
 ask ATTACHMENT_POLICY       "Large attachments: enforce or suggest"       "enforce"
 ask SHARE_EXPIRE_DAYS       "Link valid, default (days)"                  "14"
@@ -66,6 +67,7 @@ for var in PUBLIC_BASE_URL ENTRA_TENANT_ID ENTRA_CLIENT_ID NEXTCLOUD_URL VAULTWA
   [ -n "${!var}" ] || { echo "$var must not be empty." >&2; exit 1; }
 done
 case "$ATTACHMENT_POLICY" in enforce|suggest) ;; *) echo "ATTACHMENT_POLICY must be enforce or suggest." >&2; exit 1;; esac
+[[ "$LANGUAGE" =~ ^[a-z]{2,3}(-[a-z0-9]{2,8})?$ ]] || { echo "LANGUAGE must be a language code like de or en." >&2; exit 1; }
 for var in PUBLIC_BASE_URL NEXTCLOUD_URL VAULTWARDEN_URL; do
   case "${!var}" in https://*) ;; *) echo "$var must start with https://." >&2; exit 1;; esac
 done
@@ -79,7 +81,7 @@ CREDENTIAL_KEY=$(openssl rand -base64 32)
 umask 077
 {
   echo "# written by setup.sh on $(date '+%Y-%m-%d %H:%M') – contains secrets"
-  for var in PUBLIC_BASE_URL ATTACHMENT_THRESHOLD_MB ATTACHMENT_POLICY SHARE_EXPIRE_DAYS SHARE_MAX_EXPIRE_DAYS \
+  for var in PUBLIC_BASE_URL LANGUAGE ATTACHMENT_THRESHOLD_MB ATTACHMENT_POLICY SHARE_EXPIRE_DAYS SHARE_MAX_EXPIRE_DAYS \
            MAIL_FOOTER ENTRA_TENANT_ID ENTRA_CLIENT_ID ENTRA_CLIENT_SECRET \
            NEXTCLOUD_URL NEXTCLOUD_FOLDER NEXTCLOUD_REQUEST_FOLDER \
            CREDENTIAL_KEY VAULTWARDEN_URL BW_CLIENTID BW_CLIENTSECRET BW_PASSWORD \
@@ -87,7 +89,9 @@ umask 077
     echo "$var=$(env_value "${!var}")"
   done
 } > env/cloudshare.env
-chmod 700 env; chmod 600 env/*
+chmod 700 env; chmod 600 env/*.env
+# Optional files for the container (/config, read-only): templates.json and locales/<language>.json
+mkdir -p env/config/locales; chmod 755 env/config env/config/locales
 chmod 755 setup.sh
 
 # Host name for Caddy (only on a new env/versions.env from the template)

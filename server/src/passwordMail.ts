@@ -1,10 +1,12 @@
 /**
- * HTML of the password mail (seen by recipients, so German). Same look as the link card the taskpane inserts
+ * HTML of the password mail (seen by recipients – texts from section "mail" of the language file). Same look as the
+ * link card the taskpane inserts
  * (addin/src/taskpane/mailCard.ts – keep colours and spacing in sync): white card, brand accent on the left, file
  * type badges, one button. Tables and inline styles only, so it renders in classic Outlook, Outlook on the web,
  * Gmail and on phones.
  */
 
+import { t } from "./i18n.js";
 import { renderHtml } from "./templates.js";
 
 const FONT = "'Segoe UI',-apple-system,Helvetica,Arial,sans-serif";
@@ -36,8 +38,7 @@ function typeBadge(name: string): string {
   );
 }
 
-export const accessText = (count?: number) =>
-  count === undefined ? "begrenzte Anzahl Abrufe" : count === 1 ? "nur einmal abrufbar" : `bis zu ${count} Abrufe`;
+export const accessText = (count?: number) => (count === undefined ? t("mail.accessLimited") : t("mail.access", { count }));
 
 export interface PasswordMailContent {
   fileNames: string[];
@@ -49,14 +50,14 @@ export interface PasswordMailContent {
   expireDays: number;
   /**
    * Own intro text from templates.json (mail_password_intro: greeting and text above the card); without it the
-   * built-in German text is used.
+   * built-in text of the language is used.
    */
   introTemplate?: string;
   senderName?: string;
 }
 
 export function passwordMailHtml(mail: PasswordMailContent): string {
-  const many = mail.fileNames.length !== 1;
+  const count = mail.fileNames.length;
   const rows = mail.fileNames
     .map(
       (name) =>
@@ -64,10 +65,7 @@ export function passwordMailHtml(mail: PasswordMailContent): string {
         `line-height:20px;font-weight:600;color:#242424;word-break:break-all;">${escapeHtml(name)}</td></tr>`,
     )
     .join("");
-  const intro =
-    `für ${many ? "die folgenden Freigaben" : "die folgende Freigabe"}` +
-    (mail.subject ? ` aus der Nachricht „${escapeHtml(mail.subject)}“` : "") +
-    ` benötigen Sie ein Kennwort. Sie können es über den Button abrufen:`;
+  const intro = escapeHtml(mail.subject ? t("mail.introSubject", { count, subject: mail.subject }) : t("mail.intro", { count }));
   const p = (text: string) =>
     `<p style="margin:0 0 12px;font-family:${FONT};font-size:14px;line-height:20px;color:#242424;">${text}</p>`;
   const opening = mail.introTemplate
@@ -76,7 +74,7 @@ export function passwordMailHtml(mail: PasswordMailContent): string {
         { subject: mail.subject, sender_name: mail.senderName ?? "", count: String(mail.fileNames.length) },
         `margin:0 0 12px;font-family:${FONT};font-size:14px;line-height:20px;color:#242424;`,
       )
-    : p("Guten Tag,") + p(intro);
+    : p(escapeHtml(t("mail.greeting"))) + p(intro);
   return (
     opening +
     `<table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" ` +
@@ -84,19 +82,21 @@ export function passwordMailHtml(mail: PasswordMailContent): string {
     `<tr><td style="background:#ffffff;border:1px solid #e0e0e0;border-left:4px solid ${BRAND};border-radius:6px;` +
     `padding:14px 16px;font-family:${FONT};color:#242424;">` +
     `<div style="font-size:15px;line-height:20px;font-weight:600;color:#242424;margin:0 0 8px;">` +
-    `Kennwort für ${many ? `${mail.fileNames.length} Freigaben` : "Ihre Freigabe"}</div>` +
+    `${escapeHtml(t("mail.cardTitle", { count }))}</div>` +
     `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">${rows}</table>` +
     `<div style="margin:14px 0 0;">` +
     `<a href="${escapeHtml(mail.sendUrl)}" style="display:inline-block;background:${BRAND};border:1px solid ${BRAND};` +
     `border-radius:4px;color:#ffffff;font-family:${FONT};font-size:13px;font-weight:600;line-height:18px;` +
-    `padding:6px 14px;text-decoration:none;white-space:nowrap;">Kennwort anzeigen</a></div>` +
+    `padding:6px 14px;text-decoration:none;white-space:nowrap;">${escapeHtml(t("mail.showPassword"))}</a></div>` +
     `<div style="font-size:12px;line-height:16px;color:#616161;margin:10px 0 0;">` +
-    `${accessText(mail.maxAccessCount)} · läuft nach ${mail.expireDays} Tagen ab · ` +
-    `Geben Sie das Kennwort beim Öffnen des Download-Links ein.</div>` +
+    escapeHtml(
+      [accessText(mail.maxAccessCount), t("mail.expires", { count: mail.expireDays }), t("mail.enterPassword")].join(" · "),
+    ) +
+    `</div>` +
     `</td></tr></table>` +
     // The plain link as well – some mail clients block buttons or show them without colours.
     `<p style="margin:0;font-family:${FONT};font-size:12px;line-height:16px;color:#8a8a8a;">` +
-    `Falls der Button nicht funktioniert: <a href="${escapeHtml(mail.sendUrl)}" style="color:${BRAND};">` +
+    `${escapeHtml(t("mail.buttonFallback"))} <a href="${escapeHtml(mail.sendUrl)}" style="color:${BRAND};">` +
     `${escapeHtml(mail.sendUrl)}</a></p>`
   );
 }
