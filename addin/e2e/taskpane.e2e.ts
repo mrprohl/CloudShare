@@ -379,10 +379,10 @@ test("plain-text mail gets the links as text", async ({ page }) => {
   expect(inserted.data).not.toContain("<table");
 });
 
-test("Dateien vom Computer hinzufügen opens the file dialog natively (label, also by keyboard)", async ({ page }) => {
+test("Dateien vom Computer hinzufügen: the click lands on the real file input (also by keyboard)", async ({ page }) => {
   await openTaskpane(page);
-  // Mouse: the visible button is the input's label – the browser opens the dialog itself.
-  const [byClick] = await Promise.all([page.waitForEvent("filechooser"), page.click("#add-files")]);
+  // Mouse: the transparent file input lies on top of the button look and takes the click itself.
+  const [byClick] = await Promise.all([page.waitForEvent("filechooser"), page.click(".file-picker")]);
   expect(byClick.isMultiple()).toBe(true);
   await byClick.setFiles({ name: "Plan.pdf", mimeType: "application/pdf", buffer: Buffer.alloc(3000, 0x41) });
   await expect(page.locator("#picked label.list-item")).toHaveCount(1);
@@ -391,6 +391,23 @@ test("Dateien vom Computer hinzufügen opens the file dialog natively (label, al
   await page.focus("#file");
   const [byKey] = await Promise.all([page.waitForEvent("filechooser"), page.keyboard.press("Space")]);
   expect(byKey).toBeTruthy();
+});
+
+test("files dragged from Explorer onto the pane are added (no file dialog needed)", async ({ page }) => {
+  await openTaskpane(page);
+  await expect(page.locator(".drop-hint")).toContainText("in diesen Bereich ziehen");
+  const dataTransfer = await page.evaluateHandle(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(["A".repeat(2000)], "Skizze.pdf", { type: "application/pdf" }));
+    transfer.items.add(new File(["B".repeat(3000)], "Fotos.zip", { type: "application/zip" }));
+    return transfer;
+  });
+  await page.dispatchEvent("#panel-send", "dragenter", { dataTransfer });
+  await expect(page.locator("#panel-send")).toHaveClass(/dropping/);
+  await page.dispatchEvent("#panel-send", "drop", { dataTransfer });
+  await expect(page.locator("#panel-send")).not.toHaveClass(/dropping/);
+  await expect(page.locator("#picked label.list-item")).toHaveCount(2);
+  await expect(page.locator("#status")).toContainText("2 Dateien wurden hinzugefügt.");
 });
 
 test("uploads a file picked from the computer", async ({ page }) => {
