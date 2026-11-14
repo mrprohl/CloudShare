@@ -47,6 +47,7 @@ vi.mock("../src/vaultwarden.js", () => ({
   createMessageSend: vi.fn(async () => ({ url: "https://vault.example.test/#/send/msg/key123", id: "send-msg" })),
   MESSAGE_MAX_LENGTH: 1000,
   setSendMaxAccess: vi.fn(async () => undefined),
+  setSendExpiry: vi.fn(async () => undefined),
   initVault: vi.fn(),
 }));
 vi.mock("../src/nextcloud.js", async (importOriginal) => {
@@ -66,6 +67,7 @@ const { createJob, getJob } = await import("../src/jobs.js");
 const vaultwarden = await import("../src/vaultwarden.js");
 const createPasswordSend = vi.mocked(vaultwarden.createPasswordSend);
 const setSendMaxAccess = vi.mocked(vaultwarden.setSendMaxAccess);
+const setSendExpiry = vi.mocked(vaultwarden.setSendExpiry);
 const createMessageSend = vi.mocked(vaultwarden.createMessageSend);
 
 const app = await buildApp({ logger: false });
@@ -87,6 +89,7 @@ beforeEach(() => {
   nc.createPublicShare.mockResolvedValue("https://cloud.example.test/s/abc");
   createPasswordSend.mockClear();
   setSendMaxAccess.mockClear();
+  setSendExpiry.mockClear();
 });
 
 async function startUpload(user: string, fileName = "a.pdf", size = 100) {
@@ -223,12 +226,23 @@ describe("uploads", () => {
     expect(nc.createPublicShare).not.toHaveBeenCalled();
   });
 
-  it("shares without password on request – no Send, no password job", async () => {
+  it("shares without password on request – no Send, no password; only a job for the download confirmation", async () => {
     const { body } = await startUpload("anna");
     await putChunk("anna", body.uploadId, 1);
     const res = await complete("anna", body.uploadId, { password: "", noPassword: true, jobId: "job-x" });
     expect(res.statusCode).toBe(200);
-    expect(res.json().jobId).toBeNull();
+    expect(res.json().noPassword).toBe(true);
+    const job = getJob(res.json().jobId)!; // DOWNLOAD_NOTICE=true in the tests
+    expect(job).toMatchObject({ owner: "oid-anna", noPassword: true, sendUrl: "", fileNames: ["a.pdf"] });
+    expect(job.noticeShares?.map((s) => s.name)).toEqual(["a.pdf"]);
+    expect(job.separate).toBeUndefined();
+
+    // The next link without password of the same mail joins that job.
+    const second = await startUpload("anna", "b.pdf");
+    await putChunk("anna", second.body.uploadId, 1);
+    const next = await complete("anna", second.body.uploadId, { noPassword: true, jobId: res.json().jobId });
+    expect(next.json().jobId).toBe(res.json().jobId);
+    expect(getJob(res.json().jobId)!.noticeShares?.map((s) => s.name)).toEqual(["a.pdf", "b.pdf"]);
     expect(res.json().shareUrl).toBe("https://cloud.example.test/s/abc");
     expect(nc.createPublicShare.mock.calls[0][1]).toBeUndefined();
     expect(createPasswordSend).not.toHaveBeenCalled();
@@ -326,6 +340,26 @@ describe("upload links", () => {
     expect(folder[0]).toBe("Outlook-Dateianforderungen");
     expect(permissions).toBe(4);
     expect(label).toBe("Dateianforderung");
+  });
+});
+
+describe("password by SMS: the Send only holds the password until sending", () => {
+  it("keeps the Sends of a job with SMS as long as possible, also those created before the switch", async () => {
+    const first = await startUpload("anna");
+    await putChunk("anna", first.body.uploadId, 1);
+    const { jobId } = (await complete("anna", first.body.uploadId, { password: STRONG, passwordDays: 3, step: "s1" })).json();
+    expect(createPasswordSend.mock.calls[0][3]).toBe(3);
+
+    const res = await app.inject({ method: "PATCH", url: `/api/jobs/${jobId}`, headers: as("anna"), payload: { passwordSms: "0170 1234567" } });
+    expect(res.statusCode).toBe(200);
+    expect(setSendExpiry).toHaveBeenCalledOnce();
+    expect(Math.round((setSendExpiry.mock.calls[0][1] - Date.now()) / DAY)).toBe(30);
+    expect(Math.round((getJob(jobId)!.separate![0].sendExpiresAt! - Date.now()) / DAY)).toBe(30);
+
+    const second = await startUpload("anna", "b.pdf");
+    await putChunk("anna", second.body.uploadId, 1);
+    await complete("anna", second.body.uploadId, { password: STRONG, passwordDays: 3, step: "s2", jobId });
+    expect(createPasswordSend.mock.calls[1][3]).toBe(30);
   });
 });
 
@@ -463,11 +497,12 @@ describe("my shares", () => {
     expect(nc.deleteShare).not.toHaveBeenCalled(); // the old link stays valid
   });
 
-  it("links a file again without password – no job", async () => {
+  it("links a file again without password – no password job, only the download confirmation", async () => {
     nc.listPublicShares.mockResolvedValue(shares);
     const res = await link("1", { noPassword: true });
     expect(res.statusCode).toBe(200);
-    expect(res.json().jobId).toBeNull();
+    expect(res.json().noPassword).toBe(true);
+    expect(getJob(res.json().jobId)).toMatchObject({ noPassword: true });
     expect(nc.createPublicShare.mock.calls[0][1]).toBeUndefined();
     expect(createPasswordSend).not.toHaveBeenCalled();
   });

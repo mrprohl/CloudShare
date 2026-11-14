@@ -338,6 +338,15 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
   text-decoration: underline; text-underline-offset: 2px;
 }
 .link-button:hover { color: var(--brand-fg-hover); }
+/* Optional section opened on demand ("Vertrauliche Nachricht"): the heading is the button, the chevron turns. */
+.disclosure {
+  display: inline-flex; align-items: center; gap: 4px; margin-left: -4px; padding: 2px 4px; border: 0; border-radius: 4px;
+  background: none; color: var(--fg1); font: inherit; cursor: pointer;
+}
+.disclosure:hover { background: var(--bg1-hover); }
+.disclosure:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.disclosure .chevron { transition: transform 0.15s ease; }
+.disclosure[aria-expanded="true"] .chevron { transform: rotate(90deg); }
 .link-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 2px; }
 /* Files dragged over the "Senden" tab (the whole tab accepts them): the box turns blue and says where to drop. */
 .panel.dropping .dropzone { border: 2px solid var(--brand-fg); padding: 13px 11px; background: var(--brand-tint-bg); }

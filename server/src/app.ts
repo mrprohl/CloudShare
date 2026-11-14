@@ -12,9 +12,11 @@ import { getCredentials, removeCredentials, saveCredentials } from "./credential
 import { fetchProfile, GRAPH_PROFILE_SCOPES, GRAPH_SCOPES } from "./graph.js";
 import {
   addFileToJob,
+  addNoticeShare,
   addSeparatePart,
   armJob,
   createJob,
+  createNoticeJob,
   createSeparateJob,
   findPart,
   addFileToPart,
@@ -22,6 +24,7 @@ import {
   setJobMaxAccess,
   setJobPasswordTo,
   setJobSender,
+  setPartsExpiry,
   type StepShare,
 } from "./jobs.js";
 import {
@@ -39,7 +42,7 @@ import { clampInt, isEmailAddress } from "./limits.js";
 import { locale, t } from "./i18n.js";
 import { passwordProblem } from "./password.js";
 import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } from "./store.js";
-import { createMessageSend, createPasswordSend, MESSAGE_MAX_LENGTH, setSendMaxAccess } from "./vaultwarden.js";
+import { createMessageSend, createPasswordSend, MESSAGE_MAX_LENGTH, setSendExpiry, setSendMaxAccess } from "./vaultwarden.js";
 
 function nextcloudFor(user: User): NextcloudClient {
   const creds = getCredentials(user.oid);
@@ -115,6 +118,8 @@ async function attachToJob(
   const id = typeof requestedJobId === "string" ? requestedJobId : undefined;
   const existing = id ? getJob(id) : undefined;
   if (id && existing && existing.owner === user.oid && !existing.dispatched) {
+    // Password by SMS: the Send only holds the password until the mail is sent – as long as possible.
+    if (existing.passwordSms) link = { ...link, days: config.sendMaxExpireDays };
     // A mail started with one shared password (before this version) keeps it.
     if (!existing.separate) {
       await addFileToJob(id, itemName);
@@ -149,6 +154,21 @@ async function attachToJob(
     });
   }
   return createJob(user.oid, user.upn, itemName, send.url, link.maxAccess, send.id);
+}
+
+/**
+ * Links "Ohne Kennwort": with the download confirmation switched on they join a job that has no password – it only
+ * waits for the sent mail (subject, recipients). Otherwise no job at all (null).
+ */
+async function attachNoticeJob(user: User, requestedJobId: unknown, share: StepShare): Promise<string | null> {
+  if (!config.downloadNotice) return null;
+  const id = typeof requestedJobId === "string" ? requestedJobId : undefined;
+  const existing = id ? getJob(id) : undefined;
+  if (id && existing && existing.owner === user.oid && !existing.dispatched && existing.noPassword) {
+    await addNoticeShare(id, share);
+    return id;
+  }
+  return createNoticeJob(user.oid, user.upn, share);
 }
 
 /** How the password of a link went out, for "Meine Freigaben" (null before sending or for older links). */
@@ -465,10 +485,12 @@ export async function buildApp(options: { logger?: boolean } = {}) {
 
       const shareUrl = await nc.createPublicShare(upload.target, noPassword ? undefined : password, expireDate);
       await registerForCleanup(user.oid, upload.target, expireDate);
-      const jobId = noPassword ? null : await attachToJob(user, req.body?.jobId, upload.fileName, password, passwordLink, req.body?.step,
-        shareInfo(shareUrl, upload.fileName, expireDate));
+      const share = shareInfo(shareUrl, upload.fileName, expireDate);
+      const jobId = noPassword
+        ? await attachNoticeJob(user, req.body?.jobId, share)
+        : await attachToJob(user, req.body?.jobId, upload.fileName, password, passwordLink, req.body?.step, share);
       req.log.info({ user: user.upn, file: upload.fileName, noPassword }, "Share created");
-      return { shareUrl, expireDate, jobId, fileName: upload.fileName, size: upload.size };
+      return { shareUrl, expireDate, jobId, noPassword, fileName: upload.fileName, size: upload.size };
     },
   );
 
@@ -611,12 +633,12 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         ? await nc.createPublicShare(segments, password, expireDate, 4, t("server.requestLabel"))
         : await nc.createPublicShare(segments, noPassword ? undefined : password, expireDate);
       if (!request) await registerForCleanup(user.oid, segments, expireDate);
+      const info = shareInfo(shareUrl, request ? uploadLinkItem() : fileName, expireDate);
       const jobId = noPassword
-        ? null
-        : await attachToJob(user, req.body?.jobId, request ? uploadLinkItem() : fileName, password, passwordLink, req.body?.step,
-            shareInfo(shareUrl, request ? uploadLinkItem() : fileName, expireDate));
+        ? await attachNoticeJob(user, req.body?.jobId, info)
+        : await attachToJob(user, req.body?.jobId, request ? uploadLinkItem() : fileName, password, passwordLink, req.body?.step, info);
       req.log.info({ user: user.upn, path: share.path, noPassword }, "Share linked again");
-      return { kind: request ? "request" : "file", shareUrl, expireDate, jobId, fileName, size: share.size };
+      return { kind: request ? "request" : "file", shareUrl, expireDate, jobId, noPassword, fileName, size: share.size };
     },
   );
 
@@ -640,6 +662,13 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         if (!smsEnabled()) throw new HttpError(409, t("server.smsNotConfigured"));
         if (!number) throw new HttpError(400, t("server.phoneInvalid"));
         await setJobPasswordTo(req.params.id, undefined, number);
+        // The Sends of the steps not sent yet only hold the password until sending – keep them as long as possible.
+        const expiresAt = Date.now() + config.sendMaxExpireDays * 86_400_000;
+        for (const part of job.separate ?? []) {
+          if (part.dispatched || !part.sendId) continue;
+          await setSendExpiry(part.sendId, expiresAt).catch((err) => req.log.warn({ err, jobId: req.params.id }, "Send lifetime not extended"));
+        }
+        await setPartsExpiry(req.params.id, expiresAt);
         req.log.info({ user: user.upn, jobId: req.params.id, sms: maskPhone(number) }, "Password channel: SMS");
       } else if (body.passwordTo !== undefined || body.passwordSms === "") {
         const passwordTo = typeof body.passwordTo === "string" ? body.passwordTo.trim() : body.passwordTo === undefined ? "" : null;

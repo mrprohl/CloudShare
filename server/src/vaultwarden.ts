@@ -64,6 +64,16 @@ export async function deleteSend(id: string): Promise<void> {
   await withUnlock(() => bw("DELETE", `/object/send/${encodeURIComponent(id)}`));
 }
 
+/** Moves the deletion of an existing Send to `expiresAt` (password by SMS: it must last until the mail is sent). */
+export async function setSendExpiry(id: string, expiresAt: number): Promise<void> {
+  const path = `/object/send/${encodeURIComponent(id)}`;
+  const date = new Date(expiresAt).toISOString();
+  await withUnlock(async () => {
+    const send = await bw<Record<string, unknown>>("GET", path);
+    await bw("PUT", path, { ...send, deletionDate: date, expirationDate: date });
+  });
+}
+
 /** Changes how often an existing Send can be opened (until the mail is sent, "Kennwort abrufbar"). */
 export async function setSendMaxAccess(id: string, maxAccessCount: number): Promise<void> {
   const path = `/object/send/${encodeURIComponent(id)}`;

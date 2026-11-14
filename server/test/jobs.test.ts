@@ -16,7 +16,7 @@ vi.mock("../src/sms.js", async (importOriginal) => ({
 }));
 
 const graph = await import("../src/graph.js");
-const { addFileToJob, addFileToPart, addSeparatePart, armJob, checkJobs, createJob, createSeparateJob, getJob, setJobPasswordTo } =
+const { addFileToJob, addFileToPart, addNoticeShare, addSeparatePart, armJob, checkJobs, createJob, createNoticeJob, createSeparateJob, getJob, setJobPasswordTo } =
   await import("../src/jobs.js");
 const { quietLog } = await import("./helpers.js");
 const vaultwarden = await import("../src/vaultwarden.js");
@@ -295,5 +295,20 @@ describe("password by SMS, deliveries and download notices", () => {
     const notices = new Map(pendingNotices());
     expect(notices.get("tok-mail-1")).toMatchObject({ fileName: "a.pdf", subject: "Unterlagen", notifyTo: "max@example.test" });
     expect(notices.get("tok-mail-2")?.fileName).toBe("b.png");
+  });
+
+  it("links without password: no password mail, no SMS – only the download confirmation once the mail was sent", async () => {
+    const id = await createNoticeJob("oid", "max@example.test", share("tok-free-1", "frei.pdf"));
+    await addNoticeShare(id, share("tok-free-2", "frei2.pdf"));
+    await arm(id);
+    sentOnlyFor(id);
+
+    await checkJobs(quietLog());
+
+    expect(sendMail).not.toHaveBeenCalled();
+    expect(getJob(id)?.dispatched).toBe(true);
+    const notices = new Map(pendingNotices());
+    expect(notices.get("tok-free-1")).toMatchObject({ fileName: "frei.pdf", subject: "Unterlagen" });
+    expect(notices.get("tok-free-2")?.fileName).toBe("frei2.pdf");
   });
 });

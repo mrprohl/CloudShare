@@ -63,6 +63,8 @@ const requestButton = $<HTMLButtonElement>("request");
 const messageInput = $<HTMLTextAreaElement>("message");
 const messageCount = $<HTMLParagraphElement>("message-count");
 const messageButton = $<HTMLButtonElement>("message-insert");
+const messageToggle = $<HTMLButtonElement>("message-toggle");
+const messageSection = $<HTMLDivElement>("message-section");
 const tabSend = $<HTMLButtonElement>("tab-send");
 const tabShares = $<HTMLButtonElement>("tab-shares");
 const panelSend = $<HTMLDivElement>("panel-send");
@@ -462,7 +464,20 @@ async function readAttachment(id: string): Promise<Blob> {
 
 interface UploadStart { uploadId: string; chunkSize: number; totalChunks: number }
 /** jobId is null for links "Ohne Kennwort" – no password mail. */
-interface UploadResult { shareUrl: string; expireDate: string; jobId: string | null; fileName: string; size: number }
+interface UploadResult {
+  shareUrl: string;
+  expireDate: string;
+  /** Password job; for links "Ohne Kennwort" a job for the download confirmation, or null. */
+  jobId: string | null;
+  /** Link without password (older servers: recognisable by jobId null only). */
+  noPassword?: boolean;
+  fileName: string;
+  size: number;
+}
+
+/** Link "Ohne Kennwort"? */
+const isWithoutPassword = (result: { jobId: string | null; noPassword?: boolean }) =>
+  result.noPassword === true || result.jobId === null;
 
 async function upload(blob: Blob, fileName: string, step: string): Promise<UploadResult> {
   const start = await api<UploadStart>(
@@ -494,7 +509,7 @@ async function upload(blob: Blob, fileName: string, step: string): Promise<Uploa
     { method: "POST", body: JSON.stringify(await shareSettingsBody(step)) },
     await getToken(),
   );
-  await rememberShareChoice(result.jobId);
+  await rememberShareChoice(result.jobId, isWithoutPassword(result));
   return result;
 }
 
@@ -504,7 +519,7 @@ async function upload(blob: Blob, fileName: string, step: string): Promise<Uploa
  */
 async function shareSettingsBody(step: string) {
   const expireDays = Number(expireInput.value);
-  if (withoutPassword()) return { noPassword: true, expireDays };
+  if (withoutPassword()) return { noPassword: true, expireDays, jobId: (await readDraftState()).jobId };
   // An address or number typed just before the click (its "change" event may not have run yet) must reach the job.
   const wanted = channelTarget();
   const current = await readDraftState();
@@ -516,7 +531,8 @@ async function shareSettingsBody(step: string) {
     password: passwordInput.value,
     expireDays,
     maxAccess: maxAccessValue(),
-    passwordDays: sendDays(passwordDaysInput).value,
+    // By SMS the password is in the SMS itself; the password link only holds it until sending – as long as possible.
+    passwordDays: selectedChannel() === "sms" ? sendMaxDays() : sendDays(passwordDaysInput).value,
     jobId: state.jobId,
     step,
   };
@@ -526,9 +542,12 @@ async function shareSettingsBody(step: string) {
 const newStep = () => Math.random().toString(36).slice(2, 12);
 
 /** From the first link on, the choice (this password or none) applies to the whole mail. */
-async function rememberShareChoice(jobId: string | null) {
-  if (jobId === null) {
-    await updateDraftState({ noPassword: true });
+async function rememberShareChoice(jobId: string | null, noPassword = jobId === null) {
+  if (noPassword || jobId === null) {
+    // Links without password. With the download confirmation the server keeps a job without password, which the
+    // send handler arms like a password job (it only waits for the sent mail).
+    await updateDraftState(jobId ? { noPassword: true, jobId } : { noPassword: true });
+    if (jobId) await tagDraft(jobId);
     lockNoPassword();
     return;
   }
@@ -578,6 +597,17 @@ function showChannel(channel: Channel) {
   passwordSmsInput.hidden = channel !== "sms";
   passwordToHint.hidden = channel === "recipients";
   passwordToHint.textContent = channelHint(channel);
+  updatePasswordLinkFields();
+}
+
+/**
+ * "Kennwort abrufbar" and "Kennwort-Link gültig für" only matter for a password link: not without password, not by SMS
+ * (the password is in the SMS itself and works as long as the link does).
+ */
+function updatePasswordLinkFields() {
+  const hide = withoutPassword() || selectedChannel() === "sms";
+  maxAccessField.hidden = hide;
+  passwordDaysField.hidden = hide;
 }
 
 /** The valid target of the chosen channel ({} = recipients), or null while the address / number is not valid. */
@@ -757,7 +787,7 @@ async function insertIntoBody(html: string, text: string, marker: string) {
 async function insertLinks(results: UploadResult[]) {
   const files = results.map((r) => ({ name: r.fileName, size: r.size, url: r.shareUrl }));
   const expire = formatDate(results[0].expireDate);
-  const withPassword = results[0].jobId !== null;
+  const withPassword = !isWithoutPassword(results[0]);
   await footerReady;
   await insertIntoBody(
     filesCard(files, expire, mailFooter, formatSize, withPassword),
@@ -802,8 +832,7 @@ function setPasswordMode(mode: "random" | "own" | "none") {
   modeOwn.checked = own;
   modeNone.checked = none;
   passwordGroup.hidden = none;
-  maxAccessField.hidden = none;
-  passwordDaysField.hidden = none;
+  updatePasswordLinkFields();
   passwordToField.hidden = none;
   passwordHint.textContent = t(none ? "password.hintNone" : perStep ? "password.hintSeparate" : "password.hint");
   passwordInput.readOnly = !own;
@@ -1041,7 +1070,7 @@ submitButton.addEventListener("click", async () => {
           setStatus(
             sentences(
               t("submit.inserted", { count: results.length }),
-              results[0].jobId === null
+              isWithoutPassword(results[0])
                 ? t("submit.noPassword", { count: results.length })
                 : t("submit.passwordFollows"),
             ),
@@ -1109,6 +1138,17 @@ requestButton.addEventListener("click", async () => {
 
 const messageMax = () => serverConfig?.messageMaxLength ?? 1000;
 
+/** The section is optional: closed until the user opens it, closed again after a message was inserted. */
+function showMessageSection(open: boolean) {
+  messageToggle.setAttribute("aria-expanded", String(open));
+  messageSection.hidden = !open;
+}
+messageToggle.addEventListener("click", () => {
+  const open = messageSection.hidden === true;
+  showMessageSection(open);
+  if (open) messageInput.focus();
+});
+
 function renderMessageCount() {
   const length = messageInput.value.length;
   messageCount.textContent = t("message.count", { count: length, max: messageMax() });
@@ -1149,6 +1189,7 @@ messageButton.addEventListener("click", async () => {
     );
     messageInput.value = "";
     renderMessageCount();
+    showMessageSection(false);
     setStatus(t("message.inserted"), "success");
   } catch (err) {
     setStatus(errorMessage(err), "error");
@@ -1353,6 +1394,7 @@ interface LinkAgainResult {
   shareUrl: string;
   expireDate: string;
   jobId: string | null;
+  noPassword?: boolean;
   fileName: string;
   size: number | null;
 }
@@ -1376,9 +1418,9 @@ async function linkAgain(share: ShareItem, button: HTMLButtonElement) {
       { method: "POST", body: JSON.stringify(await shareSettingsBody(newStep())) },
       await getToken(),
     );
-    await rememberShareChoice(result.jobId);
+    await rememberShareChoice(result.jobId, isWithoutPassword(result));
     const expire = formatDate(result.expireDate);
-    const withPassword = result.jobId !== null;
+    const withPassword = !isWithoutPassword(result);
     await footerReady;
     if (result.kind === "request") {
       await insertIntoBody(

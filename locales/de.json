@@ -98,7 +98,7 @@
     "channel.smsPlaceholder": "0170 1234567",
     "channel.smsLabel": "Mobilnummer für das Kennwort",
     "channel.hintMail": "Nur diese Adresse erhält das Kennwort – die Empfänger der Nachricht nicht.",
-    "channel.hintSms": "Das Kennwort geht nach dem Senden per SMS an diese Nummer – die Empfänger erhalten keine Kennwort-Nachricht.",
+    "channel.hintSms": "Das Kennwort steht nach dem Senden direkt in einer SMS an diese Nummer und gilt, solange der Link gültig ist. Die Empfänger erhalten keine Kennwort-Nachricht.",
     "channel.savedSms": "Das Kennwort geht nach dem Senden per SMS an {to}.",
     "channel.savedMail": "Das Kennwort wird nur an {to} geschickt.",
     "channel.savedRecipients": "Das Kennwort geht an die Empfänger der Nachricht.",
@@ -119,7 +119,7 @@
     "request.inserted": "Der Link zum Hochladen wurde eingefügt. Das Kennwort wird nach dem Senden automatisch verschickt.",
 
     "message.heading": "Vertrauliche Nachricht",
-    "message.text": "Ein Text, den die Empfänger nur mit dem Kennwort lesen können – z. B. Zugangsdaten. Er steht nicht in der Mail, sondern verschlüsselt in Vaultwarden. Es gilt das Kennwort von oben.",
+    "message.text": "Ein Text, den die Empfänger nur mit dem Kennwort lesen können – z. B. Zugangsdaten. Er steht nicht in der Mail, sondern wird verschlüsselt hinterlegt und nach Ablauf gelöscht. Es gilt das Kennwort von oben.",
     "message.label": "Text der vertraulichen Nachricht",
     "message.placeholder": "Vertraulichen Text eingeben …",
     "message.count": "{count} von {max} Zeichen",
@@ -271,7 +271,7 @@
     "phoneInvalid": "Bitte eine gültige Mobilnummer für das Kennwort angeben, z. B. 0170 1234567.",
     "emailInvalid": "Bitte eine gültige E-Mail-Adresse für das Kennwort angeben.",
     "accessFixed": "Für diese Nachricht lässt sich die Anzahl der Abrufe nicht mehr ändern.",
-    "smsFailed": "SMS-Versand fehlgeschlagen (seven.io, HTTP {status}, Code {code})",
+    "smsFailed": "SMS-Versand fehlgeschlagen (HTTP {status}, Code {code})",
     "passwordLength": "Das Kennwort muss mindestens {min} Zeichen lang sein.",
     "passwordClasses": "Das Kennwort muss mindestens drei der folgenden Zeichenarten enthalten: Großbuchstaben, Kleinbuchstaben, Ziffern, Sonderzeichen.",
     "passwordSimple": "Das Kennwort ist zu einfach (Wiederholung oder Zeichenfolge).",
@@ -286,9 +286,9 @@
     "actionUploadStart": "Upload starten",
     "actionUploadChunk": "Block {index} hochladen",
     "actionUploadFinish": "Upload abschließen",
-    "vaultSendFailed": "Vaultwarden-Send fehlgeschlagen: {error}",
-    "vaultNoPassword": "Vaultwarden: Send enthält kein Kennwort",
-    "vaultNoUrl": "Vaultwarden: Send-URL fehlt in der Antwort"
+    "vaultSendFailed": "Das Kennwort konnte nicht sicher hinterlegt werden: {error}",
+    "vaultNoPassword": "Das hinterlegte Kennwort ist nicht lesbar.",
+    "vaultNoUrl": "Der Link zum Kennwort konnte nicht erstellt werden."
   },
   "mail": {
     "greeting": "Guten Tag,",
