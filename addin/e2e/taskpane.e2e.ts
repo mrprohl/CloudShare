@@ -160,11 +160,12 @@ const shot = async (page: Page, name: string) =>
  */
 async function fullShot(page: Page, name: string) {
   const size = page.viewportSize()!;
-  const hidden = await page.evaluate(() =>
-    Math.max(0, ...Array.from(document.querySelectorAll<HTMLElement>(".content")).map((el) => el.scrollHeight - el.clientHeight)),
-  );
-  await page.setViewportSize({ width: size.width, height: size.height + hidden });
-  await shot(page, name);
+  // The document scrolls and the footer sticks to the bottom of the viewport: make the viewport as tall as the
+  // document, then take a plain (not full-page) screenshot.
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  await page.setViewportSize({ width: size.width, height: Math.max(size.height, height) });
+  await page.waitForTimeout(100); // layout after the resize
+  test.info().attach(name, { body: await page.screenshot(), contentType: "image/png" });
   await page.setViewportSize(size);
 }
 
