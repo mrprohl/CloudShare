@@ -451,6 +451,33 @@ test("files dragged from Explorer onto the pane are added (no file dialog needed
   await expect(page.locator("#status")).toContainText("2 Dateien wurden hinzugefügt.");
 });
 
+test("files picked from the computer can be removed from the list again (×)", async ({ page }) => {
+  await openTaskpane(page);
+  const dataTransfer = await page.evaluateHandle(() => {
+    const transfer = new DataTransfer();
+    for (const name of ["Eins.pdf", "Zwei.pdf", "Drei.pdf"]) transfer.items.add(new File(["x".repeat(2000)], name));
+    return transfer;
+  });
+  await page.dispatchEvent("#panel-send", "drop", { dataTransfer });
+  const rows = page.locator("#picked label.list-item");
+  await expect(rows).toHaveCount(3);
+
+  await rows.nth(2).locator("input").uncheck(); // "Drei.pdf" not to be uploaded
+  await rows.nth(0).locator(".remove-file").click(); // remove "Eins.pdf"
+  await expect(rows).toHaveCount(2);
+  await expect(rows.nth(0)).toContainText("Zwei.pdf");
+  await expect(rows.nth(0).locator("input")).toBeChecked(); // the × did not toggle anything
+  await expect(rows.nth(1)).toContainText("Drei.pdf");
+  await expect(rows.nth(1).locator("input")).not.toBeChecked(); // stays unticked after re-rendering
+  await expect(rows.nth(0).locator(".remove-file")).toHaveAttribute("aria-label", "„Zwei.pdf“ aus der Liste entfernen");
+  await expectAccessible(page);
+
+  await rows.nth(0).locator(".remove-file").click();
+  await rows.nth(0).locator(".remove-file").click();
+  await expect(rows).toHaveCount(0);
+  await expect(page.locator("#no-attachments")).toBeVisible();
+});
+
 test("uploads a file picked from the computer", async ({ page }) => {
   const calls = await openTaskpane(page);
   await expect(page.locator("#no-attachments")).toBeVisible();
