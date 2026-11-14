@@ -379,23 +379,62 @@ test("plain-text mail gets the links as text", async ({ page }) => {
   expect(inserted.data).not.toContain("<table");
 });
 
-test("Dateien vom Computer hinzufügen: the click lands on the real file input (also by keyboard)", async ({ page }) => {
+test("Dateien vom Computer hinzufügen: native file dialog (File System Access API)", async ({ page }) => {
+  // Stub of window.showOpenFilePicker: returns two chosen files.
+  await page.addInitScript(() => {
+    (window as unknown as { showOpenFilePicker: unknown }).showOpenFilePicker = async (options: { multiple: boolean }) => {
+      (window as unknown as { __pickerOptions: unknown }).__pickerOptions = options;
+      const w = window as unknown as { __pickerCalls?: number };
+      w.__pickerCalls = (w.__pickerCalls ?? 0) + 1;
+      return [
+        { getFile: async () => new File(["A".repeat(3000)], "Plan.pdf", { type: "application/pdf" }) },
+        { getFile: async () => new File(["B".repeat(2000)], "Fotos.zip", { type: "application/zip" }) },
+      ];
+    };
+  });
   await openTaskpane(page);
-  // Mouse: the transparent file input lies on top of the button look and takes the click itself.
-  const [byClick] = await Promise.all([page.waitForEvent("filechooser"), page.click(".file-picker")]);
-  expect(byClick.isMultiple()).toBe(true);
-  await byClick.setFiles({ name: "Plan.pdf", mimeType: "application/pdf", buffer: Buffer.alloc(3000, 0x41) });
-  await expect(page.locator("#picked label.list-item")).toHaveCount(1);
+  await page.click("#add-files");
+  await expect(page.locator("#picked label.list-item")).toHaveCount(2);
+  expect(await page.evaluate(() => (window as unknown as { __pickerOptions: unknown }).__pickerOptions)).toEqual({ multiple: true });
+  const calls = () => page.evaluate(() => (window as unknown as { __pickerCalls?: number }).__pickerCalls);
+  expect(await calls()).toBe(1); // the button click bubbles to the box – still only one dialog
+  await page.click("#dropzone .dropzone-icon"); // the whole box is clickable
+  expect(await calls()).toBe(2);
+});
 
-  // Keyboard: the input itself takes the focus and opens the dialog with Space.
-  await page.focus("#file");
-  const [byKey] = await Promise.all([page.waitForEvent("filechooser"), page.keyboard.press("Space")]);
-  expect(byKey).toBeTruthy();
+test("Dateien vom Computer hinzufügen: falls back to the file input (also when the dialog API fails)", async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { showOpenFilePicker: unknown }).showOpenFilePicker = async () => {
+      throw new DOMException("not allowed here", "SecurityError");
+    };
+  });
+  await openTaskpane(page);
+  const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.click("#add-files")]);
+  expect(chooser.isMultiple()).toBe(true);
+  await chooser.setFiles({ name: "Plan.pdf", mimeType: "application/pdf", buffer: Buffer.alloc(3000, 0x41) });
+  await expect(page.locator("#picked label.list-item")).toHaveCount(1);
+});
+
+test("Dateien vom Computer hinzufügen: closing the native dialog adds nothing and opens no second dialog", async ({ page }) => {
+  await page.addInitScript(() => {
+    (window as unknown as { showOpenFilePicker: unknown }).showOpenFilePicker = async () => {
+      throw new DOMException("The user aborted a request.", "AbortError");
+    };
+  });
+  await openTaskpane(page);
+  let choosers = 0;
+  page.on("filechooser", () => choosers++);
+  await page.click("#add-files");
+  await page.waitForTimeout(300);
+  expect(choosers).toBe(0);
+  await expect(page.locator("#picked label.list-item")).toHaveCount(0);
 });
 
 test("files dragged from Explorer onto the pane are added (no file dialog needed)", async ({ page }) => {
   await openTaskpane(page);
-  await expect(page.locator(".drop-hint")).toContainText("in diesen Bereich ziehen");
+  const zone = page.locator("#dropzone");
+  await expect(zone.locator(".idle")).toHaveText("Dateien hierher ziehen");
+  await expect(zone.locator(".drop")).toBeHidden();
   const dataTransfer = await page.evaluateHandle(() => {
     const transfer = new DataTransfer();
     transfer.items.add(new File(["A".repeat(2000)], "Skizze.pdf", { type: "application/pdf" }));
@@ -404,6 +443,8 @@ test("files dragged from Explorer onto the pane are added (no file dialog needed
   });
   await page.dispatchEvent("#panel-send", "dragenter", { dataTransfer });
   await expect(page.locator("#panel-send")).toHaveClass(/dropping/);
+  await expect(zone.locator(".drop")).toHaveText("Dateien hier ablegen"); // the box turns blue while dragging
+  await expect(zone.locator(".drop")).toBeVisible();
   await page.dispatchEvent("#panel-send", "drop", { dataTransfer });
   await expect(page.locator("#panel-send")).not.toHaveClass(/dropping/);
   await expect(page.locator("#picked label.list-item")).toHaveCount(2);

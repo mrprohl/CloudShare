@@ -290,10 +290,58 @@ function renderPicked() {
 }
 
 
+/**
+ * Diagnostics of the taskpane (only with CLIENT_TRACE=true): reports a step to the server log as a plain GET, like
+ * the send handler does. Used for the file dialog, which classic Outlook sometimes does not open.
+ */
+const paneRun = Math.random().toString(36).slice(2, 10);
+function paneTrace(step: string, detail = "") {
+  if (!serverConfig?.trace) return;
+  const host = Office.context.diagnostics ? `${Office.context.diagnostics.platform} ${Office.context.diagnostics.version}` : "?";
+  const query = [["run", paneRun], ["step", step], ["host", host], ["origin", location.origin], ["detail", detail]]
+    .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+    .join("&");
+  fetch(`${API_BASE}/api/trace?${query}`).catch(() => undefined);
+}
+
+type OpenFilePicker = (options: { multiple: boolean }) => Promise<Array<{ getFile(): Promise<File> }>>;
+
+/**
+ * "Dateien vom Computer hinzufügen": first the native dialog of the File System Access API (Chromium, Edge, WebView2 –
+ * a different path than a file input), then the hidden file input as fallback. Classic Outlook's WebView did not
+ * reliably open the dialog for the file input (script click, label and transparent overlay were all tried).
+ */
+async function openFilePicker() {
+  const showOpenFilePicker = (window as unknown as { showOpenFilePicker?: OpenFilePicker }).showOpenFilePicker;
+  paneTrace("picker:click", showOpenFilePicker ? "fsa" : "input");
+  if (showOpenFilePicker) {
+    try {
+      const handles = await showOpenFilePicker.call(window, { multiple: true });
+      const files = await Promise.all(handles.map((handle) => handle.getFile()));
+      paneTrace("picker:chosen", String(files.length));
+      addPickedFiles(files);
+      return;
+    } catch (err) {
+      const name = err instanceof Error ? err.name : String(err);
+      paneTrace("picker:fsa-error", `${name}: ${err instanceof Error ? err.message : ""}`.slice(0, 200));
+      if (name === "AbortError") return; // the user closed the dialog
+      // SecurityError / NotAllowedError etc.: try the file input instead.
+    }
+  }
+  paneTrace("picker:input");
+  fileInput.click();
+}
+
+// The whole drop zone opens the dialog; a click on its button ("vom Computer auswählen") bubbles up to it, so the
+// dialog opens exactly once (the button keeps it reachable by keyboard).
+$<HTMLDivElement>("dropzone").addEventListener("click", () => void openFilePicker());
+
 fileInput.addEventListener("change", () => {
+  paneTrace("picker:change", String(fileInput.files?.length ?? 0));
   addPickedFiles(Array.from(fileInput.files ?? []));
   fileInput.value = "";
 });
+fileInput.addEventListener("cancel", () => paneTrace("picker:cancel"));
 
 function addPickedFiles(files: File[]) {
   if (files.length === 0) return;

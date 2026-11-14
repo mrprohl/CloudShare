@@ -139,14 +139,8 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 }
 .btn:hover { background: var(--bg1-hover); border-color: var(--stroke1-hover); }
 .btn:active { background: var(--bg1-pressed); }
-/* File picker: the real input lies transparently on top of the button look and takes the click itself. */
-.file-picker { position: relative; display: inline-block; align-self: flex-start; margin-left: -8px; }
-.file-picker .btn-subtle { margin-left: 0; }
-.file-input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: pointer; }
-.file-input::-webkit-file-upload-button, .file-input::file-selector-button { cursor: pointer; }
-.file-picker:hover .btn-subtle { background: var(--bg1-hover); color: var(--fg1); }
-/* Own rule: an engine without :has() would otherwise drop the focus ring of every other control as well. */
-.file-picker:has(.file-input:focus-visible) .btn { outline: 2px solid var(--focus); outline-offset: 1px; }
+/* Fallback file input of "Dateien vom Computer hinzufügen": visually hidden but rendered (not display:none). */
+.file-input { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; opacity: 0; overflow: hidden; pointer-events: none; }
 .btn:focus-visible, .checkbox input:focus-visible + .box, a:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 1px;
@@ -189,6 +183,8 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .input[readonly] { background: var(--bg3); border-color: var(--stroke2); color: var(--fg2); }
 .input.mono { font-family: var(--font-mono); letter-spacing: 0.02em; }
 .input-narrow .input { flex: 0 0 88px; }
+/* Same width as the password field above it (full width minus its 32 px button and 4 px gap). */
+#password-to { display: block; width: calc(100% - 36px); margin-top: 4px; }
 .suffix { color: var(--fg2); }
 
 /* --- Checkbox ------------------------------------------------------------------ */
@@ -317,15 +313,29 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 }
 .tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 4px; }
 .panel { display: flex; flex-direction: column; flex: 1; position: relative; }
-.drop-hint { margin: 2px 0 0; }
-/* Files dragged over the "Senden" tab: dashed frame and a note where to drop them. */
-.panel.dropping { outline: 2px dashed var(--brand-fg); outline-offset: -6px; background: var(--bg1-hover); }
-.panel.dropping::after {
-  content: "Dateien hier ablegen";
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  padding: 8px 16px; border-radius: 4px; background: var(--brand-bg); color: var(--fg-on-brand);
-  font: 600 14px/20px var(--font); pointer-events: none;
+/* Drop zone in "Anhänge": dashed box like common upload forms; the whole box opens the file dialog. */
+.dropzone {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  margin: 8px 0 0; padding: 14px 12px;
+  border: 1px dashed var(--stroke-accessible); border-radius: 6px;
+  background: var(--bg1); color: var(--fg2); text-align: center; cursor: pointer;
+  transition: background-color 0.1s, border-color 0.1s;
 }
+.dropzone:hover { background: var(--bg1-hover); border-color: var(--brand-fg); }
+.dropzone-icon { width: 28px; height: 28px; color: var(--brand-fg); margin-bottom: 2px; }
+.dropzone-title { font-weight: 600; color: var(--fg1); }
+.dropzone-sub { font-size: 12px; line-height: 16px; color: var(--fg3); }
+.dropzone .drop { display: none; }
+.link-button {
+  padding: 0; border: 0; background: none; color: var(--brand-fg); font: inherit; cursor: pointer;
+  text-decoration: underline; text-underline-offset: 2px;
+}
+.link-button:hover { color: var(--brand-fg-hover); }
+.link-button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 2px; }
+/* Files dragged over the "Senden" tab (the whole tab accepts them): the box turns blue and says where to drop. */
+.panel.dropping .dropzone { border: 2px solid var(--brand-fg); padding: 13px 11px; background: var(--brand-tint-bg); }
+.panel.dropping .dropzone .idle, .panel.dropping .dropzone-sub { display: none; }
+.panel.dropping .dropzone .drop { display: inline; color: var(--brand-tint-fg); }
 .request-text { margin: 0 0 8px; }
 
 /* --- My shares ----------------------------------------------------------------------- */

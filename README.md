@@ -1,163 +1,246 @@
-# CloudShare – hardened, large Outlook attachments as Nextcloud links
+# CloudShare
 
-Outlook add-in (classic and new Outlook, Exchange Online) that sends large files as a password-protected Nextcloud
-link instead of an attachment. Recipients get the password automatically in a second mail as a Vaultwarden Send.
-How it works and how Entra ID, Nextcloud and Vaultwarden are set up: [docs/architecture.md](docs/architecture.md).
+**Send large files from Outlook as password-protected Nextcloud links – with the password delivered automatically in
+a second mail.**
 
-## What it looks like in Outlook
+CloudShare is an Outlook add-in for Microsoft 365 / Exchange Online (classic Outlook on Windows, new Outlook and
+Outlook on the web). Instead of attaching a large file, the sender clicks **"Als Link einfügen"**: the file is
+uploaded to the sender's own Nextcloud and a download card is inserted into the mail. As soon as the mail has really
+been sent, the recipients get a second mail with a link to the password (a Vaultwarden Send that can only be opened a
+limited number of times).
 
-![CloudShare in a new-Outlook compose window: "CloudShare" in the ribbon, the inserted card with download buttons and profile footer in the mail, and the CloudShare taskpane on the right](docs/images/outlook-compose.png)
+![A compose window in new Outlook: the CloudShare button in the ribbon, a download card with three files in the mail, and the CloudShare pane on the right](docs/images/outlook-compose.png)
 
-*Composing a mail: the ribbon button **CloudShare** opens the taskpane. Files are uploaded to the sender's
-Nextcloud and inserted as a card – one row per file with a download button, expiry date and a footer filled from
-the sender's Microsoft 365 profile (`MAIL_FOOTER`). The password follows automatically in a second mail after
-sending. The taskpane offers a random or own password (or none for file links), an other address for the password, link validity and **Dateien von Empfängern erhalten** (upload link).*
+*All pictures use example data (Max Mustermann, example.com). The user interface is German, like Outlook for German
+users.*
 
-<img src="docs/images/outlook-my-shares.png" alt="CloudShare taskpane, tab 'Meine Freigaben' with download status, received uploads, expired links and revoke confirmation" width="376" align="right">
+## Contents
 
-*Tab **Meine Freigaben**: the user's CloudShare links with download status ("2× heruntergeladen"), received files
-for upload links, expired links, **Kopieren**, **Einfügen** and **Zurückziehen** (with confirmation).*
+- [What recipients see](#what-recipients-see)
+- [Using CloudShare](#using-cloudshare)
+- [How it works](#how-it-works)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Operation](#operation)
+- [Troubleshooting](#troubleshooting)
+- [Development and tests](#development-and-tests)
 
-*The images show example data ("Max Mustermann", example.com). They are rendered from
-[docs/mockups](docs/mockups) with the real taskpane styles and icon:*
-```powershell
-& "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --hide-scrollbars `
-  --window-size=1440,1010 --screenshot="docs\images\outlook-compose.png" "file:///<repo>/docs/mockups/compose-send.html"
-& "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" --headless=new --hide-scrollbars `
-  --window-size=376,640 --screenshot="docs\images\outlook-my-shares.png" "file:///<repo>/docs/mockups/shares-pane.html"
-```
+## What recipients see
+
+| 1. The mail with the download links | 2. Shortly after: the password |
+|---|---|
+| ![Received mail with a card for three files and a card for an upload link](docs/images/mail-received.png) | ![Password mail with the three file names and a "Kennwort anzeigen" button](docs/images/password-mail.png) |
+| One card per "Als Link einfügen": file type, name, size and a download button; optionally a link through which the recipients can upload files themselves. | One password mail per card. "Kennwort anzeigen" opens the Vaultwarden Send; it works only a few times (default 3) and expires after 7 days. |
+
+The password never travels in the same mail as the link, and it is only sent once the mail with the link has really
+left the outbox.
+
+## Using CloudShare
+
+<img src="docs/images/taskpane-send.png" alt="CloudShare pane, tab Senden: one large attachment preselected, password options, link validity and the button Als Link einfügen" width="300" align="right">
+
+**Once:** open the pane with the **CloudShare** button in the ribbon and click **"Verbinden"** – the Nextcloud login
+opens in the browser (usually without typing anything, thanks to single sign-on). CloudShare remembers the
+connection.
+
+**Sending files:**
+
+1. Attach the file as usual, or drag files from Explorer onto the drop zone **"Dateien hierher ziehen"** in the pane (or
+   click it to choose files). Attachments above the threshold (default 1 MB) are marked **"Groß"** and preselected;
+   Outlook also shows a hint above the mail.
+2. Choose the password:
+   - **Zufälliges Kennwort** (default) – easy to read out, e.g. `KateGeteFi45`.
+   - **Eigenes Kennwort** – at least 12 characters, three of four character types.
+   - **Ohne Kennwort** – only if your Nextcloud allows links without a password.
+3. Optionally adjust **"Link gültig für"** (days), **"Kennwort abrufbar"** (how often the password link opens) or
+   **"Kennwort an eine andere E-Mail-Adresse senden"** (the password goes only to that address, e.g. a colleague).
+4. Click **"Als Link einfügen"**. The attachment is replaced by a download card in the mail.
+5. Send the mail. CloudShare sends the password mail on its own.
+
+Every click on "Als Link einfügen" gets **its own password and its own password mail**; files selected together in
+one click share them. If you delete all CloudShare cards from the mail before sending, no password mail goes out
+and the password options are free again.
+
+**Receiving files:** **"Link zum Hochladen einfügen"** inserts a link through which the recipients can upload files –
+also very large ones – straight into your Nextcloud (folder `Outlook-Dateianforderungen`).
 
 <br clear="right">
 
-## Requirements
+<img src="docs/images/taskpane-shares.png" alt="Tab Meine Freigaben: four links with download status, password status and the buttons Kopieren, Einfügen, Zurückziehen" width="300" align="right">
 
-- Microsoft 365 / Exchange Online, classic Outlook (Windows) or new Outlook / Outlook on the web
-- Nextcloud with public link sharing (any login method – users connect once via Login Flow v2)
+**"Meine Freigaben"** lists your CloudShare links of the last 30 days: when they were shared, until when they are
+valid, whether they have a password, and how often they were downloaded (or how many files were received).
+
+- **Kopieren** – copies the link.
+- **Einfügen** – inserts the file again into the mail you are writing, as a *new* link with a new password.
+- **Zurückziehen** – ends the link at once (two clicks). The file then counts as expired and is moved to your
+  Nextcloud trash.
+
+Expired files are cleaned up automatically as well (see `CLEANUP_AFTER_DAYS`).
+
+<br clear="right">
+
+<img src="docs/images/taskpane-dark.png" alt="The pane in Outlook's dark theme" width="220" align="right">
+<img src="docs/images/taskpane-connect.png" alt="First start: Mit Nextcloud verbinden" width="220" align="right">
+
+The pane follows Outlook's light or dark theme and uses Outlook's own wording ("Nachricht", "Kennwort").
+
+Under the attachment policy **`enforce`** (default), large attachments can only be sent through CloudShare; under
+**`suggest`** Outlook asks once when sending and offers **"Trotzdem senden"**.
+
+<br clear="right">
+
+## How it works
+
+```
+Outlook add-in ──HTTPS──► Caddy (Let's Encrypt) ──► CloudShare container
+                                                      ├─ upload + link ──────► the sender's Nextcloud
+                                                      ├─ password link ──────► Vaultwarden (Send)
+                                                      └─ password mail ──────► Microsoft Graph (as the sender)
+```
+
+- The add-in signs in with the user's Microsoft 365 account (Office single sign-on) – no extra password.
+- Files go to the **sender's own Nextcloud** (`CloudShare/<date>_<id>/`) using a Nextcloud app password the user
+  granted once; CloudShare stores it encrypted.
+- The password mail is sent **as the sender** via Microsoft Graph, only after the mail appears in "Gesendete
+  Elemente" – also for shared mailboxes.
+- One Docker container plus Caddy, no database. Details, data flows and design decisions:
+  **[docs/architecture.md](docs/architecture.md)**.
+
+## Installation
+
+### Requirements
+
+- Microsoft 365 / Exchange Online and permission to register an app in Entra ID and deploy add-ins
+- Nextcloud with public links enabled (any login method – users connect once via Login Flow v2)
 - Vaultwarden with Sends enabled and a service account for CloudShare
 - A Docker host with Docker Compose ≥ 2.20, a public DNS name and ports 80/443 reachable from the internet
 
-## Deployment
+The examples use `cloudshare.example.com` (CloudShare), `cloud.example.com` (Nextcloud) and `vault.example.com`
+(Vaultwarden).
 
-The stack is self-contained: its own Caddy terminates TLS (Let's Encrypt) and forwards to CloudShare.
-Nextcloud, Vaultwarden and Microsoft are reached through their public addresses. The examples use
-`cloudshare.example.com` (CloudShare), `cloud.example.com` (Nextcloud) and `vault.example.com` (Vaultwarden).
+### 1. Entra ID, Nextcloud, Vaultwarden
 
-```
-Outlook add-in ─HTTPS─► caddy (ports 80/443, Let's Encrypt) ─internal─► cloudshare:3000
-cloudshare ─egress─► Entra ID/Graph (password mail) · Nextcloud (upload, links) · Vaultwarden (Send)
-```
+Register the app "CloudShare" in Entra ID (application ID URI, scope `access_as_user`, Office as authorized client,
+Graph permissions with admin consent, client secret), allow public links in Nextcloud and create the Vaultwarden
+service account. The exact settings: [docs/architecture.md → Setup](docs/architecture.md#setup).
 
-## Layout `/opt/cloudshare` (Git clone)
+### 2. Install on the Docker host
 
-| Path | Content |
-|---|---|
-| `docker-compose.yml` | stub for Portainer/Dockhand (`include` + variables) |
-| `compose.yml` | Caddy and CloudShare containers |
-| `caddy/Caddyfile` | site configuration; host name from `CLOUDSHARE_HOST` |
-| `env/versions.env` | `CLOUDSHARE_HOST`, `CLOUDSHARE_VERSION` (`latest`), `CADDY_VERSION` |
-| `env/cloudshare.env` | Entra ID, Nextcloud, Vaultwarden service account, `CREDENTIAL_KEY` – **secrets** |
-| volume `cloudshare_data` | users' encrypted Nextcloud app passwords, pending password mails and the cleanup list of uploaded files – **back up** |
-| volume `cloudshare_caddy_data` | certificates |
-| `setup.sh` | new installation: asks for all settings and writes `env/` |
-
-GitHub builds the image `ghcr.io/mrprohl/cloudshare` on every push to `main` (`.github/workflows/image.yml`) –
-nothing is built on the server. `env/` is not in Git.
-
-Hardening: both containers read-only, `cap_drop: ALL` (Caddy only gets `NET_BIND_SERVICE`), `no-new-privileges`,
-limits, log rotation; CloudShare runs as user 1000 and publishes no ports. Networks: `internal` (Caddy ↔ CloudShare,
-no outbound access), `edge` (Caddy, published ports) and `egress` (CloudShare, outbound). `bw serve` listens on
-127.0.0.1 inside the container only. The Caddyfile sets no `X-Frame-Options`, because new Outlook and Outlook on
-the web show the taskpane in an iframe.
-
-## New installation
-
-### 1. Clone and set up
 ```bash
 git clone https://github.com/mrprohl/CloudShare.git /opt/cloudshare
-cd /opt/cloudshare && ./setup.sh     # asks for address, Entra ID, Nextcloud, Vaultwarden
-grep CREDENTIAL_KEY env/cloudshare.env   # store in your password manager
+cd /opt/cloudshare && ./setup.sh          # asks for address, Entra ID, Nextcloud, Vaultwarden; writes env/
+grep CREDENTIAL_KEY env/cloudshare.env    # store this key in your password manager
 ```
 
-### 2. DNS and deployment
-- DNS: `cloudshare.example.com` → public address of the Docker host (A/AAAA or CNAME); open ports 80 and 443
-  (TCP, 443 also UDP for HTTP/3). Caddy fetches the certificate on the first start.
-- Portainer/Dockhand: stack "cloudshare" → contents of `/opt/cloudshare/docker-compose.yml` → Deploy
-  (or `cd /opt/cloudshare && docker compose up -d`).
-- Vaultwarden: `SENDS_ALLOWED=true`.
-- Microsoft 365 admin center → *Integrated apps* → *Upload custom apps* → manifest URL
-  `https://cloudshare.example.com/manifest.xml` (first only for your own account). Alternative with a clear error
-  message: Exchange Online PowerShell,
-  `New-App -OrganizationApp -Url https://cloudshare.example.com/manifest.xml -ProvidedTo Everyone -DefaultStateForUser Enabled`.
+- **DNS:** `cloudshare.example.com` → the Docker host; open ports 80 and 443 (443 also UDP for HTTP/3). Caddy fetches
+  the certificate on the first start.
+- **Start:** Portainer/Dockhand stack "cloudshare" with the contents of `/opt/cloudshare/docker-compose.yml`, or
+  `cd /opt/cloudshare && docker compose up -d`.
 
-Behind an existing reverse proxy instead: remove the `caddy` service and its `ports:` from `compose.yml`, put
-`cloudshare` into the proxy's network and forward the host name to `cloudshare:3000` with the settings from
-`caddy/Caddyfile` (request body ≥ 12 MB, no `X-Frame-Options`).
+The image `ghcr.io/mrprohl/cloudshare` is built by GitHub – nothing is compiled on the server.
 
-## Tests
+### 3. Deploy the add-in
 
-Backend and add-in have automated tests (vitest) in `server/test/` and `addin/test/`:
+Microsoft 365 admin center → *Settings → Integrated apps → Upload custom apps* → manifest URL
+`https://cloudshare.example.com/manifest.xml`. Start with your own account, then roll out. It can take up to 24 hours
+until Outlook shows the button.
 
-- **API** (`api.test.ts`, via `fastify.inject`): login required, users cannot touch each other's uploads, jobs or
-  links, only CloudShare links can be revoked, file names/sizes/chunk numbers are validated, limits are enforced.
-- **Outlook event handlers** (`commands.test.ts`, Office.js mock): `enforce`/`suggest`, arming before the
-  prompt, Mailbox 1.12 vs 1.14, shared mailboxes, server unreachable (cached configuration), info bar.
-- Password rules and generator, encryption, Graph, Nextcloud client, password-job flow, footer template, mail card.
+Alternative with a clearer error message (Exchange Online PowerShell):
+`New-App -OrganizationApp -Url https://cloudshare.example.com/manifest.xml -ProvidedTo Everyone -DefaultStateForUser Enabled`
 
-Network calls are mocked.
+**Already running a reverse proxy?** Remove the `caddy` service and its `ports:` from `compose.yml`, put `cloudshare`
+into the proxy's network and forward the host name to `cloudshare:3000` with the settings from `caddy/Caddyfile`
+(request body ≥ 12 MB, no `X-Frame-Options` – Outlook shows the pane in a frame).
 
-**CI pipeline** (`.github/workflows/image.yml`, on every push to `main` and on `v*` tags):
+## Configuration
 
-| Stage | Checks |
+All settings live in `env/cloudshare.env` (written by `setup.sh`, reference: `cloudshare.env.example`). After a
+change: update the stack (Portainer "Update the stack" or `docker compose up -d`) – the add-in does not have to be
+deployed again.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `PUBLIC_BASE_URL` | – | Public address of CloudShare, e.g. `https://cloudshare.example.com` |
+| `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` | – | Entra ID app registration |
+| `NEXTCLOUD_URL` | – | Public address of Nextcloud |
+| `NEXTCLOUD_FOLDER` | `CloudShare` | Folder for uploaded files in each user's Nextcloud |
+| `NEXTCLOUD_REQUEST_FOLDER` | `Outlook-Dateianforderungen` | Folder for files received through upload links |
+| `CREDENTIAL_KEY` | – | Key for the stored Nextcloud app passwords (`openssl rand -base64 32`); changing it disconnects all users |
+| `ATTACHMENT_THRESHOLD_MB` | `1` | From this size CloudShare steps in (hint while writing, check on send) |
+| `ATTACHMENT_POLICY` | `enforce` | `enforce`: large attachments only via CloudShare · `suggest`: ask once, "Trotzdem senden" possible |
+| `SHARE_EXPIRE_DAYS` / `SHARE_MAX_EXPIRE_DAYS` | `14` / `90` | Link validity: default / maximum |
+| `SEND_MAX_ACCESS_COUNT` / `SEND_MAX_ACCESS_LIMIT` | `3` / `20` | How often the password link opens: default / maximum |
+| `SEND_EXPIRE_DAYS` | `7` | Lifetime of the password link |
+| `CLEANUP_AFTER_DAYS` | `0` | Uploaded files go to the Nextcloud trash this many days after their link expired or was revoked; `off` = never. Received files are never deleted |
+| `MAIL_FOOTER` | empty | Optional footer line in the card, e.g. `'{displayName} · {jobTitle}\n{company}'` (filled from the sender's profile) |
+| `VAULTWARDEN_URL`, `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD` | – | Vaultwarden service account |
+| `RATE_LIMIT_PER_MINUTE` | `600` | Requests per minute and user |
+| `CLIENT_TRACE` | off | Diagnostics, see [Troubleshooting](#troubleshooting) |
+
+`env/versions.env` holds `CLOUDSHARE_HOST`, `CLOUDSHARE_VERSION` (`latest`) and `CADDY_VERSION`.
+
+## Operation
+
+**Update:** Portainer → stack "cloudshare" → "Update the stack" with **re-pull** (or `docker compose pull && docker
+compose up -d`). To pin a version: `CLOUDSHARE_VERSION=sha-<commit>` in `env/versions.env`. Changes to `compose.yml`
+or the Caddyfile: `cd /opt/cloudshare && git pull`, then update the stack.
+
+After an update, classic Outlook keeps its old copy of the add-in until its cache is cleared: close Outlook, delete
+`%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\`, start Outlook again.
+
+**Back up** the volume `cloudshare_data` (encrypted Nextcloud app passwords, pending password mails, cleanup list)
+and `env/`. Without `CREDENTIAL_KEY` the stored connections cannot be read – users would have to reconnect.
+
+**Health check:**
+
+```bash
+docker ps --filter name=cloudshare                        # cloudshare "healthy", cloudshare-caddy "Up"
+docker logs cloudshare 2>&1 | grep -i vault               # "Vaultwarden vault unlocked"
+curl -s https://cloudshare.example.com/api/config         # JSON with the settings shown to the add-in
+```
+
+**Repository layout on the server** (`/opt/cloudshare`): `docker-compose.yml` (stub for Portainer), `compose.yml`
+(Caddy and CloudShare), `caddy/Caddyfile`, `setup.sh`, and `env/` (not in Git: `versions.env`, `cloudshare.env` with
+the secrets). Both containers run read-only without capabilities (Caddy only `NET_BIND_SERVICE`); only Caddy
+publishes ports.
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
 |---|---|
-| test | type check and tests for both packages · `npm audit` (runtime dependencies, high/critical) · manifest validation (`npm run validate:manifest`) · ShellCheck · deployment files: `setup.sh` run with dummy answers (file modes, generated host/key), `docker compose config` for the stub and `compose.yml`, `caddy validate` |
-| ui | taskpane in Chromium (Playwright, `addin/e2e`), Office.js and API mocked: connect flow, preselection of large attachments, chunked upload and inserted card (HTML and plain text), own password rules, links without password, upload link, revoked connection, "Meine Freigaben" with revoke confirmation and inserting a link again, dark theme, 320 px width, **accessibility** (axe, WCAG 2 A/AA, no serious/critical findings); report with screenshots as artifact `ui-test-report` |
-| build | image build · Trivy scan (critical/high with an available fix) · **stack smoke test**: the new image and Caddy are started with `compose.yml` and dummy settings (Bitwarden CLI replaced by a mock, `ci/fake-bw`) and tested from outside – TLS and HTTP→HTTPS redirect, security headers (no `X-Frame-Options`), add-in files with replaced placeholders, `/api/config`, 401 without login, 413 above 12 MB, read-only/user/capabilities/ports/internal network |
-| | **upgrade test**: the currently published image writes Nextcloud connections and password jobs into the data volume, the new image must read them unchanged and start on them (no reconnect after an update) |
-| | **load test** (k6, `ci/load/upload.js`): 10 users upload 2 × 45 MiB each in parallel through Caddy, Nextcloud and Microsoft token keys mocked (`ci/mocks`) – no failed request, p95 < 3 s per chunk, every byte arrives, memory below 80 % of `mem_limit`, no restart |
-| push | only if everything passed: `ghcr.io/mrprohl/cloudshare` (`latest`, `sha-<commit>`, version tags) |
+| Outlook shows "CloudShare dauert länger als erwartet" when sending | Classic Outlook may run an old copy – clear the cache (see *Operation*). Otherwise switch on `CLIENT_TRACE=true`, send once and read the steps: `docker logs --since 5m cloudshare 2>&1 \| grep 'Smart Alert trace'`. The last step shown is where it stops. Switch it off again afterwards. |
+| No password mail arrives | The password mail goes out only after the mail shows up in "Gesendete Elemente" (20–60 s). If saving sent items is switched off, no password mail is sent. Check `docker logs cloudshare 2>&1 \| grep "Password mail"`. |
+| A click on the drop zone opens no dialog (classic Outlook) | Check with Alt+Tab whether the "Öffnen" dialog opened behind the Outlook window. Dragging files onto the pane always works. With `CLIENT_TRACE=true` every click is logged: `docker logs --since 5m cloudshare 2>&1 \| grep 'picker:'` shows whether the click arrived, which dialog was used and any error. |
+| "Ohne Kennwort" is missing | Nextcloud enforces passwords for links (*Administration → Sharing*). Exempt a group there if some users may share without a password. |
+| Sign-in error with a code (13xxx) | The pane shows the Office SSO code and a hint; most often the Entra app registration (application ID URI, authorized client, admin consent) does not match the manifest. |
+| Nextcloud throttles CloudShare | All requests come from the server's address – allow it in Nextcloud's brute-force settings. |
 
-Pull requests (e.g. from Dependabot) run the same checks including the smoke test, but publish nothing.
-
-**Security services** of the public repository: **Dependabot** (`.github/dependabot.yml`: weekly update PRs for npm
-in `server/` and `addin/`, GitHub Actions and the Node base image – minor/patch grouped, no Node major; plus
-alerts and automatic security-fix PRs), **CodeQL** code scanning (default setup, extended queries for
-JavaScript/TypeScript and Actions) and **secret scanning with push protection**. Findings: repository →
-*Security*.
-
-Deployment stays manual (re-pull, see *Updating*). Locally:
-```bash
-cd server && npm install && npm test
-cd addin && npm install && npm test
-ci/stack.sh validate        # test machine with Docker only – links the repo to /opt/cloudshare, writes dummy env/
-ci/stack.sh smoke ghcr.io/mrprohl/cloudshare latest
-ci/stack.sh upgrade ghcr.io/mrprohl/cloudshare:sha-<older> ghcr.io/mrprohl/cloudshare latest
-ci/stack.sh load ghcr.io/mrprohl/cloudshare latest
-cd addin && npx playwright install chromium && npm run test:ui
-```
-
-## Updating
-
-- **Application and Caddy:** stack "cloudshare" → "Update the stack" with **re-pull**. To pin a state:
-  `CLOUDSHARE_VERSION=sha-<commit>` (or `CADDY_VERSION`) in `env/versions.env`.
-- **compose.yml / Caddyfile from the repository:** `cd /opt/cloudshare && git pull`, then update the stack; after a
-  Caddyfile change alone `docker exec cloudshare-caddy caddy reload --config /etc/caddy/Caddyfile` is enough.
-- **Settings:** edit `env/cloudshare.env` → update the stack.
-
-## Checks
+## Development and tests
 
 ```bash
-docker ps --filter name=cloudshare                         # cloudshare "healthy", cloudshare-caddy "Up"
-docker logs cloudshare 2>&1 | grep -i vault                # "Vaultwarden vault unlocked"
-docker logs cloudshare-caddy 2>&1 | grep -i certificate    # "certificate obtained successfully"
-docker exec cloudshare wget -qO- http://127.0.0.1:3000/api/config
-curl -s https://cloudshare.example.com/api/config         # from outside: same JSON
+cd server && npm install && npm test        # backend (Fastify, TypeScript)
+cd addin  && npm install && npm test        # add-in (Office.js mock)
+cd addin  && npx playwright install chromium && npm run test:ui   # taskpane in Chromium
 ```
-Note for Nextcloud: all requests from CloudShare arrive from the server's public address. If Nextcloud's
-brute-force protection ever throttles them, allow that address in the "Brute-force settings" app.
 
-**Sending hangs in a client** ("CloudShare dauert länger als erwartet"): set `CLIENT_TRACE=true` in
-`env/cloudshare.env`, recreate the stack, send once and read the steps of the send check:
-```bash
-docker logs --since 5m cloudshare 2>&1 | grep 'Smart Alert trace' | grep -oE '"trace":"[^"]+"|"step":"[^"]+"|"ms":[0-9]+|"host":"[^"]+"|"origin":"[^"]+"|"detail":"[^"]*"'
+Every push and pull request runs the pipeline in `.github/workflows/image.yml`:
+
+| Stage | What is checked |
+|---|---|
+| test | type check and unit tests of both packages, `npm audit`, manifest validation, ShellCheck, deployment files (`setup.sh` with dummy answers, `docker compose config`, `caddy validate`) |
+| ui | the real taskpane in Chromium with Office.js and the API mocked – upload, cards, passwords, "Meine Freigaben", dark theme, 320 px width and **accessibility** (axe, WCAG 2 A/AA); screenshots as artifact `ui-test-report` (the pane pictures in this README come from there) |
+| build | image build, Trivy scan, **smoke test** of the real stack with Caddy (TLS, headers, add-in files, limits, hardening), **upgrade test** (data written by the published image must stay readable), **load test** (k6: 10 users × 2 × 45 MiB) |
+| push | only if everything passed: `ghcr.io/mrprohl/cloudshare` (`latest`, `sha-<commit>`, version tags); pull requests publish nothing |
+
+The repository also uses Dependabot, CodeQL and secret scanning with push protection (*Security* tab).
+
+The compose and recipient pictures are rendered from [docs/mockups](docs/mockups) (they contain the exact markup the
+add-in and the server produce) with Edge:
+
+```powershell
+$edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
+& $edge --headless=new --hide-scrollbars --window-size=1440,1010 --screenshot="docs\images\outlook-compose.png" "file:///<repo>/docs/mockups/compose-send.html"
+& $edge --headless=new --hide-scrollbars --window-size=760,706  --screenshot="docs\images\mail-received.png"  "file:///<repo>/docs/mockups/mail-received.html"
+& $edge --headless=new --hide-scrollbars --window-size=760,548  --screenshot="docs\images\password-mail.png"  "file:///<repo>/docs/mockups/password-mail.html"
 ```
-The last step shown is where it stops. Switch it off again afterwards (`CLIENT_TRACE` removed, stack recreated).
