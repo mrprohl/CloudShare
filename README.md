@@ -7,7 +7,7 @@ CloudShare is an Outlook add-in for Microsoft 365 / Exchange Online (classic Out
 Outlook on the web). Instead of attaching a large file, the sender clicks **"Insert file as link"**: the file is
 uploaded to the sender's own Nextcloud and a download card is inserted into the mail. As soon as the mail has really
 been sent, the recipients get a second mail with a link to the password (a Vaultwarden Send that can only be opened a
-limited number of times). The same way the sender can insert a **confidential text** (never part of the mail) or an
+limited number of times). The same way the sender can insert a **confidential message** (never part of the mail) or an
 **upload link** through which the recipients send files back.
 
 ![A compose window in new Outlook: the CloudShare button in the ribbon, a download card with three files in the mail, and the CloudShare pane on the right](docs/images/outlook-compose.png)
@@ -34,7 +34,7 @@ is "Datei als Link einfügen", "My shares" is "Meine Freigaben".*
 | 1. The mail with the download links | 2. Shortly after: the password |
 |---|---|
 | ![Received mail with a card for three files and a card for an upload link](docs/images/mail-received.png) | ![Password mail with the three file names and a "Show password" button](docs/images/password-mail.png) |
-| One card per click on the insert button: file type, name, size and a download button; here also a link through which the recipients can upload files themselves (a confidential text gets its own card with "Open message"). | One password mail per card. "Show password" opens the Vaultwarden Send; it works only a few times (default 3) and for a few days (default 5, chosen by the sender). |
+| One card per click on the insert button: file type, name, size and a download button; here also a link through which the recipients can upload files themselves (a confidential message gets its own card with "Open message"). | One password mail per card. "Show password" opens the Vaultwarden Send; it works only a few times (default 3) and for a few days (default 5, chosen by the sender). |
 
 The password never travels in the same mail as the link, and it is only sent once the mail with the link has really
 left the outbox.
@@ -47,9 +47,9 @@ left the outbox.
 opens in the browser (usually without typing anything, thanks to single sign-on). CloudShare remembers the
 connection.
 
-At the top of the **"Send"** tab you choose **what** to insert: **Files**, a **Confidential** text or a **Request**
+At the top of the **"Send"** tab you choose **what** to insert: **Files**, a confidential **Message** or a **Request**
 for files. The pane then shows only that, and the button at the bottom says what it inserts ("Insert 2 files as
-links", "Insert confidential text", "Insert upload link"). Password, where it goes and validity below apply to all
+links", "Insert confidential message", "Insert upload link"). Password, where it goes and validity below apply to all
 three.
 
 **Sending files** (**Files**):
@@ -62,7 +62,7 @@ three.
    - **Own password** – at least 12 characters, three of four character types.
    - **No password** – only for files and only if your Nextcloud allows links without a password. Anyone with the
      link can download the file while the link is valid; no password goes out, and that mail cannot get a
-     confidential text or upload link any more (the pane says so).
+     confidential message or upload link any more (the pane says so).
 3. **"Send the password to"**: the recipients of the mail (default), **another e-mail address** (e.g. a colleague),
    or a **mobile number (SMS)** if SMS is set up – the password arrives as plain text, sent after the mail.
 4. **"Validity"** is collapsed and shows its values in one line, e.g. "Link 14 days · Password link 5 days, opens 3
@@ -79,18 +79,18 @@ Every click on the button gets **its own password and its own password mail**; f
 share them. If you delete all CloudShare cards from the mail before sending, no password mail goes out and the
 password options are free again.
 
-<img src="docs/images/taskpane-message.png" alt="Pane with Confidential chosen: the text field with its character count, the password and the opened validity with Text valid for, Password can be opened and Password link valid for; the button Insert confidential text" width="300" align="right">
+<img src="docs/images/taskpane-message.png" alt="Pane with Message chosen: the message field with its character count, the password and the opened validity with Message valid for, Password can be opened and Password link valid for; the button Insert confidential message" width="300" align="right">
 
-**Confidential text** (**Confidential**): type a text instead of choosing a file – e.g. access data – and click
-**"Insert confidential text"**. The text does not go into the mail: it is stored encrypted in Vaultwarden as a Send
+**Confidential message** (**Message**): type a message instead of choosing a file – e.g. access data – and click
+**"Insert confidential message"**. The message does not go into the mail: it is stored encrypted in Vaultwarden as a Send
 protected with the chosen password, and the mail gets a card with **"Open message"**. The password reaches the
-recipients like for files. At most 1000 characters; under "Validity", **"Text valid for"** sets how long it can be
+recipients like for files. At most 1000 characters; under "Validity", **"Message valid for"** sets how long it can be
 read (default 5 days, at most 30 – Vaultwarden's limit), then it is deleted.
 
 **Receiving files** (**Request**): **"Insert upload link"** inserts a link through which the recipients can upload
 files – also very large ones – straight into your Nextcloud (folder `CloudShare-Dateianforderungen`).
 
-Confidential texts and upload links always have a password, so "No password" is not offered there.
+Confidential messages and upload links always have a password, so "No password" is not offered there.
 
 <br clear="right">
 
@@ -105,6 +105,16 @@ valid, whether they have a password, and how often they were downloaded (or how 
   Nextcloud trash.
 
 Expired files are cleaned up automatically as well (see `CLEANUP_AFTER_DAYS`).
+
+<br clear="right">
+
+<img src="docs/images/taskpane-read.png" alt="Pane opened from a sent mail: under In this message the two links of that mail with download and password status, below them the other shares" width="300" align="right">
+
+**Status of a sent mail:** the **CloudShare** button is also there while you **read** a mail – e.g. in *Sent Items*.
+It opens "My shares" with the links of that mail on top (**"In this message"**: downloads, how the password went
+out, validity) and your other shares below. **Pin** the pane (pin icon in its header) and it follows the mail you
+select. Copy and Revoke work as usual; nothing is inserted there. Links of the last 30 days are listed; confidential
+messages are not (they are not stored in Nextcloud).
 
 <br clear="right">
 
@@ -205,7 +215,7 @@ deployed again.
 | `ATTACHMENT_POLICY` | `enforce` | `enforce`: large attachments only via CloudShare · `suggest`: ask once, "Send Anyway" possible |
 | `SHARE_EXPIRE_DAYS` / `SHARE_MAX_EXPIRE_DAYS` | `14` / `90` | Link validity: default / maximum |
 | `SEND_MAX_ACCESS_COUNT` / `SEND_MAX_ACCESS_LIMIT` | `3` / `20` | How often the password link opens: default / maximum |
-| `SEND_EXPIRE_DAYS` / `SEND_MAX_EXPIRE_DAYS` | `5` / `30` | Days the password link and confidential texts stay available: default / maximum the sender may choose (at most 30 – Vaultwarden keeps Sends at most 31 days) |
+| `SEND_EXPIRE_DAYS` / `SEND_MAX_EXPIRE_DAYS` | `5` / `30` | Days the password link and confidential messages stay available: default / maximum the sender may choose (at most 30 – Vaultwarden keeps Sends at most 31 days) |
 | `SEVEN_API_KEY`, `SEVEN_SENDER`, `SEVEN_WEBHOOK_SECRET` | – | Password by SMS via seven.io; without a key the option is not offered. Delivery reports: callback URL `https://<host>/webhooks/seven?token=<secret>` in the seven.io dashboard |
 | `SMS_DEFAULT_COUNTRY` / `SMS_MAX_PER_DAY` | `49` / `50` | Country code for numbers like `0170 …` / SMS per user and day |
 | `DOWNLOAD_NOTICE` | off | `true`: mail to the sender on the first download (needs the Entra application permission `Mail.Send`, see architecture) |
@@ -277,7 +287,9 @@ compose up -d`). To pin a version: `CLOUDSHARE_VERSION=sha-<commit>` in `env/ver
 or the Caddyfile: `cd /opt/cloudshare && git pull`, then update the stack.
 
 After an update, classic Outlook keeps its old copy of the add-in until its cache is cleared: close Outlook, delete
-`%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\`, start Outlook again.
+`%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\`, start Outlook again. When the manifest itself changed (new version,
+e.g. 1.1 with the button for mails being read), Microsoft 365 has to pick it up as well – see
+[docs/microsoft-365.md → Deploying the add-in](docs/microsoft-365.md#3-deploying-the-add-in).
 
 **Back up** the volume `cloudshare_data` (encrypted Nextcloud app passwords, pending password mails, cleanup list, SMS status, download confirmations)
 and `env/` (including `env/config/` with templates and own language files). Without `CREDENTIAL_KEY` the stored connections cannot be read – users would have to reconnect.
@@ -352,5 +364,5 @@ foreach ($shot in @(("outlook-compose", "compose-send", "1440,1010"), ("mail-rec
 
 The pane pictures (`taskpane-*.png`) come from the UI tests in English ("README pictures" in
 `addin/e2e/taskpane.e2e.ts`, served below `/en/` by `addin/e2e/serve.mjs`): attachments `readme-send`,
-`readme-message`, `readme-dark`, `readme-shares` and `readme-connect` of the artifact `ui-test-report`, already as tall
+`readme-message`, `readme-dark`, `readme-shares`, `readme-read` and `readme-connect` of the artifact `ui-test-report`, already as tall
 as the content.

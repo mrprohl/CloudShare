@@ -20,7 +20,7 @@
   window.Office = {
     AsyncResultStatus: { Succeeded: "succeeded", Failed: "failed" },
     CoercionType: { Html: "html", Text: "text" },
-    EventType: { AttachmentsChanged: "olkAttachmentsChanged", OfficeThemeChanged: "officeThemeChanged" },
+    EventType: { AttachmentsChanged: "olkAttachmentsChanged", OfficeThemeChanged: "officeThemeChanged", ItemChanged: "olkItemSelectedChanged" },
     MailboxEnums: {
       AttachmentType: { File: "file", Item: "item", Cloud: "cloud" },
       AttachmentContentFormat: { Base64: "base64", Url: "url", Eml: "eml", ICalendar: "iCalendar" },
@@ -48,7 +48,8 @@
       roamingSettings: { get: () => undefined, set() {}, saveAsync(cb) { if (cb) cb(ok()); } },
       mailbox: {
         userProfile: { displayName: "Max Mustermann", emailAddress: "max.mustermann@example.com" },
-        addHandlerAsync(_type, _handler, cb) { if (cb) cb(ok()); },
+        // Mailbox events (e.g. ItemChanged of a pinned pane) – the test can fire them via window.__officeHandlers.
+        addHandlerAsync(type, handler, cb) { (window.__officeHandlers = window.__officeHandlers || {})[type] = handler; if (cb) cb(ok()); },
         item: {
           getAttachmentsAsync(cb) {
             cb(ok(attachments.map((a) => ({ id: a.id, name: a.name, size: a.size, attachmentType: "file", isInline: false }))));
@@ -77,7 +78,11 @@
               if (!cfg.bodyRejectsInsert) log.inserted.push({ data, coercionType: options.coercionType, at: "top" });
               cb(ok());
             },
-            getAsync(_coercionType, cb) { cb(ok(log.inserted.map((i) => i.data).join("\n"))); },
+            // A mail being read (cfg.readBody, may change during the test) or the draft with what was inserted.
+            getAsync(_coercionType, cb) {
+              const read = (window.__officeConfig || {}).readBody;
+              cb(ok(typeof read === "string" ? read : log.inserted.map((i) => i.data).join("\n")));
+            },
           },
           sessionData: {
             getAsync(key, cb) { cb(key in log.session ? ok(log.session[key]) : failed("not found")); },

@@ -30,7 +30,7 @@
       </section>
 
       <section id="send-view" class="send-view" hidden>
-        <div class="tabs" role="tablist" aria-label="CloudShare">
+        <div class="tabs" id="tabs" role="tablist" aria-label="CloudShare">
           <button type="button" role="tab" id="tab-send" class="tab" aria-selected="true" aria-controls="panel-send">%%t:addin.tabs.send%%</button>
           <button type="button" role="tab" id="tab-shares" class="tab" aria-selected="false" aria-controls="panel-shares">%%t:addin.tabs.shares%%</button>
         </div>
@@ -45,6 +45,14 @@
                 </svg>
               </button>
             </div>
+            <!-- Only when the pane was opened from a mail being read (taskpane.html?view=read): the links found in that
+                 mail first, then the others. -->
+            <section id="mail-section" aria-labelledby="mail-heading" hidden>
+              <h2 class="section-title" id="mail-heading">%%t:addin.read.thisMail%%</h2>
+              <div id="mail-shares" class="share-list" aria-live="polite"></div>
+              <p class="caption" id="mail-none" hidden>%%t:addin.read.none%%</p>
+              <h2 class="section-title">%%t:addin.read.others%%</h2>
+            </section>
             <div id="shares" class="share-list" aria-live="polite"></div>
             <p class="caption" id="no-shares" hidden>%%t:addin.shares.none%%</p>
           </div>
@@ -87,7 +95,7 @@
             <input type="file" id="file" class="file-input" multiple tabindex="-1" aria-hidden="true" />
           </section>
 
-          <!-- Confidential text: stored only as a password-protected Vaultwarden Send, never in the mail or Nextcloud. -->
+          <!-- Confidential message: stored only as a password-protected Vaultwarden Send, never in the mail or Nextcloud. -->
           <section id="message-section" hidden>
             <label for="message" class="section-title">%%t:addin.message.heading%%</label>
             <p class="caption section-text">%%t:addin.message.text%%</p>

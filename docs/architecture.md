@@ -28,7 +28,8 @@ confirmation) comes from the language file picked by `LANGUAGE` (`locales/de.jso
 ```
 Outlook (classic on Windows / new Outlook / Outlook on the web)
   ├─ Taskpane            addin/src/taskpane/   connect Nextcloud, pick files, upload, insert cards,
-  │                                            "My shares"
+  │                                            "My shares"; read mode (?view=read): the shares of
+  │                                            the mail being read
   └─ Event handlers      addin/src/commands/   OnMessageAttachmentsChanged → info bar
                                                OnMessageSend (Smart Alert) → attachment policy, arm password mail
         │  HTTPS + Office SSO token (Entra ID, audience api://<host>/<client-id>, scope access_as_user)
@@ -82,9 +83,9 @@ replaces `%%PUBLIC_BASE_URL%%`, `%%PUBLIC_HOST%%` and `%%ENTRA_CLIENT_ID%%`; the
 
 ### 2.2 Share files ("Insert as link")
 
-The "Send" tab starts with a switch for **what** goes into the mail – **Files**, **Confidential** (a text) or
+The "Send" tab starts with a switch for **what** goes into the mail – **Files**, **Message** (a confidential message) or
 **Request** (an upload link) – and shows only that part; the one button in the footer names what it inserts ("Insert 2
-files as links", "Insert confidential text", "Insert upload link"). Password, "Send the password to" and the collapsed
+files as links", "Insert confidential message", "Insert upload link"). Password, "Send the password to" and the collapsed
 "Validity" (one-line summary of the values for the chosen kind) apply to all three. "No password" is offered for files
 only; a mail already fixed to links without password disables the button for the other two and says why. Files
 dragged onto the pane switch it to "Files".
@@ -112,12 +113,12 @@ the watcher sends nothing and only registers the links for the download confirma
 Items". Without the confirmation there is no job (`jobId: null`). The answer always says `noPassword: true`. **"My shares → Insert"**
 (`POST /api/shares/:id/link`) creates a new link to an existing upload with a new password, as a new step.
 
-**"Confidential"** (`POST /api/messages`): a text instead of a file. It is never written to Nextcloud or to
+**"Message"** (`POST /api/messages`): a text instead of a file. It is never written to Nextcloud or to
 `/data`: `createMessageSend` stores it as a Vaultwarden **text Send protected with the step's password** (Send access
 password, `hidden: false`, no access limit, deleted at expiry). The Send's link goes into the mail as a card
 ("Open message"); the step's password goes out like for files – the job item is "Confidential message", the
 password mail shows an envelope badge. Always with a password; at most 1000 characters (Bitwarden's limit for text
-Sends). Its lifetime is chosen separately ("Text valid for", `messageDays`): `SEND_EXPIRE_DAYS` (default 5) up to
+Sends). Its lifetime is chosen separately ("Message valid for", `messageDays`): `SEND_EXPIRE_DAYS` (default 5) up to
 `SEND_MAX_EXPIRE_DAYS` (at most 30 – Vaultwarden refuses deletion dates more than 31 days ahead).
 
 **"Password link valid for"** (`passwordDays`, same limits): lifetime of the step's password Send. It is created with
@@ -245,8 +246,23 @@ One language per installation, the same for all users; Nextcloud folder names do
 checks that every language has the keys and placeholders of English, that every key the code uses (`t("…")`,
 `%%t:…%%`) exists, Outlook's length limits (Smart Alert button ≤ 20 characters, manifest strings) and that the SMS text
 is GSM with `{password}`. Add-in unit tests load `locales/de.json` (`addin/test/setup.ts`); the UI tests serve the
-bundles with the German texts (`addin/scripts/localize.mjs`); the manifest is validated once per language; the smoke
+bundles with the German texts and below `/en/` with the English ones for the README pictures
+(`addin/scripts/localize.mjs`); the manifest is validated once per language; the smoke
 test checks the German texts in the running stack.
+
+### 2.9 Status of sent mails (read mode)
+
+The manifest also adds the CloudShare button to the ribbon of a mail being **read** (`MessageReadCommandSurface`,
+pinnable via `SupportsPinning`; legacy `ItemRead` form for older clients). It opens `taskpane.html?view=read`: no
+"Send" tab, only "My shares" with the links of that mail on top ("In this message") and the other shares below.
+
+The mail is matched by its body, not by a server-side record: the pane reads the HTML body (`body.getAsync`) and
+collects the tokens of Nextcloud links (`/s/<token>`); the shares of `GET /api/shares` whose token is among them belong
+to this mail. That works for every mail with CloudShare links – sent ones, forwarded ones, also links "Ohne Kennwort"
+that never had a job – and needs no new permission (the item is only read). Only the user's own shares can match;
+links of other people or other sites in the mail are ignored. Confidential messages are not listed (Vaultwarden
+Sends, not Nextcloud shares). While the pane is pinned, `ItemChanged` reloads the list for the selected mail. Copy
+and Revoke work as in the compose pane; Insert is hidden.
 
 ## 3. State and data
 
@@ -282,8 +298,8 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `POST /api/nextcloud/connect`, `…/connect/:id/poll`, `DELETE /api/nextcloud/connection` | Login Flow v2, disconnect |
 | `POST /api/uploads`, `PUT …/:id/chunks/:n`, `POST …/:id/complete`, `DELETE …/:id` | Chunked upload, share link |
 | `POST /api/requests` | Upload link ("Receive files from recipients") |
-| `POST /api/messages` | Confidential text: text → password-protected Vaultwarden Send, joins the mail's password job |
-| `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "My shares": list (30 days, max. 100), revoke, insert again |
+| `POST /api/messages` | Confidential message: text → password-protected Vaultwarden Send, joins the mail's password job |
+| `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "My shares": list (30 days, max. 100), revoke, insert again; also the read mode (2.9) |
 | `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send), `passwordTo` or `passwordSms` until the password went out |
 | `POST /api/jobs/:id/arm` | Arm the password mail (send handler); also reads the sender's name and department for the templates |
 | `GET/POST /webhooks/seven?token=…` | seven.io delivery reports (no login, secret `SEVEN_WEBHOOK_SECRET`) |
@@ -345,7 +361,7 @@ Alert trace". Off by default.
   15 minutes of use, and the `.Shared` permissions reach only mailboxes the user already has rights to. Only the
   optional download confirmation uses an **application** permission (`Mail.Send`) – restrict it to the CloudShare
   users ([microsoft-365.md → 5](microsoft-365.md#5-optional-application-permission-for-the-download-confirmation)), otherwise the app could send as any mailbox of the tenant.
-- **Confidential texts** pass the server only in memory; Vaultwarden stores them end-to-end encrypted in the Send
+- **Confidential messages** pass the server only in memory; Vaultwarden stores them end-to-end encrypted in the Send
   (the Bitwarden CLI encrypts before upload) and deletes them at expiry. Anyone with link and password can read them
   until then – like a file link.
 - **SMS:** the API key and the webhook secret stay on the server; the add-in never talks to seven.io. The SMS carries
