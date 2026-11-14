@@ -211,7 +211,7 @@ With `DOWNLOAD_NOTICE=true`, every file link of a sent mail is registered – wi
 password of 2.2, without – with the sender, subject, recipients and
 expiry (`notices.ts`, `/data/download-notices.json`). Every 10 minutes the Activity API is asked with the owner's
 app password; only downloads **after** the password went out count (older links of the same file are ignored). On the
-first download the sender gets a mail (`download_notice_*` templates) – sent with CloudShare's **own app token**
+first download the sender gets a mail (`download_notice_*` templates above a green card, layout of 8) – sent with CloudShare's **own app token**
 (client credentials, application permission `Mail.Send`), because the sender's delegated token has long expired by
 then. Entries are dropped after the download or when the link expired. No IP addresses or data about the person who
 downloaded are kept.
@@ -459,12 +459,22 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   language). Accessibility is tested with axe (WCAG 2 A/AA) in CI.
 - Layout and labels must survive longer translations: buttons and labels wrap or are short, the full text is in
   `title`/`aria-label`.
+- **Help** ("?" at the right of the tab row, `#help-toggle`; `#panel-help` in `taskpane.html`, shown in place of the
+  current tab, closed by "×", the "?" or a tab): a user guide for everyday users – short `<details>`
+  sections (getting started, sending files, password and channel, confidential message, receiving files, "My shares",
+  FAQ), the most common one open. Texts in the language files (`help.*`); admins put their own support contact into
+  `help.support` (`/config/locales`). Plain words, the button names of the pane, no technical terms.
 - Outlook sets the width of the pane; the layout is designed for 320 px (short labels in "My shares", full text
   in `title`/`aria-label`).
-- **Cards** (`mailCard.ts`) and the **password mail** (`passwordMail.ts`) share one look: white card, blue accent,
-  coloured file type badges, one button – tables and inline styles only, so they render in classic Outlook, Outlook on
-  the web, Gmail and on phones. Colours are duplicated in both files; keep them in sync. Plain-text mails get a text
-  version. `MAIL_FOOTER` (optional) is a template filled from the sender's profile (`footer.ts`).
+- **Cards** (`mailCard.ts`, inserted by the taskpane) and **every mail CloudShare sends itself** share one look. The
+  mails are built by `mailLayout.ts` (`mailDocument`, `mailCard`): text paragraphs, one white card with a coloured
+  accent (blue `brand` – password mail, green `success` – download confirmation, red `danger` – SMS not sent / not
+  delivered), title, file rows with type badges, at most one button, a grey detail line, then the line "sent
+  automatically by CloudShare" (`mail.automatic`). Users of it: `passwordMail.ts` (password mail incl. "send again",
+  `smsProblemMailHtml`) and `notices.ts` (download confirmation: the template text above a card with file, time and
+  validity). Tables and inline styles only, so they render in classic Outlook, Outlook on the web, Gmail and on phones.
+  The colours are duplicated in `mailCard.ts` and `mailLayout.ts`; keep them in sync. Plain-text mails get a text
+  version of the link card. `MAIL_FOOTER` (optional) is a template filled from the sender's profile (`footer.ts`).
 - Icons (`addin/assets/icon-*.png`): the Nextcloud mark as bold rings with an upload arrow; icon URLs carry a version
   parameter because Outlook caches icons by URL.
 

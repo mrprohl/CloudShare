@@ -276,7 +276,8 @@ describe("password by SMS, deliveries and download notices", () => {
     const [, recipients, subject, html] = sendMail.mock.calls[0];
     expect(recipients).toEqual({ to: ["max@example.test"], cc: [], bcc: [] });
     expect(subject).toBe("SMS nicht versendet – Unterlagen");
-    expect(html).toContain("konnte nicht versendet werden: seven.io: no credit");
+    expect(html).toContain("konnte nicht versendet werden.");
+    expect(html).toContain("Grund: seven.io: no credit");
     expect(html).toContain("„Kennwort“");
     expect(html).not.toContain("KateGeteFi45"); // neither the password …
     expect(html).not.toContain("vault/#/send"); // … nor a link to it

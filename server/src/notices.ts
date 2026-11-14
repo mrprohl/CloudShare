@@ -17,6 +17,7 @@ import { locale, t } from "./i18n.js";
 import { sendMailAsApp } from "./graph.js";
 import { NextcloudClient, NOT_CONNECTED } from "./nextcloud.js";
 import { createAtomicWriter, seal, unseal, type Sealed } from "./storage.js";
+import { mailDocument, TEXT_STYLE } from "./mailLayout.js";
 import { renderHtml, render, templatesFor } from "./templates.js";
 
 export interface Notice {
@@ -105,8 +106,17 @@ export async function runNotices(log: Pick<FastifyBaseLogger, "info" | "warn">, 
           expires: formatDay(n.expireDate),
           recipients: n.recipients,
         };
-        const style = "margin:0 0 12px;font-family:'Segoe UI',-apple-system,Helvetica,Arial,sans-serif;font-size:14px;line-height:20px;color:#242424;";
-        await sendMailAsApp(appToken, owner, n.notifyTo, render(texts.download_notice_subject, values), renderHtml(texts.download_notice_body, values, style));
+        // Common layout (mailLayout.ts): the text of the template, then a green card with the file.
+        const html = mailDocument({
+          opening: renderHtml(texts.download_notice_body, values, TEXT_STYLE),
+          card: {
+            accent: "success",
+            title: t("mail.downloadedTitle"),
+            files: [n.fileName],
+            details: t("mail.downloadedDetails", { time: values.downloaded_at, date: values.expires }),
+          },
+        });
+        await sendMailAsApp(appToken, owner, n.notifyTo, render(texts.download_notice_subject, values), html);
         notices.delete(token);
         changed = true;
         log.info({ user: n.ownerUpn, file: n.fileName }, "Download confirmation sent");
