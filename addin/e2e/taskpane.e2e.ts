@@ -670,10 +670,11 @@ test("Kennwort-Link gültig für: 5 days by default, at most 30, sent with every
   await page.locator("#password-days").dispatchEvent("change");
   await expect(page.locator("#password-days")).toHaveValue("30");
   await expect(page.locator("#status")).toContainText("Höchstens 30 Tage möglich – der Wert wurde auf 30 gesetzt. Neue Kennwort-Links sind 30 Tage gültig.");
-  // "Ohne Kennwort" has no password link.
-  await page.check("#mode-none");
+  // "Ohne Kennwort" has no password link (click the visible label – the radio itself is styled away).
+  await page.click("label:has(#mode-none)");
+  await expect(page.locator("#mode-none")).toBeChecked();
   await expect(page.locator("#password-days-field")).toBeHidden();
-  await page.check("#mode-random");
+  await page.click("label:has(#mode-random)");
   await expect(page.locator("#password-days-field")).toBeVisible();
 
   await page.fill("#password-days", "12");
