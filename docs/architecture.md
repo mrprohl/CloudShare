@@ -130,8 +130,8 @@ download confirmation.
 ### 2.3 Send and password mail
 
 1. On "Send" Outlook runs the Smart Alert `onMessageSendHandler` (manifest `SendMode="SoftBlock"`):
-   - Large attachments left in the mail: under `ATTACHMENT_POLICY=enforce` sending is blocked with the button
-     "Open CloudShare"; under `suggest` the user is asked once and may choose "Send Anyway"
+   - Large attachments left in the mail: under `ATTACHMENT_POLICY=suggest` (default) the user is asked once and may
+     choose "Send Anyway"; under `enforce` sending is blocked with the button "Open CloudShare"
      (`sendModeOverride: PromptUser`, Mailbox 1.14).
    - If all CloudShare cards were deleted from the mail, the draft is released: no tag, no password mail.
    - Otherwise the job is **armed**: `POST /api/jobs/:id/arm` with an SSO token; the backend exchanges it for a Graph
@@ -396,6 +396,7 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
 - Account with prepaid credit; API key → `SEVEN_API_KEY`, sender (number or up to 11 characters) → `SEVEN_SENDER`.
 - Delivery reports: callback URL `https://cloudshare.example.com/webhooks/seven?token=<SEVEN_WEBHOOK_SECRET>` in the
   dashboard (webhook event "dlr").
+- Step by step with checks: README → *Password by SMS*.
 - Conclude a data processing agreement and document it in the record of processing activities.
 
 ### Nextcloud

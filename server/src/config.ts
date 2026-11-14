@@ -76,7 +76,7 @@ export const config = {
    * enforce: mails with attachments above the threshold can only be sent via CloudShare (no "Send anyway").
    * suggest: info bar and a prompt on send that offers "Send anyway".
    */
-  attachmentPolicy: oneOf<AttachmentPolicy>("ATTACHMENT_POLICY", ATTACHMENT_POLICIES, "enforce"),
+  attachmentPolicy: oneOf<AttachmentPolicy>("ATTACHMENT_POLICY", ATTACHMENT_POLICIES, "suggest"),
   defaultExpireDays: number("SHARE_EXPIRE_DAYS", 14),
   maxExpireDays: number("SHARE_MAX_EXPIRE_DAYS", 90),
 
