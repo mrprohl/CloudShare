@@ -61,7 +61,7 @@ ask_secret BW_CLIENTSECRET       "API key client_secret"
 ask_secret BW_PASSWORD           "Master password"
 ask SEND_MAX_ACCESS_COUNT "Password link: accesses (default)" "3"
 ask SEND_MAX_ACCESS_LIMIT "Password link: accesses (maximum)" "20"
-ask SEND_EXPIRE_DAYS      "Password link: valid (days)"     "7"
+ask SEND_EXPIRE_DAYS      "Password link / message: valid, default (days, max. 30)" "5"
 
 for var in PUBLIC_BASE_URL ENTRA_TENANT_ID ENTRA_CLIENT_ID NEXTCLOUD_URL VAULTWARDEN_URL BW_CLIENTID; do
   [ -n "${!var}" ] || { echo "$var must not be empty." >&2; exit 1; }
@@ -75,6 +75,9 @@ case "$BW_CLIENTID" in user.*) ;; *) echo "BW_CLIENTID starts with user." >&2; e
 for var in ATTACHMENT_THRESHOLD_MB SHARE_EXPIRE_DAYS SHARE_MAX_EXPIRE_DAYS SEND_MAX_ACCESS_COUNT SEND_MAX_ACCESS_LIMIT SEND_EXPIRE_DAYS; do
   [[ "${!var}" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "$var must be a number." >&2; exit 1; }
 done
+if ! [[ "$SEND_EXPIRE_DAYS" =~ ^[0-9]+$ ]] || (( SEND_EXPIRE_DAYS < 1 || SEND_EXPIRE_DAYS > 30 )); then
+  echo "SEND_EXPIRE_DAYS must be a whole number from 1 to 30 (Vaultwarden keeps Sends at most 31 days)." >&2; exit 1
+fi
 # shellcheck disable=SC2034  # written to env/cloudshare.env indirectly via ${!var} below
 CREDENTIAL_KEY=$(openssl rand -base64 32)
 

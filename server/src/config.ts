@@ -10,6 +10,16 @@ function number(name: string, fallback: number): number {
   return value;
 }
 
+/** Lifetime of a Vaultwarden Send in days: whole number from 1 to SEND_DAYS_LIMIT. */
+export const SEND_DAYS_LIMIT = 30;
+function sendDays(name: string, fallback: number): number {
+  const value = Number(process.env[name] ?? fallback);
+  if (!Number.isInteger(value) || value < 1 || value > SEND_DAYS_LIMIT) {
+    throw new Error(`Environment variable ${name} must be a whole number from 1 to ${SEND_DAYS_LIMIT} (Vaultwarden keeps Sends at most 31 days)`);
+  }
+  return value;
+}
+
 /** Days after link expiry until CloudShare deletes the uploaded file; "off" = never (CLEANUP_AFTER_DAYS). */
 function cleanupDays(): number | null {
   const raw = (process.env.CLEANUP_AFTER_DAYS ?? "0").trim().toLowerCase();
@@ -76,7 +86,12 @@ export const config = {
   sendMaxAccessCount: number("SEND_MAX_ACCESS_COUNT", 3),
   /** Upper limit for the number of accesses a user may choose. */
   sendMaxAccessLimit: number("SEND_MAX_ACCESS_LIMIT", 20),
-  sendExpireDays: number("SEND_EXPIRE_DAYS", 7),
+  /**
+   * How long the password link and confidential messages (Vaultwarden Sends) stay available: default and upper limit
+   * of what the user chooses in the pane. Vaultwarden refuses Sends that live longer than 31 days.
+   */
+  sendExpireDays: sendDays("SEND_EXPIRE_DAYS", 5),
+  sendMaxExpireDays: sendDays("SEND_MAX_EXPIRE_DAYS", 30),
   /**
    * Files in NEXTCLOUD_FOLDER are deleted (Nextcloud trash) this many days after their link expired; null = never.
    * Received files (NEXTCLOUD_REQUEST_FOLDER) are never deleted automatically.
@@ -122,3 +137,7 @@ export const config = {
   /** Nextcloud chunking v2: at least 5 MiB per chunk (except the last), at most 10,000 chunks. */
   chunkSizeBytes: 10 * 1024 * 1024,
 };
+
+if (config.sendExpireDays > config.sendMaxExpireDays) {
+  throw new Error("SEND_EXPIRE_DAYS must not be larger than SEND_MAX_EXPIRE_DAYS");
+}

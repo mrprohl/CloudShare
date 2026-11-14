@@ -104,6 +104,9 @@ export function setLocale(file: LocaleFile): void {
 /** BCP 47 locale of the active language for dates and numbers ("de-DE", "en-GB"). */
 export const locale = () => active._meta.locale;
 
+/** Date in the language's format and the configured time zone ("19.11.2026"). */
+export const formatDate = (ms: number) => new Date(ms).toLocaleDateString(locale(), { timeZone: config.timeZone });
+
 /** Picks the plural form for `count`, then fills {name} placeholders (unknown ones stay visible). */
 export function format(texts: Section, key: string, vars: Record<string, string | number> = {}): string {
   const count = vars.count;

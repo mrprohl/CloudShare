@@ -127,6 +127,15 @@
             <p class="hint" id="max-access-hint">%%t:addin.maxAccess.hint%%</p>
           </div>
 
+          <div class="field" id="password-days-field">
+            <label for="password-days" class="label">%%t:addin.passwordDays.label%%</label>
+            <div class="input-group input-narrow">
+              <input type="number" id="password-days" class="input" min="1" aria-describedby="password-days-hint" />
+              <span class="suffix">%%t:addin.expire.suffix%%</span>
+            </div>
+            <p class="hint" id="password-days-hint">%%t:addin.passwordDays.hint%%</p>
+          </div>
+
           <!-- How the password goes out after sending: to the recipients (default), to another address, or by SMS. -->
           <div class="field" id="password-to-field" role="radiogroup" aria-labelledby="channel-label">
             <span class="label" id="channel-label">%%t:addin.channel.label%%</span>
@@ -167,6 +176,13 @@
           <textarea id="message" class="input textarea" rows="4" spellcheck="true" placeholder="%%t:addin.message.placeholder%%"
             aria-label="%%t:addin.message.label%%" aria-describedby="message-count"></textarea>
           <p class="hint" id="message-count" aria-live="polite"></p>
+          <div class="field">
+            <label for="message-days" class="label">%%t:addin.message.daysLabel%%</label>
+            <div class="input-group input-narrow">
+              <input type="number" id="message-days" class="input" min="1" />
+              <span class="suffix">%%t:addin.expire.suffix%%</span>
+            </div>
+          </div>
           <button type="button" id="message-insert" class="btn">
             <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
               <rect x="3" y="5" width="14" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/>

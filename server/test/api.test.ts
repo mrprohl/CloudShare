@@ -46,7 +46,6 @@ vi.mock("../src/vaultwarden.js", () => ({
   createPasswordSend: vi.fn(async () => ({ url: "https://vault.example.test/#/send/abc", id: "send-1" })),
   createMessageSend: vi.fn(async () => ({ url: "https://vault.example.test/#/send/msg/key123", id: "send-msg" })),
   MESSAGE_MAX_LENGTH: 1000,
-  MESSAGE_MAX_DAYS: 30,
   setSendMaxAccess: vi.fn(async () => undefined),
   initVault: vi.fn(),
 }));
@@ -281,12 +280,24 @@ describe("uploads", () => {
   it("limits validity and password-link accesses to the configured maximum", async () => {
     const { body } = await startUpload("anna");
     await putChunk("anna", body.uploadId, 1);
-    const res = await complete("anna", body.uploadId, { expireDays: 1000, maxAccess: 500 });
+    const res = await complete("anna", body.uploadId, { expireDays: 1000, maxAccess: 500, passwordDays: 99 });
     expect(res.statusCode).toBe(200);
     const maxDate = new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10);
     expect(res.json().expireDate).toBe(maxDate);
     expect(nc.createPublicShare.mock.calls[0][2]).toBe(maxDate);
     expect(createPasswordSend.mock.calls[0][2]).toBe(20);
+    expect(createPasswordSend.mock.calls[0][3]).toBe(30); // password link: Vaultwarden keeps Sends at most 31 days
+  });
+
+  it("keeps the password link for the chosen days, 5 by default", async () => {
+    const first = await startUpload("anna");
+    await putChunk("anna", first.body.uploadId, 1);
+    await complete("anna", first.body.uploadId, { passwordDays: 12, step: "d1" });
+    expect(createPasswordSend.mock.calls[0][3]).toBe(12);
+    const second = await startUpload("anna");
+    await putChunk("anna", second.body.uploadId, 1);
+    await complete("anna", second.body.uploadId, { step: "d2" });
+    expect(createPasswordSend.mock.calls[1][3]).toBe(5);
   });
 
   it("adds further files to the user's own job, never to someone else's", async () => {
@@ -324,7 +335,7 @@ describe("confidential messages", () => {
 
   it("stores the text only in a password-protected Send and attaches it to the mail's job", async () => {
     createMessageSend.mockClear();
-    const res = await send({ text: "  Zugang: anna / Sommer2026  ", password: STRONG, expireDays: 7, step: "msg1" });
+    const res = await send({ text: "  Zugang: anna / Sommer2026  ", password: STRONG, messageDays: 7, step: "msg1" });
     expect(res.statusCode).toBe(200);
     const [label, text, password, expiresAt] = createMessageSend.mock.calls[0];
     expect(label).toBe("Vertrauliche Nachricht");
@@ -333,17 +344,20 @@ describe("confidential messages", () => {
     expect(Math.round((expiresAt.getTime() - Date.now()) / DAY)).toBe(7);
     const body = res.json();
     expect(body.shareUrl).toBe("https://vault.example.test/#/send/msg/key123");
-    expect(body.capped).toBe(false);
     const job = getJob(body.jobId)!;
     expect(job.owner).toBe("oid-anna");
     expect(job.separate?.[0].fileNames).toEqual(["Vertrauliche Nachricht"]);
   });
 
-  it("caps the lifetime at Vaultwarden's limit", async () => {
-    createMessageSend.mockClear();
-    const res = await send({ text: "x", password: STRONG, expireDays: 60 });
-    expect(res.json().capped).toBe(true);
-    expect(Math.round((createMessageSend.mock.calls[0][3].getTime() - Date.now()) / DAY)).toBe(30);
+  it("is available for the chosen days: 5 by default, at most 30 (independent of the link validity)", async () => {
+    const days = async (payload: Record<string, unknown>) => {
+      createMessageSend.mockClear();
+      await send({ text: "x", password: STRONG, ...payload });
+      return Math.round((createMessageSend.mock.calls[0][3].getTime() - Date.now()) / DAY);
+    };
+    expect(await days({})).toBe(5);
+    expect(await days({ messageDays: 60, expireDays: 90 })).toBe(30);
+    expect(await days({ messageDays: 2, expireDays: 90 })).toBe(2);
   });
 
   it.each([
@@ -361,7 +375,7 @@ describe("confidential messages", () => {
 
   it("tells the add-in the limits", async () => {
     const config = (await app.inject({ method: "GET", url: "/api/config" })).json();
-    expect(config).toMatchObject({ messageMaxLength: 1000, messageMaxDays: 30 });
+    expect(config).toMatchObject({ messageMaxLength: 1000, sendExpireDays: 5, sendMaxExpireDays: 30 });
   });
 });
 

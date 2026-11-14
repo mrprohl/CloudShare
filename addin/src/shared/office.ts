@@ -21,9 +21,11 @@ export interface ServerConfig {
   /** SMS channel configured on the server (seven.io); country code for numbers entered without one. */
   smsEnabled?: boolean;
   smsDefaultCountry?: string;
-  /** Confidential message: longest text (characters) and longest lifetime (days, Vaultwarden's limit). */
+  /** Confidential message: longest text (characters). */
   messageMaxLength?: number;
-  messageMaxDays?: number;
+  /** Password link and confidential message (Vaultwarden Sends): default and maximum lifetime in days. */
+  sendExpireDays?: number;
+  sendMaxExpireDays?: number;
 }
 
 /** Office SSO: "a previous getAccessToken call is still in progress". */

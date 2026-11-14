@@ -16,7 +16,7 @@ import path from "node:path";
 import type { FastifyBaseLogger } from "fastify";
 import { config } from "./config.js";
 import { findSentMessage, sendMail } from "./graph.js";
-import { t as translate } from "./i18n.js";
+import { formatDate, t as translate } from "./i18n.js";
 import { recordDelivery } from "./deliveries.js";
 import { registerNotices, type Notice } from "./notices.js";
 import { passwordMailHtml } from "./passwordMail.js";
@@ -45,6 +45,8 @@ export interface SeparatePart {
   sendUrl: string;
   sendId?: string;
   maxAccessCount: number;
+  /** When the step's password link (Send) is deleted (ms) – shown in the password mail; missing in older jobs. */
+  sendExpiresAt?: number;
   /** Its password mail went out (the others may still be pending after an error). */
   dispatched?: boolean;
   /** The links of the step (share token, file name, last valid day) – for "Meine Freigaben" and download notices. */
@@ -304,7 +306,8 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
           const mailFor = () => ({
             subject: render(t.mail_password_subject, { files: label, subject: message.subject || files[0], sender_name: job.senderName ?? "" }),
             html: passwordMailHtml({ fileNames: files, sendUrl: part.sendUrl, maxAccessCount: part.maxAccessCount,
-              subject: message.subject, expireDays: config.sendExpireDays, introTemplate: customIntro, senderName: job.senderName }),
+              subject: message.subject, expireDays: config.sendExpireDays, introTemplate: customIntro, senderName: job.senderName,
+              expiresOn: part.sendExpiresAt ? formatDate(part.sendExpiresAt) : undefined }),
           });
           const tokens = (part.shares ?? []).map((s) => s.token);
 

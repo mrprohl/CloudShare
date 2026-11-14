@@ -84,6 +84,10 @@
     "maxAccess.nextStep": "The password link can be opened {times} (for the next link).",
     "maxAccess.now": "The password link can now be opened {times}.",
     "maxAccess.failed": "“Password can be opened” could not be changed: {error}",
+    "passwordDays.label": "Password link valid for",
+    "passwordDays.hint": "For this long the recipients can get the password – not afterwards, even if the download link is still valid.",
+    "passwordDays.changed_one": "New password links are valid for {count} day.",
+    "passwordDays.changed_other": "New password links are valid for {count} days.",
 
     "channel.label": "Deliver the password",
     "channel.recipients": "to the recipients of the message",
@@ -115,7 +119,7 @@
     "request.inserted": "The upload link was inserted. The password is sent automatically after sending.",
 
     "message.heading": "Confidential message",
-    "message.text": "A text the recipients can only read with the password – e.g. access data. It is not in the mail but stored encrypted in Vaultwarden. Password as above, available for at most {days} days.",
+    "message.text": "A text the recipients can only read with the password – e.g. access data. It is not in the mail but stored encrypted in Vaultwarden. The password above applies.",
     "message.label": "Text of the confidential message",
     "message.placeholder": "Enter the confidential text …",
     "message.count": "{count} of {max} characters",
@@ -126,7 +130,9 @@
     "message.needsPasswordLocked": "Confidential messages always need a password. This message already contains links without a password – please use a new message for it.",
     "message.creating": "Creating the confidential message …",
     "message.inserted": "The link to the confidential message was inserted. The password is sent automatically after sending.",
-    "message.capped": "Confidential messages are available for at most {days} days.",
+    "message.daysLabel": "Message valid for",
+    "message.daysChanged_one": "New confidential messages are available for {count} day.",
+    "message.daysChanged_other": "New confidential messages are available for {count} days.",
 
     "submit.button": "Insert as link",
     "submit.noneSelected": "Select at least one file.",
@@ -298,6 +304,7 @@
     "access_other": "up to {count} accesses",
     "expires_one": "expires after {count} day",
     "expires_other": "expires after {count} days",
+    "expiresOn": "expires on {date}",
     "enterPassword": "Enter the password when you open the download link.",
     "buttonFallback": "If the button does not work:",
     "files_one": "“{name}”",
