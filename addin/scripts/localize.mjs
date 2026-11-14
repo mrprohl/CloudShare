@@ -17,7 +17,7 @@ export function loadLocale(language = "de") {
 
 const escapeMarkup = (s) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
-const asciiJs = (s) => s.replace(/[\u007f-￿]/g, (c) => `\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+const asciiJs = (s) => s.replace(/[^\x00-\x7e]/g, (c) => String.fromCharCode(92) + "u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
 
 /** Content of an add-in file (by extension) with the texts of `locale` (from loadLocale) filled in. */
 export function localize(content, ext, locale, language = "de") {

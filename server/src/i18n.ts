@@ -126,7 +126,7 @@ const escapeMarkup = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 
 /** Non-ASCII as \uXXXX: the script stays ASCII whatever the runtime assumes as encoding. */
-const asciiJs = (s: string) => s.replace(/[\u007f-￿]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`);
+const asciiJs = (s: string) => s.replace(/[^\x00-\x7e]/g, (c) => String.fromCharCode(92) + "u" + c.charCodeAt(0).toString(16).padStart(4, "0"));
 
 /** The marker in the add-in bundles that receives the texts (see addin/src/shared/i18n.ts). */
 export const BUNDLE_MARKER = "%%CLOUDSHARE_I18N%%";
