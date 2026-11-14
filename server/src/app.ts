@@ -30,6 +30,7 @@ import {
   startLoginFlow,
   type PublicShare,
 } from "./nextcloud.js";
+import { expireOnRevoke, registerForCleanup } from "./cleanup.js";
 import { clampInt, isEmailAddress } from "./limits.js";
 import { passwordProblem } from "./password.js";
 import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } from "./store.js";
@@ -396,6 +397,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       uploads.delete(req.params.id);
 
       const shareUrl = await nc.createPublicShare(upload.target, noPassword ? undefined : password, expireDate);
+      await registerForCleanup(user.oid, upload.target, expireDate);
       const jobId = noPassword ? null : await attachToJob(user, req.body?.jobId, upload.fileName, password, maxAccess, req.body?.step);
       req.log.info({ user: user.upn, file: upload.fileName, noPassword }, "Share created");
       return { shareUrl, expireDate, jobId, fileName: upload.fileName, size: upload.size };
@@ -466,11 +468,28 @@ export async function buildApp(options: { logger?: boolean } = {}) {
   app.delete<{ Params: { id: string } }>("/api/shares/:id", async (req) => {
     const user = await authenticate(req);
     const nc = nextcloudFor(user);
-    const share = (await nc.listPublicShares()).find((s) => s.id === req.params.id);
+    const shares = await nc.listPublicShares();
+    const share = shares.find((s) => s.id === req.params.id);
     if (!share || !isCloudShareShare(share)) throw new HttpError(404, "Freigabe nicht gefunden");
     await nc.deleteShare(share.id);
-    req.log.info({ user: user.upn, path: share.path }, "Share revoked");
-    return { ok: true };
+
+    // A revoked file link counts as expired: the upload folder goes to the trash (CLEANUP_AFTER_DAYS) unless another
+    // valid link still points to it. Received files of an upload link are never deleted.
+    const segments = share.path.split("/").filter(Boolean);
+    const folder = `/${segments.slice(0, 2).join("/")}/`;
+    const today = new Date().toISOString().slice(0, 10);
+    const otherLinkActive = shares.some(
+      (s) => s.id !== share.id && s.path.startsWith(folder) && (s.expiration === null || s.expiration >= today),
+    );
+    const request = share.permissions === 4 && share.isFolder;
+    const file = request
+      ? "kept"
+      : await expireOnRevoke(user.oid, segments, otherLinkActive, async (target) => {
+          const { id: uid } = await nc.userInfo();
+          await nc.deletePath(uid, target);
+        });
+    req.log.info({ user: user.upn, path: share.path, file }, "Share revoked");
+    return { ok: true, file, deleteAfterDays: config.cleanupAfterDays };
   });
 
   /**
@@ -497,6 +516,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const shareUrl = request
         ? await nc.createPublicShare(segments, password, expireDate, 4, "Dateianforderung")
         : await nc.createPublicShare(segments, noPassword ? undefined : password, expireDate);
+      if (!request) await registerForCleanup(user.oid, segments, expireDate);
       const jobId = noPassword
         ? null
         : await attachToJob(user, req.body?.jobId, request ? UPLOAD_LINK_ITEM : fileName, password, maxAccess, req.body?.step);

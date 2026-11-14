@@ -18,6 +18,7 @@ const nc = vi.hoisted(() => ({
   publicDownloads: vi.fn(),
   countFiles: vi.fn(),
   revokeAppPassword: vi.fn(),
+  deletePath: vi.fn(),
   linkPasswordEnforced: vi.fn(),
 }));
 
@@ -307,11 +308,11 @@ describe("upload links", () => {
 
 describe("my shares", () => {
   const shares = [
-    { id: "1", path: "/Outlook-Anhaenge/2026-11-13_ab/a.pdf", url: "u1", expiration: "2026-11-27", sharedAt: Date.now() - 2 * DAY, fileId: 11, isFolder: false, permissions: 1, label: "", size: 4096, hasPassword: true },
+    { id: "1", path: "/CloudShare/2026-11-13_ab/a.pdf", url: "u1", expiration: "2026-11-27", sharedAt: Date.now() - 2 * DAY, fileId: 11, isFolder: false, permissions: 1, label: "", size: 4096, hasPassword: true },
     { id: "2", path: "/Outlook-Dateianforderungen/2026-11-13_cd", url: "u2", expiration: null, sharedAt: Date.now() - DAY, fileId: 12, isFolder: true, permissions: 4, label: "Dateianforderung", size: null, hasPassword: true },
     { id: "3", path: "/Privat/urlaub.jpg", url: "u3", expiration: null, sharedAt: Date.now(), fileId: 13, isFolder: false, permissions: 1, label: "", size: 4096, hasPassword: false },
-    { id: "4", path: "/Outlook-Anhaenge/2026-09-01_ef/alt.pdf", url: "u4", expiration: null, sharedAt: Date.now() - 31 * DAY, fileId: 14, isFolder: false, permissions: 1, label: "", size: 1, hasPassword: false },
-    { id: "5", path: "/Outlook-Anhaenge/2026-11-13_gh/offen.pdf", url: "u5", expiration: null, sharedAt: Date.now() - 3 * DAY, fileId: 15, isFolder: false, permissions: 1, label: "", size: 1, hasPassword: false },
+    { id: "4", path: "/CloudShare/2026-09-01_ef/alt.pdf", url: "u4", expiration: null, sharedAt: Date.now() - 31 * DAY, fileId: 14, isFolder: false, permissions: 1, label: "", size: 1, hasPassword: false },
+    { id: "5", path: "/CloudShare/2026-11-13_gh/offen.pdf", url: "u5", expiration: null, sharedAt: Date.now() - 3 * DAY, fileId: 15, isFolder: false, permissions: 1, label: "", size: 1, hasPassword: false },
   ];
 
   it("lists only CloudShare links with their status", async () => {
@@ -341,6 +342,38 @@ describe("my shares", () => {
     expect(nc.deleteShare).toHaveBeenCalledWith("1");
   });
 
+  describe("revoking counts as expired (CLEANUP_AFTER_DAYS=0: file to the trash right away)", () => {
+    const fileShare = (id: string, path: string, expiration: string | null = "2099-01-01") => ({
+      id, path, url: `u${id}`, expiration, sharedAt: Date.now(), fileId: 20, isFolder: false, permissions: 1, label: "",
+      size: 1, hasPassword: true,
+    });
+    const revoke = (id: string) => app.inject({ method: "DELETE", url: `/api/shares/${id}`, headers: as("anna") });
+
+    it("deletes the upload folder when no other valid link points to it", async () => {
+      nc.listPublicShares.mockResolvedValue([fileShare("7", "/CloudShare/2026-11-13_ab12cd34/a.pdf")]);
+      const res = await revoke("7");
+      expect(res.json()).toMatchObject({ ok: true, file: "deleted", deleteAfterDays: 0 });
+      expect(nc.deletePath).toHaveBeenCalledWith("uid", ["CloudShare", "2026-11-13_ab12cd34"]);
+    });
+
+    it("keeps the file while another valid link (e.g. inserted again) points to it", async () => {
+      nc.listPublicShares.mockResolvedValue([
+        fileShare("7", "/CloudShare/2026-11-13_ab12cd34/a.pdf"),
+        fileShare("8", "/CloudShare/2026-11-13_ab12cd34/a.pdf"),
+      ]);
+      expect((await revoke("7")).json().file).toBe("kept");
+      expect(nc.deletePath).not.toHaveBeenCalled();
+    });
+
+    it("never deletes received files of an upload link", async () => {
+      nc.listPublicShares.mockResolvedValue([
+        { ...fileShare("9", "/Outlook-Dateianforderungen/2026-11-13_cd34ef56"), isFolder: true, permissions: 4 },
+      ]);
+      expect((await revoke("9")).json().file).toBe("kept");
+      expect(nc.deletePath).not.toHaveBeenCalled();
+    });
+  });
+
   const link = (id: string, body: Record<string, unknown>) =>
     app.inject({ method: "POST", url: `/api/shares/${id}/link`, headers: as("anna"), payload: body });
 
@@ -350,7 +383,7 @@ describe("my shares", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ kind: "file", fileName: "a.pdf", size: 4096 });
     const [segments, password, , permissions] = nc.createPublicShare.mock.calls[0];
-    expect(segments).toEqual(["Outlook-Anhaenge", "2026-11-13_ab", "a.pdf"]);
+    expect(segments).toEqual(["CloudShare", "2026-11-13_ab", "a.pdf"]);
     expect(password).toBe(STRONG);
     expect(permissions).toBeUndefined(); // read-only default
     expect(getJob(res.json().jobId)?.fileNames).toEqual(["a.pdf"]);

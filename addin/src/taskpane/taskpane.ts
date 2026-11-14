@@ -289,7 +289,6 @@ function renderPicked() {
   noAttachments.hidden = attachmentList.childElementCount > 0 || pickedFiles.length > 0;
 }
 
-$<HTMLButtonElement>("add-files").addEventListener("click", () => fileInput.click());
 
 fileInput.addEventListener("change", () => {
   pickedFiles = [...pickedFiles, ...Array.from(fileInput.files ?? [])];
@@ -1010,9 +1009,22 @@ function shareRow(share: ShareItem): HTMLElement {
     }
     revoke.disabled = true;
     try {
-      await api(`/api/shares/${encodeURIComponent(share.id)}`, { method: "DELETE" }, await getToken());
+      const result = await api<{ file?: "deleted" | "scheduled" | "kept"; deleteAfterDays?: number | null }>(
+        `/api/shares/${encodeURIComponent(share.id)}`,
+        { method: "DELETE" },
+        await getToken(),
+      );
       row.remove();
-      setStatus(`„${share.name}“ ist nicht mehr abrufbar. Die Datei bleibt in Ihrer Nextcloud.`, "success");
+      // A revoked link counts as expired: the server moved the file to the trash or scheduled it (CLEANUP_AFTER_DAYS).
+      const fate =
+        share.kind === "request"
+          ? "Die empfangenen Dateien bleiben in Ihrer Nextcloud."
+          : result.file === "deleted"
+            ? "Die Datei wurde in den Papierkorb Ihrer Nextcloud verschoben."
+            : result.file === "scheduled"
+              ? `Die Datei wird in ${result.deleteAfterDays} Tagen in den Papierkorb Ihrer Nextcloud verschoben.`
+              : "Die Datei bleibt in Ihrer Nextcloud.";
+      setStatus(`„${share.name}“ ist nicht mehr abrufbar. ${fate}`, "success");
       noShares.hidden = sharesList.childElementCount > 0;
     } catch (err) {
       revoke.disabled = false;

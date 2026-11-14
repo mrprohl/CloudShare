@@ -56,7 +56,7 @@ cloudshare ─egress─► Entra ID/Graph (password mail) · Nextcloud (upload, 
 | `caddy/Caddyfile` | site configuration; host name from `CLOUDSHARE_HOST` |
 | `env/versions.env` | `CLOUDSHARE_HOST`, `CLOUDSHARE_VERSION` (`latest`), `CADDY_VERSION` |
 | `env/cloudshare.env` | Entra ID, Nextcloud, Vaultwarden service account, `CREDENTIAL_KEY` – **secrets** |
-| volume `cloudshare_data` | users' encrypted Nextcloud app passwords – **back up** |
+| volume `cloudshare_data` | users' encrypted Nextcloud app passwords, pending password mails and the cleanup list of uploaded files – **back up** |
 | volume `cloudshare_caddy_data` | certificates |
 | `setup.sh` | new installation: asks for all settings and writes `env/` |
 

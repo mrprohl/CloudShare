@@ -48,7 +48,7 @@ enforce
 00000000-0000-0000-0000-000000000002
 ci-dummy-secret
 https://cloud.example.com
-Outlook-Anhaenge
+CloudShare
 Outlook-Dateianforderungen
 https://vault.example.com
 user.ci-dummy

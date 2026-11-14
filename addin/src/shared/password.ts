@@ -4,14 +4,15 @@
  */
 
 export const PASSWORD_MIN_LENGTH = 12;
-export const GENERATED_LENGTH = 20;
+export const GENERATED_LENGTH = 12;
 
-// Generated passwords avoid easily confused characters (0/O, 1/l/I) and symbols that are awkward to type or
-// break when copied from a mail ("'`\ and spaces). 20 characters from 67 symbols ≈ 121 bits of entropy.
-const UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ";
-const LOWER = "abcdefghijkmnopqrstuvwxyz";
+// Generated passwords are pronounceable, so they can be read out on the phone: two capitalised "words" of two
+// consonant-vowel syllables, one more syllable and two digits, e.g. "FuvoMozeBo28". No special characters, no easily
+// confused characters (c/q/x/y/l, 0/1). (16 × 5)^5 × 8^2 ≈ 2^37.6 – enough for links that expire, are only reachable
+// with the link itself and are protected by Nextcloud's brute-force throttling.
+const CONSONANTS = "bdfghjkmnprstvwz";
+const VOWELS = "aeiou";
 const DIGITS = "23456789";
-const SYMBOLS = "!#%*+-=?@_";
 
 /** Uniform random index in [0, n) from the CSPRNG, without modulo bias (rejection sampling). */
 function randomIndex(n: number): number {
@@ -23,17 +24,20 @@ function randomIndex(n: number): number {
   }
 }
 
-/** Random password with at least one character of every class, shuffled (Fisher–Yates). */
-export function generatePassword(length = GENERATED_LENGTH): string {
-  const groups = [UPPER, LOWER, DIGITS, SYMBOLS];
-  const all = groups.join("");
-  const chars = groups.map((g) => g[randomIndex(g.length)]);
-  while (chars.length < length) chars.push(all[randomIndex(all.length)]);
-  for (let i = chars.length - 1; i > 0; i--) {
-    const j = randomIndex(i + 1);
-    [chars[i], chars[j]] = [chars[j], chars[i]];
+const pick = (alphabet: string) => alphabet[randomIndex(alphabet.length)];
+const syllable = () => pick(CONSONANTS) + pick(VOWELS);
+const capital = (part: string) => part[0].toUpperCase() + part.slice(1);
+
+/**
+ * Pronounceable random password "WortWortSi12" (12 characters: upper and lower case, digits). Drawn again in the rare
+ * case it would not pass the password rules (e.g. too few different characters).
+ */
+export function generatePassword(): string {
+  for (;;) {
+    const password =
+      capital(syllable() + syllable()) + capital(syllable() + syllable()) + capital(syllable()) + pick(DIGITS) + pick(DIGITS);
+    if (checkPassword(password).ok) return password;
   }
-  return chars.join("");
 }
 
 export interface PasswordCheck {
