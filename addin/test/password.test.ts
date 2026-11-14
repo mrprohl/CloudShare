@@ -4,18 +4,16 @@ import { checkPassword, GENERATED_LENGTH, generatePassword, PASSWORD_MIN_LENGTH 
 describe("generatePassword", () => {
   const samples = Array.from({ length: 300 }, () => generatePassword());
 
-  it("has the configured length and contains every character class", () => {
+  it("is pronounceable: WortWortSi12 – 12 characters, no special characters", () => {
     for (const pw of samples) {
       expect(pw).toHaveLength(GENERATED_LENGTH);
-      expect(pw).toMatch(/[A-Z]/);
-      expect(pw).toMatch(/[a-z]/);
-      expect(pw).toMatch(/[0-9]/);
-      expect(pw).toMatch(/[!#%*+\-=?@_]/);
+      expect(GENERATED_LENGTH).toBe(12);
+      expect(pw).toMatch(/^[A-Z][aeiou][a-z][aeiou][A-Z][aeiou][a-z][aeiou][A-Z][aeiou][2-9]{2}$/);
     }
   });
 
   it("avoids easily confused and awkward characters", () => {
-    for (const pw of samples) expect(pw).not.toMatch(/[0O1lI'"`\\\s]/);
+    for (const pw of samples) expect(pw).not.toMatch(/[0O1lIcCqQxXyY'"`\\\s!#%*+\-=?@_]/);
   });
 
   it("always passes its own rules", () => {
@@ -26,10 +24,10 @@ describe("generatePassword", () => {
     expect(new Set(samples).size).toBe(samples.length);
   });
 
-  it("uses all symbols of the alphabet roughly evenly (no modulo bias)", () => {
-    const counts = new Map<string, number>();
-    for (let i = 0; i < 400; i++) for (const c of generatePassword()) counts.set(c, (counts.get(c) ?? 0) + 1);
-    expect(counts.size).toBe(67); // 24 upper + 25 lower + 8 digits + 10 symbols
+  it("uses every consonant, vowel and digit (no modulo bias)", () => {
+    const seen = new Set<string>();
+    for (let i = 0; i < 400; i++) for (const c of generatePassword()) seen.add(c.toLowerCase());
+    expect([...seen].sort().join("")).toBe([..."bdfghjkmnprstvwz" + "aeiou" + "23456789"].sort().join(""));
   });
 });
 

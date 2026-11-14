@@ -10,6 +10,15 @@ function number(name: string, fallback: number): number {
   return value;
 }
 
+/** Days after link expiry until CloudShare deletes the uploaded file; "off" = never (CLEANUP_AFTER_DAYS). */
+function cleanupDays(): number | null {
+  const raw = (process.env.CLEANUP_AFTER_DAYS ?? "0").trim().toLowerCase();
+  if (raw === "off") return null;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) throw new Error("Environment variable CLEANUP_AFTER_DAYS is invalid");
+  return value;
+}
+
 function oneOf<T extends string>(name: string, values: readonly T[], fallback: T): T {
   const value = (process.env[name] ?? fallback) as T;
   if (!values.includes(value)) throw new Error(`Environment variable ${name} must be one of: ${values.join(", ")}`);
@@ -37,7 +46,7 @@ export const config = {
   jwksUrl: process.env.ENTRA_JWKS_URL ?? `https://login.microsoftonline.com/${required("ENTRA_TENANT_ID")}/discovery/v2.0/keys`,
 
   nextcloudUrl: required("NEXTCLOUD_URL").replace(/\/$/, ""),
-  nextcloudFolder: process.env.NEXTCLOUD_FOLDER ?? "Outlook-Anhaenge",
+  nextcloudFolder: process.env.NEXTCLOUD_FOLDER ?? "CloudShare",
   /** Folder for upload links ("Dateien anfordern"); every request gets its own subfolder. */
   requestFolder: process.env.NEXTCLOUD_REQUEST_FOLDER ?? "Outlook-Dateianforderungen",
   /** Optional line at the bottom of the card inserted into the mail, e.g. the company name. */
@@ -65,6 +74,11 @@ export const config = {
   /** Upper limit for the number of accesses a user may choose. */
   sendMaxAccessLimit: number("SEND_MAX_ACCESS_LIMIT", 20),
   sendExpireDays: number("SEND_EXPIRE_DAYS", 7),
+  /**
+   * Files in NEXTCLOUD_FOLDER are deleted (Nextcloud trash) this many days after their link expired; null = never.
+   * Received files (NEXTCLOUD_REQUEST_FOLDER) are never deleted automatically.
+   */
+  cleanupAfterDays: cleanupDays(),
 
   /**
    * Requests per minute and user (oid from the Microsoft token) or, without one, per client address. Generous on

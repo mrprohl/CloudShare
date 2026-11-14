@@ -213,7 +213,7 @@ test("preselects large attachments and proposes a random password", async ({ pag
 
   const password = page.locator("#password");
   await expect(password).toHaveAttribute("readonly", "");
-  expect((await password.inputValue()).length).toBe(20);
+  expect(await password.inputValue()).toMatch(/^([A-Z][aeiou][a-z][aeiou]){2}[A-Z][aeiou][2-9]{2}$/); // pronounceable
   await expect(page.locator("#max-access")).toHaveValue("3");
   await expect(page.locator("#expire")).toHaveValue("14");
   await expect(page.locator("#account")).toHaveText("max [12,5 GB von 50 GB frei]");
@@ -377,6 +377,20 @@ test("plain-text mail gets the links as text", async ({ page }) => {
   expect(inserted.coercionType).toBe("text");
   expect(inserted.data).toContain("https://cloud.example.com/s/u1");
   expect(inserted.data).not.toContain("<table");
+});
+
+test("Dateien vom Computer hinzufügen opens the file dialog natively (label, also by keyboard)", async ({ page }) => {
+  await openTaskpane(page);
+  // Mouse: the visible button is the input's label – the browser opens the dialog itself.
+  const [byClick] = await Promise.all([page.waitForEvent("filechooser"), page.click("#add-files")]);
+  expect(byClick.isMultiple()).toBe(true);
+  await byClick.setFiles({ name: "Plan.pdf", mimeType: "application/pdf", buffer: Buffer.alloc(3000, 0x41) });
+  await expect(page.locator("#picked label.list-item")).toHaveCount(1);
+
+  // Keyboard: the input itself takes the focus and opens the dialog with Space.
+  await page.focus("#file");
+  const [byKey] = await Promise.all([page.waitForEvent("filechooser"), page.keyboard.press("Space")]);
+  expect(byKey).toBeTruthy();
 });
 
 test("uploads a file picked from the computer", async ({ page }) => {

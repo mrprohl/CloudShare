@@ -64,14 +64,14 @@ describe("NextcloudClient", () => {
   it("creates read-only and upload-only public links with password and expiry", async () => {
     const { call } = mockFetch(ocs({ url: "https://cloud.example.test/s/abc" }), ocs({ url: "https://cloud.example.test/s/up" }));
     const client = new NextcloudClient(creds);
-    expect(await client.createPublicShare(["Outlook-Anhaenge", "x", "a.pdf"], "pw", "2026-11-27")).toBe(
+    expect(await client.createPublicShare(["CloudShare", "x", "a.pdf"], "pw", "2026-11-27")).toBe(
       "https://cloud.example.test/s/abc",
     );
     await client.createPublicShare(["Outlook-Dateianforderungen", "y"], "pw", "2026-11-27", 4, "Dateianforderung");
 
     const first = new URLSearchParams(String(call(0).init.body));
     expect(Object.fromEntries(first)).toEqual({
-      path: "/Outlook-Anhaenge/x/a.pdf",
+      path: "/CloudShare/x/a.pdf",
       shareType: "3",
       permissions: "1",
       password: "pw",
@@ -84,7 +84,7 @@ describe("NextcloudClient", () => {
 
   it("creates a link without password when none is given (file links 'Ohne Kennwort')", async () => {
     const { call } = mockFetch(ocs({ url: "https://cloud.example.test/s/open" }));
-    await new NextcloudClient(creds).createPublicShare(["Outlook-Anhaenge", "x", "a.pdf"], undefined, "2026-11-27");
+    await new NextcloudClient(creds).createPublicShare(["CloudShare", "x", "a.pdf"], undefined, "2026-11-27");
     const params = new URLSearchParams(String(call(0).init.body));
     expect(params.has("password")).toBe(false);
     expect(params.get("expireDate")).toBe("2026-11-27");
@@ -100,7 +100,7 @@ describe("NextcloudClient", () => {
   it("lists only public links", async () => {
     mockFetch(
       ocs([
-        { id: 1, share_type: 3, path: "/Outlook-Anhaenge/x/a.pdf", url: "u1", expiration: "2026-11-27 00:00:00", stime: 1_794_000_000, item_source: 11, item_type: "file", permissions: 1, item_size: 4096, password: "redacted" },
+        { id: 1, share_type: 3, path: "/CloudShare/x/a.pdf", url: "u1", expiration: "2026-11-27 00:00:00", stime: 1_794_000_000, item_source: 11, item_type: "file", permissions: 1, item_size: 4096, password: "redacted" },
         { id: 2, share_type: 0, path: "/privat.txt", stime: 1, item_source: 12, item_type: "file", permissions: 1 },
       ]),
     );
@@ -108,7 +108,7 @@ describe("NextcloudClient", () => {
     expect(shares).toEqual([
       {
         id: "1",
-        path: "/Outlook-Anhaenge/x/a.pdf",
+        path: "/CloudShare/x/a.pdf",
         url: "u1",
         expiration: "2026-11-27",
         sharedAt: 1_794_000_000_000,

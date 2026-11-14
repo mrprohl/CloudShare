@@ -139,7 +139,9 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 }
 .btn:hover { background: var(--bg1-hover); border-color: var(--stroke1-hover); }
 .btn:active { background: var(--bg1-pressed); }
-.btn:focus-visible, .checkbox input:focus-visible + .box, a:focus-visible {
+/* File picker: visually hidden but present and focusable – its label (#add-files) is the visible button. */
+.file-input { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; opacity: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.btn:focus-visible, .file-input:focus-visible + .btn, .checkbox input:focus-visible + .box, a:focus-visible {
   outline: 2px solid var(--focus);
   outline-offset: 1px;
 }

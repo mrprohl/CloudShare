@@ -43,9 +43,9 @@ backend does not use Entra tokens for Nextcloud but one app password per user.
    computer (without Outlook's size limit). Attachments are read via `getAttachmentContentAsync`, uploaded and
    removed from the mail **only after success**.
 4. Upload in 10 MiB chunks through the backend using Nextcloud chunked upload v2 (`/remote.php/dav/uploads/…`),
-   target `Outlook-Anhaenge/<date>_<id>/<file>`. No fixed maximum: the free Nextcloud quota is checked up front
+   target `NEXTCLOUD_FOLDER/<date>_<id>/<file>` (default `CloudShare`). No fixed maximum: the free Nextcloud quota is checked up front
    (technical limit 10,000 chunks ≈ 100 GB).
-5. One public link per file (password + expiry date). The number of times the password link (Vaultwarden Send) can be opened is set per step in the taskpane ("Kennwort abrufbar … mal", default `SEND_MAX_ACCESS_COUNT` = 3, limited to `SEND_MAX_ACCESS_LIMIT` = 20 by the server). It stays changeable until sending: afterwards `PATCH /api/jobs/:id` updates the existing Send via `bw serve` (`GET`/`PUT /object/send/:id`, the job keeps the Send ID; jobs from before this version cannot be changed, `SEND_FIXED`); the password mail states the current value ("bis zu 3 Abrufe"). The user chooses a **random password** (default, 20 characters from 67 symbols ≈ 121 bits, CSPRNG with rejection sampling, all four character classes) or an **own password** (min. 12 characters, at least 3 of 4 character classes, no repetition/simple sequence; live check in the taskpane, same rules enforced by the server in `server/src/password.ts`; Nextcloud's password policy applies on top). **Every "Als Link einfügen" step gets its own password, its own Vaultwarden
+5. One public link per file (password + expiry date). The number of times the password link (Vaultwarden Send) can be opened is set per step in the taskpane ("Kennwort abrufbar … mal", default `SEND_MAX_ACCESS_COUNT` = 3, limited to `SEND_MAX_ACCESS_LIMIT` = 20 by the server). It stays changeable until sending: afterwards `PATCH /api/jobs/:id` updates the existing Send via `bw serve` (`GET`/`PUT /object/send/:id`, the job keeps the Send ID; jobs from before this version cannot be changed, `SEND_FIXED`); the password mail states the current value ("bis zu 3 Abrufe"). The user chooses a **random password** (default, pronounceable "WortWortSi12": 12 characters from consonant-vowel syllables plus two digits, no special or easily confused characters, ≈ 37.6 bits, CSPRNG with rejection sampling – sufficient for expiring links behind Nextcloud's brute-force throttling) or an **own password** (min. 12 characters, at least 3 of 4 character classes, no repetition/simple sequence; live check in the taskpane, same rules enforced by the server in `server/src/password.ts`; Nextcloud's password policy applies on top). **Every "Als Link einfügen" step gets its own password, its own Vaultwarden
    Send and its own password mail; files selected together in one step share them** (see below). The job ID lives in `item.sessionData`; drafts from before this version keep one shared password, locked after
    the first file. If the user deletes all inserted links from the mail again, the draft is released (the taskpane
    checks on focus and every 4 s while locked, the send handler before arming): password options unlock, the
@@ -172,6 +172,13 @@ The taskpane is meant to look like part of Outlook, not like an external tool:
   (`PATCH /api/jobs/:id` with `passwordTo`, "" = back to the recipients; also right after the first link), the send
   handler passes it again with `/arm` as a fallback. Validated server-side (`isEmailAddress`, a single address);
   kept when the links are deleted from the mail.
+- **Cleanup of expired uploads** (`server/src/cleanup.ts`, `CLEANUP_AFTER_DAYS`, default 0, `off` = never): every
+  file link registers its upload folder `NEXTCLOUD_FOLDER/<date>_<id>` with the link's expiry date (latest link wins)
+  in `/data/cleanup.json` (encrypted like the password jobs) – Nextcloud's own housekeeping removes expired shares, so
+  the date cannot be read back later. An hourly pass deletes due folders (WebDAV `DELETE` with the owner's app
+  password → the owner's Nextcloud trash). Folders that still have a valid link are postponed; users who disconnected
+  are skipped (entries dropped). Received files (`NEXTCLOUD_REQUEST_FOLDER`) are never registered. Files uploaded
+  before this feature are not registered and stay.
 - **Password mail** (`server/src/passwordMail.ts`): same look as the mail card (brand accent, file type badges, one
   button "Kennwort anzeigen" → Vaultwarden Send, note with accesses and expiry), plus the plain link for clients
   that do not render buttons. Colours and spacing are duplicated from `mailCard.ts` – keep both in sync.
@@ -183,6 +190,6 @@ The taskpane is meant to look like part of Outlook, not like an external tool:
   folders from the last 30 days (newest first, at most 100) with expiry, password status (Nextcloud reports only
   whether a link has a password, not whether it was random or own) and status – downloads from the activity app (type `public_links`) for files,
   number of received files (WebDAV PROPFIND) for upload links. "Kopieren", "Einfügen" (as a new link) and "Zurückziehen" (short labels for the narrow pane, full text as tooltip)
-  (`DELETE /api/shares/:id`, two-step confirmation) – the share ends, the file stays in the user's Nextcloud. "Als Link einfügen" (`POST /api/shares/:id/link`) creates a
+  (`DELETE /api/shares/:id`, two-step confirmation) – the share ends and counts as expired: unless another valid link points to it, the upload folder goes to the Nextcloud trash right away (`CLEANUP_AFTER_DAYS=0`) or after that many days (`off` = file stays); received files of upload links always stay. "Als Link einfügen" (`POST /api/shares/:id/link`) creates a
   *new* link to the same file or upload folder with the current mail’s settings (password + password mail via the draft’s job, or
   "Ohne Kennwort" for files) – the original password cannot be recovered (Nextcloud stores a hash), the old link stays valid.

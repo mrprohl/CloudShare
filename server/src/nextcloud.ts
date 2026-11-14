@@ -177,6 +177,12 @@ export class NextcloudClient {
     await this.ocs("DELETE", "/ocs/v2.php/core/apppassword");
   }
 
+  /** Deletes a file or folder (it goes to the user's Nextcloud trash); already gone (404) is fine. */
+  async deletePath(uid: string, segments: string[]) {
+    const res = await this.request("DELETE", this.davFiles(uid, segments));
+    await this.expect(res, "Löschen", 404);
+  }
+
   /** Creates the folder chain; existing folders (405) are fine. */
   async ensureFolder(uid: string, segments: string[]) {
     for (let i = 1; i <= segments.length; i++) {
@@ -316,7 +322,7 @@ export class NextcloudClient {
 
 export interface PublicShare {
   id: string;
-  /** Path in the user's files, e.g. "/Outlook-Anhaenge/2026-11-13_ab12cd34/report.pdf". */
+  /** Path in the user's files, e.g. "/CloudShare/2026-11-13_ab12cd34/report.pdf". */
   path: string;
   url: string;
   /** YYYY-MM-DD or null. */
