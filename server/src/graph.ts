@@ -117,6 +117,25 @@ export async function sendMail(
 }
 
 /**
+ * Sends a mail as `userId` (oid or UPN) with CloudShare's own app token – the download confirmation to the sender.
+ * Not saved in "Sent Items"; needs the application permission Mail.Send.
+ */
+export async function sendMailAsApp(appToken: string, userId: string, to: string, subject: string, html: string) {
+  const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(userId)}/sendMail`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${appToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      message: { subject, body: { contentType: "HTML", content: html }, toRecipients: toGraph([to]) },
+      saveToSentItems: false,
+    }),
+  });
+  if (res.status !== 202) {
+    const text = await res.text().catch(() => "");
+    throw new HttpError(502, `Graph sendMail (App) fehlgeschlagen (HTTP ${res.status}): ${text.slice(0, 300)}`);
+  }
+}
+
+/**
  * Looks in "Sent Items" for the mail tagged with the job ID (sent since `since`) – in the user's own mailbox, or
  * in `mailbox` (shared mailbox address) if given. Returns its actual sender, subject and recipients, or null if it
  * has not been sent (yet).

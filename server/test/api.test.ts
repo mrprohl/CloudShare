@@ -35,6 +35,13 @@ vi.mock("../src/auth.js", async (importOriginal) => {
     onBehalfOf: vi.fn(async () => ({ token: "graph-token", expiresAt: Date.now() + 3_600_000 })),
   };
 });
+vi.mock("../src/graph.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/graph.js")>()),
+  fetchProfile: vi.fn(async () => ({
+    displayName: "Anna Muster", givenName: "Anna", surname: "Muster", jobTitle: "", department: "Vertrieb", company: "",
+    email: "anna@example.test", phone: "", mobile: "", office: "",
+  })),
+}));
 vi.mock("../src/vaultwarden.js", () => ({
   createPasswordSend: vi.fn(async () => ({ url: "https://vault.example.test/#/send/abc", id: "send-1" })),
   setSendMaxAccess: vi.fn(async () => undefined),
@@ -446,6 +453,61 @@ describe("arming the password mail", () => {
   });
 });
 
+describe("password by SMS (seven.io)", () => {
+  const patch = (id: string, body: Record<string, unknown>) =>
+    app.inject({ method: "PATCH", url: `/api/jobs/${id}`, headers: as("anna"), payload: body });
+
+  it("offers SMS in the configuration when seven.io is set up", async () => {
+    expect((await app.inject({ method: "GET", url: "/api/config" })).json()).toMatchObject({ smsEnabled: true, smsDefaultCountry: "49" });
+  });
+
+  it("stores the number normalized, answers it masked and switches between SMS and mail", async () => {
+    const id = await createJob("oid-anna", "anna@example.test", "a.pdf", "https://vault/#/send/x", 3, "send-9");
+    const res = await patch(id, { passwordSms: "0170 1234567" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().passwordSms).toBe("+49 170 •••• 67");
+    expect(getJob(id)?.passwordSms).toBe("+491701234567");
+
+    expect((await patch(id, { passwordSms: "12" })).statusCode).toBe(400);
+    expect(getJob(id)?.passwordSms).toBe("+491701234567");
+
+    await patch(id, { passwordTo: "kollege@example.test" }); // another address replaces the SMS
+    expect(getJob(id)?.passwordSms).toBeUndefined();
+    expect(getJob(id)?.passwordTo).toBe("kollege@example.test");
+  });
+
+  it("takes the number and the sender's profile when arming", async () => {
+    const id = await createJob("oid-anna", "anna@example.test", "a.pdf", "https://vault/#/send/x", 3, "send-9");
+    await app.inject({ method: "POST", url: `/api/jobs/${id}/arm`, headers: as("anna"), payload: { passwordSms: "+49 170 7654321" } });
+    expect(getJob(id)).toMatchObject({ passwordSms: "+491707654321", senderName: "Anna Muster", department: "Vertrieb" });
+  });
+
+  it("accepts delivery reports only with the secret and updates the status idempotently", async () => {
+    const { recordDelivery: record, deliveryFor: delivery } = await import("../src/deliveries.js");
+    await record(["tok-dlr"], { owner: "oid-anna", channel: "sms", to: "+49 170 •••• 67", at: Date.now(), messageId: "771", status: "submitted" });
+    const report = { webhook_event: "dlr", data: { msg_id: "771", status: "DELIVERED" } };
+
+    expect((await app.inject({ method: "POST", url: "/webhooks/seven?token=falsch", payload: report })).statusCode).toBe(404);
+    expect((await app.inject({ method: "POST", url: "/webhooks/seven", payload: report })).statusCode).toBe(404);
+    expect(delivery("tok-dlr", "oid-anna")?.status).toBe("submitted");
+
+    for (let i = 0; i < 2; i++) {
+      const ok = await app.inject({ method: "POST", url: "/webhooks/seven?token=test-webhook-secret", payload: report });
+      expect(ok.statusCode).toBe(200);
+    }
+    expect(delivery("tok-dlr", "oid-anna")).toMatchObject({ status: "delivered" });
+
+    // A late intermediate report does not overwrite the final state; the classic form callback works too.
+    await app.inject({
+      method: "POST",
+      url: "/webhooks/seven?token=test-webhook-secret",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      payload: "msg_id=771&status=BUFFERED",
+    });
+    expect(delivery("tok-dlr", "oid-anna")?.status).toBe("delivered");
+  });
+});
+
 describe("changing 'Kennwort abrufbar' after the first link", () => {
   const change = (user: string, id: string, maxAccess: unknown) =>
     app.inject({ method: "PATCH", url: `/api/jobs/${id}`, headers: as(user), payload: { maxAccess } });
@@ -454,7 +516,7 @@ describe("changing 'Kennwort abrufbar' after the first link", () => {
     const id = await createJob("oid-anna", "anna@example.test", "a.pdf", "https://vault/#/send/x", 3, "send-9");
     const res = await change("anna", id, 500);
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ maxAccess: 20, passwordTo: "" });
+    expect(res.json()).toEqual({ maxAccess: 20, passwordTo: "", passwordSms: "" });
     expect(setSendMaxAccess).toHaveBeenCalledWith("send-9", 20);
     expect(getJob(id)?.maxAccessCount).toBe(20);
   });

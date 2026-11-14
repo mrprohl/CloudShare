@@ -52,10 +52,14 @@ connection.
    - **Zufälliges Kennwort** (default) – easy to read out, e.g. `KateGeteFi45`.
    - **Eigenes Kennwort** – at least 12 characters, three of four character types.
    - **Ohne Kennwort** – only if your Nextcloud allows links without a password.
-3. Optionally adjust **"Link gültig für"** (days), **"Kennwort abrufbar"** (how often the password link opens) or
-   **"Kennwort an eine andere E-Mail-Adresse senden"** (the password goes only to that address, e.g. a colleague).
+3. Optionally adjust **"Link gültig für"** (days), **"Kennwort abrufbar"** (how often the password link opens) and
+   **"Kennwort übermitteln"**: to the recipients of the mail (default), only to **another e-mail address** (e.g. a
+   colleague), or **per SMS** to a mobile number (if SMS is set up – the password arrives as plain text, sent after
+   the mail).
 4. Click **"Als Link einfügen"**. The attachment is replaced by a download card in the mail.
-5. Send the mail. CloudShare sends the password mail on its own.
+5. Send the mail. CloudShare sends the password mail (or SMS) on its own. "Meine Freigaben" later shows how the
+   password went out, for SMS with the delivery status. With the download confirmation switched on, you get a mail
+   when a recipient downloads a file for the first time.
 
 Every click on "Als Link einfügen" gets **its own password and its own password mail**; files selected together in
 one click share them. If you delete all CloudShare cards from the mail before sending, no password mail goes out
@@ -172,6 +176,9 @@ deployed again.
 | `SHARE_EXPIRE_DAYS` / `SHARE_MAX_EXPIRE_DAYS` | `14` / `90` | Link validity: default / maximum |
 | `SEND_MAX_ACCESS_COUNT` / `SEND_MAX_ACCESS_LIMIT` | `3` / `20` | How often the password link opens: default / maximum |
 | `SEND_EXPIRE_DAYS` | `7` | Lifetime of the password link |
+| `SEVEN_API_KEY`, `SEVEN_SENDER`, `SEVEN_WEBHOOK_SECRET` | – | Password by SMS via seven.io; without a key the option is not offered. Delivery reports: callback URL `https://<host>/webhooks/seven?token=<secret>` in the seven.io dashboard |
+| `SMS_DEFAULT_COUNTRY` / `SMS_MAX_PER_DAY` | `49` / `50` | Country code for numbers like `0170 …` / SMS per user and day |
+| `DOWNLOAD_NOTICE` | off | `true`: mail to the sender on the first download (needs the Entra application permission `Mail.Send`, see architecture) |
 | `CLEANUP_AFTER_DAYS` | `0` | Uploaded files go to the Nextcloud trash this many days after their link expired or was revoked; `off` = never. Received files are never deleted |
 | `MAIL_FOOTER` | empty | Optional footer line in the card, e.g. `'{displayName} · {jobTitle}\n{company}'` (filled from the sender's profile) |
 | `VAULTWARDEN_URL`, `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD` | – | Vaultwarden service account |
@@ -179,6 +186,19 @@ deployed again.
 | `CLIENT_TRACE` | off | Diagnostics, see [Troubleshooting](#troubleshooting) |
 
 `env/versions.env` holds `CLOUDSHARE_HOST`, `CLOUDSHARE_VERSION` (`latest`) and `CADDY_VERSION`.
+
+**Text templates** (optional): the SMS text, the subject and intro of the password mail and the download confirmation
+can be changed in `env/templates/templates.json` – one default plus overrides per department (from the sender's
+Microsoft 365 profile) and per sender address. Start from [`templates.example.json`](templates.example.json):
+
+```bash
+mkdir -p /opt/cloudshare/env/templates
+cp /opt/cloudshare/templates.example.json /opt/cloudshare/env/templates/templates.json
+chmod 755 /opt/cloudshare/env/templates && chmod 644 /opt/cloudshare/env/templates/templates.json
+```
+
+Then update the stack. Mistakes (e.g. `{password}` in a mail text, an SMS without `{password}` or too long for one
+SMS) are reported in the log at start; the affected text falls back to the built-in one.
 
 ## Operation
 
@@ -189,7 +209,7 @@ or the Caddyfile: `cd /opt/cloudshare && git pull`, then update the stack.
 After an update, classic Outlook keeps its old copy of the add-in until its cache is cleared: close Outlook, delete
 `%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\`, start Outlook again.
 
-**Back up** the volume `cloudshare_data` (encrypted Nextcloud app passwords, pending password mails, cleanup list)
+**Back up** the volume `cloudshare_data` (encrypted Nextcloud app passwords, pending password mails, cleanup list, SMS status, download confirmations)
 and `env/`. Without `CREDENTIAL_KEY` the stored connections cannot be read – users would have to reconnect.
 
 **Health check:**

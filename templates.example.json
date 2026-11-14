@@ -1,0 +1,32 @@
+{
+  "_comment": [
+    "Optional text templates for CloudShare. Copy to /opt/cloudshare/env/templates/templates.json (chmod 644) and",
+    "update the stack. Without the file the built-in texts are used. Resolution per field: users (sender address /",
+    "UPN) → groups (the sender's department in Microsoft 365) → default → built-in. Problems are logged at start.",
+    "Fields and placeholders:",
+    "  sms_template            {password} (required), {sender_name} – GSM characters only, keep it under 160",
+    "  mail_password_subject   {files}, {subject}, {sender_name}",
+    "  mail_password_intro     {subject}, {sender_name}, {count} – text above the card; empty line = new paragraph",
+    "  download_notice_subject {filename}, {subject}",
+    "  download_notice_body    {filename}, {subject}, {downloaded_at}, {expires}, {recipients}",
+    "{password} is only allowed in the SMS; the SMS never contains the link or a file name."
+  ],
+  "templates": {
+    "default": {
+      "sms_template": "Ihr Kennwort fuer die Dateien von {sender_name}: {password}",
+      "mail_password_subject": "Kennwort für {files}: {subject}",
+      "download_notice_subject": "Heruntergeladen: {filename}"
+    },
+    "groups": {
+      "Ausbildungsberatung": {
+        "sms_template": "Ausbildungsberatung: Ihr Zugangscode lautet {password}",
+        "mail_password_intro": "Guten Tag,\n\nfür die Unterlagen aus der Nachricht „{subject}“ benötigen Sie ein Kennwort. Sie können es über den Button abrufen:"
+      }
+    },
+    "users": {
+      "max.mustermann@example.com": {
+        "download_notice_body": "„{filename}“ wurde am {downloaded_at} heruntergeladen (Empfänger: {recipients})."
+      }
+    }
+  }
+}

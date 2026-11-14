@@ -184,7 +184,7 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .input.mono { font-family: var(--font-mono); letter-spacing: 0.02em; }
 .input-narrow .input { flex: 0 0 88px; }
 /* Same width as the password field above it (full width minus its 32 px button and 4 px gap). */
-#password-to { display: block; width: calc(100% - 36px); margin-top: 4px; }
+.channel-input { display: block; width: calc(100% - 36px); margin-top: 4px; }
 .suffix { color: var(--fg2); }
 
 /* --- Checkbox ------------------------------------------------------------------ */
@@ -355,6 +355,7 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .share-body { flex: 1; min-width: 0; }
 .share-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .share-meta { font-size: 12px; line-height: 16px; color: var(--fg3); }
+.share-password.failed { color: var(--danger-fg); }
 .share-state { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; margin-top: 2px; color: var(--fg2); }
 .share-state .dot-state { width: 8px; height: 8px; border-radius: 50%; background: var(--stroke1); flex: none; }
 .share-state.done .dot-state { background: var(--success-fg); }

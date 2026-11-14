@@ -46,7 +46,11 @@ const modeNone = $<HTMLInputElement>("mode-none");
 const passwordGroup = $<HTMLDivElement>("password-group");
 const maxAccessField = $<HTMLDivElement>("max-access-field");
 const passwordToField = $<HTMLDivElement>("password-to-field");
-const passwordToToggle = $<HTMLInputElement>("password-to-toggle");
+const channelRecipients = $<HTMLInputElement>("channel-recipients");
+const channelMail = $<HTMLInputElement>("channel-mail");
+const channelSms = $<HTMLInputElement>("channel-sms");
+const channelSmsRow = $<HTMLLabelElement>("channel-sms-row");
+const passwordSmsInput = $<HTMLInputElement>("password-sms");
 const passwordToInput = $<HTMLInputElement>("password-to");
 const passwordToHint = $<HTMLParagraphElement>("password-to-hint");
 const rulesList = $<HTMLUListElement>("password-rules");
@@ -484,7 +488,6 @@ async function upload(blob: Blob, fileName: string, step: string): Promise<Uploa
   return result;
 }
 
-/** Password settings of the "Senden" tab for a new link of this mail (upload, upload link, link again). */
 /**
  * Settings of the "Senden" tab for a new link. `step` identifies the click ("Als Link einfügen" etc.): every step
  * gets its own password and password mail, files of the same step share them (see attachToJob on the server).
@@ -492,6 +495,12 @@ async function upload(blob: Blob, fileName: string, step: string): Promise<Uploa
 async function shareSettingsBody(step: string) {
   const expireDays = Number(expireInput.value);
   if (withoutPassword()) return { noPassword: true, expireDays };
+  // An address or number typed just before the click (its "change" event may not have run yet) must reach the job.
+  const wanted = channelTarget();
+  const current = await readDraftState();
+  if (wanted && (current.passwordTo !== wanted.passwordTo || current.passwordSms !== wanted.passwordSms)) {
+    await updateDraftState(wanted);
+  }
   const state = await readDraftState();
   return { password: passwordInput.value, expireDays, maxAccess: maxAccessValue(), jobId: state.jobId, step };
 }
@@ -517,55 +526,93 @@ async function rememberShareChoice(jobId: string | null) {
     await tagDraft(jobId);
     lockSeparate();
   }
-  // Entered before the first link: hand it to the new job (the send handler passes it on again when arming).
-  if (state.passwordTo) {
+  // Chosen before the first link: hand the channel to the new job (the send handler passes it on again when arming).
+  if (state.passwordTo || state.passwordSms) {
     await api(`/api/jobs/${encodeURIComponent(jobId)}`, {
       method: "PATCH",
-      body: JSON.stringify({ passwordTo: state.passwordTo }),
+      body: JSON.stringify(state.passwordSms ? { passwordSms: state.passwordSms } : { passwordTo: state.passwordTo }),
     }, await getToken()).catch(() => undefined);
   }
 }
 
-// --- "Kennwort an eine andere E-Mail-Adresse senden" ------------------------------------
+// --- "Kennwort übermitteln": recipients of the mail / another mail address / SMS ------------------------------
 
 const looksLikeEmail = (value: string) => /^[^\s@,;<>"()]+@[^\s@,;<>"()]+\.[^\s@,;<>"()]{2,}$/.test(value);
 
-function showPasswordTo(on: boolean) {
-  passwordToToggle.checked = on;
-  passwordToInput.hidden = !on;
-  passwordToHint.hidden = !on;
+/** Same rules as the server (server/src/sms.ts): E.164, "00" → "+", leading "0" → default country code. */
+function normalizePhone(input: string): string | null {
+  let number = input.trim().replace(/[\s\-./()]/g, "");
+  if (number.startsWith("00")) number = `+${number.slice(2)}`;
+  else if (/^0[1-9]/.test(number)) number = `+${serverConfig.smsDefaultCountry ?? "49"}${number.slice(1)}`;
+  return /^\+[1-9]\d{7,14}$/.test(number) ? number : null;
 }
 
-/** Stores the other password recipient for this mail and, once the job exists, on the server. "" = recipients. */
-async function applyPasswordTo(value: string) {
-  const state = await updateDraftState({ passwordTo: value || undefined });
+type Channel = "recipients" | "mail" | "sms";
+const selectedChannel = (): Channel => (channelSms.checked ? "sms" : channelMail.checked ? "mail" : "recipients");
+
+const CHANNEL_HINTS: Record<Channel, string> = {
+  recipients: "",
+  mail: "Nur diese Adresse erhält das Kennwort – die Empfänger der Nachricht nicht.",
+  sms: "Das Kennwort geht nach dem Senden per SMS an diese Nummer – die Empfänger erhalten keine Kennwort-Nachricht.",
+};
+
+function showChannel(channel: Channel) {
+  channelRecipients.checked = channel === "recipients";
+  channelMail.checked = channel === "mail";
+  channelSms.checked = channel === "sms";
+  passwordToInput.hidden = channel !== "mail";
+  passwordSmsInput.hidden = channel !== "sms";
+  passwordToHint.hidden = channel === "recipients";
+  passwordToHint.textContent = CHANNEL_HINTS[channel];
+}
+
+/** The valid target of the chosen channel ({} = recipients), or null while the address / number is not valid. */
+function channelTarget(): { passwordTo?: string; passwordSms?: string } | null {
+  const channel = selectedChannel();
+  if (channel === "mail") {
+    const address = passwordToInput.value.trim();
+    return looksLikeEmail(address) ? { passwordTo: address, passwordSms: undefined } : null;
+  }
+  if (channel === "sms") {
+    const number = normalizePhone(passwordSmsInput.value);
+    return number ? { passwordTo: undefined, passwordSms: number } : null;
+  }
+  return { passwordTo: undefined, passwordSms: undefined };
+}
+
+/** Stores the channel for this mail and, once the job exists, on the server. */
+async function applyChannel(target: { passwordTo?: string; passwordSms?: string }) {
+  const state = await updateDraftState(target);
   try {
     if (state.jobId) {
       await api(`/api/jobs/${encodeURIComponent(state.jobId)}`, {
         method: "PATCH",
-        body: JSON.stringify({ passwordTo: value }),
+        body: JSON.stringify(target.passwordSms ? { passwordSms: target.passwordSms } : { passwordTo: target.passwordTo ?? "" }),
       }, await getToken());
     }
     setStatus(
-      value
-        ? `Das Kennwort wird nur an ${value} geschickt.`
-        : "Das Kennwort geht wieder an die Empfänger der Nachricht.",
+      target.passwordSms
+        ? `Das Kennwort geht nach dem Senden per SMS an ${target.passwordSms}.`
+        : target.passwordTo
+          ? `Das Kennwort wird nur an ${target.passwordTo} geschickt.`
+          : "Das Kennwort geht an die Empfänger der Nachricht.",
       "success",
     );
   } catch (err) {
-    setStatus(`Die Adresse für das Kennwort konnte nicht gespeichert werden: ${errorMessage(err)}`, "error");
+    setStatus(`Der Weg für das Kennwort konnte nicht gespeichert werden: ${errorMessage(err)}`, "error");
   }
 }
 
-passwordToToggle.addEventListener("change", () => {
-  showPasswordTo(passwordToToggle.checked);
-  if (passwordToToggle.checked) {
-    passwordToInput.focus();
-    if (passwordToInput.value) void applyPasswordTo(passwordToInput.value.trim());
-  } else {
-    void applyPasswordTo("");
-  }
-});
+for (const radio of [channelRecipients, channelMail, channelSms]) {
+  radio.addEventListener("change", () => {
+    const channel = selectedChannel();
+    showChannel(channel);
+    if (channel === "mail") passwordToInput.focus();
+    if (channel === "sms") passwordSmsInput.focus();
+    const target = channelTarget();
+    if (target) void applyChannel(target);
+  });
+}
 
 passwordToInput.addEventListener("change", () => {
   const value = passwordToInput.value.trim();
@@ -576,12 +623,26 @@ passwordToInput.addEventListener("change", () => {
     return;
   }
   passwordToInput.removeAttribute("aria-invalid");
-  void applyPasswordTo(value);
+  if (value) void applyChannel({ passwordTo: value, passwordSms: undefined });
+});
+
+passwordSmsInput.addEventListener("change", () => {
+  const value = passwordSmsInput.value.trim();
+  if (!value) return;
+  const number = normalizePhone(value);
+  if (!number) {
+    passwordSmsInput.setAttribute("aria-invalid", "true");
+    setStatus("Bitte eine gültige Mobilnummer angeben, z. B. 0170 1234567 oder +49 170 1234567.", "error");
+    return;
+  }
+  passwordSmsInput.removeAttribute("aria-invalid");
+  passwordSmsInput.value = number;
+  void applyChannel({ passwordTo: undefined, passwordSms: number });
 });
 
 /**
  * Why a new link cannot be created with the current settings, or null. Upload links always need a password;
- * an own password must meet the rules.
+ * an own password must meet the rules; the chosen password channel needs its address or number.
  */
 function settingsProblem(kind: "file" | "request"): string | null {
   if (kind === "request" && withoutPassword()) {
@@ -592,7 +653,24 @@ function settingsProblem(kind: "file" | "request"): string | null {
   }
   if (!passwordInput.readOnly && !checkPassword(passwordInput.value).ok) {
     renderRules();
+    passwordInput.focus();
     return "Das Kennwort erfüllt noch nicht alle Anforderungen.";
+  }
+  // Another address / SMS chosen but not filled in: the password would silently go to the recipients instead – so no
+  // link until it is there (or "an die Empfänger der Nachricht" is chosen).
+  if (!withoutPassword() && channelTarget() === null) {
+    const sms = selectedChannel() === "sms";
+    const input = sms ? passwordSmsInput : passwordToInput;
+    input.setAttribute("aria-invalid", "true");
+    input.focus();
+    if (sms) {
+      return input.value.trim()
+        ? "Bitte eine gültige Mobilnummer für das Kennwort angeben, z. B. 0170 1234567."
+        : "Bitte die Mobilnummer angeben, an die das Kennwort per SMS gehen soll – oder einen anderen Weg wählen.";
+    }
+    return input.value.trim()
+      ? "Bitte eine gültige E-Mail-Adresse für das Kennwort angeben."
+      : "Bitte die E-Mail-Adresse angeben, an die das Kennwort gehen soll – oder „an die Empfänger der Nachricht“ wählen.";
   }
   return null;
 }
@@ -905,7 +983,6 @@ submitButton.addEventListener("click", async () => {
   }
   const problem = settingsProblem("file");
   if (problem) {
-    passwordInput.focus();
     return setStatus(problem, "error");
   }
 
@@ -973,7 +1050,6 @@ requestButton.addEventListener("click", async () => {
   // Upload links always need a password – otherwise anyone with the link could put files into the Nextcloud.
   const problem = settingsProblem("request");
   if (problem) {
-    if (!withoutPassword()) passwordInput.focus();
     return setStatus(problem, "error");
   }
   requestButton.disabled = true;
@@ -1032,6 +1108,19 @@ interface ShareItem {
   received: number | null;
   /** Password-protected link (Nextcloud cannot tell random from own passwords). */
   protected?: boolean;
+  /** How the password went out after sending (mail or SMS with delivery status); null before / for older links. */
+  password?: { channel: "mail" | "sms"; to: string; status: "submitted" | "delivered" | "failed" | "unknown" | null; at: number; deliveredAt: number | null } | null;
+}
+
+/** "Kennwort per SMS an +49 170 •••• 78 – zugestellt um 14:05" for the "Meine Freigaben" list. */
+function passwordText(p: NonNullable<ShareItem["password"]>): string {
+  const time = (ms: number) => new Date(ms).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" });
+  if (p.channel === "mail") return `Kennwort per Mail an ${p.to}`;
+  const status =
+    p.status === "delivered" ? `zugestellt${p.deliveredAt ? ` um ${time(p.deliveredAt)}` : ""}`
+    : p.status === "failed" ? "nicht zugestellt – Kennwort-Link ging an Sie"
+    : "übermittelt";
+  return `Kennwort per SMS an ${p.to} – ${status}`;
 }
 
 const REQUEST_ICON =
@@ -1088,7 +1177,7 @@ function shareRow(share: ShareItem): HTMLElement {
     (share.kind === "request" ? REQUEST_ICON : FILE_ICON) +
     `<div class="share-body">` +
     `<div class="share-name"></div>` +
-    `<div class="share-meta"></div>` +
+    `<div class="share-meta"></div><div class="share-meta share-password" hidden></div>` +
     `<div class="share-state${state.done ? " done" : ""}${state.expired ? " expired" : ""}">` +
     `<span class="dot-state" aria-hidden="true"></span><span class="state-text"></span></div>` +
     `<div class="share-actions">` +
@@ -1106,6 +1195,12 @@ function shareRow(share: ShareItem): HTMLElement {
     (share.expiration ? ` · gültig bis ${formatDate(share.expiration)}` : "") +
     (share.protected === undefined ? "" : share.protected ? " · mit Kennwort" : " · ohne Kennwort");
   row.querySelector<HTMLElement>(".state-text")!.textContent = state.text;
+  if (share.password) {
+    const line = row.querySelector<HTMLElement>(".share-password")!;
+    line.textContent = passwordText(share.password);
+    line.hidden = false;
+    line.classList.toggle("failed", share.password.status === "failed");
+  }
 
   const copy = row.querySelector<HTMLButtonElement>(".copy")!;
   copy.addEventListener("click", async () => {
@@ -1279,8 +1374,11 @@ Office.onReady(async () => {
   } else {
     setPasswordMode("random");
   }
+  // "Kennwort übermitteln": SMS only when the server has it configured; restore the choice of this draft.
+  channelSmsRow.hidden = !serverConfig.smsEnabled;
   passwordToInput.value = state.passwordTo ?? "";
-  showPasswordTo(Boolean(state.passwordTo));
+  passwordSmsInput.value = state.passwordSms ?? "";
+  showChannel(state.passwordSms && serverConfig.smsEnabled ? "sms" : state.passwordTo ? "mail" : "recipients");
   // Outlook has no "body changed" event: check when the pane gets focus and every few seconds while locked.
   await releaseIfLinksDeleted();
   window.addEventListener("focus", () => void releaseIfLinksDeleted());

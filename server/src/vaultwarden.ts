@@ -47,6 +47,22 @@ async function withUnlock<T>(call: () => Promise<T>): Promise<T> {
   }
 }
 
+/**
+ * The password stored in a Send – for the SMS channel, right before the SMS goes out. The password is not kept
+ * anywhere else on the server.
+ */
+export async function readSendPassword(id: string): Promise<string> {
+  const send = await withUnlock(() => bw<{ text?: { text?: string } }>("GET", `/object/send/${encodeURIComponent(id)}`));
+  const password = send?.text?.text;
+  if (!password) throw new HttpError(502, "Vaultwarden: Send enthält kein Kennwort");
+  return password;
+}
+
+/** Deletes a Send that is no longer needed (the password went out by SMS instead). */
+export async function deleteSend(id: string): Promise<void> {
+  await withUnlock(() => bw("DELETE", `/object/send/${encodeURIComponent(id)}`));
+}
+
 /** Changes how often an existing Send can be opened (until the mail is sent, "Kennwort abrufbar"). */
 export async function setSendMaxAccess(id: string, maxAccessCount: number): Promise<void> {
   const path = `/object/send/${encodeURIComponent(id)}`;

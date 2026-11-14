@@ -148,7 +148,7 @@ async function onAttachmentsChangedHandler(event: LaunchEvent) {
  * until the tagged mail shows up in "Sent Items" and then sends the password to its actual recipients.
  * If the user cancels or sending fails, no password mail goes out and the job stays open for further files.
  */
-async function armPasswordMail(jobId: string, passwordTo?: string) {
+async function armPasswordMail(jobId: string, passwordTo?: string, passwordSms?: string) {
   // Normally already done by the taskpane – make sure the sent copy carries the tag.
   trace("arm:tag");
   await withTimeout(tagDraft(jobId), TIMEOUTS.office, "Outlook (Markieren des Entwurfs)");
@@ -161,7 +161,13 @@ async function armPasswordMail(jobId: string, passwordTo?: string) {
     api(
       `/api/jobs/${encodeURIComponent(jobId)}/arm`,
       // passwordTo: normally already on the job (taskpane) – passed again in case saving it failed there.
-      { method: "POST", body: JSON.stringify({ ...(from ? { from } : {}), ...(passwordTo ? { passwordTo } : {}) }) },
+      {
+        method: "POST",
+        body: JSON.stringify({
+          ...(from ? { from } : {}),
+          ...(passwordSms ? { passwordSms } : passwordTo ? { passwordTo } : {}),
+        }),
+      },
       token,
     ),
     TIMEOUTS.server,
@@ -241,7 +247,7 @@ async function onMessageSendHandler(event: LaunchEvent) {
     (await withTimeout(releaseDraftIfLinksGone(), TIMEOUTS.office, "Outlook (Nachrichtentext lesen)").catch(() => false));
   if (state.jobId && !released) {
     try {
-      await armPasswordMail(state.jobId, state.passwordTo);
+      await armPasswordMail(state.jobId, state.passwordTo, state.passwordSms);
     } catch (err) {
       trace("arm:failed", errorText(err));
       event.completed({

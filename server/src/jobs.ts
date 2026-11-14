@@ -16,8 +16,13 @@ import path from "node:path";
 import type { FastifyBaseLogger } from "fastify";
 import { config } from "./config.js";
 import { findSentMessage, sendMail } from "./graph.js";
+import { recordDelivery } from "./deliveries.js";
+import { registerNotices, type Notice } from "./notices.js";
 import { passwordMailHtml } from "./passwordMail.js";
+import { maskPhone, sendSms, smsEnabled } from "./sms.js";
 import { createAtomicWriter, seal, unseal, type Sealed } from "./storage.js";
+import { DEFAULT_TEMPLATES, render, templatesFor, type Templates } from "./templates.js";
+import { deleteSend, readSendPassword } from "./vaultwarden.js";
 
 export interface ArmedSend {
   /** Delegated Graph token (Mail.Read(.Shared) + Mail.Send(.Shared)) obtained when the user pressed "Send". */
@@ -41,6 +46,14 @@ export interface SeparatePart {
   maxAccessCount: number;
   /** Its password mail went out (the others may still be pending after an error). */
   dispatched?: boolean;
+  /** The links of the step (share token, file name, last valid day) – for "Meine Freigaben" and download notices. */
+  shares?: StepShare[];
+}
+
+export interface StepShare {
+  token: string;
+  name: string;
+  expireDate: string;
 }
 
 /** Parts stored by the short-lived per-file version had a single `fileName`. */
@@ -58,6 +71,11 @@ export interface PasswordJob {
   sendId?: string;
   /** Password mail only to this address instead of the mail's recipients ("Kennwort an andere Adresse"). */
   passwordTo?: string;
+  /** Password by SMS to this number (E.164) instead of a password mail ("Kennwort per SMS"). */
+  passwordSms?: string;
+  /** Sender's display name and department (from the profile when arming) – templates and their selection. */
+  senderName?: string;
+  department?: string;
   /** How often the password link can be opened (jobs created before this field existed: unknown). */
   maxAccessCount?: number;
   dispatched: boolean;
@@ -149,16 +167,31 @@ export async function addSeparatePart(id: string, part: SeparatePart): Promise<v
 export const findPart = (id: string, step: string) => jobs.get(id)?.separate?.find((p) => p.step === step);
 
 /** Further file of the same step: same password, same Send, same password mail. */
-export async function addFileToPart(id: string, step: string, fileName: string): Promise<void> {
+export async function addFileToPart(id: string, step: string, fileName: string, share?: StepShare): Promise<void> {
   const job = jobs.get(id)!;
   job.fileNames.push(fileName);
-  findPart(id, step)!.fileNames.push(fileName);
+  const part = findPart(id, step)!;
+  part.fileNames.push(fileName);
+  if (share) (part.shares ??= []).push(share);
   await persist();
 }
 
-/** Alternative recipient of the password mail; undefined = the recipients of the mail. */
-export async function setJobPasswordTo(id: string, passwordTo: string | undefined): Promise<void> {
-  jobs.get(id)!.passwordTo = passwordTo;
+/**
+ * How the password goes out: to another mail address, by SMS to a number, or (both undefined) to the recipients of
+ * the mail. Only one of them at a time.
+ */
+export async function setJobPasswordTo(id: string, passwordTo: string | undefined, passwordSms?: string): Promise<void> {
+  const job = jobs.get(id)!;
+  job.passwordTo = passwordSms ? undefined : passwordTo;
+  job.passwordSms = passwordSms;
+  await persist();
+}
+
+/** Sender's name and department, read from the profile when arming (templates). */
+export async function setJobSender(id: string, senderName: string, department: string): Promise<void> {
+  const job = jobs.get(id)!;
+  job.senderName = senderName || undefined;
+  job.department = department || undefined;
   await persist();
 }
 
@@ -172,6 +205,51 @@ export async function setJobMaxAccess(id: string, maxAccessCount: number): Promi
 export async function armJob(id: string, armed: ArmedSend): Promise<void> {
   jobs.get(id)!.armed = armed;
   await persist();
+}
+
+/** SMS per user and day (SMS_MAX_PER_DAY) – cost and abuse protection. */
+const smsToday = new Map<string, { day: string; count: number }>();
+function takeSmsQuota(owner: string): boolean {
+  const day = new Date().toISOString().slice(0, 10);
+  const used = smsToday.get(owner);
+  const count = used?.day === day ? used.count : 0;
+  if (count >= config.smsMaxPerDay) return false;
+  smsToday.set(owner, { day, count: count + 1 });
+  return true;
+}
+
+/**
+ * The password of one step by SMS: read from its Vaultwarden Send right before sending (it is stored nowhere else),
+ * sent via seven.io, then the Send is deleted. If the SMS cannot be sent (seven.io error, daily limit), the password
+ * mail goes to the sender instead, so they can pass the password on themselves – never automatically to the
+ * recipients by another channel.
+ */
+async function sendStepBySms(
+  job: PasswordJob,
+  part: SeparatePart,
+  t: Templates,
+  tokens: string[],
+  graphToken: string,
+  sender: string | null | undefined,
+  mailFor: () => { subject: string; html: string },
+  log: Pick<FastifyBaseLogger, "info" | "warn">,
+) {
+  const to = job.passwordSms!;
+  try {
+    if (!smsEnabled()) throw new Error("SMS-Versand ist nicht eingerichtet");
+    if (!takeSmsQuota(job.owner)) throw new Error(`Tageslimit von ${config.smsMaxPerDay} SMS erreicht`);
+    const password = await readSendPassword(part.sendId!);
+    const messageId = await sendSms(to, render(t.sms_template, { password, sender_name: job.senderName ?? "" }));
+    await recordDelivery(tokens, { owner: job.owner, channel: "sms", to: maskPhone(to), at: Date.now(), messageId, status: "submitted" });
+    await deleteSend(part.sendId!).catch((err) => log.warn({ err, user: job.ownerUpn }, "Send could not be deleted after SMS"));
+    log.info({ user: job.ownerUpn, to: maskPhone(to), messageId }, "Password SMS sent");
+  } catch (err) {
+    log.warn({ err, user: job.ownerUpn, to: maskPhone(to) }, "Password SMS failed – password mail to the sender");
+    const mail = mailFor();
+    const self = sender ?? job.ownerUpn;
+    await sendMail(graphToken, { to: [self], cc: [], bcc: [] }, `SMS nicht versendet – ${mail.subject}`, mail.html, sender);
+    await recordDelivery(tokens, { owner: job.owner, channel: "sms", to: maskPhone(to), at: Date.now(), status: "failed" });
+  }
 }
 
 /** One pass of the watcher over all jobs (exported for tests; normally driven by startJobWatcher). */
@@ -208,22 +286,52 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
         });
       }
       if (!sent) continue;
+      const message = sent; // stays non-null inside the closures below
       // Same sender as the main mail – for a shared mailbox the password mail is sent as / on behalf of it.
       // "Kennwort an andere Adresse": only that address gets the password, not the recipients of the mail.
-      const recipients = job.passwordTo ? { to: [job.passwordTo], cc: [], bcc: [] } : sent.recipients;
-      const sender = sent.from ?? armed.mailbox;
+      const recipients = job.passwordTo ? { to: [job.passwordTo], cc: [], bcc: [] } : message.recipients;
+      const sender = message.from ?? armed.mailbox;
       if (job.separate?.length) {
-        // One password per step: one password mail per step, naming its files. Parts already sent stay sent,
-        // so a retry after an error does not send them twice.
+        // One password per step: one password mail (or SMS) per step, naming its files. Parts already sent stay
+        // sent, so a retry after an error does not send them twice.
+        const t = templatesFor({ upn: job.ownerUpn, department: job.department });
+        const customIntro = t.mail_password_intro !== DEFAULT_TEMPLATES.mail_password_intro ? t.mail_password_intro : undefined;
         for (const part of job.separate) {
           if (part.dispatched) continue;
           const files = partFiles(part);
           const label = files.length === 1 ? `„${files[0]}“` : `${files.length} Dateien`;
-          await sendMail(armed.graphToken, recipients, `Kennwort für ${label}: ${sent.subject || files[0]}`,
-            passwordMailHtml({ fileNames: files, sendUrl: part.sendUrl, maxAccessCount: part.maxAccessCount,
-              subject: sent.subject, expireDays: config.sendExpireDays }), sender);
+          const mailFor = () => ({
+            subject: render(t.mail_password_subject, { files: label, subject: message.subject || files[0], sender_name: job.senderName ?? "" }),
+            html: passwordMailHtml({ fileNames: files, sendUrl: part.sendUrl, maxAccessCount: part.maxAccessCount,
+              subject: message.subject, expireDays: config.sendExpireDays, introTemplate: customIntro, senderName: job.senderName }),
+          });
+          const tokens = (part.shares ?? []).map((s) => s.token);
+
+          if (job.passwordSms && part.sendId) {
+            await sendStepBySms(job, part, t, tokens, armed.graphToken, sender, mailFor, log);
+          } else {
+            const mail = mailFor();
+            await sendMail(armed.graphToken, recipients, mail.subject, mail.html, sender);
+            await recordDelivery(tokens, { owner: job.owner, channel: "mail", to: recipients.to.concat(recipients.cc).join(", "), at: Date.now() });
+          }
           part.dispatched = true;
           changed = true;
+          await registerNotices(
+            (part.shares ?? []).map((s): [string, Notice] => [
+              s.token,
+              {
+                owner: job.owner,
+                ownerUpn: job.ownerUpn,
+                notifyTo: message.from ?? job.ownerUpn,
+                department: job.department,
+                fileName: s.name,
+                subject: message.subject,
+                recipients: message.recipients.to.concat(message.recipients.cc).join(", "),
+                expireDate: s.expireDate,
+                registeredAt: Date.now(),
+              },
+            ]),
+          ).catch((err) => log.warn({ err, user: job.ownerUpn }, "Download confirmation could not be registered"));
         }
       } else {
         await sendMail(armed.graphToken, recipients, `Kennwort für: ${sent.subject || job.fileNames[0]}`,

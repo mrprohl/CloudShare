@@ -128,15 +128,55 @@ wins) – Nextcloud's housekeeping deletes expired shares, so the date could not
 - only folders matching `NEXTCLOUD_FOLDER/YYYY-MM-DD_xxxxxxxx` are touched – received files
   (`NEXTCLOUD_REQUEST_FOLDER`) are never deleted. Uploads from before the feature existed are not registered.
 
+### 2.5 Password channel: recipients, another address or SMS
+
+"Kennwort übermitteln" in the taskpane decides per mail where the password goes (`DraftState.passwordTo` /
+`passwordSms`, stored on the job via `PATCH /api/jobs/:id` and passed again with `/arm`):
+
+- **an die Empfänger der Nachricht** (default) – the password mail to the mail's actual recipients;
+- **an eine andere E-Mail-Adresse** – the password mail only to that address;
+- **per SMS** (only with `SEVEN_API_KEY`) – one SMS per step via seven.io (`sms.ts`), sent by the watcher after the
+  mail appeared in "Sent Items", like the password mail. The number is entered in the pane and normalised to E.164
+  (`0170 …` → `+49170…`, `SMS_DEFAULT_COUNTRY`). The password exists in readable form only in the step's Vaultwarden
+  Send; the watcher reads it from there right before sending (`readSendPassword`) and deletes the Send afterwards.
+  If seven.io refuses the SMS (or `SMS_MAX_PER_DAY` is reached), the password mail goes **to the sender** instead –
+  never automatically to the recipients by another channel. Delivery reports arrive at `/webhooks/seven` (secret in
+  the query, compared in constant time, idempotent, webhook and classic form callback) and update `deliveries.ts`.
+
+How the password of each link went out (channel, masked recipient, SMS status) is shown in "Meine Freigaben".
+
+### 2.6 Text templates
+
+`templates.ts` reads the optional `TEMPLATES_FILE` (`/config/templates.json`, mounted from `env/templates/`): fields
+`sms_template`, `mail_password_subject`, `mail_password_intro`, `download_notice_subject`, `download_notice_body`, each
+with a fixed set of placeholders. Resolution per field: `users[<sender UPN>]` → `groups[<department>]` → `default` →
+built-in German texts; the department and display name are read from the sender's profile when arming. At start the
+file is validated: `{password}` outside the SMS, an SMS without `{password}` or with the link / a file name drop the
+field (built-in text instead); unknown placeholders, non-GSM characters and SMS above 160 characters are warnings.
+A broken file never stops CloudShare. Example: `templates.example.json`.
+
+### 2.7 Download confirmation
+
+With `DOWNLOAD_NOTICE=true`, every file link of a sent mail is registered with the sender, subject, recipients and
+expiry (`notices.ts`, `/data/download-notices.json`). Every 10 minutes the Activity API is asked with the owner's
+app password; only downloads **after** the password went out count (older links of the same file are ignored). On the
+first download the sender gets a mail (`download_notice_*` templates) – sent with CloudShare's **own app token**
+(client credentials, application permission `Mail.Send`), because the sender's delegated token has long expired by
+then. Entries are dropped after the download or when the link expired. No IP addresses or data about the person who
+downloaded are kept.
+
+
 ## 3. State and data
 
 | Where | What | Lifetime |
 |---|---|---|
-| Draft: `item.sessionData` (`DraftState`, `shared/office.ts`) | `jobId`, `separate` (passwords per step), `noPassword`, `passwordTo`, `maxAccess`, `links` (tokens of inserted cards); legacy drafts: `password` | Until the draft is sent or closed |
+| Draft: `item.sessionData` (`DraftState`, `shared/office.ts`) | `jobId`, `separate` (passwords per step), `noPassword`, `passwordTo` / `passwordSms` (channel), `maxAccess`, `links` (tokens of inserted cards); legacy drafts: `password` | Until the draft is sent or closed |
 | Draft: custom property `cloudshareJob` | Job ID; travels with the sent mail into "Sent Items" | With the mail |
 | `/data/nextcloud-credentials.json` | Nextcloud app password per `oid` | Until disconnect / 401 |
-| `/data/password-jobs.json` | Password jobs: owner, file names, Sends per step (`separate`), `passwordTo`, armed Graph token | 7 days |
+| `/data/password-jobs.json` | Password jobs: owner, sender name and department, file names, Sends and links per step (`separate`), `passwordTo` / `passwordSms`, armed Graph token | 7 days |
 | `/data/cleanup.json` | Upload folders with expiry date per owner | Until deleted |
+| `/data/deliveries.json` | Per link: channel, masked recipient, SMS message ID and status | 120 days |
+| `/data/download-notices.json` | Links waiting for their first download (sender, subject, recipients, expiry) | Until downloaded / expired |
 | Memory (`store.ts`) | Running uploads (12 h), pending Nextcloud logins (20 min) | Lost on restart → single instance only |
 | `roamingSettings` | Last server configuration (for the handlers) | Per mailbox |
 
@@ -151,7 +191,7 @@ Errors are `{ error, code? }` with a German message shown in the taskpane.
 | Route | Purpose |
 |---|---|
 | `GET /.well-known/microsoft-officeaddins-allowed.json` | Allows SSO/network for `commands.js` in classic Outlook ([5](#5-outlook-runtimes-and-pitfalls)) |
-| `GET /api/config` | Public settings for the add-in (threshold, policy, limits, footer, `trace`) |
+| `GET /api/config` | Public settings for the add-in (threshold, policy, limits, footer, `trace`, `smsEnabled`) |
 | `GET/POST /api/trace` | Diagnostics of the send handler, only with `CLIENT_TRACE=true` (no login) |
 | `GET /api/profile` | Sender's Microsoft 365 profile for `MAIL_FOOTER` |
 | `GET /api/nextcloud/status` | Connected?, storage (free/used/total), `passwordEnforced` |
@@ -159,8 +199,9 @@ Errors are `{ error, code? }` with a German message shown in the taskpane.
 | `POST /api/uploads`, `PUT …/:id/chunks/:n`, `POST …/:id/complete`, `DELETE …/:id` | Chunked upload, share link |
 | `POST /api/requests` | Upload link ("Dateien von Empfängern erhalten") |
 | `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "Meine Freigaben": list (30 days, max. 100), revoke, insert again |
-| `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send) or `passwordTo` until the password mail went out |
-| `POST /api/jobs/:id/arm` | Arm the password mail (send handler) |
+| `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send), `passwordTo` or `passwordSms` until the password went out |
+| `POST /api/jobs/:id/arm` | Arm the password mail (send handler); also reads the sender's name and department for the templates |
+| `GET/POST /webhooks/seven?token=…` | seven.io delivery reports (no login, secret `SEVEN_WEBHOOK_SECRET`) |
 
 Rate limit: `RATE_LIMIT_PER_MINUTE` per user (`oid`, otherwise client address); Nextcloud login, upload links and
 "insert again" get 1/60 of it.
@@ -214,8 +255,14 @@ Alert trace". Off by default.
   first, Nextcloud throttles failed attempts on public links, and links expire. Own passwords need ≥ 12 characters and
   three character classes (checked in the taskpane and again by the server). The password exists in readable form
   only in the Vaultwarden Send (limited accesses, 7 days) and briefly in the taskpane.
-- **Graph:** delegated permissions only; the armed token is stored encrypted for at most 15 minutes of use. The
-  `.Shared` permissions reach only mailboxes the user already has rights to.
+- **Graph:** delegated permissions for everything the user triggers; the armed token is stored encrypted for at most
+  15 minutes of use, and the `.Shared` permissions reach only mailboxes the user already has rights to. Only the
+  optional download confirmation uses an **application** permission (`Mail.Send`) – restrict it to the CloudShare
+  users (see *Setup*), otherwise the app could send as any mailbox of the tenant.
+- **SMS:** the API key and the webhook secret stay on the server; the add-in never talks to seven.io. The SMS carries
+  the password in plain text (it is the second channel); the password is read from the Send only for sending and
+  the Send is deleted afterwards. Numbers are stored masked in the status; `SMS_MAX_PER_DAY` limits costs and abuse.
+  Conclude a data processing agreement with seven.io.
 - **Container:** read-only, `cap_drop: ALL`, `no-new-privileges`, user 1000, no published ports; `bw serve` listens on
   127.0.0.1 only. Networks: `internal` (Caddy ↔ CloudShare, no outbound), `edge` (Caddy), `egress` (CloudShare).
 - **Supply chain:** Trivy scan of every image, `npm audit`, Dependabot, CodeQL, secret scanning; GitHub Actions
@@ -232,6 +279,21 @@ Alert trace". Off by default.
 - Client secret → `ENTRA_CLIENT_SECRET`.
 - Delegated Graph permissions: `openid`, `profile`, `offline_access`, `User.Read`, `Mail.Read`, `Mail.Read.Shared`,
   `Mail.Send`, `Mail.Send.Shared` – **grant admin consent**.
+- **Only for the download confirmation** (`DOWNLOAD_NOTICE=true`): application permission Graph `Mail.Send` with admin
+  consent, **restricted to the CloudShare users** with Exchange Online RBAC for applications, e.g.:
+  ```powershell
+  New-ManagementScope -Name "CloudShare users" -RecipientRestrictionFilter "MemberOfGroup -eq '<DN of the group>'"
+  New-ServicePrincipal -AppId <client-id> -ObjectId <enterprise-app-object-id> -DisplayName CloudShare
+  New-ManagementRoleAssignment -App <client-id> -Role "Application Mail.Send" -CustomResourceScope "CloudShare users"
+  ```
+  Then remove the tenant-wide consent for `Mail.Send` in Entra, so only the scoped assignment applies.
+
+### seven.io (SMS, optional)
+
+- Account with prepaid credit; API key → `SEVEN_API_KEY`, sender (number or up to 11 characters) → `SEVEN_SENDER`.
+- Delivery reports: callback URL `https://cloudshare.example.com/webhooks/seven?token=<SEVEN_WEBHOOK_SECRET>` in the
+  dashboard (webhook event "dlr").
+- Conclude a data processing agreement and document it in the record of processing activities.
 
 ### Nextcloud
 
