@@ -1,0 +1,12 @@
+/* Simplified reading pane of a received mail around the real CloudShare mail markup (docs mockups only). */
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { font-family: "Segoe UI Variable Text", "Segoe UI", sans-serif; font-size: 14px; color: #242424; background: #f0f0f0; padding: 12px; }
+.reader { background: #fff; border-radius: 6px; box-shadow: 0 0 2px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.14); padding: 18px 22px 22px; }
+.subject { font-size: 20px; font-weight: 600; margin: 0 0 14px; }
+.from { display: flex; align-items: center; gap: 12px; margin: 0 0 18px; }
+.avatar { width: 36px; height: 36px; border-radius: 50%; background: #c7e0f4; color: #0f548c; display: grid; place-items: center; font-size: 13px; font-weight: 600; }
+.who { line-height: 18px; }
+.who .name { font-weight: 600; }
+.who .to { color: #616161; font-size: 13px; }
+.body > p { margin: 0 0 12px; line-height: 20px; }
