@@ -41,7 +41,7 @@ left the outbox.
 
 ## Using CloudShare
 
-<img src="docs/images/taskpane-send.png" alt="CloudShare pane (German interface), tab Send: the switch Files / Confidential / Request, one large attachment preselected, the password options, where the password goes, the collapsed validity with its summary and the button Insert file as link" width="300" align="right">
+<img src="docs/images/taskpane-send.png" alt="CloudShare pane, tab Send: the switch Files / Message / Request, one large attachment preselected, the password options, where the password goes, the collapsed validity with its summary and the button Insert file as link" width="300" align="right">
 
 **Once:** open the pane with the **CloudShare** button in the ribbon and click **"Connect"** – the Nextcloud login
 opens in the browser (usually without typing anything, thanks to single sign-on). CloudShare remembers the
@@ -124,8 +124,8 @@ messages are not (they are not stored in Nextcloud).
 The pane follows Outlook's light or dark theme and uses Outlook's own wording ("message", "password"; in German
 "Nachricht", "Kennwort").
 
-Under the attachment policy **`enforce`** (default), large attachments can only be sent through CloudShare; under
-**`suggest`** Outlook asks once when sending and offers **"Send Anyway"**.
+Under the attachment policy **`suggest`** (default) Outlook asks once when sending large attachments and offers
+**"Send Anyway"**; under **`enforce`** they can only be sent through CloudShare.
 
 <br clear="right">
 
@@ -186,7 +186,7 @@ The image `ghcr.io/mrprohl/cloudshare` is built by GitHub – nothing is compile
 
 Microsoft 365 admin center → *Settings → Integrated apps → Upload custom apps* → manifest URL
 `https://cloudshare.example.com/manifest.xml`. Start with your own account, then roll out. It can take up to 24 hours
-until Outlook shows the button. Details and how to check the result:
+until Outlook shows the button (when writing and when reading a mail). Details and how to check the result:
 [docs/microsoft-365.md → Deploying the add-in](docs/microsoft-365.md#3-deploying-the-add-in).
 
 Alternative with a clearer error message (Exchange Online PowerShell):
@@ -209,27 +209,69 @@ deployed again.
 | `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` | – | Entra ID app registration |
 | `NEXTCLOUD_URL` | – | Public address of Nextcloud |
 | `NEXTCLOUD_FOLDER` | `CloudShare` | Folder for uploaded files in each user's Nextcloud |
-| `NEXTCLOUD_REQUEST_FOLDER` | `CloudShare-Dateianforderungen` | Folder for files received through upload links (default up to now: `Outlook-Dateianforderungen` – existing `env/cloudshare.env` files keep their value) |
+| `NEXTCLOUD_REQUEST_FOLDER` | `CloudShare-Dateianforderungen` | Folder for files received through upload links |
 | `CREDENTIAL_KEY` | – | Key for the stored Nextcloud app passwords (`openssl rand -base64 32`); changing it disconnects all users |
 | `ATTACHMENT_THRESHOLD_MB` | `5` | From this size CloudShare steps in (hint while writing, check on send) |
-| `ATTACHMENT_POLICY` | `enforce` | `enforce`: large attachments only via CloudShare · `suggest`: ask once, "Send Anyway" possible |
+| `ATTACHMENT_POLICY` | `suggest` | `suggest`: ask once, "Send Anyway" possible · `enforce`: large attachments only via CloudShare |
 | `SHARE_EXPIRE_DAYS` / `SHARE_MAX_EXPIRE_DAYS` | `14` / `90` | Link validity: default / maximum |
 | `SEND_MAX_ACCESS_COUNT` / `SEND_MAX_ACCESS_LIMIT` | `3` / `20` | How often the password link opens: default / maximum |
 | `SEND_EXPIRE_DAYS` / `SEND_MAX_EXPIRE_DAYS` | `5` / `30` | Days the password link and confidential messages stay available: default / maximum the sender may choose (at most 30 – Vaultwarden keeps Sends at most 31 days) |
-| `SEVEN_API_KEY`, `SEVEN_SENDER`, `SEVEN_WEBHOOK_SECRET` | – | Password by SMS via seven.io; without a key the option is not offered. Delivery reports: callback URL `https://<host>/webhooks/seven?token=<secret>` in the seven.io dashboard |
+| `SEVEN_API_KEY`, `SEVEN_SENDER`, `SEVEN_WEBHOOK_SECRET` | – / `CloudShare` / – | Password by SMS via seven.io; without a key the option is not offered – see [Password by SMS](#password-by-sms-optional) |
 | `SMS_DEFAULT_COUNTRY` / `SMS_MAX_PER_DAY` | `49` / `50` | Country code for numbers like `0170 …` / SMS per user and day |
 | `DOWNLOAD_NOTICE` | off | `true`: mail to the sender on the first download (needs the Entra application permission `Mail.Send`, see architecture) |
 | `CLEANUP_AFTER_DAYS` | `0` | Uploaded files go to the Nextcloud trash this many days after their link expired or was revoked; `off` = never. Received files are never deleted |
-| `MAIL_FOOTER` | empty | Optional footer line in the card, e.g. `'{displayName} · {jobTitle}\n{company}'` (filled from the sender's profile) |
+| `MAIL_FOOTER` | empty | Optional footer of the card, filled from the sender's Microsoft 365 profile, e.g. `'{displayName} · {jobTitle}\n{company} · Tel. {phone} · {email}'`; placeholders and rules in `cloudshare.env.example`. Empty = no footer (`setup.sh`: Enter) |
 | `VAULTWARDEN_URL`, `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD` | – | Vaultwarden service account |
 | `RATE_LIMIT_PER_MINUTE` | `600` | Requests per minute and user |
 | `CLIENT_TRACE` | off | Diagnostics, see [Troubleshooting](#troubleshooting) |
 
 `env/versions.env` holds `CLOUDSHARE_HOST`, `CLOUDSHARE_VERSION` (`latest`) and `CADDY_VERSION`.
 
-**Text templates** (optional): the SMS text, the subject and intro of the password mail and the download confirmation
-can be changed in `env/config/templates.json` – one default plus overrides per department (from the sender's
-Microsoft 365 profile) and per sender address. Start from [`templates.example.json`](templates.example.json):
+**Changed defaults:** an existing `env/cloudshare.env` keeps the values `setup.sh` wrote back then – set the new ones
+by hand if you want them:
+
+| Setting | Before | Now |
+|---|---|---|
+| `ATTACHMENT_THRESHOLD_MB` | `1` | `5` |
+| `ATTACHMENT_POLICY` | `enforce` | `suggest` |
+| `MAIL_FOOTER` | `'{displayName} · {jobTitle}\n{company} · Tel. {phone} · {email}'` | empty |
+| `NEXTCLOUD_REQUEST_FOLDER` | `Outlook-Dateianforderungen` | `CloudShare-Dateianforderungen` – rename the folder in Nextcloud as well, otherwise "My shares" no longer finds older upload links |
+
+### Password by SMS (optional)
+
+The password can go out as an SMS instead of a password mail ("Send the password to" → **Mobile number (SMS)**). It
+is sent after the mail, through [seven.io](https://www.seven.io); without `SEVEN_API_KEY` the option is not offered.
+
+1. **seven.io:** create an account with prepaid credit, create an API key (*Developer → API Keys*) and choose the
+   sender – a phone number or up to 11 letters/digits (recipients cannot reply to a text sender). Conclude a data
+   processing agreement: the recipients' mobile numbers go to seven.io.
+2. **`env/cloudshare.env`:**
+
+   ```bash
+   SEVEN_API_KEY='…'
+   SEVEN_SENDER='CloudShare'
+   SEVEN_WEBHOOK_SECRET='…'      # openssl rand -hex 24
+   SMS_DEFAULT_COUNTRY='49'      # optional: country code for numbers like 0170 …
+   SMS_MAX_PER_DAY='50'          # optional: SMS per user and day
+   ```
+
+   Then update the stack.
+3. **Delivery reports** (optional, recommended): in the seven.io dashboard (*Developer → Webhooks*) add
+   `https://cloudshare.example.com/webhooks/seven?token=<SEVEN_WEBHOOK_SECRET>` for the event `dlr`. Without it the
+   SMS still goes out, but "My shares" only shows "sent" instead of "delivered at …" / "not delivered".
+4. **Check:** `curl -s https://cloudshare.example.com/api/config` contains `"smsEnabled":true`; after reloading the
+   pane, "Send the password to" offers **Mobile number (SMS)**. Send a test mail with your own number –
+   `docker logs cloudshare 2>&1 | grep -i sms` shows the SMS and, with the webhook, `SMS delivery report`.
+
+If the SMS cannot be sent (wrong key, no credit, daily limit reached), the **sender** gets the password mail instead
+(subject "Text message not sent – …") and can pass the password on; "My shares" shows "not delivered", the log the
+reason (`Password SMS failed`).
+
+### Text templates (optional)
+
+The SMS text, the subject and intro of the password mail and the download confirmation can be changed in
+`env/config/templates.json` – one default plus overrides per department (from the sender's Microsoft 365 profile) and
+per sender address. Start from [`templates.example.json`](templates.example.json):
 
 ```bash
 mkdir -p /opt/cloudshare/env/config

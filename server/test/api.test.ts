@@ -117,7 +117,7 @@ describe("authentication", () => {
   it("serves the public configuration without login", async () => {
     const res = await app.inject({ method: "GET", url: "/api/config" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toMatchObject({ thresholdMb: 5, sendMaxAccessCount: 3, sendMaxAccessLimit: 20 });
+    expect(res.json()).toMatchObject({ thresholdMb: 5, attachmentPolicy: "suggest", sendMaxAccessCount: 3, sendMaxAccessLimit: 20 });
   });
 
   it("allows the send handler script in classic Outlook's JavaScript-only runtime (well-known URI)", async () => {

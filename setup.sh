@@ -39,13 +39,13 @@ echo "-- General --"
 ask PUBLIC_BASE_URL         "Public address"                              "https://cloudshare.example.com"
 ask LANGUAGE                "Language (de, en – files in locales/)"       "de"
 ask ATTACHMENT_THRESHOLD_MB "CloudShare from attachment size (MB)"        "5"
-ask ATTACHMENT_POLICY       "Large attachments: enforce or suggest"       "enforce"
+ask ATTACHMENT_POLICY       "Large attachments: enforce or suggest"       "suggest"
 ask SHARE_EXPIRE_DAYS       "Link valid, default (days)"                  "14"
 ask SHARE_MAX_EXPIRE_DAYS   "Link valid, maximum (days)"                  "90"
 echo "Mail card footer – placeholders from the M365 profile: {displayName} {givenName} {surname} {jobTitle}"
-echo '  {department} {company} {email} {phone} {mobile} {office}; \n = new line; "-" = no footer'
-ask MAIL_FOOTER             "Footer template"                             '{displayName} · {jobTitle}\n{company} · Tel. {phone} · {email}'
-[ "$MAIL_FOOTER" = "-" ] && MAIL_FOOTER=""
+echo '  {department} {company} {email} {phone} {mobile} {office}; \n = new line. Enter = no footer, e.g.'
+echo '  {displayName} · {jobTitle}\n{company} · Tel. {phone} · {email}'
+ask MAIL_FOOTER             "Footer template (empty = none)"              ""
 echo; echo "-- Microsoft Entra ID (app registration \"CloudShare\") --"
 ask ENTRA_TENANT_ID     "Directory (tenant) ID"     ""
 ask ENTRA_CLIENT_ID     "Application (client) ID"   ""
