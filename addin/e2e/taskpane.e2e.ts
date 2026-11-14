@@ -29,6 +29,8 @@ interface Scenario {
   connected?: boolean;
   config?: Record<string, unknown> | "down";
   shares?: unknown[];
+  /** Server with download confirmation: links "Ohne Kennwort" get a job (no password) – see attachNoticeJob. */
+  noticeJob?: boolean;
   /** New Outlook: cursor never in the body → setSelectedDataAsync inserts nothing; bodyRejectsInsert: nothing works. */
   cursorOutsideBody?: boolean;
   bodyRejectsInsert?: boolean;
@@ -106,8 +108,9 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     if (/^POST \/api\/uploads\/u\d+\/complete$/.test(route_)) {
       const id = call.path.split("/")[3];
       const { fileName, size } = uploads.get(id)!;
-      const jobId = JSON.parse(call.body!.toString()).noPassword === true ? null : "job-1";
-      return json({ shareUrl: `https://cloud.example.com/s/${id}`, expireDate: "2026-12-01", jobId, fileName, size });
+      const noPassword = JSON.parse(call.body!.toString()).noPassword === true;
+      const jobId = noPassword ? (scenario.noticeJob ? "notice-1" : null) : "job-1";
+      return json({ shareUrl: `https://cloud.example.com/s/${id}`, expireDate: "2026-12-01", jobId, noPassword, fileName, size });
     }
     if (route_ === "POST /api/requests") {
       return json({ shareUrl: "https://cloud.example.com/s/request", expireDate: "2026-12-01", jobId: "job-1" });
@@ -638,6 +641,11 @@ test("Dateien von Empfängern erhalten inserts an upload link with the same pass
 
 test("Vertrauliche Nachricht: inserts a card with the link, never the text, and shares the password step", async ({ page }) => {
   const calls = await openTaskpane(page, { config: { messageMaxLength: 1000, sendExpireDays: 5, sendMaxExpireDays: 30 } });
+  // Optional: closed until opened.
+  await expect(page.locator("#message-section")).toBeHidden();
+  await page.click("#message-toggle");
+  await expect(page.locator("#message-toggle")).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#message")).toBeFocused();
   await expect(page.locator("#message-text")).toContainText("Es gilt das Kennwort von oben.");
   await expect(page.locator("#message-days")).toHaveValue("5");
   await page.click("#message-insert");
@@ -660,6 +668,7 @@ test("Vertrauliche Nachricht: inserts a card with the link, never the text, and 
   expect(inserted).toContain("Vertrauliche Nachricht für Sie");
   expect(inserted).not.toContain("Sommer2026"); // the text never goes into the mail
   await expect(page.locator("#message")).toHaveValue("");
+  await expect(page.locator("#message-section")).toBeHidden(); // closed again after inserting
   await expectAccessible(page);
 });
 
@@ -684,9 +693,41 @@ test("Kennwort-Link gültig für: 5 days by default, at most 30, sent with every
   expect(JSON.parse(calls.find((c) => c.path.endsWith("/complete"))!.body!.toString()).passwordDays).toBe(12);
 });
 
+test("Kennwort per SMS: no password-link settings – the password is in the SMS and works as long as the link", async ({ page }) => {
+  const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)], config: { smsEnabled: true } });
+  await expect(page.locator("#max-access-field")).toBeVisible();
+  await expect(page.locator("#password-days-field")).toBeVisible();
+  await page.click("label:has(#channel-sms)");
+  await expect(page.locator("#max-access-field")).toBeHidden();
+  await expect(page.locator("#password-days-field")).toBeHidden();
+  await expect(page.locator("#password-to-hint")).toContainText("gilt, solange der Link gültig ist");
+  await page.fill("#password-sms", "0170 1234567");
+  await page.locator("#password-sms").blur();
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
+  // The password link only holds the password until sending – as long as possible.
+  expect(JSON.parse(calls.find((c) => c.path.endsWith("/complete"))!.body!.toString()).passwordDays).toBe(30);
+
+  await page.click("label:has(#channel-recipients)");
+  await expect(page.locator("#password-days-field")).toBeVisible();
+});
+
+test("Ohne Kennwort with download confirmation: the draft is tagged so the confirmation knows the sent mail", async ({ page }) => {
+  await openTaskpane(page, { attachments: [attachment("a1", "Flyer.pdf", 1.5 * MiB)], noticeJob: true });
+  await page.click("label:has(#mode-none)");
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("ohne Kennwort abrufbar");
+  const log = await officeLog(page);
+  expect(log.customProps.cloudshareJob).toBe("notice-1");
+  expect(JSON.parse(log.session["cloudshare-state"])).toEqual({ noPassword: true, jobId: "notice-1", links: ["u1"] });
+  expect(log.inserted[0].data).not.toContain("Kennwort");
+  await expect(page.locator("#mode-random")).toBeDisabled();
+});
+
 test("Vertrauliche Nachricht needs a password", async ({ page }) => {
   const calls = await openTaskpane(page);
   await page.check("#mode-none");
+  await page.click("#message-toggle");
   await page.fill("#message", "geheim");
   await page.click("#message-insert");
   await expect(page.locator("#status")).toContainText("Vertrauliche Nachrichten brauchen immer ein Kennwort");

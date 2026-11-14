@@ -99,7 +99,10 @@ replaces `%%PUBLIC_BASE_URL%%`, `%%PUBLIC_HOST%%` and `%%ENTRA_CLIENT_ID%%`; the
 
 Variants: **"Insert upload link"** (`POST /api/requests`) creates a folder in `NEXTCLOUD_REQUEST_FOLDER` with
 a create-only link ("file drop") – same password rules, its own step. **"No password"** (`noPassword: true`, file
-links only) creates a link without password, Send or job. **"My shares → Insert"**
+links only) creates a link without password and Send; with `DOWNLOAD_NOTICE=true` it joins a job **without password**
+(`createNoticeJob`, `PasswordJob.noPassword`, the links in `noticeShares`), which the send handler arms like any job –
+the watcher sends nothing and only registers the links for the download confirmation once the mail is in "Sent
+Items". Without the confirmation there is no job (`jobId: null`). The answer always says `noPassword: true`. **"My shares → Insert"**
 (`POST /api/shares/:id/link`) creates a new link to an existing upload with a new password, as a new step.
 
 **"Confidential message"** (`POST /api/messages`): a text instead of a file. It is never written to Nextcloud or to
@@ -163,6 +166,10 @@ wins) – Nextcloud's housekeeping deletes expired shares, so the date could not
   mail appeared in "Sent Items", like the password mail. The number is entered in the pane and normalised to E.164
   (`0170 …` → `+49170…`, `SMS_DEFAULT_COUNTRY`). The password exists in readable form only in the step's Vaultwarden
   Send; the watcher reads it from there right before sending (`readSendPassword`) and deletes the Send afterwards.
+  So the password-link settings do not apply (the pane hides "Password can be opened" and "Password link valid for"):
+  the Send of an SMS step always gets the maximum lifetime (`SEND_MAX_EXPIRE_DAYS`), also when SMS is chosen after
+  links were inserted (`PATCH` extends the Sends of steps not sent yet), so a draft can wait that long. The password
+  in the SMS works as long as the link.
   If seven.io refuses the SMS (or `SMS_MAX_PER_DAY` is reached), the password mail goes **to the sender** instead –
   never automatically to the recipients by another channel. Delivery reports arrive at `/webhooks/seven` (secret in
   the query, compared in constant time, idempotent, webhook and classic form callback) and update `deliveries.ts`.
@@ -182,7 +189,8 @@ A broken file never stops CloudShare. Example: `templates.example.json`.
 
 ### 2.7 Download confirmation
 
-With `DOWNLOAD_NOTICE=true`, every file link of a sent mail is registered with the sender, subject, recipients and
+With `DOWNLOAD_NOTICE=true`, every file link of a sent mail is registered – with password or, via the job without
+password of 2.2, without – with the sender, subject, recipients and
 expiry (`notices.ts`, `/data/download-notices.json`). Every 10 minutes the Activity API is asked with the owner's
 app password; only downloads **after** the password went out count (older links of the same file are ignored). On the
 first download the sender gets a mail (`download_notice_*` templates) – sent with CloudShare's **own app token**

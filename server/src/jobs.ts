@@ -81,6 +81,12 @@ export interface PasswordJob {
   department?: string;
   /** How often the password link can be opened (jobs created before this field existed: unknown). */
   maxAccessCount?: number;
+  /**
+   * Links "Ohne Kennwort" with download confirmation: no password, no Send, no password mail – the job only waits for
+   * the sent mail (subject, recipients) and then registers the links in `noticeShares` for the confirmation.
+   */
+  noPassword?: boolean;
+  noticeShares?: StepShare[];
   dispatched: boolean;
   expiresAt: number;
   armed?: ArmedSend;
@@ -156,6 +162,38 @@ export async function createSeparateJob(owner: string, ownerUpn: string, part: S
   });
   await persist();
   return id;
+}
+
+/** Job for links "Ohne Kennwort" that only exists for the download confirmation (see PasswordJob.noPassword). */
+export async function createNoticeJob(owner: string, ownerUpn: string, share: StepShare): Promise<string> {
+  const id = randomUUID();
+  jobs.set(id, {
+    owner,
+    ownerUpn,
+    fileNames: [share.name],
+    sendUrl: "",
+    noPassword: true,
+    noticeShares: [share],
+    dispatched: false,
+    expiresAt: Date.now() + JOB_TTL,
+  });
+  await persist();
+  return id;
+}
+
+export async function addNoticeShare(id: string, share: StepShare): Promise<void> {
+  const job = jobs.get(id)!;
+  job.fileNames.push(share.name);
+  (job.noticeShares ??= []).push(share);
+  await persist();
+}
+
+/** The password goes by SMS: the Sends of steps not sent yet only hold it until then – keep them to `expiresAt`. */
+export async function setPartsExpiry(id: string, expiresAt: number): Promise<void> {
+  const job = jobs.get(id);
+  if (!job?.separate) return;
+  for (const part of job.separate) if (!part.dispatched && part.sendId) part.sendExpiresAt = expiresAt;
+  await persist();
 }
 
 /** Further step with its own password and password mail. */
@@ -294,7 +332,29 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
       // "Kennwort an andere Adresse": only that address gets the password, not the recipients of the mail.
       const recipients = job.passwordTo ? { to: [job.passwordTo], cc: [], bcc: [] } : message.recipients;
       const sender = message.from ?? armed.mailbox;
-      if (job.separate?.length) {
+      /** Download confirmation for these links, now that subject and recipients of the sent mail are known. */
+      const watchDownloads = (shares: StepShare[]) =>
+        registerNotices(
+          shares.map((s): [string, Notice] => [
+            s.token,
+            {
+              owner: job.owner,
+              ownerUpn: job.ownerUpn,
+              notifyTo: message.from ?? job.ownerUpn,
+              department: job.department,
+              fileName: s.name,
+              subject: message.subject,
+              recipients: message.recipients.to.concat(message.recipients.cc).join(", "),
+              expireDate: s.expireDate,
+              registeredAt: Date.now(),
+            },
+          ]),
+        ).catch((err) => log.warn({ err, user: job.ownerUpn }, "Download confirmation could not be registered"));
+
+      if (job.noPassword) {
+        // Links without password: nothing to send, only the download confirmation.
+        await watchDownloads(job.noticeShares ?? []);
+      } else if (job.separate?.length) {
         // One password per step: one password mail (or SMS) per step, naming its files. Parts already sent stay
         // sent, so a retry after an error does not send them twice.
         const t = templatesFor({ upn: job.ownerUpn, department: job.department });
@@ -320,22 +380,7 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
           }
           part.dispatched = true;
           changed = true;
-          await registerNotices(
-            (part.shares ?? []).map((s): [string, Notice] => [
-              s.token,
-              {
-                owner: job.owner,
-                ownerUpn: job.ownerUpn,
-                notifyTo: message.from ?? job.ownerUpn,
-                department: job.department,
-                fileName: s.name,
-                subject: message.subject,
-                recipients: message.recipients.to.concat(message.recipients.cc).join(", "),
-                expireDate: s.expireDate,
-                registeredAt: Date.now(),
-              },
-            ]),
-          ).catch((err) => log.warn({ err, user: job.ownerUpn }, "Download confirmation could not be registered"));
+          await watchDownloads(part.shares ?? []);
         }
       } else {
         await sendMail(armed.graphToken, recipients, translate("mail.subjectLegacy", { subject: sent.subject || job.fileNames[0] }),

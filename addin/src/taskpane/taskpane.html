@@ -170,8 +170,17 @@
             %%t:addin.request.button%%
           </button>
 
-          <!-- Confidential message: a text instead of a file, stored only as a password-protected Vaultwarden Send. -->
-          <h2 class="section-title">%%t:addin.message.heading%%</h2>
+          <!-- Confidential message (optional, collapsed): a text instead of a file, stored only as a password-protected
+               Vaultwarden Send. -->
+          <h2 class="section-title">
+            <button type="button" id="message-toggle" class="disclosure" aria-expanded="false" aria-controls="message-section">
+              <svg class="icon chevron" viewBox="0 0 20 20" aria-hidden="true">
+                <path d="m7.5 5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              %%t:addin.message.heading%%
+            </button>
+          </h2>
+          <div id="message-section" hidden>
           <p class="caption request-text" id="message-text"></p>
           <textarea id="message" class="input textarea" rows="4" spellcheck="true" placeholder="%%t:addin.message.placeholder%%"
             aria-label="%%t:addin.message.label%%" aria-describedby="message-count"></textarea>
@@ -190,6 +199,7 @@
             </svg>
             %%t:addin.message.button%%
           </button>
+          </div>
         </div>
 
         <footer class="footer">

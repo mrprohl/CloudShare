@@ -54,16 +54,19 @@ connection.
 2. Choose the password:
    - **Random password** (default) – easy to read out, e.g. `KateGeteFi45`.
    - **Own password** – at least 12 characters, three of four character types.
-   - **No password** – only if your Nextcloud allows links without a password.
+   - **No password** – only if your Nextcloud allows links without a password. Anyone with the link can download
+     the file while the link is valid; no password goes out, and upload links and confidential messages are not
+     possible in that mail.
 3. Optionally adjust **"Link valid for"** (days the download link works), **"Password can be opened"** (how often the
    password link opens), **"Password link valid for"** (days the password can be fetched – default 5, at most 30) and
    **"Deliver the password"**: to the recipients of the mail (default), only to **another e-mail address** (e.g. a
    colleague), or **per SMS** to a mobile number (if SMS is set up – the password arrives as plain text, sent after
-   the mail).
+   the mail). With SMS the two password-link settings disappear: the password is in the SMS itself and works as long
+   as the link does.
 4. Click **"Insert as link"**. The attachment is replaced by a download card in the mail.
 5. Send the mail. CloudShare sends the password mail (or SMS) on its own. "My shares" later shows how the
    password went out, for SMS with the delivery status. With the download confirmation switched on, you get a mail
-   when a recipient downloads a file for the first time.
+   when a recipient downloads a file for the first time – also for links without password.
 
 Every click on "Insert as link" gets **its own password and its own password mail**; files selected together in
 one click share them. If you delete all CloudShare cards from the mail before sending, no password mail goes out
@@ -72,7 +75,7 @@ and the password options are free again.
 **Receiving files:** **"Insert upload link"** inserts a link through which the recipients can upload files –
 also very large ones – straight into your Nextcloud (folder `Outlook-Dateianforderungen`).
 
-**Confidential message:** under **"Confidential message"** you type a text instead of choosing a file – e.g. access
+**Confidential message:** open **"Confidential message"** (closed by default) and type a text instead of choosing a file – e.g. access
 data – and click **"Insert message as link"**. The text does not go into the mail: it is stored encrypted in
 Vaultwarden as a Send protected with the chosen password, and the mail gets a card with **"Open message"**. The
 password reaches the recipients like for files (password mail, other address or SMS). At most 1000 characters;
