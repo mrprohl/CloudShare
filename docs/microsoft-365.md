@@ -182,7 +182,8 @@ Notes:
 ## 5. Optional: application permission for the download confirmation
 
 Only for `DOWNLOAD_NOTICE=true`: the confirmation mail is sent days later, when the user's delegated token has long
-expired, so CloudShare uses its own **application** permission.
+expired, so CloudShare uses its own **application** permission. With it CloudShare also tells the sender when seven.io
+reports a password SMS as not delivered (without it, only "My shares" shows that).
 
 1. App registration → *API permissions* → *Add a permission* → *Microsoft Graph* → **Application permissions** →
    `Mail.Send` → *Grant admin consent*.

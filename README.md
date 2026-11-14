@@ -66,7 +66,7 @@ three.
 3. **"Send the password to"**: the recipients of the mail (default), **another e-mail address** (e.g. a colleague),
    or a **mobile number (SMS)** if SMS is set up – the password arrives as plain text, sent after the mail.
 4. **"Validity"** is collapsed and shows its values in one line, e.g. "Link 14 days · Password link 5 days, opens 3
-   times". Open it to change **"Link valid for"** (days the download link works), **"Password can be opened"** (how
+   times". Open it to change **"Link valid for"** (days the download link works – with a password at most 30, see below), **"Password can be opened"** (how
    often the password link opens) and **"Password link valid for"** (days the password can be fetched – default 5,
    at most 30). With SMS the two password-link settings disappear: the password is in the SMS itself and works as
    long as the link does.
@@ -94,12 +94,15 @@ Confidential messages and upload links always have a password, so "No password" 
 
 <br clear="right">
 
-<img src="docs/images/taskpane-shares.png" alt="Tab My shares: four links with download status, password status and the buttons Copy, Insert, Revoke" width="300" align="right">
+<img src="docs/images/taskpane-shares.png" alt="Tab My shares: four links with download and password status and the buttons Copy, Password, Insert, Revoke; at the first link Password is open with the password and Send again to" width="300" align="right">
 
 **"My shares"** lists your CloudShare links of the last 30 days: when they were shared, until when they are
 valid, whether they have a password, and how often they were downloaded (or how many files were received).
 
 - **Copy** – copies the link.
+- **Password** – for links with password, until they expire: shows the password and sends it **again** – by **SMS**
+  to a number or as a **password mail** to addresses (suggested: where it went the first time). The mail again only
+  contains a link to the password, never the password itself.
 - **Insert** – inserts the file again into the mail you are writing, as a *new* link with a new password.
 - **Revoke** – ends the link at once (two clicks). The file then counts as expired and is moved to your
   Nextcloud trash.
@@ -213,12 +216,12 @@ deployed again.
 | `CREDENTIAL_KEY` | – | Key for the stored Nextcloud app passwords (`openssl rand -base64 32`); changing it disconnects all users |
 | `ATTACHMENT_THRESHOLD_MB` | `5` | From this size CloudShare steps in (hint while writing, check on send) |
 | `ATTACHMENT_POLICY` | `suggest` | `suggest`: ask once, "Send Anyway" possible · `enforce`: large attachments only via CloudShare |
-| `SHARE_EXPIRE_DAYS` / `SHARE_MAX_EXPIRE_DAYS` | `14` / `90` | Link validity: default / maximum |
+| `SHARE_EXPIRE_DAYS` / `SHARE_MAX_EXPIRE_DAYS` | `14` / `90` | Link validity: default / maximum. A link with password lasts at most 30 days: only as long as its password in Vaultwarden, which keeps it until then so it can be sent again |
 | `SEND_MAX_ACCESS_COUNT` / `SEND_MAX_ACCESS_LIMIT` | `3` / `20` | How often the password link opens: default / maximum |
 | `SEND_EXPIRE_DAYS` / `SEND_MAX_EXPIRE_DAYS` | `5` / `30` | Days the password link and confidential messages stay available: default / maximum the sender may choose (at most 30 – Vaultwarden keeps Sends at most 31 days) |
 | `SEVEN_API_KEY`, `SEVEN_SENDER`, `SEVEN_WEBHOOK_SECRET` | – / `CloudShare` / – | Password by SMS via seven.io; without a key the option is not offered – see [Password by SMS](#password-by-sms-optional) |
 | `SMS_DEFAULT_COUNTRY` / `SMS_MAX_PER_DAY` | `49` / `50` | Country code for numbers like `0170 …` / SMS per user and day |
-| `DOWNLOAD_NOTICE` | off | `true`: mail to the sender on the first download (needs the Entra application permission `Mail.Send`, see architecture) |
+| `DOWNLOAD_NOTICE` | off | `true`: mail to the sender on the first download, and a note when seven.io reports a password SMS as not delivered (needs the Entra application permission `Mail.Send`, see [microsoft-365.md → 5](docs/microsoft-365.md#5-optional-application-permission-for-the-download-confirmation)) |
 | `CLEANUP_AFTER_DAYS` | `0` | Uploaded files go to the Nextcloud trash this many days after their link expired or was revoked; `off` = never. Received files are never deleted |
 | `MAIL_FOOTER` | empty | Optional footer of the card, filled from the sender's Microsoft 365 profile, e.g. `'{displayName} · {jobTitle}\n{company} · Tel. {phone} · {email}'`; placeholders and rules in `cloudshare.env.example`. Empty = no footer (`setup.sh`: Enter) |
 | `VAULTWARDEN_URL`, `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD` | – | Vaultwarden service account |
@@ -258,14 +261,22 @@ is sent after the mail, through [seven.io](https://www.seven.io); without `SEVEN
    Then update the stack.
 3. **Delivery reports** (optional, recommended): in the seven.io dashboard (*Developer → Webhooks*) add
    `https://cloudshare.example.com/webhooks/seven?token=<SEVEN_WEBHOOK_SECRET>` for the event `dlr`. Without it the
-   SMS still goes out, but "My shares" only shows "sent" instead of "delivered at …" / "not delivered".
+   SMS still goes out, but "My shares" only shows "submitted" instead of "delivered at …" / "not delivered".
 4. **Check:** `curl -s https://cloudshare.example.com/api/config` contains `"smsEnabled":true`; after reloading the
    pane, "Send the password to" offers **Mobile number (SMS)**. Send a test mail with your own number –
    `docker logs cloudshare 2>&1 | grep -i sms` shows the SMS and, with the webhook, `SMS delivery report`.
 
-If the SMS cannot be sent (wrong key, no credit, daily limit reached), the **sender** gets the password mail instead
-(subject "Text message not sent – …") and can pass the password on; "My shares" shows "not delivered", the log the
-reason (`Password SMS failed`).
+**If an SMS fails, the password goes out no other way** – CloudShare never sends it on its own by mail. The sender
+gets a short note **without** password or link ("Text message not sent – …" / "Text message not delivered – …") and
+sends it again in CloudShare: **Password** at the link in "My shares" or in the sent mail – by SMS (e.g. to a
+corrected number) or as a password mail. Two kinds of failure:
+
+- **seven.io refuses the SMS** (wrong key, no credit, daily limit reached): note right away; "My shares" shows
+  "not sent", the log the reason (`Password SMS failed`).
+- **seven.io accepts it, but reports later that it could not be delivered** (e.g. wrong number, phone off for days –
+  only with the delivery reports of step 3): "My shares" shows "not delivered". The note needs CloudShare's own
+  app permission (that of the download confirmation, `DOWNLOAD_NOTICE=true`), because no user is signed in at that
+  moment; without it only "My shares" shows it.
 
 ### Text templates (optional)
 

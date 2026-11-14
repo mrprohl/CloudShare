@@ -49,8 +49,9 @@ async function withUnlock<T>(call: () => Promise<T>): Promise<T> {
 }
 
 /**
- * The password stored in a Send – for the SMS channel, right before the SMS goes out. The password is not kept
- * anywhere else on the server.
+ * The password stored in a Send – for the SMS channel and for showing or sending it again ("Kennwort erneut senden").
+ * The service account owns the Send, so it can read it until Vaultwarden deletes it (also after the recipients' access
+ * ended). The password is not kept anywhere else on the server.
  */
 export async function readSendPassword(id: string): Promise<string> {
   const send = await withUnlock(() => bw<{ text?: { text?: string } }>("GET", `/object/send/${encodeURIComponent(id)}`));
@@ -59,18 +60,22 @@ export async function readSendPassword(id: string): Promise<string> {
   return password;
 }
 
-/** Deletes a Send that is no longer needed (the password went out by SMS instead). */
+/** Deletes a Send that is no longer needed (all links of its step were revoked). */
 export async function deleteSend(id: string): Promise<void> {
   await withUnlock(() => bw("DELETE", `/object/send/${encodeURIComponent(id)}`));
 }
 
-/** Moves the deletion of an existing Send to `expiresAt` (password by SMS: it must last until the mail is sent). */
+/**
+ * Moves the end of the recipients' access to an existing Send to `expiresAt` – never past its deletion date, which
+ * stays at the expiry of the links (password by SMS: the link is never sent, it only has to last until sending).
+ */
 export async function setSendExpiry(id: string, expiresAt: number): Promise<void> {
   const path = `/object/send/${encodeURIComponent(id)}`;
-  const date = new Date(expiresAt).toISOString();
   await withUnlock(async () => {
     const send = await bw<Record<string, unknown>>("GET", path);
-    await bw("PUT", path, { ...send, deletionDate: date, expirationDate: date });
+    const deletion = Date.parse(String(send.deletionDate ?? ""));
+    const end = Number.isFinite(deletion) ? Math.min(expiresAt, deletion) : expiresAt;
+    await bw("PUT", path, { ...send, expirationDate: new Date(end).toISOString() });
   });
 }
 
@@ -84,17 +89,21 @@ export async function setSendMaxAccess(id: string, maxAccessCount: number): Prom
 }
 
 /**
- * Creates a hidden text Send containing the password (opened at most `maxAccessCount` times, deleted after `days`)
- * and returns its URL, ID (allows changing the number of accesses later) and expiry time (ms).
+ * Creates a hidden text Send containing the password and returns its URL, ID (allows changing the number of accesses
+ * later and reading the password again) and the end of the recipients' access (ms).
+ * Two dates: the recipients can open the link at most `maxAccessCount` times for `days` ("Kennwort-Link gültig für",
+ * expiration); the Send itself lives until `keepUntil` – the expiry of the links – so the sender can still see and
+ * resend the password (deletion; Vaultwarden allows at most 31 days ahead, so links with password last at most 30).
  */
 export async function createPasswordSend(
   label: string,
   password: string,
   maxAccessCount: number = config.sendMaxAccessCount,
   days: number = config.sendExpireDays,
+  keepUntil?: number,
 ): Promise<{ url: string; id: string | undefined; expiresAt: number }> {
-  const expiresAt = Date.now() + days * 86_400_000;
-  const deletionDate = new Date(expiresAt).toISOString();
+  const deletion = keepUntil ?? Date.now() + days * 86_400_000;
+  const expiresAt = Math.min(Date.now() + days * 86_400_000, deletion);
   const send = {
     name: label,
     notes: null,
@@ -102,8 +111,8 @@ export async function createPasswordSend(
     text: { text: password, hidden: true },
     file: null,
     maxAccessCount,
-    deletionDate,
-    expirationDate: deletionDate,
+    deletionDate: new Date(deletion).toISOString(),
+    expirationDate: new Date(expiresAt).toISOString(),
     password: null,
     disabled: false,
     hideEmail: true,

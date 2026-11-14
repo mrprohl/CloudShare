@@ -418,3 +418,13 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .disclosure[aria-expanded="true"] .disclosure-summary { display: none; }
 .validity-section { padding: 8px 0 0 24px; }
 .validity-section .field:last-child { margin-bottom: 0; }
+
+/* --- "Kennwort" at a sent link: show the password and send it again ------------------------- */
+.password-panel {
+  margin: 8px 0 2px; padding: 10px 12px;
+  border: 1px solid var(--stroke2); border-radius: 6px; background: var(--bg1);
+}
+.password-panel .label { margin: 10px 0 4px; }
+.password-panel .label:first-child { margin-top: 0; }
+.password-panel .hint { margin-bottom: 8px; }
+.share-actions .show-password[aria-expanded="true"] { background: var(--bg1-pressed); color: var(--fg1); }

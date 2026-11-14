@@ -103,3 +103,19 @@ export function passwordMailHtml(mail: PasswordMailContent): string {
     `${escapeHtml(mail.sendUrl)}</a></p>`
   );
 }
+
+/**
+ * Note to the sender that the password SMS of a step failed – without the password and without a password link:
+ * nothing goes out another way on its own, the sender sends the password again in CloudShare. `reason`: why seven.io
+ * refused the SMS; without it, seven.io reported later that it was not delivered.
+ */
+export function smsProblemMailHtml(note: { files: string; subject: string; to: string; reason?: string }): string {
+  const p = (text: string) =>
+    `<p style="margin:0 0 12px;font-family:${FONT};font-size:14px;line-height:20px;color:#242424;">${escapeHtml(text)}</p>`;
+  const values = { files: note.files, subject: note.subject || t("mail.noSubject"), to: note.to };
+  return (
+    p(t("mail.greeting")) +
+    p(note.reason === undefined ? t("mail.smsUndeliveredText", values) : t("mail.smsFailedText", { ...values, reason: note.reason })) +
+    p(t("mail.smsFailedHint"))
+  );
+}

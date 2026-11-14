@@ -19,11 +19,12 @@ import { findSentMessage, sendMail } from "./graph.js";
 import { formatDate, t as translate } from "./i18n.js";
 import { recordDelivery } from "./deliveries.js";
 import { registerNotices, type Notice } from "./notices.js";
-import { passwordMailHtml } from "./passwordMail.js";
+import { passwordMailHtml, smsProblemMailHtml } from "./passwordMail.js";
+import { registerPasswordRef } from "./passwordRefs.js";
 import { maskPhone, sendSms, smsEnabled } from "./sms.js";
 import { createAtomicWriter, seal, unseal, type Sealed } from "./storage.js";
 import { defaultTemplates, render, templatesFor, type Templates } from "./templates.js";
-import { deleteSend, readSendPassword } from "./vaultwarden.js";
+import { readSendPassword } from "./vaultwarden.js";
 
 export interface ArmedSend {
   /** Delegated Graph token (Mail.Read(.Shared) + Mail.Send(.Shared)) obtained when the user pressed "Send". */
@@ -45,8 +46,10 @@ export interface SeparatePart {
   sendUrl: string;
   sendId?: string;
   maxAccessCount: number;
-  /** When the step's password link (Send) is deleted (ms) – shown in the password mail; missing in older jobs. */
+  /** Until when the recipients can open the step's password link (ms) – shown in the password mail; missing in older jobs. */
   sendExpiresAt?: number;
+  /** When the Send itself is deleted (ms) – the expiry of the step's links; until then the password can be resent. */
+  sendKeepUntil?: number;
   /** Its password mail went out (the others may still be pending after an error). */
   dispatched?: boolean;
   /** The links of the step (share token, file name, last valid day) – for "Meine Freigaben" and download notices. */
@@ -58,6 +61,10 @@ export interface StepShare {
   name: string;
   expireDate: string;
 }
+
+/** End of the last day the links are valid (ms) – for steps created before `sendKeepUntil` existed. */
+const linksExpireAt = (shares: StepShare[]) =>
+  Math.max(0, ...shares.map((s) => Date.parse(`${s.expireDate}T00:00:00Z`) + 86_400_000).filter(Number.isFinite));
 
 /** Parts stored by the short-lived per-file version had a single `fileName`. */
 const partFiles = (part: SeparatePart & { fileName?: string }) =>
@@ -248,9 +255,9 @@ export async function armJob(id: string, armed: ArmedSend): Promise<void> {
   await persist();
 }
 
-/** SMS per user and day (SMS_MAX_PER_DAY) – cost and abuse protection. */
+/** SMS per user and day (SMS_MAX_PER_DAY) – cost and abuse protection; also counts SMS sent again by hand. */
 const smsToday = new Map<string, { day: string; count: number }>();
-function takeSmsQuota(owner: string): boolean {
+export function takeSmsQuota(owner: string): boolean {
   const day = new Date().toISOString().slice(0, 10);
   const used = smsToday.get(owner);
   const count = used?.day === day ? used.count : 0;
@@ -260,10 +267,10 @@ function takeSmsQuota(owner: string): boolean {
 }
 
 /**
- * The password of one step by SMS: read from its Vaultwarden Send right before sending (it is stored nowhere else),
- * sent via seven.io, then the Send is deleted. If the SMS cannot be sent (seven.io error, daily limit), the password
- * mail goes to the sender instead, so they can pass the password on themselves – never automatically to the
- * recipients by another channel.
+ * The password of one step by SMS: read from its Vaultwarden Send right before sending (it is stored nowhere else)
+ * and sent via seven.io. The Send stays until the links expire, so the sender can send the password again.
+ * If the SMS cannot be sent (seven.io error, daily limit), the password goes out **no other way**: the sender gets a
+ * note without password and sends it again in CloudShare ("Kennwort" at the link) – by SMS or mail.
  */
 async function sendStepBySms(
   job: PasswordJob,
@@ -272,24 +279,26 @@ async function sendStepBySms(
   tokens: string[],
   graphToken: string,
   sender: string | null | undefined,
-  mailFor: () => { subject: string; html: string },
+  subject: string,
   log: Pick<FastifyBaseLogger, "info" | "warn">,
 ) {
   const to = job.passwordSms!;
   try {
-    if (!smsEnabled()) throw new Error("SMS is not configured (SEVEN_API_KEY)");
-    if (!takeSmsQuota(job.owner)) throw new Error(`daily limit of ${config.smsMaxPerDay} SMS reached`);
+    if (!smsEnabled()) throw new Error(translate("server.smsNotConfigured"));
+    if (!takeSmsQuota(job.owner)) throw new Error(translate("server.smsDailyLimit", { max: config.smsMaxPerDay }));
     const password = await readSendPassword(part.sendId!);
     const messageId = await sendSms(to, render(t.sms_template, { password, sender_name: job.senderName ?? "" }));
     await recordDelivery(tokens, { owner: job.owner, channel: "sms", to: maskPhone(to), at: Date.now(), messageId, status: "submitted" });
-    await deleteSend(part.sendId!).catch((err) => log.warn({ err, user: job.ownerUpn }, "Send could not be deleted after SMS"));
     log.info({ user: job.ownerUpn, to: maskPhone(to), messageId }, "Password SMS sent");
   } catch (err) {
-    log.warn({ err, user: job.ownerUpn, to: maskPhone(to) }, "Password SMS failed – password mail to the sender");
-    const mail = mailFor();
-    const self = sender ?? job.ownerUpn;
-    await sendMail(graphToken, { to: [self], cc: [], bcc: [] }, translate("mail.smsFailedSubject", { subject: mail.subject }), mail.html, sender);
+    log.warn({ err, user: job.ownerUpn, to: maskPhone(to) }, "Password SMS failed – note to the sender, no password sent");
     await recordDelivery(tokens, { owner: job.owner, channel: "sms", to: maskPhone(to), at: Date.now(), status: "failed" });
+    const files = translate("mail.files", { count: partFiles(part).length, name: partFiles(part)[0] });
+    const html = smsProblemMailHtml({ files, subject, to: maskPhone(to), reason: (err as Error).message });
+    // A failed note must not fail the step – that would retry the SMS on every pass of the watcher.
+    await sendMail(graphToken, { to: [sender ?? job.ownerUpn], cc: [], bcc: [] },
+      translate("mail.smsFailedSubject", { subject: subject || files }), html, sender)
+      .catch((mailErr) => log.warn({ err: mailErr, user: job.ownerUpn }, "Note about the failed SMS not sent"));
   }
 }
 
@@ -372,7 +381,7 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
           const tokens = (part.shares ?? []).map((s) => s.token);
 
           if (job.passwordSms && part.sendId) {
-            await sendStepBySms(job, part, t, tokens, armed.graphToken, sender, mailFor, log);
+            await sendStepBySms(job, part, t, tokens, armed.graphToken, sender, message.subject, log);
           } else {
             const mail = mailFor();
             await sendMail(armed.graphToken, recipients, mail.subject, mail.html, sender);
@@ -381,6 +390,24 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
           part.dispatched = true;
           changed = true;
           await watchDownloads(part.shares ?? []);
+          // The Send stays until the links expire: the sender can see the password and send it again.
+          if (part.sendId && tokens.length > 0) {
+            await registerPasswordRef({
+              owner: job.owner,
+              ownerUpn: job.ownerUpn,
+              sendId: part.sendId,
+              tokens,
+              fileNames: files,
+              keepUntil: part.sendKeepUntil ?? linksExpireAt(part.shares ?? []),
+              subject: message.subject,
+              mailTo: recipients.to.concat(recipients.cc),
+              sms: job.passwordSms,
+              from: sender ?? undefined,
+              maxAccessCount: part.maxAccessCount,
+              senderName: job.senderName,
+              department: job.department,
+            }).catch((err) => log.warn({ err, user: job.ownerUpn }, "Password entry for resending not recorded"));
+          }
         }
       } else {
         await sendMail(armed.graphToken, recipients, translate("mail.subjectLegacy", { subject: sent.subject || job.fileNames[0] }),

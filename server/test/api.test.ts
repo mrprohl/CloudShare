@@ -33,6 +33,7 @@ vi.mock("../src/auth.js", async (importOriginal) => {
       return { oid: `oid-${name}`, upn: `${name}@example.test`, token: `sso-${name}` };
     }),
     onBehalfOf: vi.fn(async () => ({ token: "graph-token", expiresAt: Date.now() + 3_600_000 })),
+    appGraphToken: vi.fn(async () => "app-token"),
   };
 });
 vi.mock("../src/graph.js", async (importOriginal) => ({
@@ -41,9 +42,18 @@ vi.mock("../src/graph.js", async (importOriginal) => ({
     displayName: "Anna Muster", givenName: "Anna", surname: "Muster", jobTitle: "", department: "Vertrieb", company: "",
     email: "anna@example.test", phone: "", mobile: "", office: "",
   })),
+  sendMail: vi.fn(async () => undefined),
+  sendMailAsApp: vi.fn(async () => undefined),
+}));
+// seven.io is not contacted: the SMS of "Kennwort erneut senden" goes to this double.
+vi.mock("../src/sms.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/sms.js")>()),
+  sendSms: vi.fn(async () => "99000001"),
 }));
 vi.mock("../src/vaultwarden.js", () => ({
-  createPasswordSend: vi.fn(async () => ({ url: "https://vault.example.test/#/send/abc", id: "send-1" })),
+  createPasswordSend: vi.fn(async () => ({ url: "https://vault.example.test/#/send/abc", id: "send-1", expiresAt: Date.now() + 5 * 86_400_000 })),
+  readSendPassword: vi.fn(async () => "KateGeteFi45"),
+  deleteSend: vi.fn(async () => undefined),
   createMessageSend: vi.fn(async () => ({ url: "https://vault.example.test/#/send/msg/key123", id: "send-msg" })),
   MESSAGE_MAX_LENGTH: 1000,
   setSendMaxAccess: vi.fn(async () => undefined),
@@ -296,11 +306,29 @@ describe("uploads", () => {
     await putChunk("anna", body.uploadId, 1);
     const res = await complete("anna", body.uploadId, { expireDays: 1000, maxAccess: 500, passwordDays: 99 });
     expect(res.statusCode).toBe(200);
-    const maxDate = new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10);
+    // A link with password lasts only as long as its password in Vaultwarden (Sends: at most 31 days).
+    const maxDate = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
     expect(res.json().expireDate).toBe(maxDate);
     expect(nc.createPublicShare.mock.calls[0][2]).toBe(maxDate);
     expect(createPasswordSend.mock.calls[0][2]).toBe(20);
-    expect(createPasswordSend.mock.calls[0][3]).toBe(30); // password link: Vaultwarden keeps Sends at most 31 days
+    expect(createPasswordSend.mock.calls[0][3]).toBe(30);
+    // The Send lives until the link expires, so the password can be sent again.
+    expect(Math.round((createPasswordSend.mock.calls[0][4]! - Date.now()) / DAY)).toBe(30);
+  });
+
+  it("lets links without password last up to SHARE_MAX_EXPIRE_DAYS", async () => {
+    const { body } = await startUpload("anna");
+    await putChunk("anna", body.uploadId, 1);
+    const res = await complete("anna", body.uploadId, { noPassword: true, expireDays: 1000 });
+    expect(res.json().expireDate).toBe(new Date(Date.now() + 90 * 86_400_000).toISOString().slice(0, 10));
+  });
+
+  it("ends the recipients' access to the password at the latest with the link", async () => {
+    const { body } = await startUpload("anna");
+    await putChunk("anna", body.uploadId, 1);
+    await complete("anna", body.uploadId, { expireDays: 3, passwordDays: 10 });
+    expect(createPasswordSend.mock.calls[0][3]).toBe(3);
+    expect(Math.round((createPasswordSend.mock.calls[0][4]! - Date.now()) / DAY)).toBe(3);
   });
 
   it("keeps the password link for the chosen days, 5 by default", async () => {
@@ -343,8 +371,8 @@ describe("upload links", () => {
   });
 });
 
-describe("password by SMS: the Send only holds the password until sending", () => {
-  it("keeps the Sends of a job with SMS as long as possible, also those created before the switch", async () => {
+describe("password by SMS: the link of the Send is never sent", () => {
+  it("opens the Sends of a job with SMS as long as they live, also those created before the switch", async () => {
     const first = await startUpload("anna");
     await putChunk("anna", first.body.uploadId, 1);
     const { jobId } = (await complete("anna", first.body.uploadId, { password: STRONG, passwordDays: 3, step: "s1" })).json();
@@ -434,6 +462,19 @@ describe("my shares", () => {
       expect.objectContaining({ id: "1", kind: "file", name: "a.pdf", downloads: { count: 2, last: "2026-11-13T10:20:00+00:00" }, protected: true }),
       expect.objectContaining({ id: "5", kind: "file", name: "offen.pdf", protected: false }),
     ]);
+  });
+
+  it("tells an SMS seven.io refused from one it reported as not delivered later", async () => {
+    const { recordDelivery: record } = await import("../src/deliveries.js");
+    // u1: seven.io refused the SMS (no message ID). u5: accepted, later "not delivered".
+    await record(["u1"], { owner: "oid-anna", channel: "sms", to: "+49 170 •••• 67", at: Date.now(), status: "failed" });
+    await record(["u5"], { owner: "oid-anna", channel: "sms", to: "+49 170 •••• 68", at: Date.now(), messageId: "881", status: "failed" });
+    nc.listPublicShares.mockResolvedValue(shares);
+    nc.publicDownloads.mockResolvedValue({ count: 0, last: null });
+    nc.countFiles.mockResolvedValue(0);
+    const list = (await app.inject({ method: "GET", url: "/api/shares", headers: as("anna") })).json() as Array<{ id: string; password: unknown }>;
+    expect(list.find((s) => s.id === "1")?.password).toMatchObject({ channel: "sms", status: "failed", refused: true });
+    expect(list.find((s) => s.id === "5")?.password).toMatchObject({ channel: "sms", status: "failed", refused: false });
   });
 
   it("only revokes CloudShare links", async () => {
@@ -710,5 +751,103 @@ describe("rate limiting", () => {
       });
     }
     expect(spoofed!.statusCode).toBe(429);
+  });
+});
+
+describe("showing and sending the password again", () => {
+  const share = { id: "41", path: "/CloudShare/2026-11-13_ab/vertrag.pdf", url: "https://cloud.example.test/s/tokvertrag",
+    expiration: "2099-12-01", sharedAt: Date.now(), fileId: 41, isFolder: false, permissions: 1, label: "", size: 1, hasPassword: true };
+  const register = async () => {
+    const { registerPasswordRef } = await import("../src/passwordRefs.js");
+    await registerPasswordRef({
+      owner: "oid-anna", ownerUpn: "anna@example.test", sendId: "send-r1", tokens: ["tokvertrag"], fileNames: ["vertrag.pdf"],
+      keepUntil: Date.now() + 10 * DAY, subject: "Vertrag", mailTo: ["erika@example.test"], sms: "+491701234567",
+      maxAccessCount: 3,
+    });
+  };
+  const resend = (user: string, payload: Record<string, unknown>) =>
+    app.inject({ method: "POST", url: "/api/shares/41/password/send", headers: as(user), payload });
+  const sendMail = async () => vi.mocked((await import("../src/graph.js")).sendMail);
+  const sendSms = async () => vi.mocked((await import("../src/sms.js")).sendSms);
+
+  beforeEach(async () => {
+    await register();
+    nc.listPublicShares.mockResolvedValue([share]);
+    nc.publicDownloads.mockResolvedValue({ count: 0, last: null });
+    (await sendMail()).mockClear();
+    (await sendSms()).mockClear();
+  });
+
+  it("shows the password only to its sender and only for its links", async () => {
+    const res = await app.inject({ method: "GET", url: "/api/shares/41/password", headers: as("anna") });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ password: "KateGeteFi45", mailTo: ["erika@example.test"], sms: "+491701234567" });
+    expect(vi.mocked(vaultwarden.readSendPassword)).toHaveBeenCalledWith("send-r1");
+    expect((await app.inject({ method: "GET", url: "/api/shares/41/password", headers: as("bernd") })).statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url: "/api/shares/99/password", headers: as("anna") })).statusCode).toBe(404);
+    const list = (await app.inject({ method: "GET", url: "/api/shares", headers: as("anna") })).json() as Array<{ passwordAvailable: boolean }>;
+    expect(list[0].passwordAvailable).toBe(true);
+  });
+
+  it("sends it again as a password mail with a new Send – never the password itself in the mail", async () => {
+    createPasswordSend.mockClear();
+    const res = await resend("anna", { channel: "mail", to: "erika@example.test; chef@example.test" });
+    expect(res.statusCode).toBe(200);
+    const [, password, maxAccess, days, keepUntil] = createPasswordSend.mock.calls[0];
+    expect([password, maxAccess, days]).toEqual(["KateGeteFi45", 3, 5]);
+    expect(Math.round((keepUntil! - Date.now()) / DAY)).toBe(10); // deleted together with the links
+    const [token, recipients, subject, html] = (await sendMail()).mock.calls[0];
+    expect(token).toBe("graph-token");
+    expect(recipients).toEqual({ to: ["erika@example.test", "chef@example.test"], cc: [], bcc: [] });
+    expect(subject).toContain("Vertrag");
+    expect(html).toContain("https://vault.example.test/#/send/abc");
+    expect(html).not.toContain("KateGeteFi45");
+    const { deliveryFor } = await import("../src/deliveries.js");
+    expect(deliveryFor("tokvertrag", "oid-anna")).toMatchObject({ channel: "mail", to: "erika@example.test, chef@example.test" });
+  });
+
+  it("sends it again by SMS to a number of the sender's choice", async () => {
+    const res = await resend("anna", { channel: "sms", to: "0171 7654321" });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ channel: "sms", to: "+49 171 •••• 21" });
+    const [number, text] = (await sendSms()).mock.calls[0];
+    expect(number).toBe("+491717654321");
+    expect(text).toContain("KateGeteFi45");
+    const { deliveryFor } = await import("../src/deliveries.js");
+    expect(deliveryFor("tokvertrag", "oid-anna")).toMatchObject({ channel: "sms", messageId: "99000001", status: "submitted" });
+  });
+
+  it("refuses invalid targets and other people's links", async () => {
+    expect((await resend("anna", { channel: "mail", to: "keine adresse" })).statusCode).toBe(400);
+    expect((await resend("anna", { channel: "sms", to: "12" })).statusCode).toBe(400);
+    expect((await resend("anna", { channel: "fax", to: "x" })).statusCode).toBe(400);
+    expect((await resend("bernd", { channel: "mail", to: "bernd@example.test" })).statusCode).toBe(404);
+    expect((await sendMail()).mock.calls).toHaveLength(0);
+  });
+
+  it("deletes the Send once the last link of the step is revoked", async () => {
+    const deleteSend = vi.mocked(vaultwarden.deleteSend);
+    deleteSend.mockClear();
+    const res = await app.inject({ method: "DELETE", url: "/api/shares/41", headers: as("anna") });
+    expect(res.statusCode).toBe(200);
+    expect(deleteSend).toHaveBeenCalledWith("send-r1");
+    expect((await app.inject({ method: "GET", url: "/api/shares/41/password", headers: as("anna") })).statusCode).toBe(404);
+  });
+
+  it("tells the sender – without password – when seven.io reports the SMS as not delivered later", async () => {
+    const { recordDelivery } = await import("../src/deliveries.js");
+    await recordDelivery(["tokvertrag"], { owner: "oid-anna", channel: "sms", to: "+49 170 •••• 67", at: Date.now(), messageId: "551", status: "submitted" });
+    const sendMailAsApp = vi.mocked((await import("../src/graph.js")).sendMailAsApp);
+    sendMailAsApp.mockClear();
+    const report = { webhook_event: "dlr", data: { msg_id: "551", status: "NOTDELIVERED" } };
+    for (let i = 0; i < 2; i++) {
+      await app.inject({ method: "POST", url: "/webhooks/seven?token=test-webhook-secret", payload: report });
+    }
+    expect(sendMailAsApp).toHaveBeenCalledOnce(); // once, not for the repeated report
+    const [, owner, to, subject, html] = sendMailAsApp.mock.calls[0];
+    expect([owner, to]).toEqual(["oid-anna", "anna@example.test"]);
+    expect(subject).toBe("SMS nicht zugestellt – Vertrag");
+    expect(html).toContain("wurde nicht zugestellt");
+    expect(html).not.toContain("KateGeteFi45");
   });
 });
