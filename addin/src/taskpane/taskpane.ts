@@ -279,6 +279,8 @@ function fileRow(
   row.querySelector(".file-name")!.textContent = name;
   row.querySelector<HTMLElement>(".file-name")!.title = name;
   row.querySelector(".file-size")!.textContent = formatSize(size);
+  // Own name for the checkbox: otherwise a remove button inside the label would become part of it.
+  box.setAttribute("aria-label", `${name}, ${formatSize(size)}`);
   if (onRemove) {
     const remove = document.createElement("button");
     remove.type = "button";

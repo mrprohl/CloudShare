@@ -462,7 +462,9 @@ test("files picked from the computer can be removed from the list again (×)", a
   const rows = page.locator("#picked label.list-item");
   await expect(rows).toHaveCount(3);
 
-  await rows.nth(2).locator("input").uncheck(); // "Drei.pdf" not to be uploaded
+  await rows.nth(2).locator(".file-name").click(); // like a user: click the row → "Drei.pdf" not to be uploaded
+  await expect(rows.nth(2).locator("input")).not.toBeChecked();
+  await expect(rows.nth(2).locator("input")).toHaveAttribute("aria-label", "Drei.pdf, 2 KB");
   await rows.nth(0).locator(".remove-file").click(); // remove "Eins.pdf"
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0)).toContainText("Zwei.pdf");
