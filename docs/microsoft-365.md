@@ -140,7 +140,9 @@ Apps*) → **Upload custom apps** (*Benutzerdefinierte Apps hochladen*):
    them grants the admin consent of 2.4 if it is still missing.
 4. **Finish deployment.** Outlook shows the **CloudShare** button in the compose window after a few hours, at the
    latest after 24 hours (classic Outlook: tab *Message* (*Nachricht*); new Outlook and the web: the ribbon or the
-   *Apps* menu of the compose window).
+   *Apps* menu of the compose window). When a mail is **read**, the button is there as well (classic Outlook: tab
+   *Home* (*Start*) and the reading window; new Outlook and the web: the ribbon or the *Apps* menu of the mail) – it
+   opens "My shares" with the links of that mail.
 
 Alternative with a clearer error message on failure (Exchange Online PowerShell, `Connect-ExchangeOnline` first):
 
@@ -154,6 +156,10 @@ Notes:
   365 reads the manifest with a delay – the pane itself and its texts change immediately after a stack update.
 - The send check (Smart Alert) is part of the manifest; nothing else has to be enabled per user. Users cannot remove
   a centrally deployed add-in that is set to *fixed*.
+- **New manifest version** (e.g. 1.1 added the button for mails being read): Microsoft 365 picks up the changed
+  manifest from the URL on its own, which can take a few days. Check *Integrated apps → CloudShare* for the version;
+  if the new button does not show up, remove the app there and deploy it again with the same manifest URL. Classic
+  Outlook additionally keeps its cache (README → *Operation*).
 
 ## 4. Exchange Online
 
@@ -205,6 +211,7 @@ expired, so CloudShare uses its own **application** permission.
    link* → a card is inserted.
 4. Send the mail to yourself or a colleague → the password mail follows within about a minute. The server log shows
    `Password mail sent` (`docker logs cloudshare 2>&1 | grep "Password mail"`).
+5. Open the sent mail in *Sent Items* → **CloudShare** → the pane lists its link under *In this message*.
 
 ## 7. Maintenance
 

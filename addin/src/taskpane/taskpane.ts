@@ -73,6 +73,10 @@ const tabSend = $<HTMLButtonElement>("tab-send");
 const tabShares = $<HTMLButtonElement>("tab-shares");
 const panelSend = $<HTMLDivElement>("panel-send");
 const panelShares = $<HTMLDivElement>("panel-shares");
+const tabList = $<HTMLDivElement>("tabs");
+const mailSection = $<HTMLElement>("mail-section");
+const mailShares = $<HTMLDivElement>("mail-shares");
+const mailNone = $<HTMLParagraphElement>("mail-none");
 const sharesList = $<HTMLDivElement>("shares");
 const noShares = $<HTMLParagraphElement>("no-shares");
 const refreshSharesButton = $<HTMLButtonElement>("refresh-shares");
@@ -82,6 +86,12 @@ const submitButton = $<HTMLButtonElement>("submit");
 const progress = $<HTMLDivElement>("progress");
 const progressBar = $<HTMLDivElement>("progress-bar");
 const statusBar = $<HTMLDivElement>("status");
+
+/**
+ * Opened from a mail being read (manifest: taskpane.html?view=read, e.g. in "Sent Items"): only "Meine Freigaben",
+ * with the links found in that mail on top. Nothing is inserted or changed in the mail.
+ */
+const readMode = new URLSearchParams(location.search).get("view") === "read";
 
 let serverConfig: ServerConfig;
 /** MAIL_FOOTER with the placeholders filled from the sender's profile (see footer.ts). */
@@ -185,6 +195,8 @@ function showConnection(status: ConnectionStatus) {
   connectHint.hidden = true;
   accountText.textContent = `${status.loginName ?? ""}${storageText(status)}`;
   applyPasswordPolicy(status.passwordEnforced === true);
+  // Reading a mail: the list is all there is – load it as soon as the connection is there (also right after connecting).
+  if (readMode && status.connected) loadShares().catch((err) => setStatus(errorMessage(err), "error"));
 }
 
 /** Hides "Ohne Kennwort" when Nextcloud enforces link passwords (it would refuse such a link). */
@@ -429,7 +441,7 @@ let dragDepth = 0;
 dropZone.addEventListener("dragenter", (event) => {
   if (!hasFiles(event)) return;
   event.preventDefault();
-  // Files dragged in while "Vertraulich" or "Anfordern" is shown: show the file list and its drop box.
+  // Files dragged in while "Nachricht" or "Anfordern" is shown: show the file list and its drop box.
   if (selectedKind() !== "files") selectKind("files");
   dragDepth++;
   dropZone.classList.add("dropping");
@@ -858,7 +870,7 @@ function setPasswordMode(mode: "random" | "own" | "none") {
   renderValidity();
 }
 
-/** The mail already has links without password: a confidential text or upload link cannot join it. */
+/** The mail already has links without password: a confidential message or upload link cannot join it. */
 const blockedByNoPassword = () => selectedKind() !== "files" && modeNone.checked && modeNone.disabled;
 
 /** The line below the password: what happens with it in this mail. */
@@ -1050,7 +1062,7 @@ generateButton.addEventListener("click", () => {
   passwordInput.value = generatePassword();
 });
 
-// --- What to insert: "Dateien" / "Vertraulich" / "Anfordern" ------------------------------------------------------
+// --- What to insert: "Dateien" / "Nachricht" / "Anfordern" ------------------------------------------------------
 // One kind at a time and one button in the footer that says what it inserts. Password, password channel and validity
 // below apply to all three (every click is one step with its own password, see shareSettingsBody).
 
@@ -1068,7 +1080,7 @@ function selectKind(kind: Kind) {
 for (const radio of kindRadios) radio.addEventListener("change", () => renderKind());
 
 /**
- * Shows the part of the chosen kind. "Ohne Kennwort" exists only for files – a confidential text or an upload link
+ * Shows the part of the chosen kind. "Ohne Kennwort" exists only for files – a confidential message or an upload link
  * always needs a password, so the option is not offered there (instead of an error after the click).
  */
 function renderKind() {
@@ -1086,7 +1098,7 @@ function renderKind() {
   renderSubmit();
 }
 
-/** The footer button names what it inserts ("2 Dateien als Link einfügen", "Vertraulichen Text einfügen", …). */
+/** The footer button names what it inserts ("2 Dateien als Link einfügen", "Vertrauliche Nachricht einfügen", …). */
 function renderSubmit() {
   const kind = selectedKind();
   if (kind === "message") {
@@ -1253,7 +1265,7 @@ async function insertRequest() {
   });
 }
 
-// --- Confidential text ("Vertraulich") -----------------------------------------------------
+// --- Confidential message ("Nachricht") -----------------------------------------------------
 // A text instead of a file: the server stores it as a password-protected Vaultwarden Send; the mail gets a card with
 // the link, the password goes out like for files.
 
@@ -1448,6 +1460,7 @@ function shareRow(share: ShareItem): HTMLElement {
 
   // A new link for this mail with the settings of the "Senden" tab – the original password cannot be recovered.
   const insert = row.querySelector<HTMLButtonElement>(".insert")!;
+  insert.hidden = readMode; // a mail being read cannot take a link
   insert.addEventListener("click", () => {
     linkAgain(share, insert).catch(() => undefined);
   });
@@ -1488,7 +1501,7 @@ function shareRow(share: ShareItem): HTMLElement {
               ? t("shares.fateScheduled", { count: result.deleteAfterDays ?? 0 })
               : t("shares.fateKept");
       setStatus(t("shares.revoked", { name: share.name, fate }), "success");
-      noShares.hidden = sharesList.childElementCount > 0;
+      renderEmptyLists();
     } catch (err) {
       revoke.disabled = false;
       setStatus(t("shares.revokeFailed", { error: errorMessage(err) }), "error");
@@ -1566,10 +1579,55 @@ async function loadShares() {
   refreshSharesButton.disabled = true;
   try {
     const shares = await api<ShareItem[]>("/api/shares", {}, await getToken());
-    sharesList.replaceChildren(...shares.map(shareRow));
-    noShares.hidden = shares.length > 0;
+    if (readMode) {
+      // The links of the mail being read on top, the others below.
+      const tokens = await mailTokens();
+      const inMail = (share: ShareItem) => tokens.has(shareToken(share.url));
+      mailShares.replaceChildren(...shares.filter(inMail).map(shareRow));
+      sharesList.replaceChildren(...shares.filter((share) => !inMail(share)).map(shareRow));
+    } else {
+      sharesList.replaceChildren(...shares.map(shareRow));
+    }
+    renderEmptyLists();
   } finally {
     refreshSharesButton.disabled = false;
+  }
+}
+
+/** "Noch keine Freigaben" / "keine Links in dieser Nachricht" when a list is (or became) empty. */
+function renderEmptyLists() {
+  noShares.hidden = sharesList.childElementCount > 0 || mailShares.childElementCount > 0;
+  mailNone.hidden = mailShares.childElementCount > 0;
+}
+
+/**
+ * Share tokens of the links in the mail being read – Nextcloud links end in /s/<token>. Only the user's own shares
+ * are matched against them, so other links in the mail do no harm.
+ */
+async function mailTokens(): Promise<Set<string>> {
+  const item = Office.context.mailbox.item as Office.MessageRead | null | undefined;
+  if (!item) return new Set(); // pinned pane, no mail selected
+  const html = await officeAsync<string>((cb) => item.body.getAsync(Office.CoercionType.Html, cb)).catch(() => "");
+  return new Set(Array.from(html.matchAll(/\/s\/([A-Za-z0-9]+)/g), (match) => match[1]));
+}
+
+/** Read mode: no "Senden" tab, only the shares; follows the selected mail while the pane is pinned. */
+async function startReadView() {
+  tabList.hidden = true;
+  panelSend.hidden = true;
+  panelShares.hidden = false;
+  mailSection.hidden = false;
+  try {
+    Office.context.mailbox.addHandlerAsync(Office.EventType.ItemChanged, () => {
+      loadShares().catch((err) => setStatus(errorMessage(err), "error"));
+    });
+  } catch {
+    // Pinning is not available in every Outlook version – the pane then closes with the mail anyway.
+  }
+  try {
+    await refreshConnection(); // loads the shares once connected (showConnection)
+  } catch (err) {
+    setStatus(t("signInFailed", { error: errorMessage(err) }), "error");
   }
 }
 
@@ -1598,6 +1656,7 @@ Office.onReady(async () => {
     setStatus(t("unreachable", { url: API_BASE }), "error");
     return;
   }
+  if (readMode) return startReadView();
   footerReady = resolveFooter().catch(() => undefined); // in the background – needed when a link is inserted
 
   const state = await readDraftState();

@@ -100,7 +100,7 @@ body {
 .section-title { font-size: 14px; line-height: 20px; font-weight: 600; margin: 20px 0 8px; }
 .section-title:first-child { margin-top: 4px; }
 label.section-title { display: block; }
-/* First heading of the chosen kind (Dateien / Vertraulich / Anfordern), right below the switch. */
+/* First heading of the chosen kind (Dateien / Nachricht / Anfordern), right below the switch. */
 section > .section-title:first-child { margin-top: 16px; }
 .body2 { margin: 0; color: var(--fg2); }
 .caption, .hint { font-size: 12px; line-height: 16px; color: var(--fg3); margin: 4px 0 0; }
@@ -391,7 +391,7 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .btn-danger { color: var(--danger-fg); }
 .btn-danger.confirm { background: var(--danger-bg); border-color: var(--danger-stroke); }
 
-/* --- Kind switch (Dateien / Vertraulich / Anfordern) ------------------------------------- */
+/* --- Kind switch (Dateien / Nachricht / Anfordern) ------------------------------------- */
 .segmented {
   display: flex; gap: 2px; padding: 2px; margin: 4px 0 0;
   border: 1px solid var(--stroke1); border-radius: 6px; background: var(--bg1);

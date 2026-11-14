@@ -61,7 +61,7 @@ ask_secret BW_CLIENTSECRET       "API key client_secret"
 ask_secret BW_PASSWORD           "Master password"
 ask SEND_MAX_ACCESS_COUNT "Password link: accesses (default)" "3"
 ask SEND_MAX_ACCESS_LIMIT "Password link: accesses (maximum)" "20"
-ask SEND_EXPIRE_DAYS      "Password link / confidential text: valid, default (days, max. 30)" "5"
+ask SEND_EXPIRE_DAYS      "Password link / confidential message: valid, default (days, max. 30)" "5"
 
 for var in PUBLIC_BASE_URL ENTRA_TENANT_ID ENTRA_CLIENT_ID NEXTCLOUD_URL VAULTWARDEN_URL BW_CLIENTID; do
   [ -n "${!var}" ] || { echo "$var must not be empty." >&2; exit 1; }

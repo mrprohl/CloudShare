@@ -53,6 +53,7 @@ describe("language files", () => {
     expect(file.addin["notify.action"].length).toBeLessThanOrEqual(30); // info bar action
     expect(file.manifest.group.length).toBeLessThanOrEqual(125); // ShortString
     expect(file.manifest.tooltip.length).toBeLessThanOrEqual(250); // LongString
+    expect(file.manifest.readTooltip.length).toBeLessThanOrEqual(250);
     expect(file.manifest.description.length).toBeLessThanOrEqual(250);
   });
 

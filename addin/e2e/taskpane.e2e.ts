@@ -42,6 +42,8 @@ interface Scenario {
   passwordEnforced?: boolean;
   /** Pane with the English texts (served below /en/ by serve.mjs) – for the README pictures. */
   lang?: "en";
+  /** Opened from a mail being read (taskpane.html?view=read) with this HTML body. */
+  readBody?: string;
 }
 
 interface ApiCall { method: string; path: string; body: Buffer | null }
@@ -66,7 +68,7 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
   await page.addInitScript((cfg) => {
     (window as unknown as { __officeConfig: unknown }).__officeConfig = cfg;
   }, { attachments: scenario.attachments ?? [], theme: scenario.theme, bodyType: scenario.bodyType, tokenError: scenario.tokenError,
-    cursorOutsideBody: scenario.cursorOutsideBody, bodyRejectsInsert: scenario.bodyRejectsInsert });
+    cursorOutsideBody: scenario.cursorOutsideBody, bodyRejectsInsert: scenario.bodyRejectsInsert, readBody: scenario.readBody });
   await page.route("https://appsforoffice.microsoft.com/**", (route) =>
     route.fulfill({ contentType: "text/javascript", body: officeMock }),
   );
@@ -133,7 +135,8 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     return json({ error: `not mocked: ${route_}` }, 404);
   });
 
-  await page.goto(scenario.lang ? `/${scenario.lang}/taskpane.html` : "/taskpane.html");
+  const view = scenario.readBody === undefined ? "" : "?view=read";
+  await page.goto(scenario.lang ? `/${scenario.lang}/taskpane.html${view}` : `/taskpane.html${view}`);
   return calls;
 }
 
@@ -159,7 +162,7 @@ async function expectNoHorizontalScroll(page: Page) {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
-/** "Dateien" / "Vertraulich" / "Anfordern" – click the visible segment like a user (the radio is styled away). */
+/** "Dateien" / "Nachricht" / "Anfordern" – click the visible segment like a user (the radio is styled away). */
 const chooseKind = (page: Page, kind: "files" | "message" | "request") => page.click(`label:has(#kind-${kind})`);
 
 /** Opens the collapsed "Gültigkeit" section (lifetimes, accesses). */
@@ -561,7 +564,7 @@ test("files dragged from Explorer onto the pane are added (no file dialog needed
     transfer.items.add(new File(["B".repeat(3000)], "Fotos.zip", { type: "application/zip" }));
     return transfer;
   });
-  // Dragged in while "Vertraulich" is shown: the pane switches to "Dateien" so the drop box is there.
+  // Dragged in while "Nachricht" is shown: the pane switches to "Dateien" so the drop box is there.
   await chooseKind(page, "message");
   await expect(zone).toBeHidden();
   await page.dispatchEvent("#panel-send", "dragenter", { dataTransfer });
@@ -672,7 +675,7 @@ test("Ohne Kennwort: plain link, no password mail, upload links stay protected",
   await expect(page.locator("#password-hint")).toContainText("Links zum Hochladen brauchen ein Kennwort");
   await expect(page.locator("#submit")).toBeDisabled();
   await chooseKind(page, "message");
-  await expect(page.locator("#password-hint")).toContainText("Ein vertraulicher Text braucht ein Kennwort");
+  await expect(page.locator("#password-hint")).toContainText("Eine vertrauliche Nachricht braucht ein Kennwort");
   await expect(page.locator("#submit")).toBeDisabled();
   expect(calls.some((c) => c.path === "/api/requests" || c.path === "/api/messages")).toBe(false);
   await expectAccessible(page);
@@ -681,7 +684,7 @@ test("Ohne Kennwort: plain link, no password mail, upload links stay protected",
   await expect(page.locator("#submit")).toBeEnabled();
 });
 
-test("Vertraulich / Anfordern: 'Ohne Kennwort' is not offered – a choice made for files becomes a random password", async ({ page }) => {
+test("Nachricht / Anfordern: 'Ohne Kennwort' is not offered – a choice made for files becomes a random password", async ({ page }) => {
   await openTaskpane(page);
   await page.click("label:has(#mode-none)");
   await expect(page.locator("#password-group")).toBeHidden();
@@ -718,7 +721,7 @@ test("Dateien von Empfängern erhalten inserts an upload link with the same pass
   expect((await officeLog(page)).inserted[0].data).toContain("https://cloud.example.com/s/request");
 });
 
-test("Vertraulich: inserts a card with the link, never the text, and shares the password step", async ({ page }) => {
+test("Nachricht: inserts a card with the link, never the text, and shares the password step", async ({ page }) => {
   const calls = await openTaskpane(page, {
     attachments: [attachment("a1", "Präsentation.pptx", 2.5 * MiB)],
     config: { messageMaxLength: 1000, sendExpireDays: 5, sendMaxExpireDays: 30 },
@@ -727,9 +730,9 @@ test("Vertraulich: inserts a card with the link, never the text, and shares the 
   await chooseKind(page, "message");
   await expect(page.locator("#message-section")).toBeVisible();
   await expect(page.locator("#files-section")).toBeHidden(); // one thing at a time
-  await expect(page.locator("#submit")).toHaveText("Vertraulichen Text einfügen"); // the only button
-  await expect(page.locator("#mode-none-row")).toBeHidden(); // a confidential text always has a password
-  await expect(page.locator("#validity-summary")).toHaveText("Text 5 Tage · Kennwort-Link 5 Tage, 3-mal abrufbar");
+  await expect(page.locator("#submit")).toHaveText("Vertrauliche Nachricht einfügen"); // the only button
+  await expect(page.locator("#mode-none-row")).toBeHidden(); // a confidential message always has a password
+  await expect(page.locator("#validity-summary")).toHaveText("Nachricht 5 Tage · Kennwort-Link 5 Tage, 3-mal abrufbar");
 
   const password = await page.locator("#password").inputValue();
   await page.fill("#message", "Zugang zum Portal: anna / Sommer2026");
@@ -744,7 +747,7 @@ test("Vertraulich: inserts a card with the link, never the text, and shares the 
   await expect(page.locator("#message-days")).toHaveValue("30");
   await expect(page.locator("#status")).toContainText("Höchstens 30 Tage möglich");
   await page.click("#submit");
-  await expect(page.locator("#status")).toContainText("Der Link zum vertraulichen Text wurde eingefügt.");
+  await expect(page.locator("#status")).toContainText("Der Link zur vertraulichen Nachricht wurde eingefügt.");
 
   const body = JSON.parse(calls.find((c) => c.path === "/api/messages")!.body!.toString());
   expect(body).toMatchObject({ text: "Zugang zum Portal: anna / Sommer2026", password, messageDays: 30, passwordDays: 5 });
@@ -759,7 +762,7 @@ test("Vertraulich: inserts a card with the link, never the text, and shares the 
 
   // Empty text: says so instead of inserting anything.
   await page.click("#submit");
-  await expect(page.locator("#status")).toContainText("Bitte zuerst den vertraulichen Text eingeben.");
+  await expect(page.locator("#status")).toContainText("Bitte zuerst die vertrauliche Nachricht eingeben.");
   await expect(page.locator("#message")).toBeFocused();
   expect(calls.filter((c) => c.path === "/api/messages")).toHaveLength(1);
 });
@@ -887,6 +890,52 @@ test("Meine Freigaben: Als Link einfügen creates a new link with this mail's pa
   expect(calls.some((c) => c.method === "DELETE")).toBe(false); // the old link stays
 });
 
+/** A sent mail with the cards of "Präsentation.pptx" (/s/a) and the upload link (/s/c), plus an unrelated link. */
+const SENT_MAIL = '<p>Hallo,</p><a href="https://cloud.example.com/s/a">Herunterladen</a>' +
+  '<a href="https://cloud.example.com/s/c">Dateien hochladen</a><a href="https://example.org/s/zzz">Shop</a>';
+
+test("reading a mail: its links on top, the other shares below, nothing to insert", async ({ page }) => {
+  const calls = await openTaskpane(page, { shares: SHARES, readBody: SENT_MAIL });
+  await expect(page.locator("#tabs")).toBeHidden(); // no "Senden" tab when reading
+  await expect(page.locator("#panel-send")).toBeHidden();
+  const inMail = page.locator("#mail-shares .share");
+  await expect(inMail).toHaveCount(2);
+  await expect(inMail.nth(0).locator(".share-name")).toHaveText("Präsentation.pptx");
+  await expect(inMail.nth(0).locator(".share-password")).toContainText("zugestellt um");
+  await expect(inMail.nth(1).locator(".share-name")).toHaveText("Upload-Link");
+  await expect(page.locator("#shares .share")).toHaveCount(2); // Angebot.pdf, Alt.zip
+  await expect(page.locator("#mail-none")).toBeHidden();
+  await expect(page.locator(".share .insert").first()).toBeHidden(); // a mail being read cannot take a link
+  await expectAccessible(page);
+  await expectNoHorizontalScroll(page);
+  await shot(page, "read-view");
+  expect(calls.filter((c) => c.path === "/api/shares")).toHaveLength(1);
+
+  // Pinned pane, the user selects another mail without CloudShare links.
+  await page.evaluate(() => {
+    (window as unknown as { __officeConfig: { readBody: string } }).__officeConfig.readBody = "<p>Keine Links</p>";
+    (window as unknown as { __officeHandlers: Record<string, () => void> }).__officeHandlers.olkItemSelectedChanged();
+  });
+  await expect(page.locator("#mail-none")).toHaveText("Diese Nachricht enthält keine CloudShare-Links von Ihnen.");
+  await expect(page.locator("#mail-shares .share")).toHaveCount(0);
+  await expect(page.locator("#shares .share")).toHaveCount(4);
+
+  // Revoking works here too.
+  const revoke = page.locator("#shares .share").nth(1).locator(".revoke");
+  await revoke.click();
+  await revoke.click();
+  await expect(page.locator("#shares .share")).toHaveCount(3);
+  expect(calls.filter((c) => c.method === "DELETE").map((c) => c.path)).toEqual(["/api/shares/12"]);
+});
+
+test("reading a mail before connecting Nextcloud: connect view, then the shares", async ({ page }) => {
+  await openTaskpane(page, { connected: false, shares: SHARES, readBody: SENT_MAIL });
+  await expect(page.locator("#connect-view")).toBeVisible();
+  await page.click("#connect");
+  await expect(page.locator("#mail-shares .share")).toHaveCount(2, { timeout: 10_000 });
+  await expect(page.locator("#tabs")).toBeHidden();
+});
+
 test("Meine Freigaben: upload links are not inserted again without password", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: SHARES });
   await page.check("#mode-none");
@@ -937,12 +986,12 @@ test.describe("README pictures (English)", () => {
     await readmeShot(page, "send");
   });
 
-  test("Send: confidential text and validity", async ({ page }) => {
+  test("Send: confidential message and validity", async ({ page }) => {
     await openTaskpane(page, { lang: "en", attachments: ATTACHMENTS, config: README_CONFIG });
     await chooseKind(page, "message");
     await page.fill("#message", "Portal access: anna / Summer2026");
     await openValidity(page);
-    await expect(page.locator("#submit")).toHaveText("Insert confidential text");
+    await expect(page.locator("#submit")).toHaveText("Insert confidential message");
     await expectAccessible(page);
     await readmeShot(page, "message");
   });
@@ -961,6 +1010,13 @@ test.describe("README pictures (English)", () => {
     await expect(page.locator("#shares .share")).toHaveCount(4);
     await expect(page.locator("#shares .share").nth(1).locator(".state-text")).toHaveText("Not downloaded yet");
     await readmeShot(page, "shares");
+  });
+
+  test("Reading a sent mail", async ({ page }) => {
+    await openTaskpane(page, { lang: "en", shares: SHARES_EN, config: README_CONFIG, readBody: SENT_MAIL });
+    await expect(page.locator("#mail-shares .share")).toHaveCount(2);
+    await expect(page.locator("#mail-heading")).toHaveText("In this message");
+    await readmeShot(page, "read");
   });
 
   test("Connect", async ({ page }) => {

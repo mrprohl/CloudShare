@@ -8,7 +8,7 @@
            xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
            xsi:type="MailApp">
   <Id>8f3c2a71-5d4e-4b9a-9e2f-6c1d7a0b3e54</Id>
-  <Version>1.0.3.0</Version>
+  <Version>1.1.0.0</Version>
   <ProviderName>CloudShare</ProviderName>
   <DefaultLocale>%%LOCALE%%</DefaultLocale>
   <DisplayName DefaultValue="CloudShare"/>
@@ -28,6 +28,12 @@
     </Sets>
   </Requirements>
   <FormSettings>
+    <Form xsi:type="ItemRead">
+      <DesktopSettings>
+        <SourceLocation DefaultValue="%%PUBLIC_BASE_URL%%/taskpane.html?view=read"/>
+        <RequestedHeight>250</RequestedHeight>
+      </DesktopSettings>
+    </Form>
     <Form xsi:type="ItemEdit">
       <DesktopSettings>
         <SourceLocation DefaultValue="%%PUBLIC_BASE_URL%%/taskpane.html"/>
@@ -37,6 +43,7 @@
   <Permissions>ReadWriteItem</Permissions>
   <Rule xsi:type="RuleCollection" Mode="Or">
     <Rule xsi:type="ItemIs" ItemType="Message" FormType="Edit"/>
+    <Rule xsi:type="ItemIs" ItemType="Message" FormType="Read"/>
   </Rule>
   <DisableEntityHighlighting>false</DisableEntityHighlighting>
 
@@ -57,6 +64,31 @@
           </Runtimes>
           <DesktopFormFactor>
             <FunctionFile resid="Commands.Url"/>
+            <!-- Reading a mail (e.g. in "Sent Items"): the pane shows "My shares" with the links of that mail on top.
+                 Pinnable, so it stays open while the user moves from mail to mail. -->
+            <ExtensionPoint xsi:type="MessageReadCommandSurface">
+              <OfficeTab id="TabDefault">
+                <Group id="cloudshareReadGroup">
+                  <Label resid="Group.Label"/>
+                  <Control xsi:type="Button" id="cloudshareOpenShares">
+                    <Label resid="Button.Label"/>
+                    <Supertip>
+                      <Title resid="Button.Label"/>
+                      <Description resid="ReadButton.Tooltip"/>
+                    </Supertip>
+                    <Icon>
+                      <bt:Image size="16" resid="Icon.16"/>
+                      <bt:Image size="32" resid="Icon.32"/>
+                      <bt:Image size="80" resid="Icon.80"/>
+                    </Icon>
+                    <Action xsi:type="ShowTaskpane">
+                      <SourceLocation resid="TaskpaneRead.Url"/>
+                      <SupportsPinning>true</SupportsPinning>
+                    </Action>
+                  </Control>
+                </Group>
+              </OfficeTab>
+            </ExtensionPoint>
             <ExtensionPoint xsi:type="MessageComposeCommandSurface">
               <OfficeTab id="TabDefault">
                 <Group id="cloudshareComposeGroup">
@@ -100,6 +132,7 @@
         <bt:Urls>
           <bt:Url id="Commands.Url" DefaultValue="%%PUBLIC_BASE_URL%%/commands.html"/>
           <bt:Url id="Taskpane.Url" DefaultValue="%%PUBLIC_BASE_URL%%/taskpane.html"/>
+          <bt:Url id="TaskpaneRead.Url" DefaultValue="%%PUBLIC_BASE_URL%%/taskpane.html?view=read"/>
           <bt:Url id="WebViewRuntime.Url" DefaultValue="%%PUBLIC_BASE_URL%%/commands.html"/>
           <bt:Url id="JSRuntime.Url" DefaultValue="%%PUBLIC_BASE_URL%%/commands.js"/>
         </bt:Urls>
@@ -109,6 +142,7 @@
         </bt:ShortStrings>
         <bt:LongStrings>
           <bt:String id="Button.Tooltip" DefaultValue="%%t:manifest.tooltip%%"/>
+          <bt:String id="ReadButton.Tooltip" DefaultValue="%%t:manifest.readTooltip%%"/>
         </bt:LongStrings>
       </Resources>
       <WebApplicationInfo>
