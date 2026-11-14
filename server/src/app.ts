@@ -2,7 +2,7 @@ import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
 import Fastify, { type FastifyRequest } from "fastify";
 import { decodeJwt } from "jose";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
@@ -21,6 +21,8 @@ import {
   getJob,
   setJobMaxAccess,
   setJobPasswordTo,
+  setJobSender,
+  type StepShare,
 } from "./jobs.js";
 import {
   NextcloudClient,
@@ -31,6 +33,8 @@ import {
   type PublicShare,
 } from "./nextcloud.js";
 import { expireOnRevoke, registerForCleanup } from "./cleanup.js";
+import { deliveryFor, updateSmsStatus } from "./deliveries.js";
+import { mapReportStatus, maskPhone, normalizePhone, parseDeliveryReport, smsEnabled } from "./sms.js";
 import { clampInt, isEmailAddress } from "./limits.js";
 import { passwordProblem } from "./password.js";
 import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } from "./store.js";
@@ -94,6 +98,8 @@ async function attachToJob(
   password: string,
   maxAccess: number,
   requestedStep: unknown,
+  /** The link just created (token, file name, expiry) – for "Meine Freigaben" and download confirmations. */
+  share?: StepShare,
 ) {
   const step = typeof requestedStep === "string" && /^[A-Za-z0-9-]{1,40}$/.test(requestedStep) ? requestedStep : undefined;
   const id = typeof requestedJobId === "string" ? requestedJobId : undefined;
@@ -105,7 +111,7 @@ async function attachToJob(
       return id;
     }
     if (step && findPart(id, step)) {
-      await addFileToPart(id, step, itemName);
+      await addFileToPart(id, step, itemName, share);
       return id;
     }
     const send = await createPasswordSend(`CloudShare: ${itemName}`, password, maxAccess);
@@ -115,6 +121,7 @@ async function attachToJob(
       sendUrl: send.url,
       sendId: send.id,
       maxAccessCount: maxAccess,
+      shares: share ? [share] : undefined,
     });
     return id;
   }
@@ -126,10 +133,24 @@ async function attachToJob(
       sendUrl: send.url,
       sendId: send.id,
       maxAccessCount: maxAccess,
+      shares: share ? [share] : undefined,
     });
   }
   return createJob(user.oid, user.upn, itemName, send.url, maxAccess, send.id);
 }
+
+/** How the password of a link went out, for "Meine Freigaben" (null before sending or for older links). */
+function passwordDelivery(url: string, owner: string) {
+  const d = deliveryFor(url.replace(/\/+$/, "").split("/").pop() ?? "", owner);
+  return d ? { channel: d.channel, to: d.to, status: d.status ?? null, at: d.at, deliveredAt: d.deliveredAt ?? null } : null;
+}
+
+/** Token (last URL segment), name and expiry of a link just created. */
+const shareInfo = (url: string, name: string, expireDate: string): StepShare => ({
+  token: url.replace(/\/+$/, "").split("/").pop() ?? "",
+  name,
+  expireDate,
+});
 
 const formatBytes = (bytes: number) =>
   bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`;
@@ -184,6 +205,11 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     (_req, body, done) => done(null, body),
   );
 
+  // Form-encoded bodies (classic seven.io delivery report callback) – Fastify only parses JSON by default.
+  app.addContentTypeParser("application/x-www-form-urlencoded", { parseAs: "string" }, (_req, body, done) => {
+    done(null, Object.fromEntries(new URLSearchParams(String(body))));
+  });
+
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof HttpError) return reply.status(err.status).send({ error: err.message, code: err.code });
     req.log.error(err);
@@ -216,6 +242,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     sendMaxAccessLimit: config.sendMaxAccessLimit,
     mailFooter: config.mailFooter,
     trace: config.clientTrace,
+    smsEnabled: smsEnabled(),
+    smsDefaultCountry: config.smsDefaultCountry,
   }));
 
   /**
@@ -243,6 +271,28 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         },
         "Smart Alert trace",
       );
+      return { ok: true };
+    },
+  });
+
+  /**
+   * Delivery reports of seven.io (set as callback URL in the seven.io dashboard:
+   * https://<host>/webhooks/seven?token=<SEVEN_WEBHOOK_SECRET>). No login – secured by the secret, compared in
+   * constant time. Idempotent: the same report twice changes nothing. Webhook format and classic callback accepted.
+   */
+  app.route<{ Querystring: Record<string, unknown>; Body: unknown }>({
+    method: ["GET", "POST"],
+    url: "/webhooks/seven",
+    handler: async (req, reply) => {
+      const expected = Buffer.from(config.sevenWebhookSecret);
+      const given = Buffer.from(typeof req.query.token === "string" ? req.query.token : "");
+      if (!expected.length || expected.length !== given.length || !timingSafeEqual(expected, given)) {
+        return reply.status(404).send({ error: "Not Found" });
+      }
+      const report = parseDeliveryReport(req.body, req.query);
+      if (!report) return { ok: true, ignored: true }; // other events (e.g. inbound SMS) are not used
+      const known = await updateSmsStatus(report.messageId, mapReportStatus(report.status));
+      req.log.info({ messageId: report.messageId, status: report.status, known }, "SMS delivery report");
       return { ok: true };
     },
   });
@@ -398,7 +448,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
 
       const shareUrl = await nc.createPublicShare(upload.target, noPassword ? undefined : password, expireDate);
       await registerForCleanup(user.oid, upload.target, expireDate);
-      const jobId = noPassword ? null : await attachToJob(user, req.body?.jobId, upload.fileName, password, maxAccess, req.body?.step);
+      const jobId = noPassword ? null : await attachToJob(user, req.body?.jobId, upload.fileName, password, maxAccess, req.body?.step,
+        shareInfo(shareUrl, upload.fileName, expireDate));
       req.log.info({ user: user.upn, file: upload.fileName, noPassword }, "Share created");
       return { shareUrl, expireDate, jobId, fileName: upload.fileName, size: upload.size };
     },
@@ -419,7 +470,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     await nc.ensureFolder(uid, folder);
     // Create-only share ("file drop"): recipients can upload but cannot see or download anything.
     const shareUrl = await nc.createPublicShare(folder, password, expireDate, 4, "Dateianforderung");
-    const jobId = await attachToJob(user, req.body?.jobId, UPLOAD_LINK_ITEM, password, maxAccess, req.body?.step);
+    const jobId = await attachToJob(user, req.body?.jobId, UPLOAD_LINK_ITEM, password, maxAccess, req.body?.step,
+      shareInfo(shareUrl, UPLOAD_LINK_ITEM, expireDate));
     req.log.info({ user: user.upn, folder: folder.join("/") }, "Upload link created");
     return { shareUrl, expireDate, jobId };
   });
@@ -457,6 +509,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
           sharedAt: s.sharedAt,
           expiration: s.expiration,
           protected: s.hasPassword,
+          // How the password went out (after sending): channel, masked recipient, SMS delivery status.
+          password: passwordDelivery(s.url, user.oid),
           downloads: request ? null : await nc.publicDownloads(s.fileId).catch(() => null),
           received: request ? await nc.countFiles(uid, segments).catch(() => null) : null,
         };
@@ -519,7 +573,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       if (!request) await registerForCleanup(user.oid, segments, expireDate);
       const jobId = noPassword
         ? null
-        : await attachToJob(user, req.body?.jobId, request ? UPLOAD_LINK_ITEM : fileName, password, maxAccess, req.body?.step);
+        : await attachToJob(user, req.body?.jobId, request ? UPLOAD_LINK_ITEM : fileName, password, maxAccess, req.body?.step,
+            shareInfo(shareUrl, request ? UPLOAD_LINK_ITEM : fileName, expireDate));
       req.log.info({ user: user.upn, path: share.path, noPassword }, "Share linked again");
       return { kind: request ? "request" : "file", shareUrl, expireDate, jobId, fileName, size: share.size };
     },
@@ -529,8 +584,9 @@ export async function buildApp(options: { logger?: boolean } = {}) {
    * Changes a mail's password job until the password mail went out:
    *   maxAccess  – "Kennwort abrufbar": updates the Send (only jobs that know their Send, created by this version on)
    *   passwordTo – "Kennwort an andere Adresse": the password mail goes only to this address; "" = the recipients
+   *   passwordSms – "Kennwort per SMS": the password goes by SMS to this number instead; "" = no SMS
    */
-  app.patch<{ Params: { id: string }; Body: { maxAccess?: unknown; passwordTo?: unknown } }>(
+  app.patch<{ Params: { id: string }; Body: { maxAccess?: unknown; passwordTo?: unknown; passwordSms?: unknown } }>(
     "/api/jobs/:id",
     async (req) => {
       const user = await authenticate(req);
@@ -539,8 +595,14 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       if (job.dispatched) throw new HttpError(409, "Das Kennwort wurde bereits verschickt.");
       const body = req.body ?? {};
 
-      if (body.passwordTo !== undefined) {
-        const passwordTo = typeof body.passwordTo === "string" ? body.passwordTo.trim() : null;
+      if (body.passwordSms !== undefined && body.passwordSms !== "") {
+        const number = typeof body.passwordSms === "string" ? normalizePhone(body.passwordSms) : null;
+        if (!smsEnabled()) throw new HttpError(409, "Der SMS-Versand ist nicht eingerichtet.");
+        if (!number) throw new HttpError(400, "Bitte eine gültige Mobilnummer für das Kennwort angeben, z. B. 0170 1234567.");
+        await setJobPasswordTo(req.params.id, undefined, number);
+        req.log.info({ user: user.upn, jobId: req.params.id, sms: maskPhone(number) }, "Password channel: SMS");
+      } else if (body.passwordTo !== undefined || body.passwordSms === "") {
+        const passwordTo = typeof body.passwordTo === "string" ? body.passwordTo.trim() : body.passwordTo === undefined ? "" : null;
         if (passwordTo === null || (passwordTo !== "" && !isEmailAddress(passwordTo))) {
           throw new HttpError(400, "Bitte eine gültige E-Mail-Adresse für das Kennwort angeben.");
         }
@@ -557,7 +619,11 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         await setJobMaxAccess(req.params.id, maxAccess);
         req.log.info({ user: user.upn, jobId: req.params.id, maxAccess }, "Password-link accesses changed");
       }
-      return { maxAccess: job.maxAccessCount, passwordTo: job.passwordTo ?? "" };
+      return {
+        maxAccess: job.maxAccessCount,
+        passwordTo: job.passwordTo ?? "",
+        passwordSms: job.passwordSms ? maskPhone(job.passwordSms) : "",
+      };
     },
   );
 
@@ -565,7 +631,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
    * Called by the Smart Alert when the user presses "Send". Nothing is sent here: the job is armed and the watcher
    * (jobs.ts) sends the password mail once the tagged mail shows up in the user's "Sent Items".
    */
-  app.post<{ Params: { id: string }; Body: { from?: unknown; passwordTo?: unknown } }>("/api/jobs/:id/arm", async (req) => {
+  app.post<{ Params: { id: string }; Body: { from?: unknown; passwordTo?: unknown; passwordSms?: unknown } }>("/api/jobs/:id/arm", async (req) => {
     const user = await authenticate(req);
     const job = getJob(req.params.id);
     if (!job || job.owner !== user.oid) throw new HttpError(404, "Auftrag nicht gefunden");
@@ -577,9 +643,19 @@ export async function buildApp(options: { logger?: boolean } = {}) {
 
     // "Kennwort an andere Adresse" from the draft – normally already set by the taskpane, ignored if not valid.
     const passwordTo = req.body?.passwordTo;
-    if (typeof passwordTo === "string" && isEmailAddress(passwordTo.trim())) {
+    const passwordSms = typeof req.body?.passwordSms === "string" ? normalizePhone(req.body.passwordSms) : null;
+    if (passwordSms && smsEnabled()) {
+      await setJobPasswordTo(req.params.id, undefined, passwordSms);
+    } else if (typeof passwordTo === "string" && isEmailAddress(passwordTo.trim())) {
       await setJobPasswordTo(req.params.id, passwordTo.trim());
     }
+
+    // Name and department of the sender for the templates (SMS text, password mail, download confirmation). Optional:
+    // without them the default template is used.
+    await onBehalfOf(user, GRAPH_PROFILE_SCOPES)
+      .then(({ token }) => fetchProfile(token))
+      .then((profile) => setJobSender(req.params.id, profile.displayName, profile.department))
+      .catch((err) => req.log.warn({ err, user: user.upn }, "Profile for templates not readable"));
 
     const { token, expiresAt } = await onBehalfOf(user, GRAPH_SCOPES);
     await armJob(req.params.id, { graphToken: token, tokenExpiresAt: expiresAt, armedAt: Date.now(), mailbox });

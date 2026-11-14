@@ -5,11 +5,26 @@ vi.mock("../src/graph.js", () => ({
   findSentMessage: vi.fn(),
   sendMail: vi.fn(),
 }));
+// SMS channel: the password comes from the Vaultwarden Send, the SMS goes to seven.io – both replaced.
+vi.mock("../src/vaultwarden.js", () => ({
+  readSendPassword: vi.fn(async () => "KateGeteFi45"),
+  deleteSend: vi.fn(async () => undefined),
+}));
+vi.mock("../src/sms.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../src/sms.js")>()),
+  sendSms: vi.fn(async () => "77000001"),
+}));
 
 const graph = await import("../src/graph.js");
 const { addFileToJob, addFileToPart, addSeparatePart, armJob, checkJobs, createJob, createSeparateJob, getJob, setJobPasswordTo } =
   await import("../src/jobs.js");
 const { quietLog } = await import("./helpers.js");
+const vaultwarden = await import("../src/vaultwarden.js");
+const sms = await import("../src/sms.js");
+const { deliveryFor } = await import("../src/deliveries.js");
+const { pendingNotices } = await import("../src/notices.js");
+const sendSms = vi.mocked(sms.sendSms);
+const deleteSend = vi.mocked(vaultwarden.deleteSend);
 
 const findSentMessage = vi.mocked(graph.findSentMessage);
 const sendMail = vi.mocked(graph.sendMail);
@@ -34,6 +49,8 @@ const sentOnlyFor = (jobId: string, message = sentMessage, mailbox?: string) =>
 beforeEach(() => {
   findSentMessage.mockReset().mockResolvedValue(null);
   sendMail.mockReset().mockResolvedValue(undefined);
+  sendSms.mockReset().mockResolvedValue("77000001");
+  deleteSend.mockClear();
 });
 
 describe("password jobs", () => {
@@ -216,3 +233,67 @@ describe("password jobs", () => {
   });
 });
 
+
+describe("password by SMS, deliveries and download notices", () => {
+  const share = (token: string, name: string) => ({ token, name, expireDate: "2099-12-01" });
+  const smsJob = async (token: string) => {
+    const id = await createSeparateJob("oid", "max@example.test", {
+      step: "s1", fileNames: ["a.pdf"], sendUrl: "https://vault/#/send/a", sendId: "send-a", maxAccessCount: 3,
+      shares: [share(token, "a.pdf")],
+    });
+    await setJobPasswordTo(id, undefined, "+491701234567");
+    return id;
+  };
+
+  it("sends the password of a step by SMS instead of a mail and deletes the Send", async () => {
+    const id = await smsJob("tok-sms-1");
+    await arm(id);
+    sentOnlyFor(id);
+
+    await checkJobs(quietLog());
+
+    expect(sendMail).not.toHaveBeenCalled();
+    expect(sendSms).toHaveBeenCalledOnce();
+    const [to, text] = sendSms.mock.calls[0];
+    expect(to).toBe("+491701234567");
+    expect(text).toContain("KateGeteFi45"); // read from the Send right before sending
+    expect(deleteSend).toHaveBeenCalledWith("send-a");
+    expect(deliveryFor("tok-sms-1", "oid")).toMatchObject({ channel: "sms", to: "+49 170 •••• 67", messageId: "77000001", status: "submitted" });
+    expect(getJob(id)?.dispatched).toBe(true);
+  });
+
+  it("sends the password mail to the sender when the SMS fails – never silently to the recipients", async () => {
+    const id = await smsJob("tok-sms-2");
+    await arm(id);
+    sentOnlyFor(id);
+    sendSms.mockRejectedValueOnce(new Error("seven.io: no credit"));
+
+    await checkJobs(quietLog());
+
+    expect(sendMail).toHaveBeenCalledOnce();
+    const [, recipients, subject] = sendMail.mock.calls[0];
+    expect(recipients).toEqual({ to: ["max@example.test"], cc: [], bcc: [] });
+    expect(subject).toMatch(/^SMS nicht versendet – Kennwort für „a\.pdf“/);
+    expect(deleteSend).not.toHaveBeenCalled(); // the sender's mail still needs the Send
+    expect(deliveryFor("tok-sms-2", "oid")).toMatchObject({ channel: "sms", status: "failed" });
+  });
+
+  it("records mail deliveries per link and registers the links for the download confirmation", async () => {
+    const id = await createSeparateJob("oid", "max@example.test", {
+      step: "s1", fileNames: ["a.pdf"], sendUrl: "https://vault/#/send/a", sendId: "send-a", maxAccessCount: 3,
+      shares: [share("tok-mail-1", "a.pdf")],
+    });
+    await addFileToPart(id, "s1", "b.png", share("tok-mail-2", "b.png"));
+    await arm(id);
+    sentOnlyFor(id);
+
+    await checkJobs(quietLog());
+
+    expect(sendMail).toHaveBeenCalledOnce();
+    expect(deliveryFor("tok-mail-2", "oid")).toMatchObject({ channel: "mail", to: "erika@example.test, chef@example.test" });
+    expect(deliveryFor("tok-mail-2", "someone-else")).toBeUndefined();
+    const notices = new Map(pendingNotices());
+    expect(notices.get("tok-mail-1")).toMatchObject({ fileName: "a.pdf", subject: "Unterlagen", notifyTo: "max@example.test" });
+    expect(notices.get("tok-mail-2")?.fileName).toBe("b.png");
+  });
+});

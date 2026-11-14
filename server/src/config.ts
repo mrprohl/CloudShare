@@ -81,6 +81,28 @@ export const config = {
   cleanupAfterDays: cleanupDays(),
 
   /**
+   * SMS channel via seven.io ("Kennwort per SMS"): off without SEVEN_API_KEY. The sender is a phone number or up to
+   * 11 alphanumeric characters; delivery reports arrive at /webhooks/seven?token=<SEVEN_WEBHOOK_SECRET>.
+   */
+  sevenApiKey: process.env.SEVEN_API_KEY ?? "",
+  sevenSender: process.env.SEVEN_SENDER ?? "CloudShare",
+  sevenWebhookSecret: process.env.SEVEN_WEBHOOK_SECRET ?? "",
+  sevenUrl: process.env.SEVEN_URL ?? "https://gateway.seven.io/api",
+  /** Country code for numbers entered without one (e.g. "0170 …" → +49 170 …). */
+  smsDefaultCountry: process.env.SMS_DEFAULT_COUNTRY ?? "49",
+  /** Upper limit of SMS per user and day (cost and abuse protection). */
+  smsMaxPerDay: number("SMS_MAX_PER_DAY", 50),
+
+  /**
+   * Mail to the sender on the first download of a link. Needs the application permission Mail.Send (client
+   * credentials) – restrict it to the CloudShare users with Exchange RBAC for applications.
+   */
+  downloadNotice: process.env.DOWNLOAD_NOTICE === "true",
+
+  /** Optional text templates (SMS, password mail, download confirmation): default → department → user. */
+  templatesFile: process.env.TEMPLATES_FILE ?? "/config/templates.json",
+
+  /**
    * Requests per minute and user (oid from the Microsoft token) or, without one, per client address. Generous on
    * purpose – a 5 GB upload is about 500 chunk requests. Expensive actions (Nextcloud login, upload links) get 1/60.
    */

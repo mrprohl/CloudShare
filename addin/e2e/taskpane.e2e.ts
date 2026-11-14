@@ -310,7 +310,7 @@ test("every 'Als Link einfügen' gets its own password; files of one click share
 test("Kennwort an eine andere E-Mail-Adresse: stored on the job once it exists", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)] });
   await expect(page.locator("#password-to")).toBeHidden();
-  await page.check("#password-to-toggle");
+  await page.check("#channel-mail");
   await expect(page.locator("#password-to-hint")).toContainText("Nur diese Adresse erhält das Kennwort");
 
   await page.fill("#password-to", "keine adresse");
@@ -328,6 +328,58 @@ test("Kennwort an eine andere E-Mail-Adresse: stored on the job once it exists",
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
   await expect.poll(() => calls.filter((c) => c.method === "PATCH").map((c) => JSON.parse(c.body!.toString())))
     .toEqual([{ passwordTo: "kollege@example.com" }]);
+});
+
+test("Kennwort per SMS: not offered without seven.io on the server", async ({ page }) => {
+  await openTaskpane(page);
+  await expect(page.locator("#channel-sms-row")).toBeHidden(); // no SMS without seven.io on the server
+});
+
+test("Kennwort per SMS: number required, normalized to E.164 and stored on the job", async ({ page }) => {
+  const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)], config: { smsEnabled: true, smsDefaultCountry: "49" } });
+  await page.check("#channel-sms");
+  await expect(page.locator("#password-sms")).toBeVisible();
+  await expect(page.locator("#password-to-hint")).toContainText("per SMS an diese Nummer");
+
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Bitte die Mobilnummer angeben");
+  await expect(page.locator("#password-sms")).toBeFocused();
+
+  await page.fill("#password-sms", "12");
+  await page.press("#password-sms", "Tab");
+  await expect(page.locator("#status")).toContainText("Bitte eine gültige Mobilnummer angeben");
+
+  await page.fill("#password-sms", "0170 / 123 45 67");
+  await page.press("#password-sms", "Tab");
+  await expect(page.locator("#password-sms")).toHaveValue("+491701234567");
+  await expect(page.locator("#status")).toContainText("per SMS an +491701234567");
+  await expectAccessible(page);
+
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
+  await expect.poll(() => calls.filter((c) => c.method === "PATCH").map((c) => JSON.parse(c.body!.toString())))
+    .toEqual([{ passwordSms: "+491701234567" }]);
+  expect(JSON.parse((await officeLog(page)).session["cloudshare-state"])).toMatchObject({ passwordSms: "+491701234567" });
+});
+
+test("Kennwort an eine andere E-Mail-Adresse chosen without an address: no link until it is there", async ({ page }) => {
+  const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)] });
+  await page.check("#channel-mail");
+
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Bitte die E-Mail-Adresse angeben, an die das Kennwort gehen soll");
+  await expect(page.locator("#password-to")).toBeFocused();
+  await expect(page.locator("#password-to")).toHaveAttribute("aria-invalid", "true");
+  await page.click("#request");
+  await expect(page.locator("#status")).toContainText("Bitte die E-Mail-Adresse angeben");
+  expect(calls.some((c) => c.path === "/api/uploads" || c.path === "/api/requests")).toBe(false); // nothing shared
+
+  // Typed and clicked right away (no "change" yet): the address still reaches the job.
+  await page.fill("#password-to", "kollege@example.com");
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
+  await expect.poll(() => calls.filter((c) => c.method === "PATCH").map((c) => JSON.parse(c.body!.toString())))
+    .toContainEqual({ passwordTo: "kollege@example.com" });
 });
 
 test("links deleted from the mail again: password options unlock, no password mail", async ({ page }) => {
@@ -580,7 +632,8 @@ test("revoked Nextcloud app password: returns to the connect view", async ({ pag
 
 const SHARES = [
   { id: "11", kind: "file", name: "Präsentation.pptx", url: "https://cloud.example.com/s/a", sharedAt: Date.parse("2026-11-10"),
-    expiration: "2099-11-24", downloads: { count: 2, last: "2026-11-11T09:30:00Z" }, received: null, protected: true },
+    expiration: "2099-11-24", downloads: { count: 2, last: "2026-11-11T09:30:00Z" }, received: null, protected: true,
+    password: { channel: "sms", to: "+49 170 •••• 67", status: "delivered", at: Date.parse("2026-11-10T10:00:00Z"), deliveredAt: Date.parse("2026-11-10T10:00:09Z") } },
   { id: "12", kind: "file", name: "Angebot.pdf", url: "https://cloud.example.com/s/b", sharedAt: Date.parse("2026-11-12"),
     expiration: "2099-11-26", downloads: { count: 0, last: null }, received: null, protected: false },
   { id: "13", kind: "request", name: "Upload-Link", url: "https://cloud.example.com/s/c", sharedAt: Date.parse("2026-11-01"),
@@ -598,8 +651,10 @@ test("Meine Freigaben: shows the state of each link and revokes after confirmati
   await expect(rows.nth(1).locator(".state-text")).toHaveText("Noch nicht heruntergeladen");
   await expect(rows.nth(2).locator(".state-text")).toHaveText("3 Dateien empfangen");
   await expect(rows.nth(3).locator(".state-text")).toHaveText("Abgelaufen");
-  await expect(rows.nth(0).locator(".share-meta")).toContainText("mit Kennwort");
-  await expect(rows.nth(1).locator(".share-meta")).toContainText("ohne Kennwort");
+  await expect(rows.nth(0).locator(".share-meta").first()).toContainText("mit Kennwort");
+  await expect(rows.nth(0).locator(".share-password")).toContainText("Kennwort per SMS an +49 170 •••• 67 – zugestellt um");
+  await expect(rows.nth(1).locator(".share-meta").first()).toContainText("ohne Kennwort");
+  await expect(rows.nth(1).locator(".share-password")).toBeHidden();
   await expectAccessible(page);
   await expectNoHorizontalScroll(page);
   await shot(page, "shares-light");

@@ -128,15 +128,29 @@
             <p class="hint" id="max-access-hint">So oft können die Empfänger den Link zum Kennwort öffnen, danach ist er gesperrt.</p>
           </div>
 
-          <div class="field" id="password-to-field">
-            <label class="checkbox">
-              <input type="checkbox" id="password-to-toggle" aria-controls="password-to" />
-              <span class="box" aria-hidden="true"></span>
-              <span>Kennwort an eine andere E-Mail-Adresse senden</span>
+          <!-- How the password goes out after sending: to the recipients (default), to another address, or by SMS. -->
+          <div class="field" id="password-to-field" role="radiogroup" aria-labelledby="channel-label">
+            <span class="label" id="channel-label">Kennwort übermitteln</span>
+            <label class="radio">
+              <input type="radio" name="password-channel" id="channel-recipients" value="recipients" checked />
+              <span class="dot" aria-hidden="true"></span>
+              <span>an die Empfänger der Nachricht</span>
             </label>
-            <input type="email" id="password-to" class="input" placeholder="name@beispiel.de" autocomplete="email"
+            <label class="radio">
+              <input type="radio" name="password-channel" id="channel-mail" value="mail" aria-controls="password-to" />
+              <span class="dot" aria-hidden="true"></span>
+              <span>an eine andere E-Mail-Adresse</span>
+            </label>
+            <label class="radio" id="channel-sms-row" hidden>
+              <input type="radio" name="password-channel" id="channel-sms" value="sms" aria-controls="password-sms" />
+              <span class="dot" aria-hidden="true"></span>
+              <span>per SMS an eine Mobilnummer</span>
+            </label>
+            <input type="email" id="password-to" class="input channel-input" placeholder="name@beispiel.de" autocomplete="email"
               spellcheck="false" aria-label="E-Mail-Adresse für das Kennwort" aria-describedby="password-to-hint" hidden />
-            <p class="hint" id="password-to-hint" hidden>Nur diese Adresse erhält das Kennwort – die Empfänger der Nachricht nicht.</p>
+            <input type="tel" id="password-sms" class="input channel-input" placeholder="0170 1234567" autocomplete="tel"
+              aria-label="Mobilnummer für das Kennwort" aria-describedby="password-to-hint" hidden />
+            <p class="hint" id="password-to-hint" hidden></p>
           </div>
 
           <h2 class="section-title">Dateien von Empfängern erhalten</h2>

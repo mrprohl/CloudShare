@@ -17,6 +17,9 @@ export interface ServerConfig {
   mailFooter: string;
   /** Diagnostics switch (CLIENT_TRACE): the send handler reports its steps to the server. */
   trace?: boolean;
+  /** SMS channel configured on the server (seven.io); country code for numbers entered without one. */
+  smsEnabled?: boolean;
+  smsDefaultCountry?: string;
 }
 
 /** Office SSO: "a previous getAccessToken call is still in progress". */
@@ -212,6 +215,8 @@ export interface DraftState {
   noPassword?: boolean;
   /** "Kennwort an andere Adresse": the password mail goes only to this address (set on the job by the taskpane). */
   passwordTo?: string;
+  /** "Kennwort per SMS": the password goes by SMS to this number (E.164) instead of a password mail. */
+  passwordSms?: string;
   /** Mail with one password per "Als Link einfügen" step (every step has its own password and password mail). */
   separate?: boolean;
   /**

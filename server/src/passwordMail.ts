@@ -5,6 +5,8 @@
  * Gmail and on phones.
  */
 
+import { renderHtml } from "./templates.js";
+
 const FONT = "'Segoe UI',-apple-system,Helvetica,Arial,sans-serif";
 const BRAND = "#0f6cbd";
 
@@ -45,6 +47,12 @@ export interface PasswordMailContent {
   subject: string;
   /** Days until the password link expires. */
   expireDays: number;
+  /**
+   * Own intro text from templates.json (mail_password_intro: greeting and text above the card); without it the
+   * built-in German text is used.
+   */
+  introTemplate?: string;
+  senderName?: string;
 }
 
 export function passwordMailHtml(mail: PasswordMailContent): string {
@@ -62,9 +70,15 @@ export function passwordMailHtml(mail: PasswordMailContent): string {
     ` benötigen Sie ein Kennwort. Sie können es über den Button abrufen:`;
   const p = (text: string) =>
     `<p style="margin:0 0 12px;font-family:${FONT};font-size:14px;line-height:20px;color:#242424;">${text}</p>`;
+  const opening = mail.introTemplate
+    ? renderHtml(
+        mail.introTemplate,
+        { subject: mail.subject, sender_name: mail.senderName ?? "", count: String(mail.fileNames.length) },
+        `margin:0 0 12px;font-family:${FONT};font-size:14px;line-height:20px;color:#242424;`,
+      )
+    : p("Guten Tag,") + p(intro);
   return (
-    p("Guten Tag,") +
-    p(intro) +
+    opening +
     `<table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" ` +
     `style="width:100%;max-width:560px;border-collapse:separate;margin:4px 0 12px;">` +
     `<tr><td style="background:#ffffff;border:1px solid #e0e0e0;border-left:4px solid ${BRAND};border-radius:6px;` +

@@ -61,6 +61,20 @@ const cca = new ConfidentialClientApplication({
   },
 });
 
+/**
+ * Token of CloudShare itself (client credentials) for Microsoft Graph – only for the download confirmation, which
+ * may happen days after the sender's last token expired. Needs the application permission Mail.Send.
+ */
+export async function appGraphToken(): Promise<string> {
+  try {
+    const result = await cca.acquireTokenByClientCredential({ scopes: ["https://graph.microsoft.com/.default"] });
+    if (!result?.accessToken) throw new Error("empty response");
+    return result.accessToken;
+  } catch (err) {
+    throw new HttpError(403, `App-Token für Microsoft Graph nicht erhältlich (Anwendungsberechtigung Mail.Send prüfen): ${(err as Error).message}`);
+  }
+}
+
 /** Exchanges the user's SSO token for a token for another API (Microsoft Graph). */
 export async function onBehalfOf(user: User, scopes: string[]): Promise<{ token: string; expiresAt: number }> {
   try {

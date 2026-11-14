@@ -15,5 +15,10 @@ Object.assign(process.env, {
   // 32 bytes, Base64 – test key only
   CREDENTIAL_KEY: Buffer.alloc(32, 7).toString("base64"),
   BW_PASSWORD: "test-master-password",
+  // SMS and download confirmation switched on, so their code paths are tested (seven.io and Graph are mocked).
+  SEVEN_API_KEY: "test-seven-key",
+  SEVEN_WEBHOOK_SECRET: "test-webhook-secret",
+  DOWNLOAD_NOTICE: "true",
+  TEMPLATES_FILE: path.join(tmpdir(), "cloudshare-no-templates.json"),
   DATA_DIR: mkdtempSync(path.join(tmpdir(), "cloudshare-test-")),
 });
