@@ -99,8 +99,13 @@ body {
 .subtitle { font-size: 16px; line-height: 22px; font-weight: 600; margin: 0; }
 .section-title { font-size: 14px; line-height: 20px; font-weight: 600; margin: 20px 0 8px; }
 .section-title:first-child { margin-top: 4px; }
+label.section-title { display: block; }
+/* First heading of the chosen kind (Dateien / Vertraulich / Anfordern), right below the switch. */
+section > .section-title:first-child { margin-top: 16px; }
 .body2 { margin: 0; color: var(--fg2); }
 .caption, .hint { font-size: 12px; line-height: 16px; color: var(--fg3); margin: 4px 0 0; }
+/* Below the password: why nothing can be inserted (mail already has links without password). */
+.hint.warning { color: var(--danger-fg); }
 a { color: var(--brand-fg); text-decoration: none; }
 a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* Links inside running text must not rely on colour alone (WCAG 1.4.1, axe link-in-text-block). */
@@ -183,12 +188,20 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .input[readonly] { background: var(--bg3); border-color: var(--stroke2); color: var(--fg2); }
 .input.mono { font-family: var(--font-mono); letter-spacing: 0.02em; }
 .input-narrow .input { flex: 0 0 88px; }
-/* Same width as the password field above it (full width minus its 32 px button and 4 px gap). */
-.channel-input { display: block; width: calc(100% - 36px); margin-top: 4px; }
+.channel-input { display: block; width: 100%; margin-top: 4px; }
+/* "Kennwort senden an": native select in the look of the inputs, own chevron (follows the theme colours). */
+.select-wrap { position: relative; }
+.select-wrap::after {
+  content: ""; position: absolute; right: 13px; top: 10px; width: 7px; height: 7px; pointer-events: none;
+  border: solid var(--fg2); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg);
+}
+.input.select { display: block; width: 100%; padding-right: 32px; appearance: none; -webkit-appearance: none; cursor: pointer; color-scheme: light; }
+:root[data-theme="dark"] .input.select { color-scheme: dark; }
+.input.select option { background: var(--bg1); color: var(--fg1); }
 .suffix { color: var(--fg2); }
 /* Confidential message: multi-line, grows by hand, same look as the inputs. */
 .input.textarea { display: block; width: 100%; height: auto; min-height: 92px; padding: 6px 10px; resize: vertical; }
-#message-count { margin: 4px 0 8px; }
+#message-count { margin: 4px 0 0; }
 #message-count.over { color: var(--danger-fg); }
 
 /* --- Checkbox ------------------------------------------------------------------ */
@@ -338,7 +351,7 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
   text-decoration: underline; text-underline-offset: 2px;
 }
 .link-button:hover { color: var(--brand-fg-hover); }
-/* Optional section opened on demand ("Vertrauliche Nachricht"): the heading is the button, the chevron turns. */
+/* Section opened on demand ("Gültigkeit"): the heading is the button, the chevron turns. */
 .disclosure {
   display: inline-flex; align-items: center; gap: 4px; margin-left: -4px; padding: 2px 4px; border: 0; border-radius: 4px;
   background: none; color: var(--fg1); font: inherit; cursor: pointer;
@@ -352,7 +365,7 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .panel.dropping .dropzone { border: 2px solid var(--brand-fg); padding: 13px 11px; background: var(--brand-tint-bg); }
 .panel.dropping .dropzone .idle, .panel.dropping .dropzone-sub { display: none; }
 .panel.dropping .dropzone .drop { display: inline; color: var(--brand-tint-fg); }
-.request-text { margin: 0 0 8px; }
+.section-text { margin: 0 0 8px; }
 
 /* --- My shares ----------------------------------------------------------------------- */
 .toolbar { display: flex; align-items: center; justify-content: space-between; margin: 0 0 8px; }
@@ -377,3 +390,31 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .share-actions .btn { height: 28px; min-width: 0; padding: 3px 8px; font-weight: 400; font-size: 13px; }
 .btn-danger { color: var(--danger-fg); }
 .btn-danger.confirm { background: var(--danger-bg); border-color: var(--danger-stroke); }
+
+/* --- Kind switch (Dateien / Vertraulich / Anfordern) ------------------------------------- */
+.segmented {
+  display: flex; gap: 2px; padding: 2px; margin: 4px 0 0;
+  border: 1px solid var(--stroke1); border-radius: 6px; background: var(--bg1);
+}
+.segment { position: relative; flex: 1 1 0; min-width: 0; }
+.segment input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.segment span {
+  display: block; padding: 5px 6px; border: 1px solid transparent; border-radius: 4px;
+  color: var(--fg2); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer;
+}
+.segment:hover span { background: var(--bg1-hover); color: var(--fg1); }
+.segment input:checked + span {
+  background: var(--brand-tint-bg); border-color: var(--brand-tint-stroke); color: var(--brand-tint-fg); font-weight: 600;
+}
+.segment input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/* --- Gültigkeit (collapsed, summary below the title) ------------------------------------- */
+.validity { margin-top: 4px; }
+.disclosure-block { display: flex; align-items: flex-start; width: calc(100% + 8px); text-align: left; padding: 4px; }
+.disclosure-block .chevron { margin-top: 0; }
+.disclosure-text { display: flex; flex-direction: column; min-width: 0; }
+.disclosure-title { font-weight: 600; }
+.disclosure-summary { font-size: 12px; line-height: 16px; color: var(--fg3); }
+.disclosure[aria-expanded="true"] .disclosure-summary { display: none; }
+.validity-section { padding: 8px 0 0 24px; }
+.validity-section .field:last-child { margin-bottom: 0; }

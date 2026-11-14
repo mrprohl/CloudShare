@@ -61,7 +61,7 @@ export const config = {
    * Folder for upload links ("Dateien anfordern"); every request gets its own subfolder. Independent of LANGUAGE on
    * purpose: "Meine Freigaben" recognises CloudShare's links by this folder.
    */
-  requestFolder: process.env.NEXTCLOUD_REQUEST_FOLDER ?? "Outlook-Dateianforderungen",
+  requestFolder: process.env.NEXTCLOUD_REQUEST_FOLDER ?? "CloudShare-Dateianforderungen",
   /** Optional line at the bottom of the card inserted into the mail, e.g. the company name. */
   mailFooter: process.env.MAIL_FOOTER ?? "",
 
@@ -71,7 +71,7 @@ export const config = {
   credentialKey: required("CREDENTIAL_KEY"),
 
   /** From this size (per attachment) CloudShare suggests sending a link. No upper limit – the Nextcloud quota applies. */
-  thresholdMb: number("ATTACHMENT_THRESHOLD_MB", 1),
+  thresholdMb: number("ATTACHMENT_THRESHOLD_MB", 5),
   /**
    * enforce: mails with attachments above the threshold can only be sent via CloudShare (no "Send anyway").
    * suggest: info bar and a prompt on send that offers "Send anyway".

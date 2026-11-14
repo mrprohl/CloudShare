@@ -82,6 +82,13 @@ replaces `%%PUBLIC_BASE_URL%%`, `%%PUBLIC_HOST%%` and `%%ENTRA_CLIENT_ID%%`; the
 
 ### 2.2 Share files ("Insert as link")
 
+The "Send" tab starts with a switch for **what** goes into the mail – **Files**, **Confidential** (a text) or
+**Request** (an upload link) – and shows only that part; the one button in the footer names what it inserts ("Insert 2
+files as links", "Insert confidential text", "Insert upload link"). Password, "Send the password to" and the collapsed
+"Validity" (one-line summary of the values for the chosen kind) apply to all three. "No password" is offered for files
+only; a mail already fixed to links without password disables the button for the other two and says why. Files
+dragged onto the pane switch it to "Files".
+
 1. The taskpane lists the mail's file attachments (those above `ATTACHMENT_THRESHOLD_MB` preselected) and files from
    the computer – dropped onto the drop zone (the whole "Send" tab accepts drops) or picked by clicking it (native dialog `window.showOpenFilePicker`, fallback: hidden `<input type="file">`).
 2. **One click = one step** with a random `step` ID. All files of the step are uploaded one by one:
@@ -97,7 +104,7 @@ replaces `%%PUBLIC_BASE_URL%%`, `%%PUBLIC_HOST%%` and `%%ENTRA_CLIENT_ID%%`; the
    token in the draft state.
 5. After the step the taskpane offers a new random password (or clears an own one) for the next step.
 
-Variants: **"Insert upload link"** (`POST /api/requests`) creates a folder in `NEXTCLOUD_REQUEST_FOLDER` with
+Variants: **"Request"** (`POST /api/requests`) creates a folder in `NEXTCLOUD_REQUEST_FOLDER` with
 a create-only link ("file drop") – same password rules, its own step. **"No password"** (`noPassword: true`, file
 links only) creates a link without password and Send; with `DOWNLOAD_NOTICE=true` it joins a job **without password**
 (`createNoticeJob`, `PasswordJob.noPassword`, the links in `noticeShares`), which the send handler arms like any job –
@@ -105,12 +112,12 @@ the watcher sends nothing and only registers the links for the download confirma
 Items". Without the confirmation there is no job (`jobId: null`). The answer always says `noPassword: true`. **"My shares → Insert"**
 (`POST /api/shares/:id/link`) creates a new link to an existing upload with a new password, as a new step.
 
-**"Confidential message"** (`POST /api/messages`): a text instead of a file. It is never written to Nextcloud or to
+**"Confidential"** (`POST /api/messages`): a text instead of a file. It is never written to Nextcloud or to
 `/data`: `createMessageSend` stores it as a Vaultwarden **text Send protected with the step's password** (Send access
 password, `hidden: false`, no access limit, deleted at expiry). The Send's link goes into the mail as a card
 ("Open message"); the step's password goes out like for files – the job item is "Confidential message", the
 password mail shows an envelope badge. Always with a password; at most 1000 characters (Bitwarden's limit for text
-Sends). Its lifetime is chosen separately ("Message valid for", `messageDays`): `SEND_EXPIRE_DAYS` (default 5) up to
+Sends). Its lifetime is chosen separately ("Text valid for", `messageDays`): `SEND_EXPIRE_DAYS` (default 5) up to
 `SEND_MAX_EXPIRE_DAYS` (at most 30 – Vaultwarden refuses deletion dates more than 31 days ahead).
 
 **"Password link valid for"** (`passwordDays`, same limits): lifetime of the step's password Send. It is created with
@@ -157,12 +164,12 @@ wins) – Nextcloud's housekeeping deletes expired shares, so the date could not
 
 ### 2.5 Password channel: recipients, another address or SMS
 
-"Deliver the password" in the taskpane decides per mail where the password goes (`DraftState.passwordTo` /
+"Send the password to" (a select) in the taskpane decides per mail where the password goes (`DraftState.passwordTo` /
 `passwordSms`, stored on the job via `PATCH /api/jobs/:id` and passed again with `/arm`):
 
-- **to the recipients of the message** (default) – the password mail to the mail's actual recipients;
-- **to another email address** – the password mail only to that address;
-- **per SMS** (only with `SEVEN_API_KEY`) – one SMS per step via seven.io (`sms.ts`), sent by the watcher after the
+- **Recipients of the message** (default) – the password mail to the mail's actual recipients;
+- **Another email address** – the password mail only to that address;
+- **Mobile number (SMS)** (only with `SEVEN_API_KEY`, otherwise not in the list) – one SMS per step via seven.io (`sms.ts`), sent by the watcher after the
   mail appeared in "Sent Items", like the password mail. The number is entered in the pane and normalised to E.164
   (`0170 …` → `+49170…`, `SMS_DEFAULT_COUNTRY`). The password exists in readable form only in the step's Vaultwarden
   Send; the watcher reads it from there right before sending (`readSendPassword`) and deletes the Send afterwards.
@@ -275,7 +282,7 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `POST /api/nextcloud/connect`, `…/connect/:id/poll`, `DELETE /api/nextcloud/connection` | Login Flow v2, disconnect |
 | `POST /api/uploads`, `PUT …/:id/chunks/:n`, `POST …/:id/complete`, `DELETE …/:id` | Chunked upload, share link |
 | `POST /api/requests` | Upload link ("Receive files from recipients") |
-| `POST /api/messages` | Confidential message: text → password-protected Vaultwarden Send, joins the mail's password job |
+| `POST /api/messages` | Confidential text: text → password-protected Vaultwarden Send, joins the mail's password job |
 | `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "My shares": list (30 days, max. 100), revoke, insert again |
 | `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send), `passwordTo` or `passwordSms` until the password went out |
 | `POST /api/jobs/:id/arm` | Arm the password mail (send handler); also reads the sender's name and department for the templates |
@@ -338,7 +345,7 @@ Alert trace". Off by default.
   15 minutes of use, and the `.Shared` permissions reach only mailboxes the user already has rights to. Only the
   optional download confirmation uses an **application** permission (`Mail.Send`) – restrict it to the CloudShare
   users ([microsoft-365.md → 5](microsoft-365.md#5-optional-application-permission-for-the-download-confirmation)), otherwise the app could send as any mailbox of the tenant.
-- **Confidential messages** pass the server only in memory; Vaultwarden stores them end-to-end encrypted in the Send
+- **Confidential texts** pass the server only in memory; Vaultwarden stores them end-to-end encrypted in the Send
   (the Bitwarden CLI encrypts before upload) and deletes them at expiry. Anyone with link and password can read them
   until then – like a file link.
 - **SMS:** the API key and the webhook secret stay on the server; the add-in never talks to seven.io. The SMS carries

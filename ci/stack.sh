@@ -40,7 +40,7 @@ run_setup() {
   "$base/setup.sh" >/dev/null <<'EOF'
 https://localhost
 de
-1
+
 enforce
 14
 90
@@ -50,7 +50,7 @@ enforce
 ci-dummy-secret
 https://cloud.example.com
 CloudShare
-Outlook-Dateianforderungen
+CloudShare-Dateianforderungen
 https://vault.example.com
 user.ci-dummy
 ci-dummy-client-secret
@@ -164,7 +164,7 @@ smoke() {
     ok "texts of LANGUAGE=de in the add-in files"
   else fail "language texts missing in the add-in files"; fi
   config=$(curl -sk https://localhost/api/config)
-  jq -e '.attachmentPolicy == "enforce" and .thresholdMb == 1 and .sendMaxAccessCount == 3' <<<"$config" >/dev/null \
+  jq -e '.attachmentPolicy == "enforce" and .thresholdMb == 5 and .sendMaxAccessCount == 3' <<<"$config" >/dev/null \
     && ok "/api/config reflects the settings" || fail "/api/config: $config"
   expect_status 401 "/api/shares without login" https://localhost/api/shares
   expect_status 401 "/api/nextcloud/status with an invalid token" -H 'Authorization: Bearer invalid' \

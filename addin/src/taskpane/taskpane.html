@@ -52,26 +52,57 @@
 
         <div id="panel-send" class="panel" role="tabpanel" aria-labelledby="tab-send">
         <div class="content">
-          <h2 class="section-title">%%t:addin.files.heading%%</h2>
-          <div id="attachments" class="list" role="group" aria-label="%%t:addin.files.attachmentsGroup%%"></div>
-          <div id="picked" class="list" role="group" aria-label="%%t:addin.files.pickedGroup%%"></div>
-          <p class="caption" id="no-attachments">%%t:addin.files.none%%</p>
-          <!-- Drop zone: files can be dragged anywhere onto the "Senden" tab; a click on the box (or its button) opens the
-               native file dialog via window.showOpenFilePicker with the file input as fallback (openFilePicker()). -->
-          <div class="dropzone" id="dropzone">
-            <svg class="dropzone-icon" viewBox="0 0 32 32" aria-hidden="true">
-              <path d="M16 21V8m0 0-5 5m5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-              <path d="M7 19v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-            </svg>
-            <span class="dropzone-title idle">%%t:addin.drop.title%%</span>
-            <span class="dropzone-title drop">%%t:addin.drop.release%%</span>
-            <span class="dropzone-sub">%%t:addin.drop.or%% <button type="button" id="add-files" class="link-button">%%t:addin.drop.pick%%</button></span>
+          <!-- What goes into the mail: one kind at a time, the button in the footer inserts it (taskpane.ts, selectKind). -->
+          <div class="segmented" role="radiogroup" aria-label="%%t:addin.kind.label%%">
+            <label class="segment">
+              <input type="radio" name="kind" id="kind-files" value="files" checked />
+              <span>%%t:addin.kind.files%%</span>
+            </label>
+            <label class="segment">
+              <input type="radio" name="kind" id="kind-message" value="message" />
+              <span>%%t:addin.kind.message%%</span>
+            </label>
+            <label class="segment">
+              <input type="radio" name="kind" id="kind-request" value="request" />
+              <span>%%t:addin.kind.request%%</span>
+            </label>
           </div>
-          <input type="file" id="file" class="file-input" multiple tabindex="-1" aria-hidden="true" />
 
-          <h2 class="section-title">%%t:addin.share.heading%%</h2>
+          <section id="files-section" aria-labelledby="files-heading">
+            <h2 class="section-title" id="files-heading">%%t:addin.files.heading%%</h2>
+            <div id="attachments" class="list" role="group" aria-label="%%t:addin.files.attachmentsGroup%%"></div>
+            <div id="picked" class="list" role="group" aria-label="%%t:addin.files.pickedGroup%%"></div>
+            <p class="caption" id="no-attachments">%%t:addin.files.none%%</p>
+            <!-- Drop zone: files can be dragged anywhere onto the "Senden" tab; a click on the box (or its button) opens the
+                 native file dialog via window.showOpenFilePicker with the file input as fallback (openFilePicker()). -->
+            <div class="dropzone" id="dropzone">
+              <svg class="dropzone-icon" viewBox="0 0 32 32" aria-hidden="true">
+                <path d="M16 21V8m0 0-5 5m5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M7 19v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+              <span class="dropzone-title idle">%%t:addin.drop.title%%</span>
+              <span class="dropzone-title drop">%%t:addin.drop.release%%</span>
+              <span class="dropzone-sub">%%t:addin.drop.or%% <button type="button" id="add-files" class="link-button">%%t:addin.drop.pick%%</button></span>
+            </div>
+            <input type="file" id="file" class="file-input" multiple tabindex="-1" aria-hidden="true" />
+          </section>
+
+          <!-- Confidential text: stored only as a password-protected Vaultwarden Send, never in the mail or Nextcloud. -->
+          <section id="message-section" hidden>
+            <label for="message" class="section-title">%%t:addin.message.heading%%</label>
+            <p class="caption section-text">%%t:addin.message.text%%</p>
+            <textarea id="message" class="input textarea" rows="5" spellcheck="true" placeholder="%%t:addin.message.placeholder%%"
+              aria-describedby="message-count"></textarea>
+            <p class="hint" id="message-count" aria-live="polite"></p>
+          </section>
+
+          <section id="request-section" aria-labelledby="request-heading" hidden>
+            <h2 class="section-title" id="request-heading">%%t:addin.request.heading%%</h2>
+            <p class="caption section-text">%%t:addin.request.text%%</p>
+          </section>
+
+          <h2 class="section-title" id="password-label">%%t:addin.password.label%%</h2>
           <div class="field" role="radiogroup" aria-labelledby="password-label">
-            <span class="label" id="password-label">%%t:addin.password.label%%</span>
             <label class="radio">
               <input type="radio" name="password-mode" id="mode-random" value="random" checked />
               <span class="dot" aria-hidden="true"></span>
@@ -82,7 +113,7 @@
               <span class="dot" aria-hidden="true"></span>
               <span>%%t:addin.password.own%%</span>
             </label>
-            <label class="radio">
+            <label class="radio" id="mode-none-row">
               <input type="radio" name="password-mode" id="mode-none" value="none" />
               <span class="dot" aria-hidden="true"></span>
               <span>%%t:addin.password.none%%</span>
@@ -110,50 +141,16 @@
             <p class="hint" id="password-hint">%%t:addin.password.hint%%</p>
           </div>
 
-          <div class="field">
-            <label for="expire" class="label">%%t:addin.expire.label%%</label>
-            <div class="input-group input-narrow">
-              <input type="number" id="expire" class="input" min="1" />
-              <span class="suffix">%%t:addin.expire.suffix%%</span>
-            </div>
-          </div>
-
-          <div class="field" id="max-access-field">
-            <label for="max-access" class="label">%%t:addin.maxAccess.label%%</label>
-            <div class="input-group input-narrow">
-              <input type="number" id="max-access" class="input" min="1" aria-describedby="max-access-hint" />
-              <span class="suffix">%%t:addin.maxAccess.suffix%%</span>
-            </div>
-            <p class="hint" id="max-access-hint">%%t:addin.maxAccess.hint%%</p>
-          </div>
-
-          <div class="field" id="password-days-field">
-            <label for="password-days" class="label">%%t:addin.passwordDays.label%%</label>
-            <div class="input-group input-narrow">
-              <input type="number" id="password-days" class="input" min="1" aria-describedby="password-days-hint" />
-              <span class="suffix">%%t:addin.expire.suffix%%</span>
-            </div>
-            <p class="hint" id="password-days-hint">%%t:addin.passwordDays.hint%%</p>
-          </div>
-
           <!-- How the password goes out after sending: to the recipients (default), to another address, or by SMS. -->
-          <div class="field" id="password-to-field" role="radiogroup" aria-labelledby="channel-label">
-            <span class="label" id="channel-label">%%t:addin.channel.label%%</span>
-            <label class="radio">
-              <input type="radio" name="password-channel" id="channel-recipients" value="recipients" checked />
-              <span class="dot" aria-hidden="true"></span>
-              <span>%%t:addin.channel.recipients%%</span>
-            </label>
-            <label class="radio">
-              <input type="radio" name="password-channel" id="channel-mail" value="mail" aria-controls="password-to" />
-              <span class="dot" aria-hidden="true"></span>
-              <span>%%t:addin.channel.mail%%</span>
-            </label>
-            <label class="radio" id="channel-sms-row" hidden>
-              <input type="radio" name="password-channel" id="channel-sms" value="sms" aria-controls="password-sms" />
-              <span class="dot" aria-hidden="true"></span>
-              <span>%%t:addin.channel.sms%%</span>
-            </label>
+          <div class="field" id="password-to-field">
+            <label for="password-channel" class="label">%%t:addin.channel.label%%</label>
+            <div class="select-wrap">
+              <select id="password-channel" class="input select">
+                <option value="recipients">%%t:addin.channel.recipients%%</option>
+                <option value="mail">%%t:addin.channel.mail%%</option>
+                <option value="sms" id="channel-sms-option">%%t:addin.channel.sms%%</option>
+              </select>
+            </div>
             <input type="email" id="password-to" class="input channel-input" placeholder="%%t:addin.channel.mailPlaceholder%%" autocomplete="email"
               spellcheck="false" aria-label="%%t:addin.channel.mailLabel%%" aria-describedby="password-to-hint" hidden />
             <input type="tel" id="password-sms" class="input channel-input" placeholder="%%t:addin.channel.smsPlaceholder%%" autocomplete="tel"
@@ -161,44 +158,52 @@
             <p class="hint" id="password-to-hint" hidden></p>
           </div>
 
-          <h2 class="section-title">%%t:addin.request.heading%%</h2>
-          <p class="caption request-text">%%t:addin.request.text%%</p>
-          <button type="button" id="request" class="btn">
-            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
-              <path d="M10 13V4m0 0L6.5 7.5M10 4l3.5 3.5M4 12v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-            %%t:addin.request.button%%
-          </button>
-
-          <!-- Confidential message (optional, collapsed): a text instead of a file, stored only as a password-protected
-               Vaultwarden Send. -->
-          <h2 class="section-title">
-            <button type="button" id="message-toggle" class="disclosure" aria-expanded="false" aria-controls="message-section">
+          <!-- Lifetimes and accesses: rarely changed, so collapsed behind a one-line summary (renderValidity). -->
+          <div class="validity">
+            <button type="button" id="validity-toggle" class="disclosure disclosure-block" aria-expanded="false" aria-controls="validity-section">
               <svg class="icon chevron" viewBox="0 0 20 20" aria-hidden="true">
                 <path d="m7.5 5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
               </svg>
-              %%t:addin.message.heading%%
+              <span class="disclosure-text">
+                <span class="disclosure-title">%%t:addin.validity.heading%%</span>
+                <span class="disclosure-summary" id="validity-summary"></span>
+              </span>
             </button>
-          </h2>
-          <div id="message-section" hidden>
-          <p class="caption request-text" id="message-text"></p>
-          <textarea id="message" class="input textarea" rows="4" spellcheck="true" placeholder="%%t:addin.message.placeholder%%"
-            aria-label="%%t:addin.message.label%%" aria-describedby="message-count"></textarea>
-          <p class="hint" id="message-count" aria-live="polite"></p>
-          <div class="field">
-            <label for="message-days" class="label">%%t:addin.message.daysLabel%%</label>
-            <div class="input-group input-narrow">
-              <input type="number" id="message-days" class="input" min="1" />
-              <span class="suffix">%%t:addin.expire.suffix%%</span>
+            <div id="validity-section" class="validity-section" hidden>
+              <div class="field" id="expire-field">
+                <label for="expire" class="label">%%t:addin.expire.label%%</label>
+                <div class="input-group input-narrow">
+                  <input type="number" id="expire" class="input" min="1" />
+                  <span class="suffix">%%t:addin.expire.suffix%%</span>
+                </div>
+              </div>
+
+              <div class="field" id="message-days-field" hidden>
+                <label for="message-days" class="label">%%t:addin.message.daysLabel%%</label>
+                <div class="input-group input-narrow">
+                  <input type="number" id="message-days" class="input" min="1" />
+                  <span class="suffix">%%t:addin.expire.suffix%%</span>
+                </div>
+              </div>
+
+              <div class="field" id="max-access-field">
+                <label for="max-access" class="label">%%t:addin.maxAccess.label%%</label>
+                <div class="input-group input-narrow">
+                  <input type="number" id="max-access" class="input" min="1" aria-describedby="max-access-hint" />
+                  <span class="suffix">%%t:addin.maxAccess.suffix%%</span>
+                </div>
+                <p class="hint" id="max-access-hint">%%t:addin.maxAccess.hint%%</p>
+              </div>
+
+              <div class="field" id="password-days-field">
+                <label for="password-days" class="label">%%t:addin.passwordDays.label%%</label>
+                <div class="input-group input-narrow">
+                  <input type="number" id="password-days" class="input" min="1" aria-describedby="password-days-hint" />
+                  <span class="suffix">%%t:addin.expire.suffix%%</span>
+                </div>
+                <p class="hint" id="password-days-hint">%%t:addin.passwordDays.hint%%</p>
+              </div>
             </div>
-          </div>
-          <button type="button" id="message-insert" class="btn">
-            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
-              <rect x="3" y="5" width="14" height="10" rx="1.5" fill="none" stroke="currentColor" stroke-width="1.5"/>
-              <path d="m3.5 6 6.5 5 6.5-5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>
-            </svg>
-            %%t:addin.message.button%%
-          </button>
           </div>
         </div>
 

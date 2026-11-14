@@ -40,6 +40,8 @@ interface Scenario {
   uploadError?: { status: number; error: string; code?: string };
   /** Nextcloud enforces passwords for public links. */
   passwordEnforced?: boolean;
+  /** Pane with the English texts (served below /en/ by serve.mjs) – for the README pictures. */
+  lang?: "en";
 }
 
 interface ApiCall { method: string; path: string; body: Buffer | null }
@@ -131,7 +133,7 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     return json({ error: `not mocked: ${route_}` }, 404);
   });
 
-  await page.goto("/taskpane.html");
+  await page.goto(scenario.lang ? `/${scenario.lang}/taskpane.html` : "/taskpane.html");
   return calls;
 }
 
@@ -157,6 +159,15 @@ async function expectNoHorizontalScroll(page: Page) {
   expect(overflow).toBeLessThanOrEqual(0);
 }
 
+/** "Dateien" / "Vertraulich" / "Anfordern" – click the visible segment like a user (the radio is styled away). */
+const chooseKind = (page: Page, kind: "files" | "message" | "request") => page.click(`label:has(#kind-${kind})`);
+
+/** Opens the collapsed "Gültigkeit" section (lifetimes, accesses). */
+async function openValidity(page: Page) {
+  await page.click("#validity-toggle");
+  await expect(page.locator("#validity-toggle")).toHaveAttribute("aria-expanded", "true");
+}
+
 const shot = async (page: Page, name: string) =>
   test.info().attach(name, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
 
@@ -172,6 +183,21 @@ async function fullShot(page: Page, name: string) {
   await page.setViewportSize({ width: size.width, height: Math.max(size.height, height) });
   await page.waitForTimeout(100); // layout after the resize
   test.info().attach(name, { body: await page.screenshot(), contentType: "image/png" });
+  await page.setViewportSize(size);
+}
+
+/**
+ * Picture for the README (attachment "readme-<name>"): exactly as tall as the pane's content – the viewport is first
+ * made small so the full-height layout collapses, then set to the content height (sticky footer at its natural place).
+ */
+async function readmeShot(page: Page, name: string) {
+  const size = page.viewportSize()!;
+  await page.setViewportSize({ width: size.width, height: 200 });
+  await page.waitForTimeout(100);
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  await page.setViewportSize({ width: size.width, height });
+  await page.waitForTimeout(100); // layout after the resize
+  test.info().attach(`readme-${name}`, { body: await page.screenshot(), contentType: "image/png" });
   await page.setViewportSize(size);
 }
 
@@ -239,6 +265,15 @@ test("preselects large attachments and proposes a random password", async ({ pag
   await expect(page.locator("#max-access")).toHaveValue("3");
   await expect(page.locator("#expire")).toHaveValue("14");
   await expect(page.locator("#account")).toHaveText("max [12,5 GB von 50 GB frei]");
+  // One button that says what it inserts; the rarely changed values collapsed behind a summary.
+  await expect(page.locator("#kind-files")).toBeChecked();
+  await expect(page.locator("#submit")).toHaveText("Datei als Link einfügen");
+  await rows.nth(1).locator(".file-name").click();
+  await expect(page.locator("#submit")).toHaveText("2 Dateien als Link einfügen");
+  await rows.nth(1).locator(".file-name").click();
+  await expect(page.locator("#validity-section")).toBeHidden();
+  await expect(page.locator("#validity-summary")).toHaveText("Link 14 Tage · Kennwort-Link 5 Tage, 3-mal abrufbar");
+  await expect(page.locator('#password-channel option[value="sms"]')).toHaveCount(1);
 
   await expectAccessible(page);
   await expectNoHorizontalScroll(page);
@@ -278,6 +313,7 @@ test("uploads a large attachment in chunks, removes it and inserts the card", as
   await shot(page, "after-upload");
 
   // "Kennwort abrufbar" applies to the next link.
+  await openValidity(page);
   await page.fill("#max-access", "7");
   await page.press("#max-access", "Tab");
   await expect(page.locator("#status")).toContainText("7-mal abrufbar (für den nächsten Link)");
@@ -287,6 +323,8 @@ test("uploads a large attachment in chunks, removes it and inserts the card", as
 test("Link gültig für / Kennwort abrufbar: capped at the maximum with a note, confirmed otherwise", async ({ page }) => {
   await openTaskpane(page);
   const status = page.locator("#status");
+  await openValidity(page);
+  await expect(page.locator("#validity-summary")).toBeHidden(); // the fields themselves are visible now
 
   await page.fill("#expire", "500");
   await page.press("#expire", "Tab");
@@ -306,12 +344,17 @@ test("Link gültig für / Kennwort abrufbar: capped at the maximum with a note, 
   await page.fill("#max-access", "1");
   await page.press("#max-access", "Tab");
   await expect(status).toHaveText("Der Link zum Kennwort ist einmal abrufbar.");
+
+  // Closed again: the summary shows the new values.
+  await page.click("#validity-toggle");
+  await expect(page.locator("#validity-summary")).toHaveText("Link 10 Tage · Kennwort-Link 5 Tage, einmal abrufbar");
 });
 
 test("every 'Als Link einfügen' gets its own password; files of one click share it", async ({ page }) => {
   const calls = await openTaskpane(page, {
     attachments: [attachment("a1", "Angebot.pdf", 1.5 * MiB), attachment("a2", "Plan.zip", 1.5 * MiB)],
   });
+  await expect(page.locator("#submit")).toHaveText("2 Dateien als Link einfügen");
   await page.click("#submit"); // click 1: both files together
   await expect(page.locator("#status")).toContainText("2 Links wurden eingefügt.");
 
@@ -332,7 +375,7 @@ test("every 'Als Link einfügen' gets its own password; files of one click share
 test("Kennwort an eine andere E-Mail-Adresse: stored on the job once it exists", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)] });
   await expect(page.locator("#password-to")).toBeHidden();
-  await page.check("#channel-mail");
+  await page.selectOption("#password-channel", "mail");
   await expect(page.locator("#password-to-hint")).toContainText("Nur diese Adresse erhält das Kennwort");
 
   await page.fill("#password-to", "keine adresse");
@@ -354,12 +397,13 @@ test("Kennwort an eine andere E-Mail-Adresse: stored on the job once it exists",
 
 test("Kennwort per SMS: not offered without seven.io on the server", async ({ page }) => {
   await openTaskpane(page);
-  await expect(page.locator("#channel-sms-row")).toBeHidden(); // no SMS without seven.io on the server
+  await expect(page.locator("#password-channel option")).toHaveText(["Empfänger der Nachricht", "Andere E-Mail-Adresse"]);
+  await expect(page.locator('#password-channel option[value="sms"]')).toHaveCount(0); // no SMS without seven.io on the server
 });
 
 test("Kennwort per SMS: number required, normalized to E.164 and stored on the job", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)], config: { smsEnabled: true, smsDefaultCountry: "49" } });
-  await page.check("#channel-sms");
+  await page.selectOption("#password-channel", "sms");
   await expect(page.locator("#password-sms")).toBeVisible();
   await expect(page.locator("#password-to-hint")).toContainText("in einer SMS an diese Nummer");
 
@@ -386,17 +430,19 @@ test("Kennwort per SMS: number required, normalized to E.164 and stored on the j
 
 test("Kennwort an eine andere E-Mail-Adresse chosen without an address: no link until it is there", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)] });
-  await page.check("#channel-mail");
+  await page.selectOption("#password-channel", "mail");
 
   await page.click("#submit");
   await expect(page.locator("#status")).toContainText("Bitte die E-Mail-Adresse angeben, an die das Kennwort gehen soll");
   await expect(page.locator("#password-to")).toBeFocused();
   await expect(page.locator("#password-to")).toHaveAttribute("aria-invalid", "true");
-  await page.click("#request");
+  await chooseKind(page, "request");
+  await page.click("#submit");
   await expect(page.locator("#status")).toContainText("Bitte die E-Mail-Adresse angeben");
   expect(calls.some((c) => c.path === "/api/uploads" || c.path === "/api/requests")).toBe(false); // nothing shared
 
   // Typed and clicked right away (no "change" yet): the address still reaches the job.
+  await chooseKind(page, "files");
   await page.fill("#password-to", "kollege@example.com");
   await page.click("#submit");
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
@@ -515,7 +561,11 @@ test("files dragged from Explorer onto the pane are added (no file dialog needed
     transfer.items.add(new File(["B".repeat(3000)], "Fotos.zip", { type: "application/zip" }));
     return transfer;
   });
+  // Dragged in while "Vertraulich" is shown: the pane switches to "Dateien" so the drop box is there.
+  await chooseKind(page, "message");
+  await expect(zone).toBeHidden();
   await page.dispatchEvent("#panel-send", "dragenter", { dataTransfer });
+  await expect(page.locator("#kind-files")).toBeChecked();
   await expect(page.locator("#panel-send")).toHaveClass(/dropping/);
   await expect(zone.locator(".drop")).toHaveText("Dateien hier ablegen"); // the box turns blue while dragging
   await expect(zone.locator(".drop")).toBeVisible();
@@ -523,6 +573,7 @@ test("files dragged from Explorer onto the pane are added (no file dialog needed
   await expect(page.locator("#panel-send")).not.toHaveClass(/dropping/);
   await expect(page.locator("#picked label.list-item")).toHaveCount(2);
   await expect(page.locator("#status")).toContainText("2 Dateien wurden hinzugefügt.");
+  await expect(page.locator("#submit")).toHaveText("2 Dateien als Link einfügen");
 });
 
 test("files picked from the computer can be removed from the list again (×)", async ({ page }) => {
@@ -613,13 +664,36 @@ test("Ohne Kennwort: plain link, no password mail, upload links stay protected",
   expect(log.customProps.cloudshareJob).toBeUndefined(); // nothing for the send handler to arm
   expect(JSON.parse(log.session["cloudshare-state"])).toEqual({ noPassword: true, links: ["u1"] });
 
-  // The whole mail stays without password; an upload link would need one.
+  // The whole mail stays without password; an upload link would need one – said before any click.
   await expect(page.locator("#mode-random")).toBeDisabled();
   await expect(page.locator("#mode-none")).toBeChecked();
-  await page.click("#request");
-  await expect(page.locator("#status")).toContainText("Links zum Hochladen brauchen immer ein Kennwort");
-  expect(calls.some((c) => c.path === "/api/requests")).toBe(false);
+  await expect(page.locator("#validity-summary")).toHaveText("Link 14 Tage");
+  await chooseKind(page, "request");
+  await expect(page.locator("#password-hint")).toContainText("Links zum Hochladen brauchen ein Kennwort");
+  await expect(page.locator("#submit")).toBeDisabled();
+  await chooseKind(page, "message");
+  await expect(page.locator("#password-hint")).toContainText("Ein vertraulicher Text braucht ein Kennwort");
+  await expect(page.locator("#submit")).toBeDisabled();
+  expect(calls.some((c) => c.path === "/api/requests" || c.path === "/api/messages")).toBe(false);
+  await expectAccessible(page);
   await shot(page, "no-password");
+  await chooseKind(page, "files");
+  await expect(page.locator("#submit")).toBeEnabled();
+});
+
+test("Vertraulich / Anfordern: 'Ohne Kennwort' is not offered – a choice made for files becomes a random password", async ({ page }) => {
+  await openTaskpane(page);
+  await page.click("label:has(#mode-none)");
+  await expect(page.locator("#password-group")).toBeHidden();
+  await chooseKind(page, "request");
+  await expect(page.locator("#mode-none-row")).toBeHidden();
+  await expect(page.locator("#mode-random")).toBeChecked();
+  await expect(page.locator("#password-group")).toBeVisible();
+  await expect(page.locator("#password")).not.toHaveValue("");
+  await expect(page.locator("#submit")).toHaveText("Link zum Hochladen einfügen");
+  await chooseKind(page, "files");
+  await expect(page.locator("#mode-none-row")).toBeVisible();
+  await expect(page.locator("#submit")).toHaveText("Als Link einfügen"); // no attachments, nothing ticked
 });
 
 test("Nextcloud enforces link passwords: no 'Ohne Kennwort' option", async ({ page }) => {
@@ -633,33 +707,44 @@ test("Nextcloud enforces link passwords: no 'Ohne Kennwort' option", async ({ pa
 test("Dateien von Empfängern erhalten inserts an upload link with the same password", async ({ page }) => {
   const calls = await openTaskpane(page);
   const password = await page.locator("#password").inputValue();
-  await page.click("#request");
+  await chooseKind(page, "request");
+  await expect(page.locator("#request-section")).toBeVisible();
+  await expect(page.locator("#files-section")).toBeHidden();
+  await expectAccessible(page);
+  await shot(page, "request");
+  await page.click("#submit");
   await expect(page.locator("#status")).toContainText("Der Link zum Hochladen wurde eingefügt.");
   expect(JSON.parse(calls.find((c) => c.path === "/api/requests")!.body!.toString()).password).toBe(password);
   expect((await officeLog(page)).inserted[0].data).toContain("https://cloud.example.com/s/request");
 });
 
-test("Vertrauliche Nachricht: inserts a card with the link, never the text, and shares the password step", async ({ page }) => {
-  const calls = await openTaskpane(page, { config: { messageMaxLength: 1000, sendExpireDays: 5, sendMaxExpireDays: 30 } });
-  // Optional: closed until opened.
+test("Vertraulich: inserts a card with the link, never the text, and shares the password step", async ({ page }) => {
+  const calls = await openTaskpane(page, {
+    attachments: [attachment("a1", "Präsentation.pptx", 2.5 * MiB)],
+    config: { messageMaxLength: 1000, sendExpireDays: 5, sendMaxExpireDays: 30 },
+  });
   await expect(page.locator("#message-section")).toBeHidden();
-  await page.click("#message-toggle");
-  await expect(page.locator("#message-toggle")).toHaveAttribute("aria-expanded", "true");
-  await expect(page.locator("#message")).toBeFocused();
-  await expect(page.locator("#message-text")).toContainText("Es gilt das Kennwort von oben.");
-  await expect(page.locator("#message-days")).toHaveValue("5");
-  await page.click("#message-insert");
-  await expect(page.locator("#status")).toContainText("Bitte zuerst den Text der vertraulichen Nachricht eingeben.");
+  await chooseKind(page, "message");
+  await expect(page.locator("#message-section")).toBeVisible();
+  await expect(page.locator("#files-section")).toBeHidden(); // one thing at a time
+  await expect(page.locator("#submit")).toHaveText("Vertraulichen Text einfügen"); // the only button
+  await expect(page.locator("#mode-none-row")).toBeHidden(); // a confidential text always has a password
+  await expect(page.locator("#validity-summary")).toHaveText("Text 5 Tage · Kennwort-Link 5 Tage, 3-mal abrufbar");
 
   const password = await page.locator("#password").inputValue();
   await page.fill("#message", "Zugang zum Portal: anna / Sommer2026");
   await expect(page.locator("#message-count")).toHaveText("36 von 1000 Zeichen");
+  await expectAccessible(page);
+  await fullShot(page, "message-light");
+  await openValidity(page);
+  await expect(page.locator("#expire-field")).toBeHidden(); // no Nextcloud link for a text
+  await expect(page.locator("#message-days")).toHaveValue("5");
   await page.fill("#message-days", "45");
   await page.locator("#message-days").blur();
   await expect(page.locator("#message-days")).toHaveValue("30");
   await expect(page.locator("#status")).toContainText("Höchstens 30 Tage möglich");
-  await page.click("#message-insert");
-  await expect(page.locator("#status")).toContainText("Der Link zur vertraulichen Nachricht wurde eingefügt.");
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Der Link zum vertraulichen Text wurde eingefügt.");
 
   const body = JSON.parse(calls.find((c) => c.path === "/api/messages")!.body!.toString());
   expect(body).toMatchObject({ text: "Zugang zum Portal: anna / Sommer2026", password, messageDays: 30, passwordDays: 5 });
@@ -668,12 +753,20 @@ test("Vertrauliche Nachricht: inserts a card with the link, never the text, and 
   expect(inserted).toContain("Vertrauliche Nachricht für Sie");
   expect(inserted).not.toContain("Sommer2026"); // the text never goes into the mail
   await expect(page.locator("#message")).toHaveValue("");
-  await expect(page.locator("#message-section")).toBeHidden(); // closed again after inserting
+  expect(calls.some((c) => c.path === "/api/uploads")).toBe(false); // only the text, no files
+  expect((await officeLog(page)).removed).toEqual([]); // the attachment was not touched
   await expectAccessible(page);
+
+  // Empty text: says so instead of inserting anything.
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Bitte zuerst den vertraulichen Text eingeben.");
+  await expect(page.locator("#message")).toBeFocused();
+  expect(calls.filter((c) => c.path === "/api/messages")).toHaveLength(1);
 });
 
 test("Kennwort-Link gültig für: 5 days by default, at most 30, sent with every link", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)] });
+  await openValidity(page);
   await expect(page.locator("#password-days")).toHaveValue("5");
   await page.fill("#password-days", "40");
   await page.locator("#password-days").blur(); // leaving the field fires "change" (like a user)
@@ -695,9 +788,10 @@ test("Kennwort-Link gültig für: 5 days by default, at most 30, sent with every
 
 test("Kennwort per SMS: no password-link settings – the password is in the SMS and works as long as the link", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)], config: { smsEnabled: true } });
+  await openValidity(page);
   await expect(page.locator("#max-access-field")).toBeVisible();
   await expect(page.locator("#password-days-field")).toBeVisible();
-  await page.click("label:has(#channel-sms)");
+  await page.selectOption("#password-channel", "sms");
   await expect(page.locator("#max-access-field")).toBeHidden();
   await expect(page.locator("#password-days-field")).toBeHidden();
   await expect(page.locator("#password-to-hint")).toContainText("gilt, solange der Link gültig ist");
@@ -708,7 +802,7 @@ test("Kennwort per SMS: no password-link settings – the password is in the SMS
   // The password link only holds the password until sending – as long as possible.
   expect(JSON.parse(calls.find((c) => c.path.endsWith("/complete"))!.body!.toString()).passwordDays).toBe(30);
 
-  await page.click("label:has(#channel-recipients)");
+  await page.selectOption("#password-channel", "recipients");
   await expect(page.locator("#password-days-field")).toBeVisible();
 });
 
@@ -722,16 +816,6 @@ test("Ohne Kennwort with download confirmation: the draft is tagged so the confi
   expect(JSON.parse(log.session["cloudshare-state"])).toEqual({ noPassword: true, jobId: "notice-1", links: ["u1"] });
   expect(log.inserted[0].data).not.toContain("Kennwort");
   await expect(page.locator("#mode-random")).toBeDisabled();
-});
-
-test("Vertrauliche Nachricht needs a password", async ({ page }) => {
-  const calls = await openTaskpane(page);
-  await page.check("#mode-none");
-  await page.click("#message-toggle");
-  await page.fill("#message", "geheim");
-  await page.click("#message-insert");
-  await expect(page.locator("#status")).toContainText("Vertrauliche Nachrichten brauchen immer ein Kennwort");
-  expect(calls.some((c) => c.path === "/api/messages")).toBe(false);
 });
 
 test("revoked Nextcloud app password: returns to the connect view", async ({ page }) => {
@@ -832,4 +916,56 @@ test("narrow taskpane (320 px): no horizontal scrolling", async ({ page }) => {
   await expect(page.locator("#attachments label.list-item")).toHaveCount(1);
   await expectNoHorizontalScroll(page);
   await shot(page, "send-320px");
+});
+
+// --- README pictures (English) -------------------------------------------------------------------------------------
+// The README shows the pane in English: same mocks, texts from locales/en.json (attachments "readme-*").
+
+test.describe("README pictures (English)", () => {
+  test.use({ locale: "en-GB" });
+
+  const ATTACHMENTS = [attachment("a1", "Presentation.pptx", 6.5 * MiB), attachment("a2", "Notes.txt", 200 * 1024)];
+  const README_CONFIG = { smsEnabled: true, smsDefaultCountry: "49", thresholdMb: 5, sendExpireDays: 5, sendMaxExpireDays: 30 };
+  const SHARES_EN = SHARES.map((share, i) => ({ ...share, name: ["Presentation.pptx", "Quote.pdf", "File request", "Old.zip"][i] }));
+
+  test("Send: files", async ({ page }) => {
+    await openTaskpane(page, { lang: "en", attachments: ATTACHMENTS, config: README_CONFIG });
+    await expect(page.locator("#submit")).toHaveText("Insert file as link");
+    await expect(page.locator("#validity-summary")).toHaveText("Link 14 days · Password link 5 days, opens 3 times");
+    await expect(page.locator("#account")).toHaveText("max [12.5 GB of 50 GB free]");
+    await expectAccessible(page);
+    await readmeShot(page, "send");
+  });
+
+  test("Send: confidential text and validity", async ({ page }) => {
+    await openTaskpane(page, { lang: "en", attachments: ATTACHMENTS, config: README_CONFIG });
+    await chooseKind(page, "message");
+    await page.fill("#message", "Portal access: anna / Summer2026");
+    await openValidity(page);
+    await expect(page.locator("#submit")).toHaveText("Insert confidential text");
+    await expectAccessible(page);
+    await readmeShot(page, "message");
+  });
+
+  test("Send: dark theme", async ({ page }) => {
+    await openTaskpane(page, { lang: "en", theme: "#1f1f1f", attachments: ATTACHMENTS, config: README_CONFIG });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect(page.locator("#attachments label.list-item")).toHaveCount(2);
+    await expectAccessible(page);
+    await readmeShot(page, "dark");
+  });
+
+  test("My shares", async ({ page }) => {
+    await openTaskpane(page, { lang: "en", shares: SHARES_EN, config: README_CONFIG });
+    await page.click("#tab-shares");
+    await expect(page.locator("#shares .share")).toHaveCount(4);
+    await expect(page.locator("#shares .share").nth(1).locator(".state-text")).toHaveText("Not downloaded yet");
+    await readmeShot(page, "shares");
+  });
+
+  test("Connect", async ({ page }) => {
+    await openTaskpane(page, { lang: "en", connected: false });
+    await expect(page.locator("#connect-view")).toBeVisible();
+    await readmeShot(page, "connect");
+  });
 });

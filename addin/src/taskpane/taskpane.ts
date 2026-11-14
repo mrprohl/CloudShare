@@ -45,26 +45,30 @@ const revealButton = $<HTMLButtonElement>("reveal");
 const modeRandom = $<HTMLInputElement>("mode-random");
 const modeOwn = $<HTMLInputElement>("mode-own");
 const modeNone = $<HTMLInputElement>("mode-none");
+const modeNoneRow = $<HTMLLabelElement>("mode-none-row");
 const passwordGroup = $<HTMLDivElement>("password-group");
 const maxAccessField = $<HTMLDivElement>("max-access-field");
 const passwordDaysField = $<HTMLDivElement>("password-days-field");
 const passwordDaysInput = $<HTMLInputElement>("password-days");
 const messageDaysInput = $<HTMLInputElement>("message-days");
 const passwordToField = $<HTMLDivElement>("password-to-field");
-const channelRecipients = $<HTMLInputElement>("channel-recipients");
-const channelMail = $<HTMLInputElement>("channel-mail");
-const channelSms = $<HTMLInputElement>("channel-sms");
-const channelSmsRow = $<HTMLLabelElement>("channel-sms-row");
+const channelSelect = $<HTMLSelectElement>("password-channel");
+const channelSmsOption = $<HTMLOptionElement>("channel-sms-option");
 const passwordSmsInput = $<HTMLInputElement>("password-sms");
 const passwordToInput = $<HTMLInputElement>("password-to");
 const passwordToHint = $<HTMLParagraphElement>("password-to-hint");
 const rulesList = $<HTMLUListElement>("password-rules");
-const requestButton = $<HTMLButtonElement>("request");
+const kindRadios = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="kind"]'));
+const filesSection = $<HTMLElement>("files-section");
+const messageSection = $<HTMLElement>("message-section");
+const requestSection = $<HTMLElement>("request-section");
 const messageInput = $<HTMLTextAreaElement>("message");
 const messageCount = $<HTMLParagraphElement>("message-count");
-const messageButton = $<HTMLButtonElement>("message-insert");
-const messageToggle = $<HTMLButtonElement>("message-toggle");
-const messageSection = $<HTMLDivElement>("message-section");
+const validityToggle = $<HTMLButtonElement>("validity-toggle");
+const validitySection = $<HTMLDivElement>("validity-section");
+const validitySummary = $<HTMLSpanElement>("validity-summary");
+const expireField = $<HTMLDivElement>("expire-field");
+const messageDaysField = $<HTMLDivElement>("message-days-field");
 const tabSend = $<HTMLButtonElement>("tab-send");
 const tabShares = $<HTMLButtonElement>("tab-shares");
 const panelSend = $<HTMLDivElement>("panel-send");
@@ -87,6 +91,8 @@ let footerReady: Promise<void> = Promise.resolve();
 let pickedFiles: File[] = [];
 /** Uploads or insertions in progress – the check for deleted links waits meanwhile. */
 let busy = 0;
+/** A click on the footer button is being processed – it stays disabled meanwhile. */
+let inserting = false;
 /** Last known Nextcloud setting, re-applied when the password options are unlocked. */
 let passwordEnforced = false;
 
@@ -184,9 +190,9 @@ function showConnection(status: ConnectionStatus) {
 /** Hides "Ohne Kennwort" when Nextcloud enforces link passwords (it would refuse such a link). */
 function applyPasswordPolicy(enforced: boolean) {
   passwordEnforced = enforced;
-  modeNone.closest("label")!.hidden = enforced;
   // Switch back unless this mail already contains links without password.
   if (enforced && modeNone.checked && !modeNone.disabled) setPasswordMode("random");
+  renderKind();
 }
 
 async function refreshConnection() {
@@ -317,6 +323,10 @@ function fileRow(
   return row;
 }
 
+/** Ticked files (attachments and files from the computer) – the button says how many get a link. */
+const selectedFileCount = () =>
+  attachmentList.querySelectorAll("input:checked").length + pickedList.querySelectorAll("input:checked").length;
+
 async function renderAttachments() {
   const attachments = await getFileAttachments();
   const threshold = serverConfig.thresholdMb * MB;
@@ -325,6 +335,7 @@ async function renderAttachments() {
     ...attachments.map((a) => fileRow(a.name, a.size, a.id, a.size > threshold, a.size > threshold)),
   );
   noAttachments.hidden = attachments.length > 0 || pickedFiles.length > 0;
+  renderSubmit();
 }
 
 function renderPicked() {
@@ -342,10 +353,13 @@ function renderPicked() {
     ),
   );
   noAttachments.hidden = attachmentList.childElementCount > 0 || pickedFiles.length > 0;
+  renderSubmit();
 }
 
 /** The files the rows of #picked currently show (their checkbox values are indexes into it). */
 let pickedRendered: File[] = [];
+
+for (const list of [attachmentList, pickedList]) list.addEventListener("change", () => renderSubmit());
 
 
 /**
@@ -415,6 +429,8 @@ let dragDepth = 0;
 dropZone.addEventListener("dragenter", (event) => {
   if (!hasFiles(event)) return;
   event.preventDefault();
+  // Files dragged in while "Vertraulich" or "Anfordern" is shown: show the file list and its drop box.
+  if (selectedKind() !== "files") selectKind("files");
   dragDepth++;
   dropZone.classList.add("dropping");
 });
@@ -430,6 +446,7 @@ dropZone.addEventListener("dragleave", () => {
 dropZone.addEventListener("drop", (event) => {
   if (!hasFiles(event)) return;
   event.preventDefault(); // otherwise the WebView would open the file itself
+  if (selectedKind() !== "files") selectKind("files");
   dragDepth = 0;
   dropZone.classList.remove("dropping");
   // Folders cannot be uploaded – they arrive as entries without type and size 0 (and fail to read).
@@ -571,7 +588,7 @@ async function rememberShareChoice(jobId: string | null, noPassword = jobId === 
   }
 }
 
-// --- "Kennwort übermitteln": recipients of the mail / another mail address / SMS ------------------------------
+// --- "Kennwort senden an": recipients of the mail / another mail address / SMS ------------------------------
 
 const looksLikeEmail = (value: string) => /^[^\s@,;<>"()]+@[^\s@,;<>"()]+\.[^\s@,;<>"()]{2,}$/.test(value);
 
@@ -584,30 +601,21 @@ function normalizePhone(input: string): string | null {
 }
 
 type Channel = "recipients" | "mail" | "sms";
-const selectedChannel = (): Channel => (channelSms.checked ? "sms" : channelMail.checked ? "mail" : "recipients");
+const selectedChannel = (): Channel => {
+  const value = channelSelect.value;
+  return value === "sms" || value === "mail" ? value : "recipients";
+};
 
 const channelHint = (channel: Channel) =>
   channel === "mail" ? t("channel.hintMail") : channel === "sms" ? t("channel.hintSms") : "";
 
 function showChannel(channel: Channel) {
-  channelRecipients.checked = channel === "recipients";
-  channelMail.checked = channel === "mail";
-  channelSms.checked = channel === "sms";
+  channelSelect.value = channel;
   passwordToInput.hidden = channel !== "mail";
   passwordSmsInput.hidden = channel !== "sms";
   passwordToHint.hidden = channel === "recipients";
   passwordToHint.textContent = channelHint(channel);
-  updatePasswordLinkFields();
-}
-
-/**
- * "Kennwort abrufbar" and "Kennwort-Link gültig für" only matter for a password link: not without password, not by SMS
- * (the password is in the SMS itself and works as long as the link does).
- */
-function updatePasswordLinkFields() {
-  const hide = withoutPassword() || selectedChannel() === "sms";
-  maxAccessField.hidden = hide;
-  passwordDaysField.hidden = hide;
+  renderValidity();
 }
 
 /** The valid target of the chosen channel ({} = recipients), or null while the address / number is not valid. */
@@ -647,16 +655,14 @@ async function applyChannel(target: { passwordTo?: string; passwordSms?: string 
   }
 }
 
-for (const radio of [channelRecipients, channelMail, channelSms]) {
-  radio.addEventListener("change", () => {
-    const channel = selectedChannel();
-    showChannel(channel);
-    if (channel === "mail") passwordToInput.focus();
-    if (channel === "sms") passwordSmsInput.focus();
-    const target = channelTarget();
-    if (target) void applyChannel(target);
-  });
-}
+channelSelect.addEventListener("change", () => {
+  const channel = selectedChannel();
+  showChannel(channel);
+  if (channel === "mail") passwordToInput.focus();
+  if (channel === "sms") passwordSmsInput.focus();
+  const target = channelTarget();
+  if (target) void applyChannel(target);
+});
 
 passwordToInput.addEventListener("change", () => {
   const value = passwordToInput.value.trim();
@@ -832,9 +838,7 @@ function setPasswordMode(mode: "random" | "own" | "none") {
   modeOwn.checked = own;
   modeNone.checked = none;
   passwordGroup.hidden = none;
-  updatePasswordLinkFields();
   passwordToField.hidden = none;
-  passwordHint.textContent = t(none ? "password.hintNone" : perStep ? "password.hintSeparate" : "password.hint");
   passwordInput.readOnly = !own;
   generateButton.hidden = own;
   revealButton.hidden = !own;
@@ -850,6 +854,24 @@ function setPasswordMode(mode: "random" | "own" | "none") {
     passwordInput.type = "text";
     passwordInput.value = generatePassword();
   }
+  renderPasswordHint();
+  renderValidity();
+}
+
+/** The mail already has links without password: a confidential text or upload link cannot join it. */
+const blockedByNoPassword = () => selectedKind() !== "files" && modeNone.checked && modeNone.disabled;
+
+/** The line below the password: what happens with it in this mail. */
+function renderPasswordHint() {
+  const kind = selectedKind();
+  let key: string;
+  if (blockedByNoPassword()) key = `${kind}.needsPasswordLocked`;
+  else if (modeNone.checked) key = modeNone.disabled ? "password.hintLockedNone" : "password.hintNone";
+  else if (modeRandom.disabled) key = "password.hintLocked"; // one password for the whole mail (older drafts)
+  else if (perStep) key = "password.hintSeparate";
+  else key = "password.hint";
+  passwordHint.textContent = t(key);
+  passwordHint.classList.toggle("warning", blockedByNoPassword());
 }
 
 modeRandom.addEventListener("change", () => setPasswordMode("random"));
@@ -868,7 +890,7 @@ function lockPassword() {
   rulesList.hidden = true;
   revealButton.hidden = false;
   setRevealed(false);
-  passwordHint.textContent = t("password.hintLocked");
+  renderPasswordHint();
 }
 
 /** The mail has links with a password per step: every further click gets a new password. */
@@ -881,7 +903,7 @@ let perStep = false;
 function lockSeparate() {
   perStep = true;
   modeNone.disabled = true;
-  passwordHint.textContent = t("password.hintSeparate");
+  renderPasswordHint();
 }
 
 /** After a step: a new random password for the next one, or an empty field for an own one. */
@@ -901,7 +923,7 @@ function lockNoPassword() {
   modeRandom.disabled = true;
   modeOwn.disabled = true;
   modeNone.disabled = true;
-  passwordHint.textContent = t("password.hintLockedNone");
+  renderKind();
 }
 
 /** Password options as for a new mail (after all CloudShare links were deleted from it). */
@@ -1012,17 +1034,127 @@ maxAccessInput.addEventListener("change", async () => {
       await getToken(),
     );
     maxAccessInput.value = String(result.maxAccess);
+    renderValidity();
     await updateDraftState({ maxAccess: result.maxAccess });
     setStatus(sentences(note, t("maxAccess.now", { times: timesText(result.maxAccess) })), capped ? "info" : "success");
   } catch (err) {
     // Not changeable (e.g. links inserted before this version): show the value that actually applies.
     maxAccessInput.value = String(state.maxAccess ?? serverConfig.sendMaxAccessCount);
+    renderValidity();
     if (err instanceof ApiError && err.code === "SEND_FIXED") maxAccessInput.readOnly = true;
     setStatus(t("maxAccess.failed", { error: errorMessage(err) }), "error");
   }
 });
 
-submitButton.addEventListener("click", async () => {
+generateButton.addEventListener("click", () => {
+  passwordInput.value = generatePassword();
+});
+
+// --- What to insert: "Dateien" / "Vertraulich" / "Anfordern" ------------------------------------------------------
+// One kind at a time and one button in the footer that says what it inserts. Password, password channel and validity
+// below apply to all three (every click is one step with its own password, see shareSettingsBody).
+
+type Kind = "files" | "message" | "request";
+const selectedKind = (): Kind => {
+  const value = kindRadios.find((radio) => radio.checked)?.value;
+  return value === "message" || value === "request" ? value : "files";
+};
+
+function selectKind(kind: Kind) {
+  for (const radio of kindRadios) radio.checked = radio.value === kind;
+  renderKind();
+}
+
+for (const radio of kindRadios) radio.addEventListener("change", () => renderKind());
+
+/**
+ * Shows the part of the chosen kind. "Ohne Kennwort" exists only for files – a confidential text or an upload link
+ * always needs a password, so the option is not offered there (instead of an error after the click).
+ */
+function renderKind() {
+  const kind = selectedKind();
+  filesSection.hidden = kind !== "files";
+  messageSection.hidden = kind !== "message";
+  requestSection.hidden = kind !== "request";
+  // Chosen for files but not fixed yet: a text or upload link gets a random password instead.
+  if (kind !== "files" && modeNone.checked && !modeNone.disabled) setPasswordMode("random");
+  const lockedNone = modeNone.checked && modeNone.disabled;
+  // A mail fixed to "Ohne Kennwort" keeps showing it, so the note below explains why nothing else can be inserted.
+  modeNoneRow.hidden = !lockedNone && (passwordEnforced || kind !== "files");
+  renderPasswordHint();
+  renderValidity();
+  renderSubmit();
+}
+
+/** The footer button names what it inserts ("2 Dateien als Link einfügen", "Vertraulichen Text einfügen", …). */
+function renderSubmit() {
+  const kind = selectedKind();
+  if (kind === "message") {
+    submitButton.textContent = t("message.button");
+  } else if (kind === "request") {
+    submitButton.textContent = t("request.button");
+  } else {
+    const count = selectedFileCount();
+    submitButton.textContent = count > 0 ? t("submit.files", { count }) : t("submit.button");
+  }
+  submitButton.disabled = inserting || blockedByNoPassword();
+}
+
+/** "Gültigkeit": only the fields of the chosen kind, collapsed behind a one-line summary of the values. */
+function renderValidity() {
+  if (!serverConfig) return;
+  const kind = selectedKind();
+  // "Kennwort abrufbar" / "Kennwort-Link gültig für" only for a password link: not without password, not by SMS (the
+  // password is in the SMS itself and works as long as the link does).
+  const passwordLink = !withoutPassword() && selectedChannel() !== "sms";
+  expireField.hidden = kind === "message";
+  messageDaysField.hidden = kind !== "message";
+  maxAccessField.hidden = !passwordLink;
+  passwordDaysField.hidden = !passwordLink;
+  const parts = [
+    kind === "message"
+      ? t("validity.message", { count: sendDays(messageDaysInput).value })
+      : t("validity.link", {
+          count: boundedNumber(expireInput, serverConfig.defaultExpireDays, serverConfig.maxExpireDays).value,
+        }),
+  ];
+  if (passwordLink) {
+    parts.push(t("validity.password", { count: sendDays(passwordDaysInput).value, times: timesText(maxAccessValue()) }));
+  }
+  validitySummary.textContent = parts.join(" · ");
+}
+
+validityToggle.addEventListener("click", () => {
+  const open = validitySection.hidden === true;
+  validityToggle.setAttribute("aria-expanded", String(open));
+  validitySection.hidden = !open;
+});
+// After the fields' own handlers (they cap the value first).
+validitySection.addEventListener("change", () => renderValidity());
+
+submitButton.addEventListener("click", () => {
+  const kind = selectedKind();
+  void (kind === "message" ? insertMessage() : kind === "request" ? insertRequest() : insertFiles());
+});
+
+/** One click on the button: disabled until done, then the next step gets its own password. */
+async function runInsert(work: () => Promise<void>) {
+  inserting = true;
+  renderSubmit();
+  busy++;
+  try {
+    await work();
+  } finally {
+    inserting = false;
+    nextStepPassword();
+    busy--;
+    renderSubmit();
+  }
+}
+
+// --- Files ---------------------------------------------------------------------------------
+
+async function insertFiles() {
   const selectedAttachments = Array.from(attachmentList.querySelectorAll<HTMLInputElement>("input:checked"));
   const selectedFiles = Array.from(pickedList.querySelectorAll<HTMLInputElement>("input:checked")).map(
     (box) => pickedFiles[Number(box.value)],
@@ -1035,119 +1167,97 @@ submitButton.addEventListener("click", async () => {
     return setStatus(problem, "error");
   }
 
-  submitButton.disabled = true;
-  busy++;
-  const results: UploadResult[] = [];
-  // One step for this click: all selected files share one password and one password mail.
-  const step = newStep();
-  let failed = false;
-  try {
-    for (const box of selectedAttachments) {
-      const name = box.dataset.name ?? t("files.attachment");
-      setProgress(0);
-      setStatus(t("files.preparing", { name }));
-      const blob = await readAttachment(box.value);
-      results.push(await upload(blob, name, step));
-      // Remove from the mail only after a successful upload.
-      await officeAsync<void>((cb) => composeItem().removeAttachmentAsync(box.value, cb));
-    }
-    for (const file of selectedFiles) {
-      if (file.size === 0) throw new Error(t("files.empty", { name: file.name }));
-      setProgress(0);
-      results.push(await upload(file, file.name, step));
-      pickedFiles = pickedFiles.filter((f) => f !== file);
-    }
-  } catch (err) {
-    failed = true;
-    if (err instanceof ApiError && err.code === NOT_CONNECTED) showConnection({ connected: false });
-    setStatus(errorMessage(err), "error");
-  } finally {
-    // Link already uploaded files anyway.
-    if (results.length > 0) {
-      try {
-        await insertLinks(results);
-        if (!failed) {
-          setStatus(
-            sentences(
-              t("submit.inserted", { count: results.length }),
-              isWithoutPassword(results[0])
-                ? t("submit.noPassword", { count: results.length })
-                : t("submit.passwordFollows"),
-            ),
-            "success",
-          );
-        }
-      } catch (err) {
-        setStatus(t("insert.failed", { error: errorMessage(err) }), "error");
+  await runInsert(async () => {
+    const results: UploadResult[] = [];
+    // One step for this click: all selected files share one password and one password mail.
+    const step = newStep();
+    let failed = false;
+    try {
+      for (const box of selectedAttachments) {
+        const name = box.dataset.name ?? t("files.attachment");
+        setProgress(0);
+        setStatus(t("files.preparing", { name }));
+        const blob = await readAttachment(box.value);
+        results.push(await upload(blob, name, step));
+        // Remove from the mail only after a successful upload.
+        await officeAsync<void>((cb) => composeItem().removeAttachmentAsync(box.value, cb));
       }
-      renderPicked();
-      await renderAttachments().catch(() => undefined);
-      await refreshConnection().catch(() => undefined); // refreshes the free quota
+      for (const file of selectedFiles) {
+        if (file.size === 0) throw new Error(t("files.empty", { name: file.name }));
+        setProgress(0);
+        results.push(await upload(file, file.name, step));
+        pickedFiles = pickedFiles.filter((f) => f !== file);
+      }
+    } catch (err) {
+      failed = true;
+      if (err instanceof ApiError && err.code === NOT_CONNECTED) showConnection({ connected: false });
+      setStatus(errorMessage(err), "error");
+    } finally {
+      // Link already uploaded files anyway.
+      if (results.length > 0) {
+        try {
+          await insertLinks(results);
+          if (!failed) {
+            setStatus(
+              sentences(
+                t("submit.inserted", { count: results.length }),
+                isWithoutPassword(results[0])
+                  ? t("submit.noPassword", { count: results.length })
+                  : t("submit.passwordFollows"),
+              ),
+              "success",
+            );
+          }
+        } catch (err) {
+          setStatus(t("insert.failed", { error: errorMessage(err) }), "error");
+        }
+        renderPicked();
+        await renderAttachments().catch(() => undefined);
+        await refreshConnection().catch(() => undefined); // refreshes the free quota
+      }
+      setProgress(null);
     }
-    submitButton.disabled = false;
-    nextStepPassword();
-    busy--;
-    setProgress(null);
-  }
-});
-
-generateButton.addEventListener("click", () => {
-  passwordInput.value = generatePassword();
-});
+  });
+}
 
 // --- Upload link ("Dateien von Empfängern erhalten") ----------------------------------------------
 
-requestButton.addEventListener("click", async () => {
+async function insertRequest() {
   // Upload links always need a password – otherwise anyone with the link could put files into the Nextcloud.
   const problem = settingsProblem("request");
   if (problem) {
     return setStatus(problem, "error");
   }
-  requestButton.disabled = true;
-  busy++;
-  try {
-    setStatus(t("request.creating"));
-    const result = await api<{ shareUrl: string; expireDate: string; jobId: string }>(
-      "/api/requests",
-      { method: "POST", body: JSON.stringify(await shareSettingsBody(newStep())) },
-      await getToken(),
-    );
-    // Same password and password mail as the files of this mail.
-    await rememberShareChoice(result.jobId);
-    const expire = formatDate(result.expireDate);
-    await footerReady;
-    await insertIntoBody(
-      requestCard(result.shareUrl, expire, mailFooter),
-      requestText(result.shareUrl, expire, mailFooter),
-      shareToken(result.shareUrl),
-    );
-    setStatus(t("request.inserted"), "success");
-  } catch (err) {
-    if (err instanceof ApiError && err.code === NOT_CONNECTED) showConnection({ connected: false });
-    setStatus(errorMessage(err), "error");
-  } finally {
-    requestButton.disabled = false;
-    nextStepPassword();
-    busy--;
-  }
-});
+  await runInsert(async () => {
+    try {
+      setStatus(t("request.creating"));
+      const result = await api<{ shareUrl: string; expireDate: string; jobId: string }>(
+        "/api/requests",
+        { method: "POST", body: JSON.stringify(await shareSettingsBody(newStep())) },
+        await getToken(),
+      );
+      // Same password and password mail as the files of this mail.
+      await rememberShareChoice(result.jobId);
+      const expire = formatDate(result.expireDate);
+      await footerReady;
+      await insertIntoBody(
+        requestCard(result.shareUrl, expire, mailFooter),
+        requestText(result.shareUrl, expire, mailFooter),
+        shareToken(result.shareUrl),
+      );
+      setStatus(t("request.inserted"), "success");
+    } catch (err) {
+      if (err instanceof ApiError && err.code === NOT_CONNECTED) showConnection({ connected: false });
+      setStatus(errorMessage(err), "error");
+    }
+  });
+}
 
-// --- Confidential message ("Vertrauliche Nachricht") -------------------------------------
+// --- Confidential text ("Vertraulich") -----------------------------------------------------
 // A text instead of a file: the server stores it as a password-protected Vaultwarden Send; the mail gets a card with
 // the link, the password goes out like for files.
 
 const messageMax = () => serverConfig?.messageMaxLength ?? 1000;
-
-/** The section is optional: closed until the user opens it, closed again after a message was inserted. */
-function showMessageSection(open: boolean) {
-  messageToggle.setAttribute("aria-expanded", String(open));
-  messageSection.hidden = !open;
-}
-messageToggle.addEventListener("click", () => {
-  const open = messageSection.hidden === true;
-  showMessageSection(open);
-  if (open) messageInput.focus();
-});
 
 function renderMessageCount() {
   const length = messageInput.value.length;
@@ -1156,7 +1266,7 @@ function renderMessageCount() {
 }
 messageInput.addEventListener("input", renderMessageCount);
 
-messageButton.addEventListener("click", async () => {
+async function insertMessage() {
   const text = messageInput.value.trim();
   if (!text) {
     messageInput.focus();
@@ -1169,36 +1279,34 @@ messageButton.addEventListener("click", async () => {
   const problem = settingsProblem("message");
   if (problem) return setStatus(problem, "error");
 
-  messageButton.disabled = true;
-  busy++;
-  try {
-    setStatus(t("message.creating"));
-    const result = await api<{ shareUrl: string; expireDate: string; jobId: string }>(
-      "/api/messages",
-      { method: "POST", body: JSON.stringify({ ...(await shareSettingsBody(newStep())), text, messageDays: sendDays(messageDaysInput).value }) },
-      await getToken(),
-    );
-    // Same password and password mail as the files of this mail (one step).
-    await rememberShareChoice(result.jobId);
-    const expire = formatDate(result.expireDate);
-    await footerReady;
-    await insertIntoBody(
-      messageCard(result.shareUrl, expire, mailFooter),
-      messageText(result.shareUrl, expire, mailFooter),
-      shareToken(result.shareUrl),
-    );
-    messageInput.value = "";
-    renderMessageCount();
-    showMessageSection(false);
-    setStatus(t("message.inserted"), "success");
-  } catch (err) {
-    setStatus(errorMessage(err), "error");
-  } finally {
-    messageButton.disabled = false;
-    nextStepPassword();
-    busy--;
-  }
-});
+  await runInsert(async () => {
+    try {
+      setStatus(t("message.creating"));
+      const result = await api<{ shareUrl: string; expireDate: string; jobId: string }>(
+        "/api/messages",
+        {
+          method: "POST",
+          body: JSON.stringify({ ...(await shareSettingsBody(newStep())), text, messageDays: sendDays(messageDaysInput).value }),
+        },
+        await getToken(),
+      );
+      // Same password and password mail as the files of this mail (one step).
+      await rememberShareChoice(result.jobId);
+      const expire = formatDate(result.expireDate);
+      await footerReady;
+      await insertIntoBody(
+        messageCard(result.shareUrl, expire, mailFooter),
+        messageText(result.shareUrl, expire, mailFooter),
+        shareToken(result.shareUrl),
+      );
+      messageInput.value = "";
+      renderMessageCount();
+      setStatus(t("message.inserted"), "success");
+    } catch (err) {
+      setStatus(errorMessage(err), "error");
+    }
+  });
+}
 
 // --- Tabs ------------------------------------------------------------------------------
 
@@ -1493,6 +1601,8 @@ Office.onReady(async () => {
   footerReady = resolveFooter().catch(() => undefined); // in the background – needed when a link is inserted
 
   const state = await readDraftState();
+  expireInput.value = String(serverConfig.defaultExpireDays);
+  expireInput.max = String(serverConfig.maxExpireDays);
   maxAccessInput.max = String(serverConfig.sendMaxAccessLimit);
   for (const input of [passwordDaysInput, messageDaysInput]) {
     input.max = String(sendMaxDays());
@@ -1510,19 +1620,17 @@ Office.onReady(async () => {
   } else {
     setPasswordMode("random");
   }
-  // "Kennwort übermitteln": SMS only when the server has it configured; restore the choice of this draft.
-  channelSmsRow.hidden = !serverConfig.smsEnabled;
-  $<HTMLParagraphElement>("message-text").textContent = t("message.text");
+  // "Kennwort senden an": SMS only when the server has it configured; restore the choice of this draft.
+  if (!serverConfig.smsEnabled) channelSmsOption.remove();
   renderMessageCount();
   passwordToInput.value = state.passwordTo ?? "";
   passwordSmsInput.value = state.passwordSms ?? "";
   showChannel(state.passwordSms && serverConfig.smsEnabled ? "sms" : state.passwordTo ? "mail" : "recipients");
+  renderKind();
   // Outlook has no "body changed" event: check when the pane gets focus and every few seconds while locked.
   await releaseIfLinksDeleted();
   window.addEventListener("focus", () => void releaseIfLinksDeleted());
   setInterval(() => void releaseIfLinksDeleted(), 4000);
-  expireInput.value = String(serverConfig.defaultExpireDays);
-  expireInput.max = String(serverConfig.maxExpireDays);
 
   await renderAttachments().catch(() => undefined);
   composeItem().addHandlerAsync(Office.EventType.AttachmentsChanged, () => {
