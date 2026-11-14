@@ -199,9 +199,9 @@ expired, so CloudShare uses its own **application** permission.
 
 1. `curl -s https://cloudshare.example.com/api/config` returns JSON; `https://cloudshare.example.com/manifest.xml`
    shows your address and client ID.
-2. In Outlook, write a new mail → **CloudShare** → the pane opens without asking for a password → *Verbinden*
+2. In Outlook, write a new mail → **CloudShare** → the pane opens without asking for a password → *Connect*
    connects Nextcloud.
-3. Attach a file above the threshold → the info bar appears; click *Als Link einfügen* → a card is inserted.
+3. Attach a file above the threshold → the info bar appears; click *Insert as link* → a card is inserted.
 4. Send the mail to yourself or a colleague → the password mail follows within about a minute. The server log shows
    `Password mail sent` (`docker logs cloudshare 2>&1 | grep "Password mail"`).
 
@@ -216,14 +216,16 @@ expired, so CloudShare uses its own **application** permission.
 
 ## 8. Errors and their causes
 
+Messages are quoted in English (`LANGUAGE=en`), the German text of the default installation in brackets.
+
 | Message in Outlook / log | Cause | Fix |
 |---|---|---|
-| Pane: sign-in error **13007** ("kein Anmeldetoken") | Application ID URI does not match the manifest, Office not authorized, or consent missing | 2.3 (URI exactly `api://<host>/<client-id>`, client `ea5a67f6-…`), 2.4 admin consent |
+| Pane: sign-in error **13007** ("did not get a sign-in token" / „kein Anmeldetoken“) | Application ID URI does not match the manifest, Office not authorized, or consent missing | 2.3 (URI exactly `api://<host>/<client-id>`, client `ea5a67f6-…`), 2.4 admin consent |
 | Pane: **13005** (permissions not confirmed) | admin consent missing | 2.4 |
 | Pane: **13001 / 13006** | Outlook not signed in with the work account / sign-in not finished | sign in to Outlook again, restart Outlook |
-| Pane: "Ungültiges oder abgelaufenes Token" | `ENTRA_TENANT_ID` / `ENTRA_CLIENT_ID` do not belong to this registration | compare with the *Overview* page (2.1) |
-| Pane: "Scope access_as_user fehlt" | scope named differently or not authorized for Office | 2.3 |
-| "Token für … nicht erhältlich (Administratorzustimmung prüfen)" when sending, `AADSTS65001` in the log | delegated permission without admin consent | 2.4 |
+| Pane: "Invalid or expired token" („Ungültiges oder abgelaufenes Token“) | `ENTRA_TENANT_ID` / `ENTRA_CLIENT_ID` do not belong to this registration | compare with the *Overview* page (2.1) |
+| Pane: "Scope access_as_user missing" („Scope access_as_user fehlt“) | scope named differently or not authorized for Office | 2.3 |
+| "Token for … not available (check admin consent)" („Token für … nicht erhältlich (Administratorzustimmung prüfen)“) when sending, `AADSTS65001` in the log | delegated permission without admin consent | 2.4 |
 | same with `AADSTS7000215` / `AADSTS7000222` | client secret wrong or expired | 2.5, 7 |
 | same with `AADSTS50076` / `AADSTS50079` | a Conditional Access policy demands an interactive step | 2.7 |
 | Sign-in error `AADSTS50105` | user not assigned while *Assignment required* is on | 2.6 |

@@ -113,8 +113,7 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
       return json({ shareUrl: "https://cloud.example.com/s/request", expireDate: "2026-12-01", jobId: "job-1" });
     }
     if (route_ === "POST /api/messages") {
-      return json({ shareUrl: "https://vault.example.com/#/send/msg/key123", expireDate: "2026-12-01", jobId: "job-1",
-        capped: JSON.parse(call.body!.toString()).expireDays > 30 });
+      return json({ shareUrl: "https://vault.example.com/#/send/msg/key123", expireDate: "2026-12-01", jobId: "job-1" });
     }
     if (route_ === "GET /api/shares") return json(scenario.shares ?? []);
     if (/^DELETE \/api\/shares\/.+$/.test(route_)) return json({ ok: true });
@@ -638,28 +637,50 @@ test("Dateien von Empfängern erhalten inserts an upload link with the same pass
 });
 
 test("Vertrauliche Nachricht: inserts a card with the link, never the text, and shares the password step", async ({ page }) => {
-  const calls = await openTaskpane(page, { config: { messageMaxLength: 1000, messageMaxDays: 30 } });
-  await expect(page.locator("#message-text")).toContainText("höchstens 30 Tage abrufbar");
+  const calls = await openTaskpane(page, { config: { messageMaxLength: 1000, sendExpireDays: 5, sendMaxExpireDays: 30 } });
+  await expect(page.locator("#message-text")).toContainText("Es gilt das Kennwort von oben.");
+  await expect(page.locator("#message-days")).toHaveValue("5");
   await page.click("#message-insert");
   await expect(page.locator("#status")).toContainText("Bitte zuerst den Text der vertraulichen Nachricht eingeben.");
 
   const password = await page.locator("#password").inputValue();
   await page.fill("#message", "Zugang zum Portal: anna / Sommer2026");
   await expect(page.locator("#message-count")).toHaveText("36 von 1000 Zeichen");
-  await page.fill("#expire", "60");
-  await page.locator("#expire").dispatchEvent("change");
+  await page.fill("#message-days", "45");
+  await page.locator("#message-days").dispatchEvent("change");
+  await expect(page.locator("#message-days")).toHaveValue("30");
+  await expect(page.locator("#status")).toContainText("Höchstens 30 Tage möglich");
   await page.click("#message-insert");
   await expect(page.locator("#status")).toContainText("Der Link zur vertraulichen Nachricht wurde eingefügt.");
-  await expect(page.locator("#status")).toContainText("höchstens 30 Tage abrufbar");
 
   const body = JSON.parse(calls.find((c) => c.path === "/api/messages")!.body!.toString());
-  expect(body).toMatchObject({ text: "Zugang zum Portal: anna / Sommer2026", password, expireDays: 60 });
+  expect(body).toMatchObject({ text: "Zugang zum Portal: anna / Sommer2026", password, messageDays: 30, passwordDays: 5 });
   const inserted = (await officeLog(page)).inserted[0].data;
   expect(inserted).toContain("https://vault.example.com/#/send/msg/key123");
   expect(inserted).toContain("Vertrauliche Nachricht für Sie");
   expect(inserted).not.toContain("Sommer2026"); // the text never goes into the mail
   await expect(page.locator("#message")).toHaveValue("");
   await expectAccessible(page);
+});
+
+test("Kennwort-Link gültig für: 5 days by default, at most 30, sent with every link", async ({ page }) => {
+  const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)] });
+  await expect(page.locator("#password-days")).toHaveValue("5");
+  await page.fill("#password-days", "40");
+  await page.locator("#password-days").dispatchEvent("change");
+  await expect(page.locator("#password-days")).toHaveValue("30");
+  await expect(page.locator("#status")).toContainText("Höchstens 30 Tage möglich – der Wert wurde auf 30 gesetzt. Neue Kennwort-Links sind 30 Tage gültig.");
+  // "Ohne Kennwort" has no password link.
+  await page.check("#mode-none");
+  await expect(page.locator("#password-days-field")).toBeHidden();
+  await page.check("#mode-random");
+  await expect(page.locator("#password-days-field")).toBeVisible();
+
+  await page.fill("#password-days", "12");
+  await page.locator("#password-days").dispatchEvent("change");
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
+  expect(JSON.parse(calls.find((c) => c.path.endsWith("/complete"))!.body!.toString()).passwordDays).toBe(12);
 });
 
 test("Vertrauliche Nachricht needs a password", async ({ page }) => {

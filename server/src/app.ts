@@ -39,7 +39,7 @@ import { clampInt, isEmailAddress } from "./limits.js";
 import { locale, t } from "./i18n.js";
 import { passwordProblem } from "./password.js";
 import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } from "./store.js";
-import { createMessageSend, createPasswordSend, MESSAGE_MAX_DAYS, MESSAGE_MAX_LENGTH, setSendMaxAccess } from "./vaultwarden.js";
+import { createMessageSend, createPasswordSend, MESSAGE_MAX_LENGTH, setSendMaxAccess } from "./vaultwarden.js";
 
 function nextcloudFor(user: User): NextcloudClient {
   const creds = getCredentials(user.oid);
@@ -67,12 +67,20 @@ interface ShareRequest {
   expireDays?: unknown;
   /** How often the password link (Vaultwarden Send) can be opened. */
   maxAccess?: unknown;
+  /** How many days the password link stays available ("Kennwort-Link gültig für"). */
+  passwordDays?: unknown;
   /** ID of the "Als Link einfügen" step (one password and one password mail per step, see attachToJob). */
   step?: unknown;
 }
 
+/** The password link of a step: how often and for how many days it can be opened. */
+interface PasswordLink {
+  maxAccess: number;
+  days: number;
+}
+
 /**
- * Validated password, expiry date (YYYY-MM-DD) and number of password-link accesses for a new share.
+ * Validated password, expiry date (YYYY-MM-DD) and password link (accesses, days) for a new share.
  * `withPassword: false` (file links "Ohne Kennwort") skips the password check; the password is then ignored.
  */
 function shareSettings(body: ShareRequest | undefined, withPassword = true) {
@@ -82,7 +90,8 @@ function shareSettings(body: ShareRequest | undefined, withPassword = true) {
   const expireDays = clampInt(body?.expireDays, config.defaultExpireDays, 1, config.maxExpireDays);
   const expireDate = new Date(Date.now() + expireDays * 86_400_000).toISOString().slice(0, 10);
   const maxAccess = clampInt(body?.maxAccess, config.sendMaxAccessCount, 1, config.sendMaxAccessLimit);
-  return { password, expireDate, maxAccess };
+  const days = clampInt(body?.passwordDays, config.sendExpireDays, 1, config.sendMaxExpireDays);
+  return { password, expireDate, passwordLink: { maxAccess, days } satisfies PasswordLink };
 }
 
 /**
@@ -97,7 +106,7 @@ async function attachToJob(
   requestedJobId: unknown,
   itemName: string,
   password: string,
-  maxAccess: number,
+  link: PasswordLink,
   requestedStep: unknown,
   /** The link just created (token, file name, expiry) – for "Meine Freigaben" and download confirmations. */
   share?: StepShare,
@@ -115,29 +124,31 @@ async function attachToJob(
       await addFileToPart(id, step, itemName, share);
       return id;
     }
-    const send = await createPasswordSend(`CloudShare: ${itemName}`, password, maxAccess);
+    const send = await createPasswordSend(`CloudShare: ${itemName}`, password, link.maxAccess, link.days);
     await addSeparatePart(id, {
       step: step ?? randomUUID(),
       fileNames: [itemName],
       sendUrl: send.url,
       sendId: send.id,
-      maxAccessCount: maxAccess,
+      maxAccessCount: link.maxAccess,
+      sendExpiresAt: send.expiresAt,
       shares: share ? [share] : undefined,
     });
     return id;
   }
-  const send = await createPasswordSend(`CloudShare: ${itemName}`, password, maxAccess);
+  const send = await createPasswordSend(`CloudShare: ${itemName}`, password, link.maxAccess, link.days);
   if (step) {
     return createSeparateJob(user.oid, user.upn, {
       step,
       fileNames: [itemName],
       sendUrl: send.url,
       sendId: send.id,
-      maxAccessCount: maxAccess,
+      maxAccessCount: link.maxAccess,
+      sendExpiresAt: send.expiresAt,
       shares: share ? [share] : undefined,
     });
   }
-  return createJob(user.oid, user.upn, itemName, send.url, maxAccess, send.id);
+  return createJob(user.oid, user.upn, itemName, send.url, link.maxAccess, send.id);
 }
 
 /** How the password of a link went out, for "Meine Freigaben" (null before sending or for older links). */
@@ -248,7 +259,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     smsEnabled: smsEnabled(),
     smsDefaultCountry: config.smsDefaultCountry,
     messageMaxLength: MESSAGE_MAX_LENGTH,
-    messageMaxDays: MESSAGE_MAX_DAYS,
+    sendExpireDays: config.sendExpireDays,
+    sendMaxExpireDays: config.sendMaxExpireDays,
   }));
 
   /**
@@ -445,7 +457,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
 
       // "Ohne Kennwort": plain public link – no Vaultwarden Send, no password job, no password mail.
       const noPassword = req.body?.noPassword === true;
-      const { password, expireDate, maxAccess } = shareSettings(req.body, !noPassword);
+      const { password, expireDate, passwordLink } = shareSettings(req.body, !noPassword);
 
       const nc = nextcloudFor(user);
       await nc.finishUpload(upload.uid, req.params.id, upload.target, upload.size);
@@ -453,7 +465,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
 
       const shareUrl = await nc.createPublicShare(upload.target, noPassword ? undefined : password, expireDate);
       await registerForCleanup(user.oid, upload.target, expireDate);
-      const jobId = noPassword ? null : await attachToJob(user, req.body?.jobId, upload.fileName, password, maxAccess, req.body?.step,
+      const jobId = noPassword ? null : await attachToJob(user, req.body?.jobId, upload.fileName, password, passwordLink, req.body?.step,
         shareInfo(shareUrl, upload.fileName, expireDate));
       req.log.info({ user: user.upn, file: upload.fileName, noPassword }, "Share created");
       return { shareUrl, expireDate, jobId, fileName: upload.fileName, size: upload.size };
@@ -467,7 +479,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
 
   app.post<{ Body: ShareRequest & { jobId?: string } }>("/api/requests", { config: { rateLimit: strictLimit } }, async (req) => {
     const user = await authenticate(req);
-    const { password, expireDate, maxAccess } = shareSettings(req.body);
+    const { password, expireDate, passwordLink } = shareSettings(req.body);
 
     const nc = nextcloudFor(user);
     const { id: uid } = await nc.userInfo();
@@ -475,7 +487,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     await nc.ensureFolder(uid, folder);
     // Create-only share ("file drop"): recipients can upload but cannot see or download anything.
     const shareUrl = await nc.createPublicShare(folder, password, expireDate, 4, t("server.requestLabel"));
-    const jobId = await attachToJob(user, req.body?.jobId, uploadLinkItem(), password, maxAccess, req.body?.step,
+    const jobId = await attachToJob(user, req.body?.jobId, uploadLinkItem(), password, passwordLink, req.body?.step,
       shareInfo(shareUrl, uploadLinkItem(), expireDate));
     req.log.info({ user: user.upn, folder: folder.join("/") }, "Upload link created");
     return { shareUrl, expireDate, jobId };
@@ -485,24 +497,23 @@ export async function buildApp(options: { logger?: boolean } = {}) {
   /**
    * A text instead of a file: stored only as a password-protected Vaultwarden Send (never in Nextcloud), the link goes
    * into the mail as a card, the password goes out like for files (same job, step, channel). Always with a password;
-   * at most MESSAGE_MAX_DAYS days (Vaultwarden's limit), even if "Link gültig für" is longer.
+   * available for `messageDays` ("Nachricht gültig für", 1 to SEND_MAX_EXPIRE_DAYS, default SEND_EXPIRE_DAYS).
    */
-  app.post<{ Body: ShareRequest & { jobId?: string; text?: unknown } }>("/api/messages", async (req) => {
+  app.post<{ Body: ShareRequest & { jobId?: string; text?: unknown; messageDays?: unknown } }>("/api/messages", async (req) => {
     const user = await authenticate(req);
     const text = typeof req.body?.text === "string" ? req.body.text.replace(/\r\n/g, "\n").trim() : "";
     if (!text || text.length > MESSAGE_MAX_LENGTH) {
       throw new HttpError(400, t("server.messageInvalid", { max: MESSAGE_MAX_LENGTH }));
     }
-    const { password, maxAccess } = shareSettings(req.body);
-    const wanted = clampInt(req.body?.expireDays, config.defaultExpireDays, 1, config.maxExpireDays);
-    const days = Math.min(wanted, MESSAGE_MAX_DAYS);
+    const { password, passwordLink } = shareSettings(req.body);
+    const days = clampInt(req.body?.messageDays, config.sendExpireDays, 1, config.sendMaxExpireDays);
     const expiresAt = new Date(Date.now() + days * 86_400_000);
     const expireDate = expiresAt.toISOString().slice(0, 10);
     const item = t("server.messageItem");
     const send = await createMessageSend(item, text, password, expiresAt);
-    const jobId = await attachToJob(user, req.body?.jobId, item, password, maxAccess, req.body?.step);
+    const jobId = await attachToJob(user, req.body?.jobId, item, password, passwordLink, req.body?.step);
     req.log.info({ user: user.upn, days, length: text.length }, "Confidential message created");
-    return { shareUrl: send.url, expireDate, jobId, capped: days < wanted };
+    return { shareUrl: send.url, expireDate, jobId };
   });
 
   // --- My shares ("Meine Freigaben") ------------------------------------------------
@@ -592,7 +603,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const request = share.permissions === 4 && share.isFolder;
       const noPassword = req.body?.noPassword === true;
       if (request && noPassword) throw new HttpError(400, t("server.requestNeedsPassword"));
-      const { password, expireDate, maxAccess } = shareSettings(req.body, !noPassword);
+      const { password, expireDate, passwordLink } = shareSettings(req.body, !noPassword);
 
       const segments = share.path.split("/").filter(Boolean);
       const fileName = segments[segments.length - 1];
@@ -602,7 +613,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       if (!request) await registerForCleanup(user.oid, segments, expireDate);
       const jobId = noPassword
         ? null
-        : await attachToJob(user, req.body?.jobId, request ? uploadLinkItem() : fileName, password, maxAccess, req.body?.step,
+        : await attachToJob(user, req.body?.jobId, request ? uploadLinkItem() : fileName, password, passwordLink, req.body?.step,
             shareInfo(shareUrl, request ? uploadLinkItem() : fileName, expireDate));
       req.log.info({ user: user.upn, path: share.path, noPassword }, "Share linked again");
       return { kind: request ? "request" : "file", shareUrl, expireDate, jobId, fileName, size: share.size };

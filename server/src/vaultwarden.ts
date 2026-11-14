@@ -74,15 +74,17 @@ export async function setSendMaxAccess(id: string, maxAccessCount: number): Prom
 }
 
 /**
- * Creates a hidden text Send containing the password (opened at most `maxAccessCount` times) and returns its URL
- * and ID (the ID allows changing the number of accesses later).
+ * Creates a hidden text Send containing the password (opened at most `maxAccessCount` times, deleted after `days`)
+ * and returns its URL, ID (allows changing the number of accesses later) and expiry time (ms).
  */
 export async function createPasswordSend(
   label: string,
   password: string,
   maxAccessCount: number = config.sendMaxAccessCount,
-): Promise<{ url: string; id: string | undefined }> {
-  const deletionDate = new Date(Date.now() + config.sendExpireDays * 86_400_000).toISOString();
+  days: number = config.sendExpireDays,
+): Promise<{ url: string; id: string | undefined; expiresAt: number }> {
+  const expiresAt = Date.now() + days * 86_400_000;
+  const deletionDate = new Date(expiresAt).toISOString();
   const send = {
     name: label,
     notes: null,
@@ -99,18 +101,16 @@ export async function createPasswordSend(
 
   const data = await withUnlock(() => bw<{ accessUrl?: string; id?: string }>("POST", "/object/send", send));
   if (!data?.accessUrl) throw new HttpError(502, t("server.vaultNoUrl"));
-  return { url: data.accessUrl, id: typeof data.id === "string" ? data.id : undefined };
+  return { url: data.accessUrl, id: typeof data.id === "string" ? data.id : undefined, expiresAt };
 }
 
 /** Longest confidential message (characters) – Bitwarden's limit for text Sends. */
 export const MESSAGE_MAX_LENGTH = 1000;
-/** Vaultwarden refuses Sends that are deleted more than 31 days after creation. */
-export const MESSAGE_MAX_DAYS = 30;
 
 /**
  * Confidential message ("Vertrauliche Nachricht"): a text Send protected with the share password – the recipients
  * open the link from the mail and enter the password they get in the password mail or SMS. Vaultwarden deletes it
- * at `expiresAt`; no copy stays in Nextcloud or on this server.
+ * at `expiresAt` (1 to SEND_MAX_EXPIRE_DAYS days, chosen in the pane); no copy stays in Nextcloud or on this server.
  */
 export async function createMessageSend(
   label: string,

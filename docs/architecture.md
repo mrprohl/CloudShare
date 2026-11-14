@@ -8,8 +8,8 @@ together, where state lives, and the Outlook peculiarities the code has to work 
 
 Everything visible to users and recipients (taskpane, Outlook hints, cards, password mail, SMS, download
 confirmation) comes from the language file picked by `LANGUAGE` (`locales/de.json` by default, see
-[2.8](#28-languages)); code, logs and documentation are English. Labels quoted in this document ("Als Link einfügen",
-"Meine Freigaben" …) are the German texts.
+[2.8](#28-languages)); code, logs and documentation are English. Labels are quoted as in the English interface
+("Insert as link", "My shares" …); the German texts (the default) are in `locales/de.json` under the same keys.
 
 ## Contents
 
@@ -28,7 +28,7 @@ confirmation) comes from the language file picked by `LANGUAGE` (`locales/de.jso
 ```
 Outlook (classic on Windows / new Outlook / Outlook on the web)
   ├─ Taskpane            addin/src/taskpane/   connect Nextcloud, pick files, upload, insert cards,
-  │                                            "Meine Freigaben"
+  │                                            "My shares"
   └─ Event handlers      addin/src/commands/   OnMessageAttachmentsChanged → info bar
                                                OnMessageSend (Smart Alert) → attachment policy, arm password mail
         │  HTTPS + Office SSO token (Entra ID, audience api://<host>/<client-id>, scope access_as_user)
@@ -73,17 +73,17 @@ replaces `%%PUBLIC_BASE_URL%%`, `%%PUBLIC_HOST%%` and `%%ENTRA_CLIENT_ID%%`; the
 
 ### 2.1 Connect Nextcloud (once per user)
 
-1. Taskpane → "Verbinden" → `POST /api/nextcloud/connect` starts Login Flow v2 and returns the login URL, which the
+1. Taskpane → "Connect" → `POST /api/nextcloud/connect` starts Login Flow v2 and returns the login URL, which the
    taskpane opens in the browser (usually SSO, no typing).
 2. The taskpane polls `POST /api/nextcloud/connect/:id/poll` until the user granted access.
 3. The backend stores the app password encrypted under the user's Entra object ID (`oid`). In Nextcloud it appears as
    "CloudShare Outlook" under *Settings → Security* and can be revoked there; a 401 from Nextcloud deletes the stored
    credential and the taskpane shows the connect view again (`NEXTCLOUD_NOT_CONNECTED`).
 
-### 2.2 Share files ("Als Link einfügen")
+### 2.2 Share files ("Insert as link")
 
 1. The taskpane lists the mail's file attachments (those above `ATTACHMENT_THRESHOLD_MB` preselected) and files from
-   the computer – dropped onto the drop zone (the whole "Senden" tab accepts drops) or picked by clicking it (native dialog `window.showOpenFilePicker`, fallback: hidden `<input type="file">`).
+   the computer – dropped onto the drop zone (the whole "Send" tab accepts drops) or picked by clicking it (native dialog `window.showOpenFilePicker`, fallback: hidden `<input type="file">`).
 2. **One click = one step** with a random `step` ID. All files of the step are uploaded one by one:
    `POST /api/uploads` (quota check via OCS `cloud/user`, 507 → `NEXTCLOUD_QUOTA_EXCEEDED`) →
    `PUT /api/uploads/:id/chunks/:n` (10 MiB chunks, Nextcloud chunked upload v2) → `POST /api/uploads/:id/complete`.
@@ -97,25 +97,30 @@ replaces `%%PUBLIC_BASE_URL%%`, `%%PUBLIC_HOST%%` and `%%ENTRA_CLIENT_ID%%`; the
    token in the draft state.
 5. After the step the taskpane offers a new random password (or clears an own one) for the next step.
 
-Variants: **"Link zum Hochladen einfügen"** (`POST /api/requests`) creates a folder in `NEXTCLOUD_REQUEST_FOLDER` with
-a create-only link ("file drop") – same password rules, its own step. **"Ohne Kennwort"** (`noPassword: true`, file
-links only) creates a link without password, Send or job. **"Meine Freigaben → Einfügen"**
+Variants: **"Insert upload link"** (`POST /api/requests`) creates a folder in `NEXTCLOUD_REQUEST_FOLDER` with
+a create-only link ("file drop") – same password rules, its own step. **"No password"** (`noPassword: true`, file
+links only) creates a link without password, Send or job. **"My shares → Insert"**
 (`POST /api/shares/:id/link`) creates a new link to an existing upload with a new password, as a new step.
 
-**"Vertrauliche Nachricht"** (`POST /api/messages`): a text instead of a file. It is never written to Nextcloud or to
+**"Confidential message"** (`POST /api/messages`): a text instead of a file. It is never written to Nextcloud or to
 `/data`: `createMessageSend` stores it as a Vaultwarden **text Send protected with the step's password** (Send access
 password, `hidden: false`, no access limit, deleted at expiry). The Send's link goes into the mail as a card
-("Nachricht öffnen"); the step's password goes out like for files – the job item is "Vertrauliche Nachricht", the
+("Open message"); the step's password goes out like for files – the job item is "Confidential message", the
 password mail shows an envelope badge. Always with a password; at most 1000 characters (Bitwarden's limit for text
-Sends) and 30 days (Vaultwarden refuses deletion dates more than 31 days ahead), even if "Link gültig für" is longer
-(`capped` in the answer). Messages are not listed in "Meine Freigaben" (they are no Nextcloud shares) and get no
+Sends). Its lifetime is chosen separately ("Message valid for", `messageDays`): `SEND_EXPIRE_DAYS` (default 5) up to
+`SEND_MAX_EXPIRE_DAYS` (at most 30 – Vaultwarden refuses deletion dates more than 31 days ahead).
+
+**"Password link valid for"** (`passwordDays`, same limits): lifetime of the step's password Send. It is created with
+the first link of the step, so it counts from inserting, not from sending; the date is stored with the step
+(`sendExpiresAt`) and named in the password mail ("expires on …"). After it the password can no longer be fetched,
+even if the download link is still valid – recipients who opened it in time keep the password. Messages are not listed in "My shares" (they are no Nextcloud shares) and get no
 download confirmation.
 
 ### 2.3 Send and password mail
 
-1. On "Senden" Outlook runs the Smart Alert `onMessageSendHandler` (manifest `SendMode="SoftBlock"`):
+1. On "Send" Outlook runs the Smart Alert `onMessageSendHandler` (manifest `SendMode="SoftBlock"`):
    - Large attachments left in the mail: under `ATTACHMENT_POLICY=enforce` sending is blocked with the button
-     "CloudShare öffnen"; under `suggest` the user is asked once and may choose "Trotzdem senden"
+     "Open CloudShare"; under `suggest` the user is asked once and may choose "Send Anyway"
      (`sendModeOverride: PromptUser`, Mailbox 1.14).
    - If all CloudShare cards were deleted from the mail, the draft is released: no tag, no password mail.
    - Otherwise the job is **armed**: `POST /api/jobs/:id/arm` with an SSO token; the backend exchanges it for a Graph
@@ -125,7 +130,7 @@ download confirmation.
    property `cecp-<add-in ID>`; `ADDIN_ID` must match the manifest `<Id>`). For a "From" that differs from the user
    (shared mailbox, send on behalf), that mailbox's "Sent Items" are searched as well.
 3. Once found, it sends **one password mail per step** (`passwordMail.ts`) to the mail's **actual** recipients – or
-   only to the address from "Kennwort an eine andere E-Mail-Adresse senden" – from the same sender. Sent parts are
+   only to the address from "to another email address" – from the same sender. Sent parts are
    remembered, so a retry after an error sends nothing twice. Typical delay: 20–60 s after the main mail.
 4. If the mail does not show up within 15 minutes (sending cancelled or failed), the job is disarmed and stays open
    for further links. Jobs expire after 7 days.
@@ -142,18 +147,18 @@ wins) – Nextcloud's housekeeping deletes expired shares, so the date could not
 **trash**:
 
 - due = day after the expiry date + `CLEANUP_AFTER_DAYS` (default `0`; `off` disables the cleanup);
-- **"Zurückziehen"** counts as expiry today – with `0` the folder goes to the trash at once;
+- **"Revoke"** counts as expiry today – with `0` the folder goes to the trash at once;
 - folders that still have a valid link are postponed; users who disconnected are skipped;
 - only folders matching `NEXTCLOUD_FOLDER/YYYY-MM-DD_xxxxxxxx` are touched – received files
   (`NEXTCLOUD_REQUEST_FOLDER`) are never deleted. Uploads from before the feature existed are not registered.
 
 ### 2.5 Password channel: recipients, another address or SMS
 
-"Kennwort übermitteln" in the taskpane decides per mail where the password goes (`DraftState.passwordTo` /
+"Deliver the password" in the taskpane decides per mail where the password goes (`DraftState.passwordTo` /
 `passwordSms`, stored on the job via `PATCH /api/jobs/:id` and passed again with `/arm`):
 
-- **an die Empfänger der Nachricht** (default) – the password mail to the mail's actual recipients;
-- **an eine andere E-Mail-Adresse** – the password mail only to that address;
+- **to the recipients of the message** (default) – the password mail to the mail's actual recipients;
+- **to another email address** – the password mail only to that address;
 - **per SMS** (only with `SEVEN_API_KEY`) – one SMS per step via seven.io (`sms.ts`), sent by the watcher after the
   mail appeared in "Sent Items", like the password mail. The number is entered in the pane and normalised to E.164
   (`0170 …` → `+49170…`, `SMS_DEFAULT_COUNTRY`). The password exists in readable form only in the step's Vaultwarden
@@ -162,7 +167,7 @@ wins) – Nextcloud's housekeeping deletes expired shares, so the date could not
   never automatically to the recipients by another channel. Delivery reports arrive at `/webhooks/seven` (secret in
   the query, compared in constant time, idempotent, webhook and classic form callback) and update `deliveries.ts`.
 
-How the password of each link went out (channel, masked recipient, SMS status) is shown in "Meine Freigaben".
+How the password of each link went out (channel, masked recipient, SMS status) is shown in "My shares".
 
 ### 2.6 Text templates
 
@@ -261,9 +266,9 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `GET /api/nextcloud/status` | Connected?, storage (free/used/total), `passwordEnforced` |
 | `POST /api/nextcloud/connect`, `…/connect/:id/poll`, `DELETE /api/nextcloud/connection` | Login Flow v2, disconnect |
 | `POST /api/uploads`, `PUT …/:id/chunks/:n`, `POST …/:id/complete`, `DELETE …/:id` | Chunked upload, share link |
-| `POST /api/requests` | Upload link ("Dateien von Empfängern erhalten") |
+| `POST /api/requests` | Upload link ("Receive files from recipients") |
 | `POST /api/messages` | Confidential message: text → password-protected Vaultwarden Send, joins the mail's password job |
-| `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "Meine Freigaben": list (30 days, max. 100), revoke, insert again |
+| `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "My shares": list (30 days, max. 100), revoke, insert again |
 | `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send), `passwordTo` or `passwordSms` until the password went out |
 | `POST /api/jobs/:id/arm` | Arm the password mail (send handler); also reads the sender's name and department for the templates |
 | `GET/POST /webhooks/seven?token=…` | seven.io delivery reports (no login, secret `SEVEN_WEBHOOK_SECRET`) |
@@ -280,8 +285,8 @@ The same add-in runs in two very different environments; most hard-won fixes are
 - `commands.js` is bundled as IIFE with target ES2016 and without `Headers`/`Promise.finally`
   (`addin/test/bundle.test.ts` guards this).
 - SSO and network requests are only allowed for scripts listed in
-  `/.well-known/microsoft-officeaddins-allowed.json` – without it the send dialog hangs at "dauert länger als
-  erwartet".
+  `/.well-known/microsoft-officeaddins-allowed.json` – without it the send dialog hangs at "is taking longer
+  than expected".
 - Office.js is preloaded, the handlers can be registered right away.
 - Outlook caches the script; after an update or a change of `LANGUAGE` clear `%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\`.
 - The taskpane runs in WebView2, where the dialog of a file input did not reliably open (script click, `<label for>`
@@ -303,7 +308,7 @@ follows Outlook's display language; the message (`alert.suggest`) names it as th
 **Office SSO:** only one `getAccessToken` call may run at a time (13008), so the token is cached and concurrent
 callers share one request; SSO errors (plain objects with a code) are shown with a hint (language file, `sso.<code>`) and the code
 (`shared/sso.ts`). Every step of the send handler has a time limit, so a hanging step ends with a message instead of
-"dauert länger als erwartet".
+"is taking longer than expected".
 
 **Diagnostics:** with `CLIENT_TRACE=true` the send handler reports each step (`start` … `arm:token` … `completed`,
 milliseconds, Outlook platform, frame origin, error text) as plain GET requests to `/api/trace`, logged as "Smart
@@ -320,7 +325,7 @@ Alert trace". Off by default.
   bits from the browser's CSPRNG). That is low for offline attacks but sufficient here: an attacker needs the link
   first, Nextcloud throttles failed attempts on public links, and links expire. Own passwords need ≥ 12 characters and
   three character classes (checked in the taskpane and again by the server). The password exists in readable form
-  only in the Vaultwarden Send (limited accesses, 7 days) and briefly in the taskpane.
+  only in the Vaultwarden Send (limited accesses, 5 days by default, at most 30) and briefly in the taskpane.
 - **Graph:** delegated permissions for everything the user triggers; the armed token is stored encrypted for at most
   15 minutes of use, and the `.Shared` permissions reach only mailboxes the user already has rights to. Only the
   optional download confirmation uses an **application** permission (`Mail.Send`) – restrict it to the CloudShare
@@ -365,7 +370,7 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
 ### Nextcloud
 
 - No change to the login method (`user_oidc`, LDAP, local) needed. Public links must be allowed; for upload links also
-  public upload. If *Enforce password protection* is on, CloudShare hides "Ohne Kennwort" (exempt a group there to
+  public upload. If *Enforce password protection* is on, CloudShare hides "No password" (exempt a group there to
   allow it for some users).
 - Reached through its public address (`NEXTCLOUD_URL`). Behind a proxy, the request body limit must be ≥ 12 MB, and
   the login flow (`/index.php/login/v2…`) must be reachable.
@@ -386,7 +391,7 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   language). Accessibility is tested with axe (WCAG 2 A/AA) in CI.
 - Layout and labels must survive longer translations: buttons and labels wrap or are short, the full text is in
   `title`/`aria-label`.
-- Outlook sets the width of the pane; the layout is designed for 320 px (short labels in "Meine Freigaben", full text
+- Outlook sets the width of the pane; the layout is designed for 320 px (short labels in "My shares", full text
   in `title`/`aria-label`).
 - **Cards** (`mailCard.ts`) and the **password mail** (`passwordMail.ts`) share one look: white card, blue accent,
   coloured file type badges, one button – tables and inline styles only, so they render in classic Outlook, Outlook on

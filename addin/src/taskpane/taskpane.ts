@@ -47,6 +47,9 @@ const modeOwn = $<HTMLInputElement>("mode-own");
 const modeNone = $<HTMLInputElement>("mode-none");
 const passwordGroup = $<HTMLDivElement>("password-group");
 const maxAccessField = $<HTMLDivElement>("max-access-field");
+const passwordDaysField = $<HTMLDivElement>("password-days-field");
+const passwordDaysInput = $<HTMLInputElement>("password-days");
+const messageDaysInput = $<HTMLInputElement>("message-days");
 const passwordToField = $<HTMLDivElement>("password-to-field");
 const channelRecipients = $<HTMLInputElement>("channel-recipients");
 const channelMail = $<HTMLInputElement>("channel-mail");
@@ -509,7 +512,14 @@ async function shareSettingsBody(step: string) {
     await updateDraftState(wanted);
   }
   const state = await readDraftState();
-  return { password: passwordInput.value, expireDays, maxAccess: maxAccessValue(), jobId: state.jobId, step };
+  return {
+    password: passwordInput.value,
+    expireDays,
+    maxAccess: maxAccessValue(),
+    passwordDays: sendDays(passwordDaysInput).value,
+    jobId: state.jobId,
+    step,
+  };
 }
 
 /** New ID for one click on "Als Link einfügen" / "Link zum Hochladen einfügen" / "Meine Freigaben → Als Link einfügen". */
@@ -793,6 +803,7 @@ function setPasswordMode(mode: "random" | "own" | "none") {
   modeNone.checked = none;
   passwordGroup.hidden = none;
   maxAccessField.hidden = none;
+  passwordDaysField.hidden = none;
   passwordToField.hidden = none;
   passwordHint.textContent = t(none ? "password.hintNone" : perStep ? "password.hintSeparate" : "password.hint");
   passwordInput.readOnly = !own;
@@ -872,6 +883,7 @@ function unlockPassword() {
   perStep = false;
   maxAccessInput.readOnly = false;
   maxAccessInput.value = String(serverConfig.sendMaxAccessCount);
+  passwordDaysInput.value = String(sendDefaultDays());
   setPasswordMode("random");
   applyPasswordPolicy(passwordEnforced);
 }
@@ -893,6 +905,11 @@ async function releaseIfLinksDeleted() {
 function maxAccessValue(): number {
   return boundedNumber(maxAccessInput, serverConfig.sendMaxAccessCount, serverConfig.sendMaxAccessLimit).value;
 }
+
+/** Lifetime of a Vaultwarden Send (password link, confidential message): default and limit from the server. */
+const sendDefaultDays = () => serverConfig?.sendExpireDays ?? 5;
+const sendMaxDays = () => serverConfig?.sendMaxExpireDays ?? 30;
+const sendDays = (input: HTMLInputElement) => boundedNumber(input, sendDefaultDays(), sendMaxDays());
 
 /** Whole number from 1 to `max` (empty or invalid → `fallback`); `capped` if the entry was above the maximum. */
 function boundedNumber(input: HTMLInputElement, fallback: number, max: number): { value: number; capped: boolean } {
@@ -919,6 +936,24 @@ expireInput.addEventListener("change", async () => {
     capped ? "info" : "success",
   );
 });
+
+/**
+ * "Kennwort-Link gültig für" / "Nachricht gültig für": apply to the next password link or message (the Sends of links
+ * already inserted keep their date); above the maximum the value is capped with a note.
+ */
+for (const [input, changed] of [
+  [passwordDaysInput, "passwordDays.changed"],
+  [messageDaysInput, "message.daysChanged"],
+] as const) {
+  input.addEventListener("change", () => {
+    const { value, capped } = sendDays(input);
+    input.value = String(value);
+    setStatus(
+      sentences(capped ? t("expire.capped", { max: sendMaxDays() }) : "", t(changed, { count: value })),
+      capped ? "info" : "success",
+    );
+  });
+}
 
 /**
  * "Kennwort abrufbar" changed: before the first link it only applies to the next one; afterwards the mail's
@@ -1098,9 +1133,9 @@ messageButton.addEventListener("click", async () => {
   busy++;
   try {
     setStatus(t("message.creating"));
-    const result = await api<{ shareUrl: string; expireDate: string; jobId: string; capped?: boolean }>(
+    const result = await api<{ shareUrl: string; expireDate: string; jobId: string }>(
       "/api/messages",
-      { method: "POST", body: JSON.stringify({ ...(await shareSettingsBody(newStep())), text }) },
+      { method: "POST", body: JSON.stringify({ ...(await shareSettingsBody(newStep())), text, messageDays: sendDays(messageDaysInput).value }) },
       await getToken(),
     );
     // Same password and password mail as the files of this mail (one step).
@@ -1114,10 +1149,7 @@ messageButton.addEventListener("click", async () => {
     );
     messageInput.value = "";
     renderMessageCount();
-    setStatus(
-      sentences(t("message.inserted"), result.capped ? t("message.capped", { days: serverConfig.messageMaxDays ?? 30 }) : ""),
-      "success",
-    );
+    setStatus(t("message.inserted"), "success");
   } catch (err) {
     setStatus(errorMessage(err), "error");
   } finally {
@@ -1420,6 +1452,10 @@ Office.onReady(async () => {
 
   const state = await readDraftState();
   maxAccessInput.max = String(serverConfig.sendMaxAccessLimit);
+  for (const input of [passwordDaysInput, messageDaysInput]) {
+    input.max = String(sendMaxDays());
+    input.value = String(sendDefaultDays());
+  }
   maxAccessInput.value = String(state.maxAccess ?? serverConfig.sendMaxAccessCount);
   if (state.password) {
     passwordInput.value = state.password;
@@ -1434,7 +1470,7 @@ Office.onReady(async () => {
   }
   // "Kennwort übermitteln": SMS only when the server has it configured; restore the choice of this draft.
   channelSmsRow.hidden = !serverConfig.smsEnabled;
-  $<HTMLParagraphElement>("message-text").textContent = t("message.text", { days: serverConfig.messageMaxDays ?? 30 });
+  $<HTMLParagraphElement>("message-text").textContent = t("message.text");
   renderMessageCount();
   passwordToInput.value = state.passwordTo ?? "";
   passwordSmsInput.value = state.passwordSms ?? "";

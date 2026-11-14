@@ -4,7 +4,7 @@
 a second mail.**
 
 CloudShare is an Outlook add-in for Microsoft 365 / Exchange Online (classic Outlook on Windows, new Outlook and
-Outlook on the web). Instead of attaching a large file, the sender clicks **"Als Link einfügen"**: the file is
+Outlook on the web). Instead of attaching a large file, the sender clicks **"Insert as link"**: the file is
 uploaded to the sender's own Nextcloud and a download card is inserted into the mail. As soon as the mail has really
 been sent, the recipients get a second mail with a link to the password (a Vaultwarden Send that can only be opened a
 limited number of times).
@@ -12,8 +12,9 @@ limited number of times).
 ![A compose window in new Outlook: the CloudShare button in the ribbon, a download card with three files in the mail, and the CloudShare pane on the right](docs/images/outlook-compose.png)
 
 *All pictures use example data (Max Mustermann, example.com) and show the German interface (`LANGUAGE=de`, the
-default). English is included and further languages can be added – see [Languages](#languages). Labels quoted in this
-README are the German ones.*
+default). English is included and further languages can be added – see [Languages](#languages). Labels are quoted as
+in the English interface (`LANGUAGE=en`); the German ones are in [`locales/de.json`](locales/de.json) – e.g. "Insert
+as link" is "Als Link einfügen", "My shares" is "Meine Freigaben".*
 
 ## Contents
 
@@ -31,61 +32,63 @@ README are the German ones.*
 
 | 1. The mail with the download links | 2. Shortly after: the password |
 |---|---|
-| ![Received mail with a card for three files and a card for an upload link](docs/images/mail-received.png) | ![Password mail with the three file names and a "Kennwort anzeigen" button](docs/images/password-mail.png) |
-| One card per "Als Link einfügen": file type, name, size and a download button; optionally a link through which the recipients can upload files themselves. | One password mail per card. "Kennwort anzeigen" opens the Vaultwarden Send; it works only a few times (default 3) and expires after 7 days. |
+| ![Received mail with a card for three files and a card for an upload link](docs/images/mail-received.png) | ![Password mail with the three file names and a "Show password" button](docs/images/password-mail.png) |
+| One card per "Insert as link": file type, name, size and a download button; optionally a link through which the recipients can upload files themselves. | One password mail per card. "Show password" opens the Vaultwarden Send; it works only a few times (default 3) and for a few days (default 5, chosen by the sender). |
 
 The password never travels in the same mail as the link, and it is only sent once the mail with the link has really
 left the outbox.
 
 ## Using CloudShare
 
-<img src="docs/images/taskpane-send.png" alt="CloudShare pane, tab Senden: one large attachment preselected, password options, link validity, how the password is delivered, upload link, confidential message and the button Als Link einfügen" width="300" align="right">
+<img src="docs/images/taskpane-send.png" alt="CloudShare pane (German interface), tab Send: one large attachment preselected, password options, link validity, how the password is delivered, upload link, confidential message and the button Insert as link" width="300" align="right">
 
-**Once:** open the pane with the **CloudShare** button in the ribbon and click **"Verbinden"** – the Nextcloud login
+**Once:** open the pane with the **CloudShare** button in the ribbon and click **"Connect"** – the Nextcloud login
 opens in the browser (usually without typing anything, thanks to single sign-on). CloudShare remembers the
 connection.
 
 **Sending files:**
 
-1. Attach the file as usual, or drag files from Explorer onto the drop zone **"Dateien hierher ziehen"** in the pane (or
-   click it to choose files). Attachments above the threshold (default 1 MB) are marked **"Groß"** and preselected;
+1. Attach the file as usual, or drag files from Explorer onto the drop zone **"Drag files here"** in the pane (or
+   click it to choose files). Attachments above the threshold (default 1 MB) are marked **"Large"** and preselected;
    Outlook also shows a hint above the mail.
 2. Choose the password:
-   - **Zufälliges Kennwort** (default) – easy to read out, e.g. `KateGeteFi45`.
-   - **Eigenes Kennwort** – at least 12 characters, three of four character types.
-   - **Ohne Kennwort** – only if your Nextcloud allows links without a password.
-3. Optionally adjust **"Link gültig für"** (days), **"Kennwort abrufbar"** (how often the password link opens) and
-   **"Kennwort übermitteln"**: to the recipients of the mail (default), only to **another e-mail address** (e.g. a
+   - **Random password** (default) – easy to read out, e.g. `KateGeteFi45`.
+   - **Own password** – at least 12 characters, three of four character types.
+   - **No password** – only if your Nextcloud allows links without a password.
+3. Optionally adjust **"Link valid for"** (days the download link works), **"Password can be opened"** (how often the
+   password link opens), **"Password link valid for"** (days the password can be fetched – default 5, at most 30) and
+   **"Deliver the password"**: to the recipients of the mail (default), only to **another e-mail address** (e.g. a
    colleague), or **per SMS** to a mobile number (if SMS is set up – the password arrives as plain text, sent after
    the mail).
-4. Click **"Als Link einfügen"**. The attachment is replaced by a download card in the mail.
-5. Send the mail. CloudShare sends the password mail (or SMS) on its own. "Meine Freigaben" later shows how the
+4. Click **"Insert as link"**. The attachment is replaced by a download card in the mail.
+5. Send the mail. CloudShare sends the password mail (or SMS) on its own. "My shares" later shows how the
    password went out, for SMS with the delivery status. With the download confirmation switched on, you get a mail
    when a recipient downloads a file for the first time.
 
-Every click on "Als Link einfügen" gets **its own password and its own password mail**; files selected together in
+Every click on "Insert as link" gets **its own password and its own password mail**; files selected together in
 one click share them. If you delete all CloudShare cards from the mail before sending, no password mail goes out
 and the password options are free again.
 
-**Receiving files:** **"Link zum Hochladen einfügen"** inserts a link through which the recipients can upload files –
+**Receiving files:** **"Insert upload link"** inserts a link through which the recipients can upload files –
 also very large ones – straight into your Nextcloud (folder `Outlook-Dateianforderungen`).
 
-**Confidential message:** under **"Vertrauliche Nachricht"** you type a text instead of choosing a file – e.g. access
-data – and click **"Nachricht als Link einfügen"**. The text does not go into the mail: it is stored encrypted in
-Vaultwarden as a Send protected with the chosen password, and the mail gets a card with **"Nachricht öffnen"**. The
-password reaches the recipients like for files (password mail, other address or SMS). At most 1000 characters,
-available for at most 30 days (Vaultwarden's limit), then deleted.
+**Confidential message:** under **"Confidential message"** you type a text instead of choosing a file – e.g. access
+data – and click **"Insert message as link"**. The text does not go into the mail: it is stored encrypted in
+Vaultwarden as a Send protected with the chosen password, and the mail gets a card with **"Open message"**. The
+password reaches the recipients like for files (password mail, other address or SMS). At most 1000 characters;
+**"Message valid for"** sets how long it can be read (default 5 days, at most 30 – Vaultwarden's limit), then it is
+deleted.
 
 <br clear="right">
 
-<img src="docs/images/taskpane-shares.png" alt="Tab Meine Freigaben: four links with download status, password status and the buttons Kopieren, Einfügen, Zurückziehen" width="300" align="right">
+<img src="docs/images/taskpane-shares.png" alt="Tab My shares: four links with download status, password status and the buttons Copy, Insert, Revoke" width="300" align="right">
 
-**"Meine Freigaben"** lists your CloudShare links of the last 30 days: when they were shared, until when they are
+**"My shares"** lists your CloudShare links of the last 30 days: when they were shared, until when they are
 valid, whether they have a password, and how often they were downloaded (or how many files were received).
 
-- **Kopieren** – copies the link.
-- **Einfügen** – inserts the file again into the mail you are writing, as a *new* link with a new password.
-- **Zurückziehen** – ends the link at once (two clicks). The file then counts as expired and is moved to your
+- **Copy** – copies the link.
+- **Insert** – inserts the file again into the mail you are writing, as a *new* link with a new password.
+- **Revoke** – ends the link at once (two clicks). The file then counts as expired and is moved to your
   Nextcloud trash.
 
 Expired files are cleaned up automatically as well (see `CLEANUP_AFTER_DAYS`).
@@ -93,13 +96,13 @@ Expired files are cleaned up automatically as well (see `CLEANUP_AFTER_DAYS`).
 <br clear="right">
 
 <img src="docs/images/taskpane-dark.png" alt="The pane in Outlook's dark theme" width="220" align="right">
-<img src="docs/images/taskpane-connect.png" alt="First start: Mit Nextcloud verbinden" width="220" align="right">
+<img src="docs/images/taskpane-connect.png" alt="First start: Connect to Nextcloud" width="220" align="right">
 
 The pane follows Outlook's light or dark theme and uses Outlook's own wording ("Nachricht", "Kennwort"; in English
 "message", "password").
 
 Under the attachment policy **`enforce`** (default), large attachments can only be sent through CloudShare; under
-**`suggest`** Outlook asks once when sending and offers **"Trotzdem senden"**.
+**`suggest`** Outlook asks once when sending and offers **"Send Anyway"**.
 
 <br clear="right">
 
@@ -186,10 +189,10 @@ deployed again.
 | `NEXTCLOUD_REQUEST_FOLDER` | `Outlook-Dateianforderungen` | Folder for files received through upload links |
 | `CREDENTIAL_KEY` | – | Key for the stored Nextcloud app passwords (`openssl rand -base64 32`); changing it disconnects all users |
 | `ATTACHMENT_THRESHOLD_MB` | `1` | From this size CloudShare steps in (hint while writing, check on send) |
-| `ATTACHMENT_POLICY` | `enforce` | `enforce`: large attachments only via CloudShare · `suggest`: ask once, "Trotzdem senden" possible |
+| `ATTACHMENT_POLICY` | `enforce` | `enforce`: large attachments only via CloudShare · `suggest`: ask once, "Send Anyway" possible |
 | `SHARE_EXPIRE_DAYS` / `SHARE_MAX_EXPIRE_DAYS` | `14` / `90` | Link validity: default / maximum |
 | `SEND_MAX_ACCESS_COUNT` / `SEND_MAX_ACCESS_LIMIT` | `3` / `20` | How often the password link opens: default / maximum |
-| `SEND_EXPIRE_DAYS` | `7` | Lifetime of the password link |
+| `SEND_EXPIRE_DAYS` / `SEND_MAX_EXPIRE_DAYS` | `5` / `30` | Days the password link and confidential messages stay available: default / maximum the sender may choose (at most 30 – Vaultwarden keeps Sends at most 31 days) |
 | `SEVEN_API_KEY`, `SEVEN_SENDER`, `SEVEN_WEBHOOK_SECRET` | – | Password by SMS via seven.io; without a key the option is not offered. Delivery reports: callback URL `https://<host>/webhooks/seven?token=<secret>` in the seven.io dashboard |
 | `SMS_DEFAULT_COUNTRY` / `SMS_MAX_PER_DAY` | `49` / `50` | Country code for numbers like `0170 …` / SMS per user and day |
 | `DOWNLOAD_NOTICE` | off | `true`: mail to the sender on the first download (needs the Entra application permission `Mail.Send`, see architecture) |
@@ -231,12 +234,12 @@ cache in classic Outlook (see *Operation*), reload Outlook on the web. One langu
 installation; recipients get the password mail and the SMS in the same language. Not affected by `LANGUAGE`:
 
 - **Nextcloud folder names** – `NEXTCLOUD_REQUEST_FOLDER` stays as set (default `Outlook-Dateianforderungen`), so
-  "Meine Freigaben" keeps finding older links. For an English installation set it in `setup.sh` / `env/cloudshare.env`
+  "My shares" keeps finding older links. For an English installation set it in `setup.sh` / `env/cloudshare.env`
   before the first use, e.g. `Outlook file requests`.
 - **`templates.json`** holds one set of texts – translate it as well, or remove it to use the built-in texts of the
   language.
 - **`MAIL_FOOTER`** is written by the admin (e.g. `Tel.` vs. `Phone`).
-- Outlook's own buttons (e.g. "Trotzdem senden" / "Send Anyway") follow the user's Outlook language.
+- Outlook's own buttons (e.g. "Send Anyway", in German Outlook "Trotzdem senden") follow the user's Outlook language.
 
 **Adding a language** – copy [`locales/en.json`](locales/en.json) to `<code>.json` (e.g. `fr.json`) and translate the
 values, keeping the keys and the `{placeholders}`. Keys ending in `_one` / `_other` are the singular and plural form.
@@ -285,10 +288,10 @@ publishes ports.
 
 | Symptom | Cause and fix |
 |---|---|
-| Outlook shows "CloudShare dauert länger als erwartet" when sending | Classic Outlook may run an old copy – clear the cache (see *Operation*). Otherwise switch on `CLIENT_TRACE=true`, send once and read the steps: `docker logs --since 5m cloudshare 2>&1 \| grep 'Smart Alert trace'`. The last step shown is where it stops. Switch it off again afterwards. |
-| No password mail arrives | The password mail goes out only after the mail shows up in "Gesendete Elemente" (20–60 s). If saving sent items is switched off, no password mail is sent. Check `docker logs cloudshare 2>&1 \| grep "Password mail"`. |
-| A click on the drop zone opens no dialog (classic Outlook) | Check with Alt+Tab whether the "Öffnen" dialog opened behind the Outlook window. Dragging files onto the pane always works. With `CLIENT_TRACE=true` every click is logged: `docker logs --since 5m cloudshare 2>&1 \| grep 'picker:'` shows whether the click arrived, which dialog was used and any error. |
-| "Ohne Kennwort" is missing | Nextcloud enforces passwords for links (*Administration → Sharing*). Exempt a group there if some users may share without a password. |
+| Outlook shows "CloudShare is taking longer than expected" when sending | Classic Outlook may run an old copy – clear the cache (see *Operation*). Otherwise switch on `CLIENT_TRACE=true`, send once and read the steps: `docker logs --since 5m cloudshare 2>&1 \| grep 'Smart Alert trace'`. The last step shown is where it stops. Switch it off again afterwards. |
+| No password mail arrives | The password mail goes out only after the mail shows up in "Sent Items" (20–60 s). If saving sent items is switched off, no password mail is sent. Check `docker logs cloudshare 2>&1 \| grep "Password mail"`. |
+| A click on the drop zone opens no dialog (classic Outlook) | Check with Alt+Tab whether the "Open" dialog opened behind the Outlook window. Dragging files onto the pane always works. With `CLIENT_TRACE=true` every click is logged: `docker logs --since 5m cloudshare 2>&1 \| grep 'picker:'` shows whether the click arrived, which dialog was used and any error. |
+| "No password" is missing | Nextcloud enforces passwords for links (*Administration → Sharing*). Exempt a group there if some users may share without a password. |
 | Sign-in error with a code (13xxx), `AADSTS…` in the log | The pane shows the Office SSO code and a hint; most often the Entra app registration (application ID URI, authorized client, admin consent, client secret) does not match. Error table: [docs/microsoft-365.md](docs/microsoft-365.md#8-errors-and-their-causes). |
 | Nextcloud throttles CloudShare | All requests come from the server's address – allow it in Nextcloud's brute-force settings. |
 | CloudShare does not start after setting `LANGUAGE` | The log names the problem and the available languages: `docker logs cloudshare 2>&1 \| grep LANGUAGE`. An own language needs `env/config/locales/<language>.json` (directory `755`, file `644`, valid JSON). |
@@ -313,7 +316,7 @@ Every push and pull request runs the pipeline in `.github/workflows/image.yml`:
 | Stage | What is checked |
 |---|---|
 | test | type check and unit tests of both packages, **language files** (same texts and placeholders in every language, every key used exists, Outlook's length limits), `npm audit`, manifest validation per language, ShellCheck, deployment files (`setup.sh` with dummy answers, `docker compose config`, `caddy validate`) |
-| ui | the real taskpane in Chromium with Office.js and the API mocked – upload, cards, passwords, "Meine Freigaben", dark theme, 320 px width and **accessibility** (axe, WCAG 2 A/AA); screenshots as artifact `ui-test-report` (the pane pictures in this README come from there) |
+| ui | the real taskpane in Chromium with Office.js and the API mocked – upload, cards, passwords, "My shares", dark theme, 320 px width and **accessibility** (axe, WCAG 2 A/AA); screenshots as artifact `ui-test-report` (the pane pictures in this README come from there) |
 | build | image build, Trivy scan, **smoke test** of the real stack with Caddy (TLS, headers, add-in files with the texts of `LANGUAGE`, limits, hardening), **upgrade test** (data written by the published image must stay readable), **load test** (k6: 10 users × 2 × 45 MiB) |
 | push | only if everything passed: `ghcr.io/mrprohl/cloudshare` (`latest`, `sha-<commit>`, version tags); pull requests publish nothing |
 

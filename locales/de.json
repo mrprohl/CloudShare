@@ -84,6 +84,10 @@
     "maxAccess.nextStep": "Der Link zum Kennwort ist {times} abrufbar (für den nächsten Link).",
     "maxAccess.now": "Der Link zum Kennwort ist jetzt {times} abrufbar.",
     "maxAccess.failed": "„Kennwort abrufbar“ konnte nicht geändert werden: {error}",
+    "passwordDays.label": "Kennwort-Link gültig für",
+    "passwordDays.hint": "So lange können die Empfänger das Kennwort abrufen – danach nicht mehr, auch wenn der Download-Link noch gültig ist.",
+    "passwordDays.changed_one": "Neue Kennwort-Links sind {count} Tag gültig.",
+    "passwordDays.changed_other": "Neue Kennwort-Links sind {count} Tage gültig.",
 
     "channel.label": "Kennwort übermitteln",
     "channel.recipients": "an die Empfänger der Nachricht",
@@ -115,7 +119,7 @@
     "request.inserted": "Der Link zum Hochladen wurde eingefügt. Das Kennwort wird nach dem Senden automatisch verschickt.",
 
     "message.heading": "Vertrauliche Nachricht",
-    "message.text": "Ein Text, den die Empfänger nur mit dem Kennwort lesen können – z. B. Zugangsdaten. Er steht nicht in der Mail, sondern verschlüsselt in Vaultwarden. Kennwort wie oben, höchstens {days} Tage abrufbar.",
+    "message.text": "Ein Text, den die Empfänger nur mit dem Kennwort lesen können – z. B. Zugangsdaten. Er steht nicht in der Mail, sondern verschlüsselt in Vaultwarden. Es gilt das Kennwort von oben.",
     "message.label": "Text der vertraulichen Nachricht",
     "message.placeholder": "Vertraulichen Text eingeben …",
     "message.count": "{count} von {max} Zeichen",
@@ -126,7 +130,9 @@
     "message.needsPasswordLocked": "Vertrauliche Nachrichten brauchen immer ein Kennwort. Diese Nachricht enthält bereits Links ohne Kennwort – bitte dafür eine neue Nachricht verwenden.",
     "message.creating": "Vertrauliche Nachricht wird erstellt …",
     "message.inserted": "Der Link zur vertraulichen Nachricht wurde eingefügt. Das Kennwort wird nach dem Senden automatisch verschickt.",
-    "message.capped": "Vertrauliche Nachrichten sind höchstens {days} Tage abrufbar.",
+    "message.daysLabel": "Nachricht gültig für",
+    "message.daysChanged_one": "Neue vertrauliche Nachrichten sind {count} Tag abrufbar.",
+    "message.daysChanged_other": "Neue vertrauliche Nachrichten sind {count} Tage abrufbar.",
 
     "submit.button": "Als Link einfügen",
     "submit.noneSelected": "Wählen Sie mindestens eine Datei aus.",
@@ -298,6 +304,7 @@
     "access_other": "bis zu {count} Abrufe",
     "expires_one": "läuft nach {count} Tag ab",
     "expires_other": "läuft nach {count} Tagen ab",
+    "expiresOn": "läuft am {date} ab",
     "enterPassword": "Geben Sie das Kennwort beim Öffnen des Download-Links ein.",
     "buttonFallback": "Falls der Button nicht funktioniert:",
     "files_one": "„{name}“",

@@ -52,3 +52,11 @@ describe("password mail for a confidential message", () => {
     expect(html).toContain("Vertrauliche Nachricht");
   });
 });
+
+describe("expiry of the password link", () => {
+  it("names the last day when the step knows it, otherwise the number of days", () => {
+    const html = passwordMailHtml({ fileNames: ["a.pdf"], sendUrl: "https://vault.example.test/#/send/p", subject: "", expireDays: 5, expiresOn: "19.11.2026" });
+    expect(html).toContain("läuft am 19.11.2026 ab");
+    expect(passwordMailHtml({ fileNames: ["a.pdf"], sendUrl: "https://vault.example.test/#/send/p", subject: "", expireDays: 5 })).toContain("läuft nach 5 Tagen ab");
+  });
+});

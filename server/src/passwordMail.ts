@@ -47,7 +47,9 @@ export interface PasswordMailContent {
   maxAccessCount?: number;
   /** Subject of the mail with the links ("" if unknown). */
   subject: string;
-  /** Days until the password link expires. */
+  /** Last day the password link works (formatted date); older jobs without it show `expireDays`. */
+  expiresOn?: string;
+  /** Days until the password link expires (jobs from before `expiresOn`). */
   expireDays: number;
   /**
    * Own intro text from templates.json (mail_password_intro: greeting and text above the card); without it the
@@ -91,7 +93,7 @@ export function passwordMailHtml(mail: PasswordMailContent): string {
     `padding:6px 14px;text-decoration:none;white-space:nowrap;">${escapeHtml(t("mail.showPassword"))}</a></div>` +
     `<div style="font-size:12px;line-height:16px;color:#616161;margin:10px 0 0;">` +
     escapeHtml(
-      [accessText(mail.maxAccessCount), t("mail.expires", { count: mail.expireDays }), t("mail.enterPassword")].join(" · "),
+      [accessText(mail.maxAccessCount), (mail.expiresOn ? t("mail.expiresOn", { date: mail.expiresOn }) : t("mail.expires", { count: mail.expireDays })), t("mail.enterPassword")].join(" · "),
     ) +
     `</div>` +
     `</td></tr></table>` +
