@@ -647,7 +647,7 @@ test("Vertrauliche Nachricht: inserts a card with the link, never the text, and 
   await page.fill("#message", "Zugang zum Portal: anna / Sommer2026");
   await expect(page.locator("#message-count")).toHaveText("36 von 1000 Zeichen");
   await page.fill("#message-days", "45");
-  await page.locator("#message-days").dispatchEvent("change");
+  await page.locator("#message-days").blur();
   await expect(page.locator("#message-days")).toHaveValue("30");
   await expect(page.locator("#status")).toContainText("Höchstens 30 Tage möglich");
   await page.click("#message-insert");
@@ -667,7 +667,7 @@ test("Kennwort-Link gültig für: 5 days by default, at most 30, sent with every
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)] });
   await expect(page.locator("#password-days")).toHaveValue("5");
   await page.fill("#password-days", "40");
-  await page.locator("#password-days").dispatchEvent("change");
+  await page.locator("#password-days").blur(); // leaving the field fires "change" (like a user)
   await expect(page.locator("#password-days")).toHaveValue("30");
   await expect(page.locator("#status")).toContainText("Höchstens 30 Tage möglich – der Wert wurde auf 30 gesetzt. Neue Kennwort-Links sind 30 Tage gültig.");
   // "Ohne Kennwort" has no password link (click the visible label – the radio itself is styled away).
@@ -678,7 +678,7 @@ test("Kennwort-Link gültig für: 5 days by default, at most 30, sent with every
   await expect(page.locator("#password-days-field")).toBeVisible();
 
   await page.fill("#password-days", "12");
-  await page.locator("#password-days").dispatchEvent("change");
+  await page.locator("#password-days").blur();
   await page.click("#submit");
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
   expect(JSON.parse(calls.find((c) => c.path.endsWith("/complete"))!.body!.toString()).passwordDays).toBe(12);
