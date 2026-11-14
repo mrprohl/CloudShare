@@ -4,17 +4,18 @@
 a second mail.**
 
 CloudShare is an Outlook add-in for Microsoft 365 / Exchange Online (classic Outlook on Windows, new Outlook and
-Outlook on the web). Instead of attaching a large file, the sender clicks **"Insert as link"**: the file is
+Outlook on the web). Instead of attaching a large file, the sender clicks **"Insert file as link"**: the file is
 uploaded to the sender's own Nextcloud and a download card is inserted into the mail. As soon as the mail has really
 been sent, the recipients get a second mail with a link to the password (a Vaultwarden Send that can only be opened a
-limited number of times).
+limited number of times). The same way the sender can insert a **confidential text** (never part of the mail) or an
+**upload link** through which the recipients send files back.
 
 ![A compose window in new Outlook: the CloudShare button in the ribbon, a download card with three files in the mail, and the CloudShare pane on the right](docs/images/outlook-compose.png)
 
-*All pictures use example data (Max Mustermann, example.com) and show the German interface (`LANGUAGE=de`, the
-default). English is included and further languages can be added – see [Languages](#languages). Labels are quoted as
-in the English interface (`LANGUAGE=en`); the German ones are in [`locales/de.json`](locales/de.json) – e.g. "Insert
-as link" is "Als Link einfügen", "My shares" is "Meine Freigaben".*
+*All pictures use example data (Max Mustermann, example.com) and show the English interface (`LANGUAGE=en`). The
+default is German (`LANGUAGE=de`), and further languages can be added – see [Languages](#languages). Labels are quoted
+as in the English interface; the German ones are in [`locales/de.json`](locales/de.json) – e.g. "Insert file as link"
+is "Datei als Link einfügen", "My shares" is "Meine Freigaben".*
 
 ## Contents
 
@@ -33,54 +34,63 @@ as link" is "Als Link einfügen", "My shares" is "Meine Freigaben".*
 | 1. The mail with the download links | 2. Shortly after: the password |
 |---|---|
 | ![Received mail with a card for three files and a card for an upload link](docs/images/mail-received.png) | ![Password mail with the three file names and a "Show password" button](docs/images/password-mail.png) |
-| One card per "Insert as link": file type, name, size and a download button; optionally a link through which the recipients can upload files themselves. | One password mail per card. "Show password" opens the Vaultwarden Send; it works only a few times (default 3) and for a few days (default 5, chosen by the sender). |
+| One card per click on the insert button: file type, name, size and a download button; here also a link through which the recipients can upload files themselves (a confidential text gets its own card with "Open message"). | One password mail per card. "Show password" opens the Vaultwarden Send; it works only a few times (default 3) and for a few days (default 5, chosen by the sender). |
 
 The password never travels in the same mail as the link, and it is only sent once the mail with the link has really
 left the outbox.
 
 ## Using CloudShare
 
-<img src="docs/images/taskpane-send.png" alt="CloudShare pane (German interface), tab Send: one large attachment preselected, password options, link validity, how the password is delivered, upload link, the collapsed confidential message and the button Insert as link" width="300" align="right">
+<img src="docs/images/taskpane-send.png" alt="CloudShare pane (German interface), tab Send: the switch Files / Confidential / Request, one large attachment preselected, the password options, where the password goes, the collapsed validity with its summary and the button Insert file as link" width="300" align="right">
 
 **Once:** open the pane with the **CloudShare** button in the ribbon and click **"Connect"** – the Nextcloud login
 opens in the browser (usually without typing anything, thanks to single sign-on). CloudShare remembers the
 connection.
 
-**Sending files:**
+At the top of the **"Send"** tab you choose **what** to insert: **Files**, a **Confidential** text or a **Request**
+for files. The pane then shows only that, and the button at the bottom says what it inserts ("Insert 2 files as
+links", "Insert confidential text", "Insert upload link"). Password, where it goes and validity below apply to all
+three.
 
-1. Attach the file as usual, or drag files from Explorer onto the drop zone **"Drag files here"** in the pane (or
-   click it to choose files). Attachments above the threshold (default 1 MB) are marked **"Large"** and preselected;
-   Outlook also shows a hint above the mail.
+**Sending files** (**Files**):
+
+1. Attach the file as usual, or drag files from Explorer onto the pane (or click the drop zone to choose files).
+   Attachments above the threshold (default 5 MB) are marked **"Large"** and preselected; Outlook also shows a hint
+   above the mail.
 2. Choose the password:
    - **Random password** (default) – easy to read out, e.g. `KateGeteFi45`.
    - **Own password** – at least 12 characters, three of four character types.
-   - **No password** – only if your Nextcloud allows links without a password. Anyone with the link can download
-     the file while the link is valid; no password goes out, and upload links and confidential messages are not
-     possible in that mail.
-3. Optionally adjust **"Link valid for"** (days the download link works), **"Password can be opened"** (how often the
-   password link opens), **"Password link valid for"** (days the password can be fetched – default 5, at most 30) and
-   **"Deliver the password"**: to the recipients of the mail (default), only to **another e-mail address** (e.g. a
-   colleague), or **per SMS** to a mobile number (if SMS is set up – the password arrives as plain text, sent after
-   the mail). With SMS the two password-link settings disappear: the password is in the SMS itself and works as long
-   as the link does.
-4. Click **"Insert as link"**. The attachment is replaced by a download card in the mail.
-5. Send the mail. CloudShare sends the password mail (or SMS) on its own. "My shares" later shows how the
+   - **No password** – only for files and only if your Nextcloud allows links without a password. Anyone with the
+     link can download the file while the link is valid; no password goes out, and that mail cannot get a
+     confidential text or upload link any more (the pane says so).
+3. **"Send the password to"**: the recipients of the mail (default), **another e-mail address** (e.g. a colleague),
+   or a **mobile number (SMS)** if SMS is set up – the password arrives as plain text, sent after the mail.
+4. **"Validity"** is collapsed and shows its values in one line, e.g. "Link 14 days · Password link 5 days, opens 3
+   times". Open it to change **"Link valid for"** (days the download link works), **"Password can be opened"** (how
+   often the password link opens) and **"Password link valid for"** (days the password can be fetched – default 5,
+   at most 30). With SMS the two password-link settings disappear: the password is in the SMS itself and works as
+   long as the link does.
+5. Click **"Insert file as link"**. The attachment is replaced by a download card in the mail.
+6. Send the mail. CloudShare sends the password mail (or SMS) on its own. "My shares" later shows how the
    password went out, for SMS with the delivery status. With the download confirmation switched on, you get a mail
    when a recipient downloads a file for the first time – also for links without password.
 
-Every click on "Insert as link" gets **its own password and its own password mail**; files selected together in
-one click share them. If you delete all CloudShare cards from the mail before sending, no password mail goes out
-and the password options are free again.
+Every click on the button gets **its own password and its own password mail**; files selected together in one click
+share them. If you delete all CloudShare cards from the mail before sending, no password mail goes out and the
+password options are free again.
 
-**Receiving files:** **"Insert upload link"** inserts a link through which the recipients can upload files –
-also very large ones – straight into your Nextcloud (folder `Outlook-Dateianforderungen`).
+<img src="docs/images/taskpane-message.png" alt="Pane with Confidential chosen: the text field with its character count, the password and the opened validity with Text valid for, Password can be opened and Password link valid for; the button Insert confidential text" width="300" align="right">
 
-**Confidential message:** open **"Confidential message"** (closed by default) and type a text instead of choosing a file – e.g. access
-data – and click **"Insert message as link"**. The text does not go into the mail: it is stored encrypted in
-Vaultwarden as a Send protected with the chosen password, and the mail gets a card with **"Open message"**. The
-password reaches the recipients like for files (password mail, other address or SMS). At most 1000 characters;
-**"Message valid for"** sets how long it can be read (default 5 days, at most 30 – Vaultwarden's limit), then it is
-deleted.
+**Confidential text** (**Confidential**): type a text instead of choosing a file – e.g. access data – and click
+**"Insert confidential text"**. The text does not go into the mail: it is stored encrypted in Vaultwarden as a Send
+protected with the chosen password, and the mail gets a card with **"Open message"**. The password reaches the
+recipients like for files. At most 1000 characters; under "Validity", **"Text valid for"** sets how long it can be
+read (default 5 days, at most 30 – Vaultwarden's limit), then it is deleted.
+
+**Receiving files** (**Request**): **"Insert upload link"** inserts a link through which the recipients can upload
+files – also very large ones – straight into your Nextcloud (folder `CloudShare-Dateianforderungen`).
+
+Confidential texts and upload links always have a password, so "No password" is not offered there.
 
 <br clear="right">
 
@@ -101,8 +111,8 @@ Expired files are cleaned up automatically as well (see `CLEANUP_AFTER_DAYS`).
 <img src="docs/images/taskpane-dark.png" alt="The pane in Outlook's dark theme" width="220" align="right">
 <img src="docs/images/taskpane-connect.png" alt="First start: Connect to Nextcloud" width="220" align="right">
 
-The pane follows Outlook's light or dark theme and uses Outlook's own wording ("Nachricht", "Kennwort"; in English
-"message", "password").
+The pane follows Outlook's light or dark theme and uses Outlook's own wording ("message", "password"; in German
+"Nachricht", "Kennwort").
 
 Under the attachment policy **`enforce`** (default), large attachments can only be sent through CloudShare; under
 **`suggest`** Outlook asks once when sending and offers **"Send Anyway"**.
@@ -121,8 +131,8 @@ Outlook add-in ──HTTPS──► Caddy (Let's Encrypt) ──► CloudShare c
 - The add-in signs in with the user's Microsoft 365 account (Office single sign-on) – no extra password.
 - Files go to the **sender's own Nextcloud** (`CloudShare/<date>_<id>/`) using a Nextcloud app password the user
   granted once; CloudShare stores it encrypted.
-- The password mail is sent **as the sender** via Microsoft Graph, only after the mail appears in "Gesendete
-  Elemente" – also for shared mailboxes.
+- The password mail is sent **as the sender** via Microsoft Graph, only after the mail appears in "Sent
+  Items" – also for shared mailboxes.
 - All texts come from a language file (`locales/de.json`, `locales/en.json`, …), chosen with `LANGUAGE`.
 - One Docker container plus Caddy, no database. Details, data flows and design decisions:
   **[docs/architecture.md](docs/architecture.md)**.
@@ -189,13 +199,13 @@ deployed again.
 | `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` | – | Entra ID app registration |
 | `NEXTCLOUD_URL` | – | Public address of Nextcloud |
 | `NEXTCLOUD_FOLDER` | `CloudShare` | Folder for uploaded files in each user's Nextcloud |
-| `NEXTCLOUD_REQUEST_FOLDER` | `Outlook-Dateianforderungen` | Folder for files received through upload links |
+| `NEXTCLOUD_REQUEST_FOLDER` | `CloudShare-Dateianforderungen` | Folder for files received through upload links (default up to now: `Outlook-Dateianforderungen` – existing `env/cloudshare.env` files keep their value) |
 | `CREDENTIAL_KEY` | – | Key for the stored Nextcloud app passwords (`openssl rand -base64 32`); changing it disconnects all users |
-| `ATTACHMENT_THRESHOLD_MB` | `1` | From this size CloudShare steps in (hint while writing, check on send) |
+| `ATTACHMENT_THRESHOLD_MB` | `5` | From this size CloudShare steps in (hint while writing, check on send) |
 | `ATTACHMENT_POLICY` | `enforce` | `enforce`: large attachments only via CloudShare · `suggest`: ask once, "Send Anyway" possible |
 | `SHARE_EXPIRE_DAYS` / `SHARE_MAX_EXPIRE_DAYS` | `14` / `90` | Link validity: default / maximum |
 | `SEND_MAX_ACCESS_COUNT` / `SEND_MAX_ACCESS_LIMIT` | `3` / `20` | How often the password link opens: default / maximum |
-| `SEND_EXPIRE_DAYS` / `SEND_MAX_EXPIRE_DAYS` | `5` / `30` | Days the password link and confidential messages stay available: default / maximum the sender may choose (at most 30 – Vaultwarden keeps Sends at most 31 days) |
+| `SEND_EXPIRE_DAYS` / `SEND_MAX_EXPIRE_DAYS` | `5` / `30` | Days the password link and confidential texts stay available: default / maximum the sender may choose (at most 30 – Vaultwarden keeps Sends at most 31 days) |
 | `SEVEN_API_KEY`, `SEVEN_SENDER`, `SEVEN_WEBHOOK_SECRET` | – | Password by SMS via seven.io; without a key the option is not offered. Delivery reports: callback URL `https://<host>/webhooks/seven?token=<secret>` in the seven.io dashboard |
 | `SMS_DEFAULT_COUNTRY` / `SMS_MAX_PER_DAY` | `49` / `50` | Country code for numbers like `0170 …` / SMS per user and day |
 | `DOWNLOAD_NOTICE` | off | `true`: mail to the sender on the first download (needs the Entra application permission `Mail.Send`, see architecture) |
@@ -236,9 +246,9 @@ Update the stack; CloudShare puts the texts into the add-in files when it starts
 cache in classic Outlook (see *Operation*), reload Outlook on the web. One language applies to all users of an
 installation; recipients get the password mail and the SMS in the same language. Not affected by `LANGUAGE`:
 
-- **Nextcloud folder names** – `NEXTCLOUD_REQUEST_FOLDER` stays as set (default `Outlook-Dateianforderungen`), so
+- **Nextcloud folder names** – `NEXTCLOUD_REQUEST_FOLDER` stays as set (default `CloudShare-Dateianforderungen`), so
   "My shares" keeps finding older links. For an English installation set it in `setup.sh` / `env/cloudshare.env`
-  before the first use, e.g. `Outlook file requests`.
+  before the first use, e.g. `CloudShare file requests`.
 - **`templates.json`** holds one set of texts – translate it as well, or remove it to use the built-in texts of the
   language.
 - **`MAIL_FOOTER`** is written by the admin (e.g. `Tel.` vs. `Phone`).
@@ -319,24 +329,28 @@ Every push and pull request runs the pipeline in `.github/workflows/image.yml`:
 | Stage | What is checked |
 |---|---|
 | test | type check and unit tests of both packages, **language files** (same texts and placeholders in every language, every key used exists, Outlook's length limits), `npm audit`, manifest validation per language, ShellCheck, deployment files (`setup.sh` with dummy answers, `docker compose config`, `caddy validate`) |
-| ui | the real taskpane in Chromium with Office.js and the API mocked – upload, cards, passwords, "My shares", dark theme, 320 px width and **accessibility** (axe, WCAG 2 A/AA); screenshots as artifact `ui-test-report` (the pane pictures in this README come from there) |
+| ui | the real taskpane in Chromium with Office.js and the API mocked – upload, cards, passwords, "My shares", dark theme, 320 px width and **accessibility** (axe, WCAG 2 A/AA); screenshots as artifact `ui-test-report`, including the English pane pictures of this README |
 | build | image build, Trivy scan, **smoke test** of the real stack with Caddy (TLS, headers, add-in files with the texts of `LANGUAGE`, limits, hardening), **upgrade test** (data written by the published image must stay readable), **load test** (k6: 10 users × 2 × 45 MiB) |
 | push | only if everything passed: `ghcr.io/mrprohl/cloudshare` (`latest`, `sha-<commit>`, version tags); pull requests publish nothing |
 
 The repository also uses Dependabot, CodeQL and secret scanning with push protection (*Security* tab).
 
 The compose and recipient pictures are rendered from [docs/mockups](docs/mockups) (they contain the exact markup the
-add-in and the server produce – update them when the pane, the card or the password mail changes) with Edge, from the
-repository root (absolute paths and an own profile, otherwise a running Edge swallows the screenshot):
+add-in and the server produce with `LANGUAGE=en` – update them when the pane, the card or the password mail changes)
+with Edge, from the repository root, one after the other (absolute paths and an own profile, otherwise a running Edge
+swallows the screenshot):
 
 ```powershell
 $edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 $repo = (Get-Location).Path; $url = "file:///" + ($repo -replace '\\','/') + "/docs/mockups"
 $opts = "--headless=new", "--hide-scrollbars", "--user-data-dir=$env:TEMP\cloudshare-edge"
-& $edge @opts --window-size=1440,1010 --screenshot="$repo\docs\images\outlook-compose.png" "$url/compose-send.html"
-& $edge @opts --window-size=760,706  --screenshot="$repo\docs\images\mail-received.png"  "$url/mail-received.html"
-& $edge @opts --window-size=760,548  --screenshot="$repo\docs\images\password-mail.png"  "$url/password-mail.html"
+foreach ($shot in @(("outlook-compose", "compose-send", "1440,1010"), ("mail-received", "mail-received", "760,706"),
+                    ("password-mail", "password-mail", "760,548"))) {
+  Start-Process -Wait $edge ($opts + "--window-size=$($shot[2])", "--screenshot=$repo\docs\images\$($shot[0]).png", "$url/$($shot[1]).html")
+}
 ```
 
-The pane pictures (`taskpane-*.png`) are screenshots of the UI tests (artifact `ui-test-report`: `send-light`,
-`shares-light`, `send-dark`, `connect-view`), cropped to the content.
+The pane pictures (`taskpane-*.png`) come from the UI tests in English ("README pictures" in
+`addin/e2e/taskpane.e2e.ts`, served below `/en/` by `addin/e2e/serve.mjs`): attachments `readme-send`,
+`readme-message`, `readme-dark`, `readme-shares` and `readme-connect` of the artifact `ui-test-report`, already as tall
+as the content.

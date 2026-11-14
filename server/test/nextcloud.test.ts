@@ -67,7 +67,7 @@ describe("NextcloudClient", () => {
     expect(await client.createPublicShare(["CloudShare", "x", "a.pdf"], "pw", "2026-11-27")).toBe(
       "https://cloud.example.test/s/abc",
     );
-    await client.createPublicShare(["Outlook-Dateianforderungen", "y"], "pw", "2026-11-27", 4, "Dateianforderung");
+    await client.createPublicShare(["CloudShare-Dateianforderungen", "y"], "pw", "2026-11-27", 4, "Dateianforderung");
 
     const first = new URLSearchParams(String(call(0).init.body));
     expect(Object.fromEntries(first)).toEqual({
@@ -151,7 +151,7 @@ describe("NextcloudClient", () => {
       `<d:response><d:href>/f/b.pdf</d:href><d:propstat><d:prop><d:resourcetype/></d:prop></d:propstat></d:response>` +
       `</d:multistatus>`;
     const { call } = mockFetch(new Response(xml, { status: 207 }));
-    expect(await new NextcloudClient(creds).countFiles("max-uid", ["Outlook-Dateianforderungen", "f"])).toBe(2);
+    expect(await new NextcloudClient(creds).countFiles("max-uid", ["CloudShare-Dateianforderungen", "f"])).toBe(2);
     expect(call(0).init.method).toBe("PROPFIND");
   });
 });
