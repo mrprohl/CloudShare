@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import { toSsoError } from "./sso";
 
 /** Replaced with the real base URL at container start (see docker/entrypoint.sh). */
@@ -48,11 +49,11 @@ const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
  */
 export const TIMEOUTS = { config: 5_000, token: 15_000, server: 20_000, office: 5_000 };
 
-/** Rejects with a German message naming `step` if `promise` does not settle within `ms`. */
+/** Rejects with a message naming `step` if `promise` does not settle within `ms`. */
 export function withTimeout<T>(promise: Promise<T>, ms: number, step: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(
-      () => reject(new Error(`Zeitüberschreitung: ${step} hat nach ${Math.round(ms / 1000)} s nicht geantwortet.`)),
+      () => reject(new Error(t("timeout", { step, seconds: Math.round(ms / 1000) }))),
       ms,
     );
     promise.then(
@@ -94,7 +95,7 @@ async function requestToken(): Promise<string> {
  * SSO token for the backend (audience = our own app registration). Office allows only one getAccessToken call at
  * a time (otherwise error 13008), so concurrent callers share one request and a valid token is reused until shortly
  * before it expires. Office rejects with a plain object ({ code, message }); it is turned into an Error with a
- * German message and the code (see sso.ts).
+ * readable message and the code (see sso.ts).
  */
 export function getToken(): Promise<string> {
   if (cachedToken && cachedToken.expiresAt - 2 * 60_000 > Date.now()) return Promise.resolve(cachedToken.token);
@@ -151,7 +152,7 @@ export const CONFIG_CACHE_KEY = "cloudshare-config";
  */
 export async function getConfigCached(): Promise<ServerConfig> {
   try {
-    const config = await withTimeout(getConfig(), TIMEOUTS.config, "Der CloudShare-Server");
+    const config = await withTimeout(getConfig(), TIMEOUTS.config, t("step.server"));
     try {
       Office.context.roamingSettings.set(CONFIG_CACHE_KEY, config);
       Office.context.roamingSettings.saveAsync();

@@ -16,12 +16,13 @@ import path from "node:path";
 import type { FastifyBaseLogger } from "fastify";
 import { config } from "./config.js";
 import { findSentMessage, sendMail } from "./graph.js";
+import { t as translate } from "./i18n.js";
 import { recordDelivery } from "./deliveries.js";
 import { registerNotices, type Notice } from "./notices.js";
 import { passwordMailHtml } from "./passwordMail.js";
 import { maskPhone, sendSms, smsEnabled } from "./sms.js";
 import { createAtomicWriter, seal, unseal, type Sealed } from "./storage.js";
-import { DEFAULT_TEMPLATES, render, templatesFor, type Templates } from "./templates.js";
+import { defaultTemplates, render, templatesFor, type Templates } from "./templates.js";
 import { deleteSend, readSendPassword } from "./vaultwarden.js";
 
 export interface ArmedSend {
@@ -236,8 +237,8 @@ async function sendStepBySms(
 ) {
   const to = job.passwordSms!;
   try {
-    if (!smsEnabled()) throw new Error("SMS-Versand ist nicht eingerichtet");
-    if (!takeSmsQuota(job.owner)) throw new Error(`Tageslimit von ${config.smsMaxPerDay} SMS erreicht`);
+    if (!smsEnabled()) throw new Error("SMS is not configured (SEVEN_API_KEY)");
+    if (!takeSmsQuota(job.owner)) throw new Error(`daily limit of ${config.smsMaxPerDay} SMS reached`);
     const password = await readSendPassword(part.sendId!);
     const messageId = await sendSms(to, render(t.sms_template, { password, sender_name: job.senderName ?? "" }));
     await recordDelivery(tokens, { owner: job.owner, channel: "sms", to: maskPhone(to), at: Date.now(), messageId, status: "submitted" });
@@ -247,7 +248,7 @@ async function sendStepBySms(
     log.warn({ err, user: job.ownerUpn, to: maskPhone(to) }, "Password SMS failed – password mail to the sender");
     const mail = mailFor();
     const self = sender ?? job.ownerUpn;
-    await sendMail(graphToken, { to: [self], cc: [], bcc: [] }, `SMS nicht versendet – ${mail.subject}`, mail.html, sender);
+    await sendMail(graphToken, { to: [self], cc: [], bcc: [] }, translate("mail.smsFailedSubject", { subject: mail.subject }), mail.html, sender);
     await recordDelivery(tokens, { owner: job.owner, channel: "sms", to: maskPhone(to), at: Date.now(), status: "failed" });
   }
 }
@@ -295,11 +296,11 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
         // One password per step: one password mail (or SMS) per step, naming its files. Parts already sent stay
         // sent, so a retry after an error does not send them twice.
         const t = templatesFor({ upn: job.ownerUpn, department: job.department });
-        const customIntro = t.mail_password_intro !== DEFAULT_TEMPLATES.mail_password_intro ? t.mail_password_intro : undefined;
+        const customIntro = t.mail_password_intro !== defaultTemplates().mail_password_intro ? t.mail_password_intro : undefined;
         for (const part of job.separate) {
           if (part.dispatched) continue;
           const files = partFiles(part);
-          const label = files.length === 1 ? `„${files[0]}“` : `${files.length} Dateien`;
+          const label = translate("mail.files", { count: files.length, name: files[0] });
           const mailFor = () => ({
             subject: render(t.mail_password_subject, { files: label, subject: message.subject || files[0], sender_name: job.senderName ?? "" }),
             html: passwordMailHtml({ fileNames: files, sendUrl: part.sendUrl, maxAccessCount: part.maxAccessCount,
@@ -334,7 +335,7 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
           ).catch((err) => log.warn({ err, user: job.ownerUpn }, "Download confirmation could not be registered"));
         }
       } else {
-        await sendMail(armed.graphToken, recipients, `Kennwort für: ${sent.subject || job.fileNames[0]}`,
+        await sendMail(armed.graphToken, recipients, translate("mail.subjectLegacy", { subject: sent.subject || job.fileNames[0] }),
           passwordMailHtml({ fileNames: job.fileNames, sendUrl: job.sendUrl, maxAccessCount: job.maxAccessCount,
             subject: sent.subject, expireDays: config.sendExpireDays }), sender);
       }

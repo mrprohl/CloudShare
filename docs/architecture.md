@@ -6,8 +6,9 @@ Vaultwarden Send, and only after the first mail has really been sent. This docum
 together, where state lives, and the Outlook peculiarities the code has to work around. Operation and installation:
 [README](../README.md).
 
-Everything visible to users and recipients is German (taskpane, Outlook hints, cards, password mail); code, logs and
-documentation are English.
+Everything visible to users and recipients (taskpane, Outlook hints, cards, password mail, SMS) comes from the language
+file picked by `LANGUAGE` (`locales/de.json` by default, see [2.8](#28-languages)); code, logs and documentation are
+English.
 
 ## Contents
 
@@ -147,10 +148,10 @@ How the password of each link went out (channel, masked recipient, SMS status) i
 
 ### 2.6 Text templates
 
-`templates.ts` reads the optional `TEMPLATES_FILE` (`/config/templates.json`, mounted from `env/templates/`): fields
+`templates.ts` reads the optional `TEMPLATES_FILE` (`/config/templates.json`, mounted from `env/config/`): fields
 `sms_template`, `mail_password_subject`, `mail_password_intro`, `download_notice_subject`, `download_notice_body`, each
 with a fixed set of placeholders. Resolution per field: `users[<sender UPN>]` → `groups[<department>]` → `default` →
-built-in German texts; the department and display name are read from the sender's profile when arming. At start the
+built-in texts of the language (section `templates`); the department and display name are read from the sender's profile when arming. At start the
 file is validated: `{password}` outside the SMS, an SMS without `{password}` or with the link / a file name drop the
 field (built-in text instead); unknown placeholders, non-GSM characters and SMS above 160 characters are warnings.
 A broken file never stops CloudShare. Example: `templates.example.json`.
@@ -164,6 +165,26 @@ first download the sender gets a mail (`download_notice_*` templates) – sent w
 (client credentials, application permission `Mail.Send`), because the sender's delegated token has long expired by
 then. Entries are dropped after the download or when the link expired. No IP addresses or data about the person who
 downloaded are kept.
+
+### 2.8 Languages
+
+`LANGUAGE` (default `de`) picks `locales/<language>.json`. `i18n.ts` merges English (fallback for missing texts), the
+built-in file (`/app/locales` in the image) and an optional own file from `CUSTOM_LOCALES_DIR` (`/config/locales`,
+mounted from `env/config/locales/`) – the last one may add a language or change single texts without a new image. An
+unknown language stops the start. Sections: `addin` (taskpane, info bar, Smart Alerts, link cards), `manifest`,
+`server` (error messages shown in the taskpane), `mail` (password mail), `templates` (built-in texts of 2.6),
+`_meta.locale` (dates and numbers, manifest `DefaultLocale`). Placeholders are `{name}`, plural forms `key_one` /
+`key_other`.
+
+The add-in gets its texts without an extra request: at startup (`index.ts`, `localizePublic`) the server replaces in
+the copies under `/app/public` the string marker `"%%CLOUDSHARE_I18N%%"` in `taskpane.js` / `commands.js` with a JSON
+string of the `addin` texts (read by `addin/src/shared/i18n.ts`, ASCII-escaped), and `%%t:<section>.<key>%%`,
+`%%LANG%%`, `%%LOCALE%%` in `taskpane.html`, `commands.html` and `manifest.xml`. So the send handler in classic
+Outlook's JavaScript-only runtime has the texts too. One language per installation; Nextcloud folder names do not
+depend on it (`NEXTCLOUD_REQUEST_FOLDER` identifies CloudShare's links). `server/test/i18n.test.ts` checks that every
+language file has the keys and placeholders of English, that every key the code uses exists, and Outlook's length
+limits; the UI tests serve the bundles with the German texts (`addin/scripts/localize.mjs`), the manifest is validated
+once per language.
 
 
 ## 3. State and data
@@ -186,7 +207,7 @@ in CI checks that data written by the published image stays readable by a new on
 ## 4. HTTP API
 
 All `/api` routes except `config`, `trace` and the well-known file require `Authorization: Bearer <Office SSO token>`.
-Errors are `{ error, code? }` with a German message shown in the taskpane.
+Errors are `{ error, code? }` with a message in the configured language, shown in the taskpane.
 
 | Route | Purpose |
 |---|---|
@@ -235,7 +256,7 @@ values make Outlook on the web reject the result silently (`withinLimits()`). Cu
 Mailbox 1.14; with 1.12 users are pointed to the ribbon button.
 
 **Office SSO:** only one `getAccessToken` call may run at a time (13008), so the token is cached and concurrent
-callers share one request; SSO errors (plain objects with a code) are shown with a German hint and the code
+callers share one request; SSO errors (plain objects with a code) are shown with a hint (language file, `sso.<code>`) and the code
 (`shared/sso.ts`). Every step of the send handler has a time limit, so a hanging step ends with a message instead of
 "dauert länger als erwartet".
 

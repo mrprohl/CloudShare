@@ -36,13 +36,14 @@ import { expireOnRevoke, registerForCleanup } from "./cleanup.js";
 import { deliveryFor, updateSmsStatus } from "./deliveries.js";
 import { mapReportStatus, maskPhone, normalizePhone, parseDeliveryReport, smsEnabled } from "./sms.js";
 import { clampInt, isEmailAddress } from "./limits.js";
+import { locale, t } from "./i18n.js";
 import { passwordProblem } from "./password.js";
 import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } from "./store.js";
 import { createPasswordSend, setSendMaxAccess } from "./vaultwarden.js";
 
 function nextcloudFor(user: User): NextcloudClient {
   const creds = getCredentials(user.oid);
-  if (!creds) throw new HttpError(409, "Nextcloud ist noch nicht verbunden.", NOT_CONNECTED);
+  if (!creds) throw new HttpError(409, t("server.notConnected"), NOT_CONNECTED);
   return new NextcloudClient(creds, () => removeCredentials(user.oid));
 }
 
@@ -51,13 +52,13 @@ function sanitizeFileName(name: unknown): string {
     .replace(/[\\/:*?"<>|\u0000-\u001f]/g, "_")
     .trim()
     .slice(0, 200);
-  if (!cleaned || cleaned === "." || cleaned === "..") throw new HttpError(400, "Ungültiger Dateiname");
+  if (!cleaned || cleaned === "." || cleaned === "..") throw new HttpError(400, t("server.invalidFileName"));
   return cleaned;
 }
 
 function ownUpload(id: string, user: User): UploadState {
   const upload = uploads.get(id);
-  if (!upload || upload.owner !== user.oid) throw new HttpError(404, "Upload nicht gefunden");
+  if (!upload || upload.owner !== user.oid) throw new HttpError(404, t("server.uploadNotFound"));
   return upload;
 }
 
@@ -153,7 +154,9 @@ const shareInfo = (url: string, name: string, expireDate: string): StepShare => 
 });
 
 const formatBytes = (bytes: number) =>
-  bytes >= 1024 ** 3 ? `${(bytes / 1024 ** 3).toFixed(1)} GB` : `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+  bytes >= 1024 ** 3
+    ? `${(bytes / 1024 ** 3).toLocaleString(locale(), { maximumFractionDigits: 1 })} GB`
+    : `${(bytes / 1024 ** 2).toLocaleString(locale(), { maximumFractionDigits: 1 })} MB`;
 
 /**
  * Builds the Fastify app with all routes (no listening, no background jobs) – used by index.ts and by the
@@ -194,7 +197,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     keyGenerator: rateLimitKey,
     errorResponseBuilder: (_req, context) =>
       Object.assign(
-        new HttpError(429, `Zu viele Anfragen – bitte in ${Math.ceil(context.ttl / 1000)} Sekunden erneut versuchen.`, "RATE_LIMITED"),
+        new HttpError(429, t("server.rateLimited", { seconds: Math.ceil(context.ttl / 1000) }), "RATE_LIMITED"),
         { statusCode: 429 },
       ),
   });
@@ -215,7 +218,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     req.log.error(err);
     const error = err as Error & { statusCode?: number };
     const status = error.statusCode ?? 500;
-    return reply.status(status).send({ error: status < 500 ? error.message : "Interner Fehler" });
+    return reply.status(status).send({ error: status < 500 ? error.message : t("server.internalError") });
   });
 
   // Add-in files; absent in tests (only the API is exercised there).
@@ -344,7 +347,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     const user = await authenticate(req);
     const pending = pendingConnects.get(req.params.id);
     if (!pending || pending.owner !== user.oid || pending.expiresAt < Date.now()) {
-      throw new HttpError(410, "Die Anmeldung ist abgelaufen. Bitte erneut verbinden.");
+      throw new HttpError(410, t("server.loginExpired"));
     }
     const creds = await pollLoginFlow(pending.flow);
     if (!creds) return { connected: false };
@@ -374,7 +377,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     const size = Number(req.body?.size);
     const totalChunks = Math.ceil(size / config.chunkSizeBytes);
     if (!Number.isFinite(size) || size <= 0 || totalChunks > 10_000) {
-      throw new HttpError(400, "Ungültige Dateigröße");
+      throw new HttpError(400, t("server.invalidFileSize"));
     }
 
     const nc = nextcloudFor(user);
@@ -383,7 +386,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     if (free !== null && size > free) {
       throw new HttpError(
         507,
-        `Nicht genügend Speicherplatz in Ihrer Nextcloud (frei: ${formatBytes(free)}, benötigt: ${formatBytes(size)}).`,
+        t("server.quotaExceededDetail", { free: formatBytes(free), needed: formatBytes(size) }),
         QUOTA_EXCEEDED,
       );
     }
@@ -412,7 +415,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     const upload = ownUpload(req.params.id, user);
     const index = Number(req.params.index);
     if (!Number.isInteger(index) || index < 1 || index > upload.totalChunks) {
-      throw new HttpError(400, "Ungültige Blocknummer");
+      throw new HttpError(400, t("server.invalidChunk"));
     }
     if (!Buffer.isBuffer(req.body) || req.body.length === 0) throw new HttpError(400, "Leerer Block");
 
@@ -436,7 +439,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     async (req) => {
       const user = await authenticate(req);
       const upload = ownUpload(req.params.id, user);
-      if (upload.received.size !== upload.totalChunks) throw new HttpError(409, "Es fehlen noch Blöcke");
+      if (upload.received.size !== upload.totalChunks) throw new HttpError(409, t("server.missingChunks"));
 
       // "Ohne Kennwort": plain public link – no Vaultwarden Send, no password job, no password mail.
       const noPassword = req.body?.noPassword === true;
@@ -458,7 +461,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
   // --- Upload links ("Dateien anfordern") ----------------------------------------
 
   /** Item name of an upload link in the password mail (German, shown to recipients). */
-  const UPLOAD_LINK_ITEM = "Upload-Link für Ihre Dateien";
+  const uploadLinkItem = () => t("server.requestItem");
 
   app.post<{ Body: ShareRequest & { jobId?: string } }>("/api/requests", { config: { rateLimit: strictLimit } }, async (req) => {
     const user = await authenticate(req);
@@ -469,9 +472,9 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     const folder = [config.requestFolder, `${new Date().toISOString().slice(0, 10)}_${randomUUID().slice(0, 8)}`];
     await nc.ensureFolder(uid, folder);
     // Create-only share ("file drop"): recipients can upload but cannot see or download anything.
-    const shareUrl = await nc.createPublicShare(folder, password, expireDate, 4, "Dateianforderung");
-    const jobId = await attachToJob(user, req.body?.jobId, UPLOAD_LINK_ITEM, password, maxAccess, req.body?.step,
-      shareInfo(shareUrl, UPLOAD_LINK_ITEM, expireDate));
+    const shareUrl = await nc.createPublicShare(folder, password, expireDate, 4, t("server.requestLabel"));
+    const jobId = await attachToJob(user, req.body?.jobId, uploadLinkItem(), password, maxAccess, req.body?.step,
+      shareInfo(shareUrl, uploadLinkItem(), expireDate));
     req.log.info({ user: user.upn, folder: folder.join("/") }, "Upload link created");
     return { shareUrl, expireDate, jobId };
   });
@@ -504,7 +507,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         return {
           id: s.id,
           kind: request ? "request" : "file",
-          name: request ? "Dateianforderung" : segments[segments.length - 1],
+          name: request ? t("server.requestLabel") : segments[segments.length - 1],
           url: s.url,
           sharedAt: s.sharedAt,
           expiration: s.expiration,
@@ -524,7 +527,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     const nc = nextcloudFor(user);
     const shares = await nc.listPublicShares();
     const share = shares.find((s) => s.id === req.params.id);
-    if (!share || !isCloudShareShare(share)) throw new HttpError(404, "Freigabe nicht gefunden");
+    if (!share || !isCloudShareShare(share)) throw new HttpError(404, t("server.shareNotFound"));
     await nc.deleteShare(share.id);
 
     // A revoked file link counts as expired: the upload folder goes to the trash (CLEANUP_AFTER_DAYS) unless another
@@ -558,23 +561,23 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const user = await authenticate(req);
       const nc = nextcloudFor(user);
       const share = (await nc.listPublicShares()).find((s) => s.id === req.params.id);
-      if (!share || !isCloudShareShare(share)) throw new HttpError(404, "Freigabe nicht gefunden");
+      if (!share || !isCloudShareShare(share)) throw new HttpError(404, t("server.shareNotFound"));
 
       const request = share.permissions === 4 && share.isFolder;
       const noPassword = req.body?.noPassword === true;
-      if (request && noPassword) throw new HttpError(400, "Links zum Hochladen brauchen immer ein Kennwort.");
+      if (request && noPassword) throw new HttpError(400, t("server.requestNeedsPassword"));
       const { password, expireDate, maxAccess } = shareSettings(req.body, !noPassword);
 
       const segments = share.path.split("/").filter(Boolean);
       const fileName = segments[segments.length - 1];
       const shareUrl = request
-        ? await nc.createPublicShare(segments, password, expireDate, 4, "Dateianforderung")
+        ? await nc.createPublicShare(segments, password, expireDate, 4, t("server.requestLabel"))
         : await nc.createPublicShare(segments, noPassword ? undefined : password, expireDate);
       if (!request) await registerForCleanup(user.oid, segments, expireDate);
       const jobId = noPassword
         ? null
-        : await attachToJob(user, req.body?.jobId, request ? UPLOAD_LINK_ITEM : fileName, password, maxAccess, req.body?.step,
-            shareInfo(shareUrl, request ? UPLOAD_LINK_ITEM : fileName, expireDate));
+        : await attachToJob(user, req.body?.jobId, request ? uploadLinkItem() : fileName, password, maxAccess, req.body?.step,
+            shareInfo(shareUrl, request ? uploadLinkItem() : fileName, expireDate));
       req.log.info({ user: user.upn, path: share.path, noPassword }, "Share linked again");
       return { kind: request ? "request" : "file", shareUrl, expireDate, jobId, fileName, size: share.size };
     },
@@ -591,20 +594,20 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     async (req) => {
       const user = await authenticate(req);
       const job = getJob(req.params.id);
-      if (!job || job.owner !== user.oid) throw new HttpError(404, "Auftrag nicht gefunden");
-      if (job.dispatched) throw new HttpError(409, "Das Kennwort wurde bereits verschickt.");
+      if (!job || job.owner !== user.oid) throw new HttpError(404, t("server.jobNotFound"));
+      if (job.dispatched) throw new HttpError(409, t("server.passwordAlreadySent"));
       const body = req.body ?? {};
 
       if (body.passwordSms !== undefined && body.passwordSms !== "") {
         const number = typeof body.passwordSms === "string" ? normalizePhone(body.passwordSms) : null;
-        if (!smsEnabled()) throw new HttpError(409, "Der SMS-Versand ist nicht eingerichtet.");
-        if (!number) throw new HttpError(400, "Bitte eine gültige Mobilnummer für das Kennwort angeben, z. B. 0170 1234567.");
+        if (!smsEnabled()) throw new HttpError(409, t("server.smsNotConfigured"));
+        if (!number) throw new HttpError(400, t("server.phoneInvalid"));
         await setJobPasswordTo(req.params.id, undefined, number);
         req.log.info({ user: user.upn, jobId: req.params.id, sms: maskPhone(number) }, "Password channel: SMS");
       } else if (body.passwordTo !== undefined || body.passwordSms === "") {
         const passwordTo = typeof body.passwordTo === "string" ? body.passwordTo.trim() : body.passwordTo === undefined ? "" : null;
         if (passwordTo === null || (passwordTo !== "" && !isEmailAddress(passwordTo))) {
-          throw new HttpError(400, "Bitte eine gültige E-Mail-Adresse für das Kennwort angeben.");
+          throw new HttpError(400, t("server.emailInvalid"));
         }
         await setJobPasswordTo(req.params.id, passwordTo || undefined);
         req.log.info({ user: user.upn, jobId: req.params.id, other: Boolean(passwordTo) }, "Password recipient changed");
@@ -612,7 +615,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
 
       if (body.maxAccess !== undefined) {
         if (!job.sendId) {
-          throw new HttpError(409, "Für diese Nachricht lässt sich die Anzahl der Abrufe nicht mehr ändern.", "SEND_FIXED");
+          throw new HttpError(409, t("server.accessFixed"), "SEND_FIXED");
         }
         const maxAccess = clampInt(body.maxAccess, config.sendMaxAccessCount, 1, config.sendMaxAccessLimit);
         await setSendMaxAccess(job.sendId, maxAccess);
@@ -634,7 +637,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
   app.post<{ Params: { id: string }; Body: { from?: unknown; passwordTo?: unknown; passwordSms?: unknown } }>("/api/jobs/:id/arm", async (req) => {
     const user = await authenticate(req);
     const job = getJob(req.params.id);
-    if (!job || job.owner !== user.oid) throw new HttpError(404, "Auftrag nicht gefunden");
+    if (!job || job.owner !== user.oid) throw new HttpError(404, t("server.jobNotFound"));
     if (job.dispatched) return { ok: true, alreadySent: true };
 
     // Set by the add-in only if the "From" field differs from the user's own mailbox (shared mailbox, on behalf).

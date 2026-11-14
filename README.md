@@ -21,6 +21,7 @@ users.*
 - [How it works](#how-it-works)
 - [Installation](#installation)
 - [Configuration](#configuration)
+- [Languages](#languages)
 - [Operation](#operation)
 - [Troubleshooting](#troubleshooting)
 - [Development and tests](#development-and-tests)
@@ -166,6 +167,7 @@ deployed again.
 | Setting | Default | Meaning |
 |---|---|---|
 | `PUBLIC_BASE_URL` | – | Public address of CloudShare, e.g. `https://cloudshare.example.com` |
+| `LANGUAGE` | `de` | Language of the taskpane, Outlook messages, link cards, password mail, SMS and download confirmation: `de`, `en` or an own one, see [Languages](#languages) |
 | `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` | – | Entra ID app registration |
 | `NEXTCLOUD_URL` | – | Public address of Nextcloud |
 | `NEXTCLOUD_FOLDER` | `CloudShare` | Folder for uploaded files in each user's Nextcloud |
@@ -188,17 +190,49 @@ deployed again.
 `env/versions.env` holds `CLOUDSHARE_HOST`, `CLOUDSHARE_VERSION` (`latest`) and `CADDY_VERSION`.
 
 **Text templates** (optional): the SMS text, the subject and intro of the password mail and the download confirmation
-can be changed in `env/templates/templates.json` – one default plus overrides per department (from the sender's
+can be changed in `env/config/templates.json` – one default plus overrides per department (from the sender's
 Microsoft 365 profile) and per sender address. Start from [`templates.example.json`](templates.example.json):
 
 ```bash
-mkdir -p /opt/cloudshare/env/templates
-cp /opt/cloudshare/templates.example.json /opt/cloudshare/env/templates/templates.json
-chmod 755 /opt/cloudshare/env/templates && chmod 644 /opt/cloudshare/env/templates/templates.json
+mkdir -p /opt/cloudshare/env/config
+cp /opt/cloudshare/templates.example.json /opt/cloudshare/env/config/templates.json
+chmod 755 /opt/cloudshare/env/config && chmod 644 /opt/cloudshare/env/config/templates.json
 ```
 
 Then update the stack. Mistakes (e.g. `{password}` in a mail text, an SMS without `{password}` or too long for one
 SMS) are reported in the log at start; the affected text falls back to the built-in one.
+The built-in texts are those of the configured language (section `templates` of its language file).
+
+## Languages
+
+Everything users and recipients see – taskpane, info bar and send check in Outlook, the link card in the mail, the
+password mail, the SMS, the download confirmation, error messages and the add-in's name and description in the
+manifest – comes from one language file per language in [`locales/`](locales). `LANGUAGE` in `env/cloudshare.env`
+picks it (`de` by default, `en` included):
+
+```bash
+LANGUAGE=en
+```
+
+Update the stack; CloudShare puts the texts into the add-in files when it starts. Outlook caches the add-in: clear the
+cache in classic Outlook (see *Operation*), reload Outlook on the web. One language applies to all users of an
+installation. Folder names in Nextcloud do not change with the language (`NEXTCLOUD_REQUEST_FOLDER` stays as set, so
+"Meine Freigaben" keeps finding older links).
+
+**Adding a language** – copy [`locales/en.json`](locales/en.json) to `<code>.json` (e.g. `fr.json`) and translate the
+values, keeping the keys and the `{placeholders}`. Keys ending in `_one` / `_other` are the singular and plural form.
+`_meta.locale` (e.g. `fr-FR`) sets the date and number format and the manifest's `DefaultLocale`. Texts that are
+missing fall back to English. Two ways to use it:
+
+- **Without a new image:** put the file into `/opt/cloudshare/env/config/locales/` (mounted read-only as
+  `/config/locales`, directory `755`, file `644`), set `LANGUAGE=fr`, update the stack.
+- **In the repository:** add it to `locales/` – the tests check that it has every text and placeholder of English and
+  stays within Outlook's limits (e.g. the Smart Alert button `alert.button` at most 20 characters, the SMS text in
+  the GSM alphabet with `{password}`); the image built from it contains the language.
+
+The same directory also changes **single texts** of a built-in language: `env/config/locales/de.json` with only the
+keys to change, e.g. `{ "addin": { "tabs.shares": "Freigaben" } }`. An unknown `LANGUAGE` stops the start with a
+message listing the available languages (`docker logs cloudshare`).
 
 ## Operation
 
@@ -210,7 +244,7 @@ After an update, classic Outlook keeps its old copy of the add-in until its cach
 `%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\`, start Outlook again.
 
 **Back up** the volume `cloudshare_data` (encrypted Nextcloud app passwords, pending password mails, cleanup list, SMS status, download confirmations)
-and `env/`. Without `CREDENTIAL_KEY` the stored connections cannot be read – users would have to reconnect.
+and `env/` (including `env/config/` with templates and own language files). Without `CREDENTIAL_KEY` the stored connections cannot be read – users would have to reconnect.
 
 **Health check:**
 

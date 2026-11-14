@@ -4,12 +4,13 @@
  *
  *   { "templates": { "default": {…}, "groups": { "<department>": {…} }, "users": { "<upn>": {…} } } }
  *
- * The first match wins per field (user → department of the sender → default → built-in), so every level may override
- * single fields only. Placeholders are {name}; which ones a field may use is fixed below. Problems are logged when the
+ * The first match wins per field (user → department of the sender → default → built-in texts of the language), so
+ * every level may override single fields only. Placeholders are {name}; which ones a field may use is fixed below. Problems are logged when the
  * file is loaded – a broken file never stops CloudShare, it falls back to the built-in texts.
  */
 import { readFileSync } from "node:fs";
 import { config } from "./config.js";
+import { texts } from "./i18n.js";
 
 export const TEMPLATE_FIELDS = {
   /** SMS with the password in plain text – {password} required; never the link or a file name. */
@@ -26,18 +27,9 @@ export const TEMPLATE_FIELDS = {
 export type TemplateField = keyof typeof TEMPLATE_FIELDS;
 export type Templates = Record<TemplateField, string>;
 
-/** Built-in texts (German, seen by recipients and senders). The SMS uses GSM characters only. */
-export const DEFAULT_TEMPLATES: Templates = {
-  sms_template: "Ihr Kennwort fuer die Dateien von {sender_name}: {password}",
-  mail_password_subject: "Kennwort für {files}: {subject}",
-  mail_password_intro:
-    "Guten Tag,\n\nfür die bereitgestellten Dateien aus der Nachricht „{subject}“ benötigen Sie ein Kennwort. " +
-    "Sie können es über den Button abrufen:",
-  download_notice_subject: "Heruntergeladen: {filename}",
-  download_notice_body:
-    "Guten Tag,\n\n„{filename}“ aus Ihrer Nachricht „{subject}“ wurde am {downloaded_at} zum ersten Mal " +
-    "heruntergeladen (Empfänger: {recipients}).\n\nDer Link ist bis {expires} gültig.",
-};
+/** Built-in texts: section "templates" of the language file (LANGUAGE). The SMS should use GSM characters only. */
+export const defaultTemplates = (): Templates =>
+  Object.fromEntries(Object.keys(TEMPLATE_FIELDS).map((field) => [field, texts("templates")[field] ?? ""])) as Templates;
 
 type Level = Partial<Templates>;
 interface TemplateFile {
@@ -129,7 +121,7 @@ let loaded: TemplateFile | undefined;
 /** The texts for a sender: user (UPN / mail address) → department → default → built-in. */
 export function templatesFor(sender: { upn?: string; department?: string }, file: TemplateFile = (loaded ??= loadTemplates(config.templatesFile))): Templates {
   return {
-    ...DEFAULT_TEMPLATES,
+    ...defaultTemplates(),
     ...file.default,
     ...(sender.department ? file.groups[sender.department.toLowerCase()] : undefined),
     ...(sender.upn ? file.users[sender.upn.toLowerCase()] : undefined),

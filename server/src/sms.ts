@@ -4,6 +4,7 @@
  */
 import { HttpError } from "./auth.js";
 import { config } from "./config.js";
+import { t } from "./i18n.js";
 
 export const smsEnabled = () => Boolean(config.sevenApiKey);
 
@@ -37,7 +38,7 @@ export async function sendSms(to: string, text: string): Promise<string> {
   const json = (await res.json().catch(() => null)) as { success?: string | number; messages?: Array<{ id?: string | number; success?: boolean }> } | null;
   const id = json?.messages?.[0]?.id;
   if (!res.ok || String(json?.success) !== "100" || id === undefined || id === null) {
-    throw new HttpError(502, `SMS-Versand fehlgeschlagen (seven.io, HTTP ${res.status}, Code ${json?.success ?? "?"})`);
+    throw new HttpError(502, t("server.smsFailed", { status: res.status, code: String(json?.success ?? "?") }));
   }
   return String(id);
 }

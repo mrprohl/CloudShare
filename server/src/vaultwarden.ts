@@ -1,5 +1,6 @@
 import { HttpError } from "./auth.js";
 import { config } from "./config.js";
+import { t } from "./i18n.js";
 
 /** Talks to the local Vault Management API of `bw serve` (127.0.0.1 only, service account). */
 async function bw<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -42,7 +43,7 @@ async function withUnlock<T>(call: () => Promise<T>): Promise<T> {
       await unlockVault();
       return await call();
     } catch (err) {
-      throw new HttpError(502, `Vaultwarden-Send fehlgeschlagen: ${(err as Error).message}`);
+      throw new HttpError(502, t("server.vaultSendFailed", { error: (err as Error).message }));
     }
   }
 }
@@ -54,7 +55,7 @@ async function withUnlock<T>(call: () => Promise<T>): Promise<T> {
 export async function readSendPassword(id: string): Promise<string> {
   const send = await withUnlock(() => bw<{ text?: { text?: string } }>("GET", `/object/send/${encodeURIComponent(id)}`));
   const password = send?.text?.text;
-  if (!password) throw new HttpError(502, "Vaultwarden: Send enthält kein Kennwort");
+  if (!password) throw new HttpError(502, t("server.vaultNoPassword"));
   return password;
 }
 
@@ -97,6 +98,6 @@ export async function createPasswordSend(
   };
 
   const data = await withUnlock(() => bw<{ accessUrl?: string; id?: string }>("POST", "/object/send", send));
-  if (!data?.accessUrl) throw new HttpError(502, "Vaultwarden: Send-URL fehlt in der Antwort");
+  if (!data?.accessUrl) throw new HttpError(502, t("server.vaultNoUrl"));
   return { url: data.accessUrl, id: typeof data.id === "string" ? data.id : undefined };
 }

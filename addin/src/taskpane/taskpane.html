@@ -1,5 +1,7 @@
 <!doctype html>
-<html lang="de">
+<!-- The text markers and the language are filled from locales/<LANGUAGE>.json ("addin" section) at container
+     start – server/src/i18n.ts, localizePublic(). -->
+<html lang="%%LANG%%">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -18,45 +20,42 @@
           <path d="M14 36h21a8 8 0 0 0 1.4-15.9A11 11 0 0 0 15.2 18 9 9 0 0 0 14 36Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
           <path d="M24 31V21m0 0-4 4m4-4 4 4" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         </svg>
-        <h2 class="subtitle">Mit Nextcloud verbinden</h2>
-        <p class="body2">
-          Große Anhänge werden in Ihrer Nextcloud abgelegt und als kennwortgeschützter Link gesendet.
-          Dafür ist einmalig eine Verbindung nötig.
-        </p>
-        <button type="button" id="connect" class="btn btn-primary">Verbinden</button>
+        <h2 class="subtitle">%%t:addin.connect.title%%</h2>
+        <p class="body2">%%t:addin.connect.text%%</p>
+        <button type="button" id="connect" class="btn btn-primary">%%t:addin.connect.button%%</button>
         <p class="caption" id="connect-hint" hidden>
-          Schließen Sie die Anmeldung im Browser ab und bestätigen Sie „Zugriff erlauben“.
-          <a id="connect-link" href="#" target="_blank" rel="noopener">Anmeldeseite erneut öffnen</a>
+          %%t:addin.connect.hint%%
+          <a id="connect-link" href="#" target="_blank" rel="noopener">%%t:addin.connect.reopen%%</a>
         </p>
       </section>
 
       <section id="send-view" class="send-view" hidden>
         <div class="tabs" role="tablist" aria-label="CloudShare">
-          <button type="button" role="tab" id="tab-send" class="tab" aria-selected="true" aria-controls="panel-send">Senden</button>
-          <button type="button" role="tab" id="tab-shares" class="tab" aria-selected="false" aria-controls="panel-shares">Meine Freigaben</button>
+          <button type="button" role="tab" id="tab-send" class="tab" aria-selected="true" aria-controls="panel-send">%%t:addin.tabs.send%%</button>
+          <button type="button" role="tab" id="tab-shares" class="tab" aria-selected="false" aria-controls="panel-shares">%%t:addin.tabs.shares%%</button>
         </div>
 
         <div id="panel-shares" class="panel" role="tabpanel" aria-labelledby="tab-shares" hidden>
           <div class="content">
             <div class="toolbar">
-              <span class="caption" id="shares-hint">Ihre CloudShare-Links der letzten 30 Tage</span>
-              <button type="button" id="refresh-shares" class="btn btn-icon" title="Aktualisieren" aria-label="Aktualisieren">
+              <span class="caption" id="shares-hint">%%t:addin.shares.hint%%</span>
+              <button type="button" id="refresh-shares" class="btn btn-icon" title="%%t:addin.shares.refresh%%" aria-label="%%t:addin.shares.refresh%%">
                 <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
                   <path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </button>
             </div>
             <div id="shares" class="share-list" aria-live="polite"></div>
-            <p class="caption" id="no-shares" hidden>Sie haben noch keine Dateien mit CloudShare freigegeben.</p>
+            <p class="caption" id="no-shares" hidden>%%t:addin.shares.none%%</p>
           </div>
         </div>
 
         <div id="panel-send" class="panel" role="tabpanel" aria-labelledby="tab-send">
         <div class="content">
-          <h2 class="section-title">Anhänge</h2>
-          <div id="attachments" class="list" role="group" aria-label="Anhänge dieser Nachricht"></div>
-          <div id="picked" class="list" role="group" aria-label="Dateien vom Computer"></div>
-          <p class="caption" id="no-attachments">Diese Nachricht enthält keine Dateianhänge.</p>
+          <h2 class="section-title">%%t:addin.files.heading%%</h2>
+          <div id="attachments" class="list" role="group" aria-label="%%t:addin.files.attachmentsGroup%%"></div>
+          <div id="picked" class="list" role="group" aria-label="%%t:addin.files.pickedGroup%%"></div>
+          <p class="caption" id="no-attachments">%%t:addin.files.none%%</p>
           <!-- Drop zone: files can be dragged anywhere onto the "Senden" tab; a click on the box (or its button) opens the
                native file dialog via window.showOpenFilePicker with the file input as fallback (openFilePicker()). -->
           <div class="dropzone" id="dropzone">
@@ -64,39 +63,39 @@
               <path d="M16 21V8m0 0-5 5m5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
               <path d="M7 19v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-4" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
             </svg>
-            <span class="dropzone-title idle">Dateien hierher ziehen</span>
-            <span class="dropzone-title drop">Dateien hier ablegen</span>
-            <span class="dropzone-sub">oder <button type="button" id="add-files" class="link-button">vom Computer auswählen</button></span>
+            <span class="dropzone-title idle">%%t:addin.drop.title%%</span>
+            <span class="dropzone-title drop">%%t:addin.drop.release%%</span>
+            <span class="dropzone-sub">%%t:addin.drop.or%% <button type="button" id="add-files" class="link-button">%%t:addin.drop.pick%%</button></span>
           </div>
           <input type="file" id="file" class="file-input" multiple tabindex="-1" aria-hidden="true" />
 
-          <h2 class="section-title">Freigabe</h2>
+          <h2 class="section-title">%%t:addin.share.heading%%</h2>
           <div class="field" role="radiogroup" aria-labelledby="password-label">
-            <span class="label" id="password-label">Kennwort</span>
+            <span class="label" id="password-label">%%t:addin.password.label%%</span>
             <label class="radio">
               <input type="radio" name="password-mode" id="mode-random" value="random" checked />
               <span class="dot" aria-hidden="true"></span>
-              <span>Zufälliges Kennwort (empfohlen)</span>
+              <span>%%t:addin.password.random%%</span>
             </label>
             <label class="radio">
               <input type="radio" name="password-mode" id="mode-own" value="own" />
               <span class="dot" aria-hidden="true"></span>
-              <span>Eigenes Kennwort</span>
+              <span>%%t:addin.password.own%%</span>
             </label>
             <label class="radio">
               <input type="radio" name="password-mode" id="mode-none" value="none" />
               <span class="dot" aria-hidden="true"></span>
-              <span>Ohne Kennwort</span>
+              <span>%%t:addin.password.none%%</span>
             </label>
             <div class="input-group" id="password-group">
               <input type="text" id="password" class="input mono" autocomplete="new-password" spellcheck="false"
                 aria-labelledby="password-label" aria-describedby="password-rules password-hint" />
-              <button type="button" id="generate" class="btn btn-icon" title="Neues Kennwort erzeugen" aria-label="Neues Kennwort erzeugen">
+              <button type="button" id="generate" class="btn btn-icon" title="%%t:addin.password.generate%%" aria-label="%%t:addin.password.generate%%">
                 <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
                   <path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
               </button>
-              <button type="button" id="reveal" class="btn btn-icon" title="Kennwort anzeigen" aria-label="Kennwort anzeigen" aria-pressed="false" hidden>
+              <button type="button" id="reveal" class="btn btn-icon" title="%%t:addin.password.show%%" aria-label="%%t:addin.password.show%%" aria-pressed="false" hidden>
                 <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
                   <path d="M2 10s3-5.5 8-5.5 8 5.5 8 5.5-3 5.5-8 5.5S2 10 2 10Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
                   <circle cx="10" cy="10" r="2.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
@@ -104,73 +103,70 @@
               </button>
             </div>
             <ul class="rules" id="password-rules" hidden>
-              <li data-rule="length">Mindestens 12 Zeichen</li>
-              <li data-rule="classes">Mindestens drei von: Großbuchstaben, Kleinbuchstaben, Ziffern, Sonderzeichen</li>
-              <li data-rule="variety">Keine Wiederholung oder einfache Zeichenfolge</li>
+              <li data-rule="length">%%t:addin.password.ruleLength%%</li>
+              <li data-rule="classes">%%t:addin.password.ruleClasses%%</li>
+              <li data-rule="variety">%%t:addin.password.ruleVariety%%</li>
             </ul>
-            <p class="hint" id="password-hint">Die Empfänger erhalten das Kennwort nach dem Senden automatisch in einer separaten Nachricht.</p>
+            <p class="hint" id="password-hint">%%t:addin.password.hint%%</p>
           </div>
 
           <div class="field">
-            <label for="expire" class="label">Link gültig für</label>
+            <label for="expire" class="label">%%t:addin.expire.label%%</label>
             <div class="input-group input-narrow">
               <input type="number" id="expire" class="input" min="1" />
-              <span class="suffix">Tage</span>
+              <span class="suffix">%%t:addin.expire.suffix%%</span>
             </div>
           </div>
 
           <div class="field" id="max-access-field">
-            <label for="max-access" class="label">Kennwort abrufbar</label>
+            <label for="max-access" class="label">%%t:addin.maxAccess.label%%</label>
             <div class="input-group input-narrow">
               <input type="number" id="max-access" class="input" min="1" aria-describedby="max-access-hint" />
-              <span class="suffix">mal</span>
+              <span class="suffix">%%t:addin.maxAccess.suffix%%</span>
             </div>
-            <p class="hint" id="max-access-hint">So oft können die Empfänger den Link zum Kennwort öffnen, danach ist er gesperrt.</p>
+            <p class="hint" id="max-access-hint">%%t:addin.maxAccess.hint%%</p>
           </div>
 
           <!-- How the password goes out after sending: to the recipients (default), to another address, or by SMS. -->
           <div class="field" id="password-to-field" role="radiogroup" aria-labelledby="channel-label">
-            <span class="label" id="channel-label">Kennwort übermitteln</span>
+            <span class="label" id="channel-label">%%t:addin.channel.label%%</span>
             <label class="radio">
               <input type="radio" name="password-channel" id="channel-recipients" value="recipients" checked />
               <span class="dot" aria-hidden="true"></span>
-              <span>an die Empfänger der Nachricht</span>
+              <span>%%t:addin.channel.recipients%%</span>
             </label>
             <label class="radio">
               <input type="radio" name="password-channel" id="channel-mail" value="mail" aria-controls="password-to" />
               <span class="dot" aria-hidden="true"></span>
-              <span>an eine andere E-Mail-Adresse</span>
+              <span>%%t:addin.channel.mail%%</span>
             </label>
             <label class="radio" id="channel-sms-row" hidden>
               <input type="radio" name="password-channel" id="channel-sms" value="sms" aria-controls="password-sms" />
               <span class="dot" aria-hidden="true"></span>
-              <span>per SMS an eine Mobilnummer</span>
+              <span>%%t:addin.channel.sms%%</span>
             </label>
-            <input type="email" id="password-to" class="input channel-input" placeholder="name@beispiel.de" autocomplete="email"
-              spellcheck="false" aria-label="E-Mail-Adresse für das Kennwort" aria-describedby="password-to-hint" hidden />
-            <input type="tel" id="password-sms" class="input channel-input" placeholder="0170 1234567" autocomplete="tel"
-              aria-label="Mobilnummer für das Kennwort" aria-describedby="password-to-hint" hidden />
+            <input type="email" id="password-to" class="input channel-input" placeholder="%%t:addin.channel.mailPlaceholder%%" autocomplete="email"
+              spellcheck="false" aria-label="%%t:addin.channel.mailLabel%%" aria-describedby="password-to-hint" hidden />
+            <input type="tel" id="password-sms" class="input channel-input" placeholder="%%t:addin.channel.smsPlaceholder%%" autocomplete="tel"
+              aria-label="%%t:addin.channel.smsLabel%%" aria-describedby="password-to-hint" hidden />
             <p class="hint" id="password-to-hint" hidden></p>
           </div>
 
-          <h2 class="section-title">Dateien von Empfängern erhalten</h2>
-          <p class="caption request-text">
-            Die Empfänger bekommen einen Link, über den sie Ihnen Dateien hochladen können – auch große. Die Dateien
-            landen in Ihrer Nextcloud. Kennwort und Gültigkeit wie oben.
-          </p>
+          <h2 class="section-title">%%t:addin.request.heading%%</h2>
+          <p class="caption request-text">%%t:addin.request.text%%</p>
           <button type="button" id="request" class="btn">
             <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
               <path d="M10 13V4m0 0L6.5 7.5M10 4l3.5 3.5M4 12v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
             </svg>
-            Link zum Hochladen einfügen
+            %%t:addin.request.button%%
           </button>
         </div>
 
         <footer class="footer">
           <div class="progress" id="progress" hidden><div class="progress-bar" id="progress-bar"></div></div>
-          <button type="button" id="submit" class="btn btn-primary btn-block">Als Link einfügen</button>
+          <button type="button" id="submit" class="btn btn-primary btn-block">%%t:addin.submit.button%%</button>
           <p class="caption account">
-            <span id="account"></span> · <a href="#" id="disconnect">Verbindung trennen</a>
+            <span id="account"></span> · <a href="#" id="disconnect">%%t:addin.disconnect.link%%</a>
           </p>
         </footer>
         </div>
