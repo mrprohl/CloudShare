@@ -39,7 +39,7 @@ left the outbox.
 
 ## Using CloudShare
 
-<img src="docs/images/taskpane-send.png" alt="CloudShare pane, tab Senden: one large attachment preselected, password options, link validity and the button Als Link einfügen" width="300" align="right">
+<img src="docs/images/taskpane-send.png" alt="CloudShare pane, tab Senden: one large attachment preselected, password options, link validity, how the password is delivered, upload link, confidential message and the button Als Link einfügen" width="300" align="right">
 
 **Once:** open the pane with the **CloudShare** button in the ribbon and click **"Verbinden"** – the Nextcloud login
 opens in the browser (usually without typing anything, thanks to single sign-on). CloudShare remembers the
@@ -69,6 +69,12 @@ and the password options are free again.
 
 **Receiving files:** **"Link zum Hochladen einfügen"** inserts a link through which the recipients can upload files –
 also very large ones – straight into your Nextcloud (folder `Outlook-Dateianforderungen`).
+
+**Confidential message:** under **"Vertrauliche Nachricht"** you type a text instead of choosing a file – e.g. access
+data – and click **"Nachricht als Link einfügen"**. The text does not go into the mail: it is stored encrypted in
+Vaultwarden as a Send protected with the chosen password, and the mail gets a card with **"Nachricht öffnen"**. The
+password reaches the recipients like for files (password mail, other address or SMS). At most 1000 characters,
+available for at most 30 days (Vaultwarden's limit), then deleted.
 
 <br clear="right">
 

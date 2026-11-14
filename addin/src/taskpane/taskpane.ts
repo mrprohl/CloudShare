@@ -21,7 +21,7 @@ import { checkPassword, generatePassword } from "../shared/password";
 import { locale, t } from "../shared/i18n";
 import { errorText } from "../shared/sso";
 import { EMPTY_PROFILE, fillFooter, hasPlaceholders, type Profile } from "./footer";
-import { filesCard, filesText, requestCard, requestText } from "./mailCard";
+import { filesCard, filesText, messageCard, messageText, requestCard, requestText } from "./mailCard";
 
 // All visible texts come from locales/<language>.json (t(), see shared/i18n.ts) and follow Outlook's terminology
 // ("Nachricht"/"message", "Kennwort"/"password").
@@ -57,6 +57,9 @@ const passwordToInput = $<HTMLInputElement>("password-to");
 const passwordToHint = $<HTMLParagraphElement>("password-to-hint");
 const rulesList = $<HTMLUListElement>("password-rules");
 const requestButton = $<HTMLButtonElement>("request");
+const messageInput = $<HTMLTextAreaElement>("message");
+const messageCount = $<HTMLParagraphElement>("message-count");
+const messageButton = $<HTMLButtonElement>("message-insert");
 const tabSend = $<HTMLButtonElement>("tab-send");
 const tabShares = $<HTMLButtonElement>("tab-shares");
 const panelSend = $<HTMLDivElement>("panel-send");
@@ -645,9 +648,9 @@ passwordSmsInput.addEventListener("change", () => {
  * Why a new link cannot be created with the current settings, or null. Upload links always need a password;
  * an own password must meet the rules; the chosen password channel needs its address or number.
  */
-function settingsProblem(kind: "file" | "request"): string | null {
-  if (kind === "request" && withoutPassword()) {
-    return modeNone.disabled ? t("request.needsPasswordLocked") : t("request.needsPassword");
+function settingsProblem(kind: "file" | "request" | "message"): string | null {
+  if (kind !== "file" && withoutPassword()) {
+    return modeNone.disabled ? t(`${kind}.needsPasswordLocked`) : t(`${kind}.needsPassword`);
   }
   if (!passwordInput.readOnly && !checkPassword(passwordInput.value).ok) {
     renderRules();
@@ -1065,6 +1068,65 @@ requestButton.addEventListener("click", async () => {
   }
 });
 
+// --- Confidential message ("Vertrauliche Nachricht") -------------------------------------
+// A text instead of a file: the server stores it as a password-protected Vaultwarden Send; the mail gets a card with
+// the link, the password goes out like for files.
+
+const messageMax = () => serverConfig?.messageMaxLength ?? 1000;
+
+function renderMessageCount() {
+  const length = messageInput.value.length;
+  messageCount.textContent = t("message.count", { count: length, max: messageMax() });
+  messageCount.classList.toggle("over", length > messageMax());
+}
+messageInput.addEventListener("input", renderMessageCount);
+
+messageButton.addEventListener("click", async () => {
+  const text = messageInput.value.trim();
+  if (!text) {
+    messageInput.focus();
+    return setStatus(t("message.empty"), "error");
+  }
+  if (text.length > messageMax()) {
+    messageInput.focus();
+    return setStatus(t("message.tooLong", { max: messageMax() }), "error");
+  }
+  const problem = settingsProblem("message");
+  if (problem) return setStatus(problem, "error");
+
+  messageButton.disabled = true;
+  busy++;
+  try {
+    setStatus(t("message.creating"));
+    const result = await api<{ shareUrl: string; expireDate: string; jobId: string; capped?: boolean }>(
+      "/api/messages",
+      { method: "POST", body: JSON.stringify({ ...(await shareSettingsBody(newStep())), text }) },
+      await getToken(),
+    );
+    // Same password and password mail as the files of this mail (one step).
+    await rememberShareChoice(result.jobId);
+    const expire = formatDate(result.expireDate);
+    await footerReady;
+    await insertIntoBody(
+      messageCard(result.shareUrl, expire, mailFooter),
+      messageText(result.shareUrl, expire, mailFooter),
+      shareToken(result.shareUrl),
+    );
+    messageInput.value = "";
+    renderMessageCount();
+    setStatus(
+      sentences(t("message.inserted"), result.capped ? t("message.capped", { days: serverConfig.messageMaxDays ?? 30 }) : ""),
+      "success",
+    );
+  } catch (err) {
+    setStatus(errorMessage(err), "error");
+  } finally {
+    messageButton.disabled = false;
+    nextStepPassword();
+    busy--;
+  }
+});
+
 // --- Tabs ------------------------------------------------------------------------------
 
 function selectTab(tab: "send" | "shares") {
@@ -1372,6 +1434,8 @@ Office.onReady(async () => {
   }
   // "Kennwort übermitteln": SMS only when the server has it configured; restore the choice of this draft.
   channelSmsRow.hidden = !serverConfig.smsEnabled;
+  $<HTMLParagraphElement>("message-text").textContent = t("message.text", { days: serverConfig.messageMaxDays ?? 30 });
+  renderMessageCount();
   passwordToInput.value = state.passwordTo ?? "";
   passwordSmsInput.value = state.passwordSms ?? "";
   showChannel(state.passwordSms && serverConfig.smsEnabled ? "sms" : state.passwordTo ? "mail" : "recipients");

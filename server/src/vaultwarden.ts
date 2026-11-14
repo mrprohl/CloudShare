@@ -101,3 +101,38 @@ export async function createPasswordSend(
   if (!data?.accessUrl) throw new HttpError(502, t("server.vaultNoUrl"));
   return { url: data.accessUrl, id: typeof data.id === "string" ? data.id : undefined };
 }
+
+/** Longest confidential message (characters) – Bitwarden's limit for text Sends. */
+export const MESSAGE_MAX_LENGTH = 1000;
+/** Vaultwarden refuses Sends that are deleted more than 31 days after creation. */
+export const MESSAGE_MAX_DAYS = 30;
+
+/**
+ * Confidential message ("Vertrauliche Nachricht"): a text Send protected with the share password – the recipients
+ * open the link from the mail and enter the password they get in the password mail or SMS. Vaultwarden deletes it
+ * at `expiresAt`; no copy stays in Nextcloud or on this server.
+ */
+export async function createMessageSend(
+  label: string,
+  text: string,
+  password: string,
+  expiresAt: Date,
+): Promise<{ url: string; id: string | undefined }> {
+  const deletionDate = expiresAt.toISOString();
+  const send = {
+    name: label,
+    notes: null,
+    type: 0,
+    text: { text, hidden: false },
+    file: null,
+    maxAccessCount: null,
+    deletionDate,
+    expirationDate: deletionDate,
+    password,
+    disabled: false,
+    hideEmail: true,
+  };
+  const data = await withUnlock(() => bw<{ accessUrl?: string; id?: string }>("POST", "/object/send", send));
+  if (!data?.accessUrl) throw new HttpError(502, t("server.vaultNoUrl"));
+  return { url: data.accessUrl, id: typeof data.id === "string" ? data.id : undefined };
+}

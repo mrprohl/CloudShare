@@ -26,16 +26,17 @@ const TYPE_COLORS: Record<string, string> = {
   zip: "#616161", rar: "#616161", "7z": "#616161", tar: "#616161", gz: "#616161",
 };
 
-/** Upload links have no file extension – they get an arrow badge instead of "DATEI". */
+const badgeCell = (label: string, color: string) =>
+  `<td width="32" valign="middle" style="width:32px;padding:4px 10px 4px 0;">` +
+  `<div style="width:32px;height:32px;line-height:32px;background:${color};border-radius:4px;color:#ffffff;` +
+  `font-family:${FONT};font-size:10px;font-weight:700;text-align:center;">${label}</div></td>`;
+
+/** File type badge; upload links (no extension) get an arrow, confidential messages an envelope. */
 function typeBadge(name: string): string {
+  if (name === t("server.messageItem")) return badgeCell("&#9993;", BRAND);
   const ext = /\.([A-Za-z0-9]{1,8})$/.exec(name)?.[1]?.toLowerCase() ?? "";
   const label = ext ? escapeHtml(ext.toUpperCase().slice(0, 4)) : "&#8593;";
-  const color = TYPE_COLORS[ext] ?? (ext ? "#616161" : BRAND);
-  return (
-    `<td width="32" valign="middle" style="width:32px;padding:4px 10px 4px 0;">` +
-    `<div style="width:32px;height:32px;line-height:32px;background:${color};border-radius:4px;color:#ffffff;` +
-    `font-family:${FONT};font-size:10px;font-weight:700;text-align:center;">${label}</div></td>`
-  );
+  return badgeCell(label, TYPE_COLORS[ext] ?? (ext ? "#616161" : BRAND));
 }
 
 export const accessText = (count?: number) => (count === undefined ? t("mail.accessLimited") : t("mail.access", { count }));

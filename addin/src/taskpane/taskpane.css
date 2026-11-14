@@ -186,6 +186,10 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* Same width as the password field above it (full width minus its 32 px button and 4 px gap). */
 .channel-input { display: block; width: calc(100% - 36px); margin-top: 4px; }
 .suffix { color: var(--fg2); }
+/* Confidential message: multi-line, grows by hand, same look as the inputs. */
+.input.textarea { display: block; width: 100%; height: auto; min-height: 92px; padding: 6px 10px; resize: vertical; }
+#message-count { margin: 4px 0 8px; }
+#message-count.over { color: var(--danger-fg); }
 
 /* --- Checkbox ------------------------------------------------------------------ */
 .checkbox { position: relative; display: flex; align-items: flex-start; gap: 8px; padding: 6px 0; cursor: pointer; }

@@ -112,6 +112,10 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     if (route_ === "POST /api/requests") {
       return json({ shareUrl: "https://cloud.example.com/s/request", expireDate: "2026-12-01", jobId: "job-1" });
     }
+    if (route_ === "POST /api/messages") {
+      return json({ shareUrl: "https://vault.example.com/#/send/msg/key123", expireDate: "2026-12-01", jobId: "job-1",
+        capped: JSON.parse(call.body!.toString()).expireDays > 30 });
+    }
     if (route_ === "GET /api/shares") return json(scenario.shares ?? []);
     if (/^DELETE \/api\/shares\/.+$/.test(route_)) return json({ ok: true });
     if (/^PATCH \/api\/jobs\/[^/]+$/.test(route_)) return json({ maxAccess: JSON.parse(call.body!.toString()).maxAccess });
@@ -631,6 +635,40 @@ test("Dateien von Empfängern erhalten inserts an upload link with the same pass
   await expect(page.locator("#status")).toContainText("Der Link zum Hochladen wurde eingefügt.");
   expect(JSON.parse(calls.find((c) => c.path === "/api/requests")!.body!.toString()).password).toBe(password);
   expect((await officeLog(page)).inserted[0].data).toContain("https://cloud.example.com/s/request");
+});
+
+test("Vertrauliche Nachricht: inserts a card with the link, never the text, and shares the password step", async ({ page }) => {
+  const calls = await openTaskpane(page, { config: { messageMaxLength: 1000, messageMaxDays: 30 } });
+  await expect(page.locator("#message-text")).toContainText("höchstens 30 Tage abrufbar");
+  await page.click("#message-insert");
+  await expect(page.locator("#status")).toContainText("Bitte zuerst den Text der vertraulichen Nachricht eingeben.");
+
+  const password = await page.locator("#password").inputValue();
+  await page.fill("#message", "Zugang zum Portal: anna / Sommer2026");
+  await expect(page.locator("#message-count")).toHaveText("36 von 1000 Zeichen");
+  await page.fill("#expire", "60");
+  await page.locator("#expire").dispatchEvent("change");
+  await page.click("#message-insert");
+  await expect(page.locator("#status")).toContainText("Der Link zur vertraulichen Nachricht wurde eingefügt.");
+  await expect(page.locator("#status")).toContainText("höchstens 30 Tage abrufbar");
+
+  const body = JSON.parse(calls.find((c) => c.path === "/api/messages")!.body!.toString());
+  expect(body).toMatchObject({ text: "Zugang zum Portal: anna / Sommer2026", password, expireDays: 60 });
+  const inserted = (await officeLog(page)).inserted[0].data;
+  expect(inserted).toContain("https://vault.example.com/#/send/msg/key123");
+  expect(inserted).toContain("Vertrauliche Nachricht für Sie");
+  expect(inserted).not.toContain("Sommer2026"); // the text never goes into the mail
+  await expect(page.locator("#message")).toHaveValue("");
+  await expectAccessible(page);
+});
+
+test("Vertrauliche Nachricht needs a password", async ({ page }) => {
+  const calls = await openTaskpane(page);
+  await page.check("#mode-none");
+  await page.fill("#message", "geheim");
+  await page.click("#message-insert");
+  await expect(page.locator("#status")).toContainText("Vertrauliche Nachrichten brauchen immer ein Kennwort");
+  expect(calls.some((c) => c.path === "/api/messages")).toBe(false);
 });
 
 test("revoked Nextcloud app password: returns to the connect view", async ({ page }) => {

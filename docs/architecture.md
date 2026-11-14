@@ -102,6 +102,15 @@ a create-only link ("file drop") – same password rules, its own step. **"Ohne 
 links only) creates a link without password, Send or job. **"Meine Freigaben → Einfügen"**
 (`POST /api/shares/:id/link`) creates a new link to an existing upload with a new password, as a new step.
 
+**"Vertrauliche Nachricht"** (`POST /api/messages`): a text instead of a file. It is never written to Nextcloud or to
+`/data`: `createMessageSend` stores it as a Vaultwarden **text Send protected with the step's password** (Send access
+password, `hidden: false`, no access limit, deleted at expiry). The Send's link goes into the mail as a card
+("Nachricht öffnen"); the step's password goes out like for files – the job item is "Vertrauliche Nachricht", the
+password mail shows an envelope badge. Always with a password; at most 1000 characters (Bitwarden's limit for text
+Sends) and 30 days (Vaultwarden refuses deletion dates more than 31 days ahead), even if "Link gültig für" is longer
+(`capped` in the answer). Messages are not listed in "Meine Freigaben" (they are no Nextcloud shares) and get no
+download confirmation.
+
 ### 2.3 Send and password mail
 
 1. On "Senden" Outlook runs the Smart Alert `onMessageSendHandler` (manifest `SendMode="SoftBlock"`):
@@ -246,13 +255,14 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | Route | Purpose |
 |---|---|
 | `GET /.well-known/microsoft-officeaddins-allowed.json` | Allows SSO/network for `commands.js` in classic Outlook ([5](#5-outlook-runtimes-and-pitfalls)) |
-| `GET /api/config` | Public settings for the add-in (threshold, policy, limits, footer, `trace`, `smsEnabled`) |
+| `GET /api/config` | Public settings for the add-in (threshold, policy, limits, footer, `trace`, `smsEnabled`, message limits) |
 | `GET/POST /api/trace` | Diagnostics of the send handler, only with `CLIENT_TRACE=true` (no login) |
 | `GET /api/profile` | Sender's Microsoft 365 profile for `MAIL_FOOTER` |
 | `GET /api/nextcloud/status` | Connected?, storage (free/used/total), `passwordEnforced` |
 | `POST /api/nextcloud/connect`, `…/connect/:id/poll`, `DELETE /api/nextcloud/connection` | Login Flow v2, disconnect |
 | `POST /api/uploads`, `PUT …/:id/chunks/:n`, `POST …/:id/complete`, `DELETE …/:id` | Chunked upload, share link |
 | `POST /api/requests` | Upload link ("Dateien von Empfängern erhalten") |
+| `POST /api/messages` | Confidential message: text → password-protected Vaultwarden Send, joins the mail's password job |
 | `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "Meine Freigaben": list (30 days, max. 100), revoke, insert again |
 | `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send), `passwordTo` or `passwordSms` until the password went out |
 | `POST /api/jobs/:id/arm` | Arm the password mail (send handler); also reads the sender's name and department for the templates |
@@ -315,6 +325,9 @@ Alert trace". Off by default.
   15 minutes of use, and the `.Shared` permissions reach only mailboxes the user already has rights to. Only the
   optional download confirmation uses an **application** permission (`Mail.Send`) – restrict it to the CloudShare
   users ([microsoft-365.md → 5](microsoft-365.md#5-optional-application-permission-for-the-download-confirmation)), otherwise the app could send as any mailbox of the tenant.
+- **Confidential messages** pass the server only in memory; Vaultwarden stores them end-to-end encrypted in the Send
+  (the Bitwarden CLI encrypts before upload) and deletes them at expiry. Anyone with link and password can read them
+  until then – like a file link.
 - **SMS:** the API key and the webhook secret stay on the server; the add-in never talks to seven.io. The SMS carries
   the password in plain text (it is the second channel); the password is read from the Send only for sending and
   the Send is deleted afterwards. Numbers are stored masked in the status; `SMS_MAX_PER_DAY` limits costs and abuse.
