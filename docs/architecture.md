@@ -4,11 +4,12 @@ CloudShare is an Outlook add-in plus a small backend. Large files are uploaded t
 inserted into the mail as a password-protected link; the password reaches the recipients in a **second mail** as a
 Vaultwarden Send, and only after the first mail has really been sent. This document describes how the parts fit
 together, where state lives, and the Outlook peculiarities the code has to work around. Operation and installation:
-[README](../README.md).
+[README](../README.md); Microsoft 365 (Entra ID, deployment, Exchange): [microsoft-365.md](microsoft-365.md).
 
-Everything visible to users and recipients (taskpane, Outlook hints, cards, password mail, SMS) comes from the language
-file picked by `LANGUAGE` (`locales/de.json` by default, see [2.8](#28-languages)); code, logs and documentation are
-English.
+Everything visible to users and recipients (taskpane, Outlook hints, cards, password mail, SMS, download
+confirmation) comes from the language file picked by `LANGUAGE` (`locales/de.json` by default, see
+[2.8](#28-languages)); code, logs and documentation are English. Labels quoted in this document ("Als Link einfügen",
+"Meine Freigaben" …) are the German texts.
 
 ## Contents
 
@@ -18,7 +19,7 @@ English.
 4. [HTTP API](#4-http-api)
 5. [Outlook runtimes and pitfalls](#5-outlook-runtimes-and-pitfalls)
 6. [Security](#6-security)
-7. [Setup](#setup)
+7. [Setup](#7-setup)
 8. [User interface](#8-user-interface)
 9. [Limits and risks](#9-limits-and-risks)
 
@@ -35,30 +36,38 @@ Outlook (classic on Windows / new Outlook / Outlook on the web)
 Caddy (Let's Encrypt, ports 80/443) ──► network "internal"
         ▼
 Container "cloudshare" (Node 22, read-only)
-  ├─ Fastify backend     server/src/           API, add-in files, manifest.xml, well-known file
-  │     ├─ Nextcloud     app password per user → WebDAV chunked upload, OCS shares, trash
-  │     ├─ Graph         On-Behalf-Of token → read "Sent Items", send password mail as the user
+  ├─ Fastify backend     server/src/           API, add-in files (texts of LANGUAGE filled in at start),
+  │     │                                      manifest.xml, well-known file, seven.io webhook
+  │     ├─ Nextcloud     app password per user → WebDAV chunked upload, OCS shares, activity, trash
+  │     ├─ Graph         On-Behalf-Of token → read "Sent Items", send password mail as the user;
+  │     │                app token (optional) → download confirmation
+  │     ├─ seven.io      password by SMS (optional)
   │     └─ bw serve      HTTP on 127.0.0.1:8087 → Vaultwarden Sends (service account)
-  └─ Bitwarden CLI "bw serve"
+  ├─ Bitwarden CLI "bw serve"
+  ├─ /app/locales        built-in language files (locales/ in the repository)
+  └─ /config (ro)        optional: templates.json, locales/<language>.json (host: env/config/)
 ```
 
 | Part | Files | Notes |
 |---|---|---|
 | Taskpane | `taskpane.ts/.html/.css`, `mailCard.ts`, `footer.ts` | Plain TypeScript, bundled as IIFE (esbuild, ES2017) |
 | Event handlers | `commands.ts` → `commands.js` | ES2016 bundle for classic Outlook's JavaScript-only runtime |
-| Shared add-in code | `shared/office.ts`, `shared/password.ts`, `shared/sso.ts` | Office.js helpers, draft state, SSO token cache, password rules |
-| API | `app.ts` (routes), `index.ts` (start, vault unlock, background jobs) | `buildApp()` is used by the API tests |
-| Integrations | `auth.ts` (SSO validation, OBO), `nextcloud.ts`, `graph.ts`, `vaultwarden.ts` | |
-| Background jobs | `jobs.ts` (password mails), `cleanup.ts` (expired uploads) | Hourly / every 20 s, see below |
-| Persistence | `credentials.ts`, `storage.ts` | AES-256-GCM files in `/data` |
+| Shared add-in code | `shared/office.ts`, `shared/password.ts`, `shared/sso.ts`, `shared/i18n.ts` | Office.js helpers, draft state, SSO token cache, password rules, `t()` for the texts |
+| Languages | `locales/<language>.json`, `server/src/i18n.ts` | Texts of every language; loading, fallback, `t()`, injection into the add-in files ([2.8](#28-languages)) |
+| API | `app.ts` (routes), `index.ts` (start: languages, vault unlock, background jobs) | `buildApp()` is used by the API tests |
+| Integrations | `auth.ts` (SSO validation, OBO, app token), `nextcloud.ts`, `graph.ts`, `vaultwarden.ts`, `sms.ts` (seven.io) | |
+| Texts sent on the sender's behalf | `passwordMail.ts`, `templates.ts` (`templates.json`) | Password mail, SMS, download confirmation |
+| Background jobs | `jobs.ts` (password mails and SMS), `cleanup.ts` (expired uploads), `notices.ts` (download confirmation) | Every 20 s / hourly / every 10 min, see below |
+| Persistence | `credentials.ts`, `storage.ts`, `deliveries.ts` | AES-256-GCM files in `/data` |
 
 **Why app passwords for Nextcloud?** Nextcloud usually cannot accept Entra ID tokens (it often signs users in through
 another IdP, e.g. Keycloak via `user_oidc`). Each user therefore connects once with Nextcloud's Login Flow v2; the
 resulting app password is stored encrypted and used as Basic auth. Nextcloud is only ever called server to server,
 so it needs no CORS.
 
-**Placeholders.** `%%PUBLIC_BASE_URL%%`, `%%PUBLIC_HOST%%` and `%%ENTRA_CLIENT_ID%%` in the add-in files and the
-manifest are replaced by `docker/entrypoint.sh` at container start, so one image serves every installation.
+**Placeholders.** `docker/entrypoint.sh` copies the add-in files from `/app/public.tpl` to `/app/public` (tmpfs) and
+replaces `%%PUBLIC_BASE_URL%%`, `%%PUBLIC_HOST%%` and `%%ENTRA_CLIENT_ID%%`; then the server fills in the texts of
+`LANGUAGE` ([2.8](#28-languages)). So one image serves every installation and language.
 
 ## 2. Main flows
 
@@ -151,8 +160,9 @@ How the password of each link went out (channel, masked recipient, SMS status) i
 `templates.ts` reads the optional `TEMPLATES_FILE` (`/config/templates.json`, mounted from `env/config/`): fields
 `sms_template`, `mail_password_subject`, `mail_password_intro`, `download_notice_subject`, `download_notice_body`, each
 with a fixed set of placeholders. Resolution per field: `users[<sender UPN>]` → `groups[<department>]` → `default` →
-built-in texts of the language (section `templates`); the department and display name are read from the sender's profile when arming. At start the
-file is validated: `{password}` outside the SMS, an SMS without `{password}` or with the link / a file name drop the
+built-in texts of the language (section `templates` of the language file); the department and display name are read
+from the sender's profile when arming. `templates.json` holds one set of texts for all languages – after a change of
+`LANGUAGE` translate it as well. At start the file is validated: `{password}` outside the SMS, an SMS without `{password}` or with the link / a file name drop the
 field (built-in text instead); unknown placeholders, non-GSM characters and SMS above 160 characters are warnings.
 A broken file never stops CloudShare. Example: `templates.example.json`.
 
@@ -168,24 +178,46 @@ downloaded are kept.
 
 ### 2.8 Languages
 
-`LANGUAGE` (default `de`) picks `locales/<language>.json`. `i18n.ts` merges English (fallback for missing texts), the
-built-in file (`/app/locales` in the image) and an optional own file from `CUSTOM_LOCALES_DIR` (`/config/locales`,
-mounted from `env/config/locales/`) – the last one may add a language or change single texts without a new image. An
-unknown language stops the start. Sections: `addin` (taskpane, info bar, Smart Alerts, link cards), `manifest`,
-`server` (error messages shown in the taskpane), `mail` (password mail), `templates` (built-in texts of 2.6),
-`_meta.locale` (dates and numbers, manifest `DefaultLocale`). Placeholders are `{name}`, plural forms `key_one` /
-`key_other`.
+`LANGUAGE` (default `de`; `de` and `en` are included) picks `locales/<language>.json`. `i18n.ts` merges, per text:
+
+1. English – fallback for texts a language does not have yet;
+2. the built-in file of the language (`/app/locales` in the image);
+3. an optional own file from `CUSTOM_LOCALES_DIR` (`/config/locales`, mounted from `env/config/locales/`) – adds a
+   language or changes single texts of a built-in one without a new image.
+
+An unknown language (or one that is not a code like `de`, `en`, `pt-br`) stops the start with the list of available
+languages. A language file:
+
+| Part | Content |
+|---|---|
+| `_meta` | `name`, `locale` (BCP 47, e.g. `de-DE`: date and number format, manifest `DefaultLocale`) |
+| `addin` | taskpane, info bar, Smart Alerts, link cards, SSO hints (`sso.<code>`) |
+| `manifest` | description, ribbon group, tooltip |
+| `server` | error messages the taskpane shows (`HttpError`), share label of upload links |
+| `mail` | password mail (greeting, card, notes), subjects of fallback mails |
+| `templates` | built-in texts of [2.6](#26-text-templates) (SMS, password mail subject/intro, download confirmation) |
+
+Keys are flat within a section (`"files.added_one"`); placeholders are `{name}`; `_one` / `_other` are the singular
+and plural form – `t("files.added", { count })` picks one. Texts never contain markup: HTML and XML get them escaped,
+the bundles as an ASCII-only JSON string.
 
 The add-in gets its texts without an extra request: at startup (`index.ts`, `localizePublic`) the server replaces in
 the copies under `/app/public` the string marker `"%%CLOUDSHARE_I18N%%"` in `taskpane.js` / `commands.js` with a JSON
 string of the `addin` texts (read by `addin/src/shared/i18n.ts`, ASCII-escaped), and `%%t:<section>.<key>%%`,
 `%%LANG%%`, `%%LOCALE%%` in `taskpane.html`, `commands.html` and `manifest.xml`. So the send handler in classic
-Outlook's JavaScript-only runtime has the texts too. One language per installation; Nextcloud folder names do not
-depend on it (`NEXTCLOUD_REQUEST_FOLDER` identifies CloudShare's links). `server/test/i18n.test.ts` checks that every
-language file has the keys and placeholders of English, that every key the code uses exists, and Outlook's length
-limits; the UI tests serve the bundles with the German texts (`addin/scripts/localize.mjs`), the manifest is validated
-once per language.
+Outlook's JavaScript-only runtime has the texts too. Comments in these files must not contain `%%` – the smoke test
+fails on any marker left over.
 
+One language per installation, the same for all users; Nextcloud folder names do not depend on it
+(`NEXTCLOUD_REQUEST_FOLDER` identifies CloudShare's links). Outlook caches the add-in files – after a change of
+`LANGUAGE` clear the cache ([5](#5-outlook-runtimes-and-pitfalls)).
+
+**Adding a text:** put the key into **every** file in `locales/` with the same placeholders. `server/test/i18n.test.ts`
+checks that every language has the keys and placeholders of English, that every key the code uses (`t("…")`,
+`%%t:…%%`) exists, Outlook's length limits (Smart Alert button ≤ 20 characters, manifest strings) and that the SMS text
+is GSM with `{password}`. Add-in unit tests load `locales/de.json` (`addin/test/setup.ts`); the UI tests serve the
+bundles with the German texts (`addin/scripts/localize.mjs`); the manifest is validated once per language; the smoke
+test checks the German texts in the running stack.
 
 ## 3. State and data
 
@@ -200,6 +232,8 @@ once per language.
 | `/data/download-notices.json` | Links waiting for their first download (sender, subject, recipients, expiry) | Until downloaded / expired |
 | Memory (`store.ts`) | Running uploads (12 h), pending Nextcloud logins (20 min) | Lost on restart → single instance only |
 | `roamingSettings` | Last server configuration (for the handlers) | Per mailbox |
+| `/app/public` (tmpfs) | Add-in files with address, client ID and texts of `LANGUAGE` filled in | Rebuilt at every start |
+| `/config` (read-only, host `env/config/`) | Optional `templates.json` and own `locales/<language>.json` | Managed by the admin |
 
 All files in `/data` are AES-256-GCM encrypted with `CREDENTIAL_KEY` (`storage.ts`, atomic writes). The upgrade test
 in CI checks that data written by the published image stays readable by a new one.
@@ -239,7 +273,7 @@ The same add-in runs in two very different environments; most hard-won fixes are
   `/.well-known/microsoft-officeaddins-allowed.json` – without it the send dialog hangs at "dauert länger als
   erwartet".
 - Office.js is preloaded, the handlers can be registered right away.
-- Outlook caches the script; after an update clear `%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\`.
+- Outlook caches the script; after an update or a change of `LANGUAGE` clear `%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\`.
 - The taskpane runs in WebView2, where the dialog of a file input did not reliably open (script click, `<label for>`
   and a transparent overlay were tried) → the button uses the File System Access API (`window.showOpenFilePicker`)
   first and the file input only as fallback; with `CLIENT_TRACE` every step is logged (`picker:*`). Drag & drop is
@@ -253,7 +287,8 @@ The same add-in runs in two very different environments; most hard-won fixes are
 
 **Smart Alert limits:** the button text (`cancelLabel`) may have at most 20 characters and the message 500; longer
 values make Outlook on the web reject the result silently (`withinLimits()`). Custom buttons and "Send anyway" need
-Mailbox 1.14; with 1.12 users are pointed to the ribbon button.
+Mailbox 1.14; with 1.12 users are pointed to the ribbon button. The "Send anyway" button itself is Outlook's and
+follows Outlook's display language; the message (`alert.suggest`) names it as the language file says.
 
 **Office SSO:** only one `getAccessToken` call may run at a time (13008), so the token is cached and concurrent
 callers share one request; SSO errors (plain objects with a code) are shown with a hint (language file, `sso.<code>`) and the code
@@ -279,35 +314,33 @@ Alert trace". Off by default.
 - **Graph:** delegated permissions for everything the user triggers; the armed token is stored encrypted for at most
   15 minutes of use, and the `.Shared` permissions reach only mailboxes the user already has rights to. Only the
   optional download confirmation uses an **application** permission (`Mail.Send`) – restrict it to the CloudShare
-  users (see *Setup*), otherwise the app could send as any mailbox of the tenant.
+  users ([microsoft-365.md → 5](microsoft-365.md#5-optional-application-permission-for-the-download-confirmation)), otherwise the app could send as any mailbox of the tenant.
 - **SMS:** the API key and the webhook secret stay on the server; the add-in never talks to seven.io. The SMS carries
   the password in plain text (it is the second channel); the password is read from the Send only for sending and
   the Send is deleted afterwards. Numbers are stored masked in the status; `SMS_MAX_PER_DAY` limits costs and abuse.
   Conclude a data processing agreement with seven.io.
+- **Language files** are data, not markup: every text is escaped where it is inserted (HTML, XML, JavaScript string),
+  so a language file cannot add script or markup to the pane, the manifest or a mail. `LANGUAGE` must be a language
+  code (no paths).
 - **Container:** read-only, `cap_drop: ALL`, `no-new-privileges`, user 1000, no published ports; `bw serve` listens on
   127.0.0.1 only. Networks: `internal` (Caddy ↔ CloudShare, no outbound), `edge` (Caddy), `egress` (CloudShare).
 - **Supply chain:** Trivy scan of every image, `npm audit`, Dependabot, CodeQL, secret scanning; GitHub Actions
   pinned to commit SHAs.
 
-## Setup
+## 7. Setup
 
-### Entra ID (app registration "CloudShare")
+### Microsoft 365 (Entra ID, add-in deployment, Exchange Online)
 
-- Application ID URI `api://cloudshare.example.com/<client-id>`, scope `access_as_user` (admins and users).
-- Authorized client application `ea5a67f6-b6f3-4338-b240-c655ddc3cc8e` (all Microsoft Office endpoints) for
-  `access_as_user`.
-- Manifest: `requestedAccessTokenVersion` (old editor: `accessTokenAcceptedVersion`) = `2`.
-- Client secret → `ENTRA_CLIENT_SECRET`.
-- Delegated Graph permissions: `openid`, `profile`, `offline_access`, `User.Read`, `Mail.Read`, `Mail.Read.Shared`,
-  `Mail.Send`, `Mail.Send.Shared` – **grant admin consent**.
-- **Only for the download confirmation** (`DOWNLOAD_NOTICE=true`): application permission Graph `Mail.Send` with admin
-  consent, **restricted to the CloudShare users** with Exchange Online RBAC for applications, e.g.:
-  ```powershell
-  New-ManagementScope -Name "CloudShare users" -RecipientRestrictionFilter "MemberOfGroup -eq '<DN of the group>'"
-  New-ServicePrincipal -AppId <client-id> -ObjectId <enterprise-app-object-id> -DisplayName CloudShare
-  New-ManagementRoleAssignment -App <client-id> -Role "Application Mail.Send" -CustomResourceScope "CloudShare users"
-  ```
-  Then remove the tenant-wide consent for `Mail.Send` in Entra, so only the scoped assignment applies.
+Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md](microsoft-365.md)**. In short:
+
+- App registration "CloudShare", single tenant, access token version 2.
+- Application ID URI `api://cloudshare.example.com/<client-id>` (must match the manifest's `<Resource>`), scope
+  `access_as_user` (admins and users), authorized client `ea5a67f6-b6f3-4338-b240-c655ddc3cc8e` (Microsoft Office).
+- Delegated Graph permissions `openid`, `profile`, `offline_access`, `User.Read`, `Mail.Read`, `Mail.Read.Shared`,
+  `Mail.Send`, `Mail.Send.Shared` with **admin consent**; client secret → `ENTRA_CLIENT_SECRET` (renew before expiry).
+- Add-in: admin center → *Integrated apps* → manifest URL `https://cloudshare.example.com/manifest.xml`.
+- Only for the download confirmation: application permission `Mail.Send`, **restricted** to the CloudShare users with
+  Exchange Online RBAC for applications.
 
 ### seven.io (SMS, optional)
 
@@ -335,8 +368,11 @@ Alert trace". Off by default.
 ## 8. User interface
 
 - The taskpane looks like part of Outlook: Fluent 2 design tokens (32 px controls, 4 px radius, Segoe UI) in
-  `taskpane.css`, no own header, light/dark theme from `Office.context.officeTheme`, Outlook's wording ("Nachricht",
-  "Kennwort"). Accessibility is tested with axe (WCAG 2 A/AA) in CI.
+  `taskpane.css`, no own header, light/dark theme from `Office.context.officeTheme`, Outlook's wording in every
+  language ("Nachricht"/"message", "Kennwort"/"password" – translations should use the terms of Outlook in that
+  language). Accessibility is tested with axe (WCAG 2 A/AA) in CI.
+- Layout and labels must survive longer translations: buttons and labels wrap or are short, the full text is in
+  `title`/`aria-label`.
 - Outlook sets the width of the pane; the layout is designed for 320 px (short labels in "Meine Freigaben", full text
   in `title`/`aria-label`).
 - **Cards** (`mailCard.ts`) and the **password mail** (`passwordMail.ts`) share one look: white card, blue accent,
@@ -359,4 +395,8 @@ Alert trace". Off by default.
 5. **Bitwarden CLI and Vaultwarden versions must match** (`BW_CLI_VERSION` in the `Dockerfile`).
 6. **Trademark:** the icon uses the Nextcloud mark – fine for internal use; check Nextcloud's trademark guidelines
    before distributing CloudShare to third parties.
-7. **Possible later:** OIDC token exchange (e.g. Keycloak) instead of app passwords would remove the connect step.
+7. **One language per installation:** `LANGUAGE` applies to all users; the add-in does not follow each user's Outlook
+   language. Recipients get the password mail and the SMS in the same language. `templates.json` is not per
+   language.
+8. **Possible later:** OIDC token exchange (e.g. Keycloak) instead of app passwords would remove the connect step;
+   a language per user (Outlook display language) would need the texts of all languages in the bundles.

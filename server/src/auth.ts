@@ -4,7 +4,7 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 import { config } from "./config.js";
 import { t } from "./i18n.js";
 
-/** Error returned to the add-in; the message is shown to the user (German). */
+/** Error returned to the add-in; the message (language file, t("server.…")) is shown to the user. */
 export class HttpError extends Error {
   constructor(
     public readonly status: number,

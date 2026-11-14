@@ -11,8 +11,9 @@ limited number of times).
 
 ![A compose window in new Outlook: the CloudShare button in the ribbon, a download card with three files in the mail, and the CloudShare pane on the right](docs/images/outlook-compose.png)
 
-*All pictures use example data (Max Mustermann, example.com). The user interface is German, like Outlook for German
-users.*
+*All pictures use example data (Max Mustermann, example.com) and show the German interface (`LANGUAGE=de`, the
+default). English is included and further languages can be added – see [Languages](#languages). Labels quoted in this
+README are the German ones.*
 
 ## Contents
 
@@ -88,7 +89,8 @@ Expired files are cleaned up automatically as well (see `CLEANUP_AFTER_DAYS`).
 <img src="docs/images/taskpane-dark.png" alt="The pane in Outlook's dark theme" width="220" align="right">
 <img src="docs/images/taskpane-connect.png" alt="First start: Mit Nextcloud verbinden" width="220" align="right">
 
-The pane follows Outlook's light or dark theme and uses Outlook's own wording ("Nachricht", "Kennwort").
+The pane follows Outlook's light or dark theme and uses Outlook's own wording ("Nachricht", "Kennwort"; in English
+"message", "password").
 
 Under the attachment policy **`enforce`** (default), large attachments can only be sent through CloudShare; under
 **`suggest`** Outlook asks once when sending and offers **"Trotzdem senden"**.
@@ -109,6 +111,7 @@ Outlook add-in ──HTTPS──► Caddy (Let's Encrypt) ──► CloudShare c
   granted once; CloudShare stores it encrypted.
 - The password mail is sent **as the sender** via Microsoft Graph, only after the mail appears in "Gesendete
   Elemente" – also for shared mailboxes.
+- All texts come from a language file (`locales/de.json`, `locales/en.json`, …), chosen with `LANGUAGE`.
 - One Docker container plus Caddy, no database. Details, data flows and design decisions:
   **[docs/architecture.md](docs/architecture.md)**.
 
@@ -126,15 +129,17 @@ The examples use `cloudshare.example.com` (CloudShare), `cloud.example.com` (Nex
 
 ### 1. Entra ID, Nextcloud, Vaultwarden
 
-Register the app "CloudShare" in Entra ID (application ID URI, scope `access_as_user`, Office as authorized client,
-Graph permissions with admin consent, client secret), allow public links in Nextcloud and create the Vaultwarden
-service account. The exact settings: [docs/architecture.md → Setup](docs/architecture.md#setup).
+- **Microsoft 365:** register the app "CloudShare" in Entra ID (application ID URI, scope `access_as_user`, Office as
+  authorized client, Graph permissions with admin consent, client secret) – step by step in
+  **[docs/microsoft-365.md](docs/microsoft-365.md)**, including Exchange settings, checks and an error table.
+- **Nextcloud and Vaultwarden:** allow public links in Nextcloud and create the Vaultwarden service account –
+  [docs/architecture.md → Setup](docs/architecture.md#7-setup).
 
 ### 2. Install on the Docker host
 
 ```bash
 git clone https://github.com/mrprohl/CloudShare.git /opt/cloudshare
-cd /opt/cloudshare && ./setup.sh          # asks for address, Entra ID, Nextcloud, Vaultwarden; writes env/
+cd /opt/cloudshare && ./setup.sh          # asks for address, language, Entra ID, Nextcloud, Vaultwarden; writes env/
 grep CREDENTIAL_KEY env/cloudshare.env    # store this key in your password manager
 ```
 
@@ -149,7 +154,8 @@ The image `ghcr.io/mrprohl/cloudshare` is built by GitHub – nothing is compile
 
 Microsoft 365 admin center → *Settings → Integrated apps → Upload custom apps* → manifest URL
 `https://cloudshare.example.com/manifest.xml`. Start with your own account, then roll out. It can take up to 24 hours
-until Outlook shows the button.
+until Outlook shows the button. Details and how to check the result:
+[docs/microsoft-365.md → Deploying the add-in](docs/microsoft-365.md#3-deploying-the-add-in).
 
 Alternative with a clearer error message (Exchange Online PowerShell):
 `New-App -OrganizationApp -Url https://cloudshare.example.com/manifest.xml -ProvidedTo Everyone -DefaultStateForUser Enabled`
@@ -216,13 +222,21 @@ LANGUAGE=en
 
 Update the stack; CloudShare puts the texts into the add-in files when it starts. Outlook caches the add-in: clear the
 cache in classic Outlook (see *Operation*), reload Outlook on the web. One language applies to all users of an
-installation. Folder names in Nextcloud do not change with the language (`NEXTCLOUD_REQUEST_FOLDER` stays as set, so
-"Meine Freigaben" keeps finding older links).
+installation; recipients get the password mail and the SMS in the same language. Not affected by `LANGUAGE`:
+
+- **Nextcloud folder names** – `NEXTCLOUD_REQUEST_FOLDER` stays as set (default `Outlook-Dateianforderungen`), so
+  "Meine Freigaben" keeps finding older links. For an English installation set it in `setup.sh` / `env/cloudshare.env`
+  before the first use, e.g. `Outlook file requests`.
+- **`templates.json`** holds one set of texts – translate it as well, or remove it to use the built-in texts of the
+  language.
+- **`MAIL_FOOTER`** is written by the admin (e.g. `Tel.` vs. `Phone`).
+- Outlook's own buttons (e.g. "Trotzdem senden" / "Send Anyway") follow the user's Outlook language.
 
 **Adding a language** – copy [`locales/en.json`](locales/en.json) to `<code>.json` (e.g. `fr.json`) and translate the
 values, keeping the keys and the `{placeholders}`. Keys ending in `_one` / `_other` are the singular and plural form.
-`_meta.locale` (e.g. `fr-FR`) sets the date and number format and the manifest's `DefaultLocale`. Texts that are
-missing fall back to English. Two ways to use it:
+`_meta.locale` (e.g. `fr-FR`) sets the date and number format and the manifest's `DefaultLocale`. Use Outlook's own
+terms of that language, keep the SMS text (`templates.sms_template`) in the GSM alphabet (no accents beyond it, or the
+SMS shrinks to 70 characters). Texts that are missing fall back to English. Two ways to use it:
 
 - **Without a new image:** put the file into `/opt/cloudshare/env/config/locales/` (mounted read-only as
   `/config/locales`, directory `755`, file `644`), set `LANGUAGE=fr`, update the stack.
@@ -251,12 +265,14 @@ and `env/` (including `env/config/` with templates and own language files). With
 ```bash
 docker ps --filter name=cloudshare                        # cloudshare "healthy", cloudshare-caddy "Up"
 docker logs cloudshare 2>&1 | grep -i vault               # "Vaultwarden vault unlocked"
+docker logs cloudshare 2>&1 | grep '"Language"'           # language and locale in use
 curl -s https://cloudshare.example.com/api/config         # JSON with the settings shown to the add-in
 ```
 
 **Repository layout on the server** (`/opt/cloudshare`): `docker-compose.yml` (stub for Portainer), `compose.yml`
 (Caddy and CloudShare), `caddy/Caddyfile`, `setup.sh`, and `env/` (not in Git: `versions.env`, `cloudshare.env` with
-the secrets). Both containers run read-only without capabilities (Caddy only `NET_BIND_SERVICE`); only Caddy
+the secrets, `config/` with the optional `templates.json` and own language files). The language files of the
+repository (`locales/`) are part of the image and not needed on the server. Both containers run read-only without capabilities (Caddy only `NET_BIND_SERVICE`); only Caddy
 publishes ports.
 
 ## Troubleshooting
@@ -267,8 +283,11 @@ publishes ports.
 | No password mail arrives | The password mail goes out only after the mail shows up in "Gesendete Elemente" (20–60 s). If saving sent items is switched off, no password mail is sent. Check `docker logs cloudshare 2>&1 \| grep "Password mail"`. |
 | A click on the drop zone opens no dialog (classic Outlook) | Check with Alt+Tab whether the "Öffnen" dialog opened behind the Outlook window. Dragging files onto the pane always works. With `CLIENT_TRACE=true` every click is logged: `docker logs --since 5m cloudshare 2>&1 \| grep 'picker:'` shows whether the click arrived, which dialog was used and any error. |
 | "Ohne Kennwort" is missing | Nextcloud enforces passwords for links (*Administration → Sharing*). Exempt a group there if some users may share without a password. |
-| Sign-in error with a code (13xxx) | The pane shows the Office SSO code and a hint; most often the Entra app registration (application ID URI, authorized client, admin consent) does not match the manifest. |
+| Sign-in error with a code (13xxx), `AADSTS…` in the log | The pane shows the Office SSO code and a hint; most often the Entra app registration (application ID URI, authorized client, admin consent, client secret) does not match. Error table: [docs/microsoft-365.md](docs/microsoft-365.md#8-errors-and-their-causes). |
 | Nextcloud throttles CloudShare | All requests come from the server's address – allow it in Nextcloud's brute-force settings. |
+| CloudShare does not start after setting `LANGUAGE` | The log names the problem and the available languages: `docker logs cloudshare 2>&1 \| grep LANGUAGE`. An own language needs `env/config/locales/<language>.json` (directory `755`, file `644`, valid JSON). |
+| Outlook still shows the old language | Outlook caches the add-in: clear the cache in classic Outlook (see *Operation*), reload Outlook on the web. The ribbon label and description come from the manifest – Outlook may take up to 24 hours to pick it up. |
+| A text shows a key like `tabs.send` | The text is missing in the own language file and in English – add it (keys: [`locales/en.json`](locales/en.json)). |
 
 ## Development and tests
 
@@ -278,23 +297,34 @@ cd addin  && npm install && npm test        # add-in (Office.js mock)
 cd addin  && npx playwright install chromium && npm run test:ui   # taskpane in Chromium
 ```
 
+**Texts** are never written into the code: the add-in uses `t("key")` (`addin/src/shared/i18n.ts`, section `addin`),
+the server `t("section.key")` (`server/src/i18n.ts`), `taskpane.html` and `manifest.xml` use `%%t:section.key%%`. A new
+text goes into every file in `locales/` with the same placeholders – the tests fail otherwise. Details:
+[architecture → Languages](docs/architecture.md#28-languages).
+
 Every push and pull request runs the pipeline in `.github/workflows/image.yml`:
 
 | Stage | What is checked |
 |---|---|
-| test | type check and unit tests of both packages, `npm audit`, manifest validation, ShellCheck, deployment files (`setup.sh` with dummy answers, `docker compose config`, `caddy validate`) |
+| test | type check and unit tests of both packages, **language files** (same texts and placeholders in every language, every key used exists, Outlook's length limits), `npm audit`, manifest validation per language, ShellCheck, deployment files (`setup.sh` with dummy answers, `docker compose config`, `caddy validate`) |
 | ui | the real taskpane in Chromium with Office.js and the API mocked – upload, cards, passwords, "Meine Freigaben", dark theme, 320 px width and **accessibility** (axe, WCAG 2 A/AA); screenshots as artifact `ui-test-report` (the pane pictures in this README come from there) |
-| build | image build, Trivy scan, **smoke test** of the real stack with Caddy (TLS, headers, add-in files, limits, hardening), **upgrade test** (data written by the published image must stay readable), **load test** (k6: 10 users × 2 × 45 MiB) |
+| build | image build, Trivy scan, **smoke test** of the real stack with Caddy (TLS, headers, add-in files with the texts of `LANGUAGE`, limits, hardening), **upgrade test** (data written by the published image must stay readable), **load test** (k6: 10 users × 2 × 45 MiB) |
 | push | only if everything passed: `ghcr.io/mrprohl/cloudshare` (`latest`, `sha-<commit>`, version tags); pull requests publish nothing |
 
 The repository also uses Dependabot, CodeQL and secret scanning with push protection (*Security* tab).
 
 The compose and recipient pictures are rendered from [docs/mockups](docs/mockups) (they contain the exact markup the
-add-in and the server produce) with Edge:
+add-in and the server produce – update them when the pane, the card or the password mail changes) with Edge, from the
+repository root (absolute paths and an own profile, otherwise a running Edge swallows the screenshot):
 
 ```powershell
 $edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
-& $edge --headless=new --hide-scrollbars --window-size=1440,1010 --screenshot="docs\images\outlook-compose.png" "file:///<repo>/docs/mockups/compose-send.html"
-& $edge --headless=new --hide-scrollbars --window-size=760,706  --screenshot="docs\images\mail-received.png"  "file:///<repo>/docs/mockups/mail-received.html"
-& $edge --headless=new --hide-scrollbars --window-size=760,548  --screenshot="docs\images\password-mail.png"  "file:///<repo>/docs/mockups/password-mail.html"
+$repo = (Get-Location).Path; $url = "file:///" + ($repo -replace '\\','/') + "/docs/mockups"
+$opts = "--headless=new", "--hide-scrollbars", "--user-data-dir=$env:TEMP\cloudshare-edge"
+& $edge @opts --window-size=1440,1010 --screenshot="$repo\docs\images\outlook-compose.png" "$url/compose-send.html"
+& $edge @opts --window-size=760,706  --screenshot="$repo\docs\images\mail-received.png"  "$url/mail-received.html"
+& $edge @opts --window-size=760,548  --screenshot="$repo\docs\images\password-mail.png"  "$url/password-mail.html"
 ```
+
+The pane pictures (`taskpane-*.png`) are screenshots of the UI tests (artifact `ui-test-report`: `send-light`,
+`shares-light`, `send-dark`, `connect-view`), cropped to the content.

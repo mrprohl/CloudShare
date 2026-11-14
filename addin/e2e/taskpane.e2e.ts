@@ -154,6 +154,21 @@ async function expectNoHorizontalScroll(page: Page) {
 const shot = async (page: Page, name: string) =>
   test.info().attach(name, { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
 
+/**
+ * Screenshot for the README: the viewport grows until the scrolling content fits, so the sticky footer covers nothing
+ * (the pane pictures in README.md come from these attachments).
+ */
+async function fullShot(page: Page, name: string) {
+  const size = page.viewportSize()!;
+  // The document scrolls and the footer sticks to the bottom of the viewport: make the viewport as tall as the
+  // document, then take a plain (not full-page) screenshot.
+  const height = await page.evaluate(() => document.documentElement.scrollHeight);
+  await page.setViewportSize({ width: size.width, height: Math.max(size.height, height) });
+  await page.waitForTimeout(100); // layout after the resize
+  test.info().attach(name, { body: await page.screenshot(), contentType: "image/png" });
+  await page.setViewportSize(size);
+}
+
 // --- Connection --------------------------------------------------------------------------------------------------
 
 test("not connected: shows the connect view and connects via the Nextcloud login", async ({ page }) => {
@@ -203,6 +218,7 @@ test("server unreachable: says so instead of showing an empty pane", async ({ pa
 test("preselects large attachments and proposes a random password", async ({ page }) => {
   await openTaskpane(page, {
     attachments: [attachment("a1", "Präsentation.pptx", 2.5 * MiB), attachment("a2", "Notiz.txt", 200 * 1024)],
+    config: { smsEnabled: true, smsDefaultCountry: "49" }, // the README picture shows every way the password can go
   });
   const rows = page.locator("#attachments label.list-item");
   await expect(rows).toHaveCount(2);
@@ -220,7 +236,7 @@ test("preselects large attachments and proposes a random password", async ({ pag
 
   await expectAccessible(page);
   await expectNoHorizontalScroll(page);
-  await shot(page, "send-light");
+  await fullShot(page, "send-light");
 });
 
 test("uploads a large attachment in chunks, removes it and inserts the card", async ({ page }) => {
@@ -698,11 +714,11 @@ test("Meine Freigaben: upload links are not inserted again without password", as
 // --- Look ----------------------------------------------------------------------------------------------------------
 
 test("dark Office theme: dark pane, still accessible", async ({ page }) => {
-  await openTaskpane(page, { theme: "#1f1f1f", attachments: [attachment("a1", "Präsentation.pptx", 2.5 * MiB)], shares: SHARES });
+  await openTaskpane(page, { theme: "#1f1f1f", attachments: [attachment("a1", "Präsentation.pptx", 2.5 * MiB)], shares: SHARES, config: { smsEnabled: true } });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(page.locator("#attachments label.list-item")).toHaveCount(1);
   await expectAccessible(page);
-  await shot(page, "send-dark");
+  await fullShot(page, "send-dark");
   await page.click("#tab-shares");
   await expect(page.locator("#shares .share")).toHaveCount(4);
   await expectAccessible(page);
