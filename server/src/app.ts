@@ -229,7 +229,7 @@ async function noteUndeliveredSms(refs: PasswordRef[], log: Pick<FastifyBaseLogg
     const token = await appGraphToken();
     for (const ref of refs) {
       const files = t("mail.files", { count: ref.fileNames.length, name: ref.fileNames[0] });
-      const html = smsProblemMailHtml({ files, subject: ref.subject, to: ref.sms ? maskPhone(ref.sms) : "" });
+      const html = smsProblemMailHtml({ fileNames: ref.fileNames, subject: ref.subject, to: ref.sms ? maskPhone(ref.sms) : "" });
       await sendMailAsApp(token, ref.owner, ref.from ?? ref.ownerUpn, t("mail.smsUndeliveredSubject", { subject: ref.subject || files }), html);
     }
   } catch (err) {

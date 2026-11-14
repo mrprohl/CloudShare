@@ -20,6 +20,7 @@ is "Datei als Link einfügen", "My shares" is "Meine Freigaben".*
 ## Contents
 
 - [What recipients see](#what-recipients-see)
+- [What the sender gets](#what-the-sender-gets)
 - [Using CloudShare](#using-cloudshare)
 - [How it works](#how-it-works)
 - [Installation](#installation)
@@ -38,6 +39,22 @@ is "Datei als Link einfügen", "My shares" is "Meine Freigaben".*
 
 The password never travels in the same mail as the link, and it is only sent once the mail with the link has really
 left the outbox.
+
+## What the sender gets
+
+<img src="docs/images/sender-notices.png" alt="Two notes to the sender in the same layout as the password mail: Downloaded, with a green card for the file, the time of the first download and the validity; Text message not sent, with a red card for the three files, the masked number and the reason, and how to send the password again" width="420" align="right">
+
+Every mail CloudShare sends on its own has **one layout**: a short text, one card like the link card in the mail
+(title, files with their type, at most one button, a small line of details) and at the bottom the line **"This
+message was sent automatically by CloudShare."** The colour of the card says what it is about: **blue** – the
+password (to the recipients), **green** – downloaded, **red** – a problem.
+
+- **Download confirmation** (only with `DOWNLOAD_NOTICE=true`): when a recipient downloads a file for the first time.
+- **Text message not sent / not delivered** (only with SMS): the SMS with the password failed. The note contains
+  neither the password nor a link to it – the password goes out no other way; send it again with **"Password"** in
+  "My shares".
+
+<br clear="right">
 
 ## Using CloudShare
 
@@ -118,6 +135,19 @@ It opens "My shares" with the links of that mail on top (**"In this message"**: 
 out, validity) and your other shares below. **Pin** the pane (pin icon in its header) and it follows the mail you
 select. Copy and Revoke work as usual; nothing is inserted there. Links of the last 30 days are listed; confidential
 messages are not (they are not stored in Nextcloud).
+
+<br clear="right">
+
+<img src="docs/images/taskpane-help.png" alt="Help, opened with the question mark at the top right: a short introduction and sections to open – Getting started, Sending large files (open), Password and how it is sent, Confidential message, Receiving files from others, My shares, Frequently asked questions" width="300" align="right">
+
+**Help for users:** the **question mark** at the top right of the pane opens a short guide ("Hilfe") written for
+everyday users without IT knowledge – e.g. clerks in an administration: the first connection, sending large files
+step by step, choosing the password and how it is sent (with a clear note that personal or confidential data always go
+with a password), the confidential message, receiving files, "My shares" and frequently asked questions ("The
+recipients did not get a password", "I sent the link to the wrong person" …). Short sections to open as needed; the
+most common one is open. It opens in place of the current tab; "×", the question mark or a tab closes it again. It is
+also there when the pane was opened from a sent mail. Its last sentence points to the IT support – put your own
+contact there, see [Languages](#languages) (`help.support`).
 
 <br clear="right">
 
@@ -282,7 +312,9 @@ corrected number) or as a password mail. Two kinds of failure:
 
 The SMS text, the subject and intro of the password mail and the download confirmation can be changed in
 `env/config/templates.json` – one default plus overrides per department (from the sender's Microsoft 365 profile) and
-per sender address. Start from [`templates.example.json`](templates.example.json):
+per sender address. The texts are the part above the card; the card itself (files, button, details) and the line
+"sent automatically by CloudShare" stay, so every mail keeps the common layout. Start from
+[`templates.example.json`](templates.example.json):
 
 ```bash
 mkdir -p /opt/cloudshare/env/config
@@ -330,7 +362,8 @@ SMS shrinks to 70 characters). Texts that are missing fall back to English. Two 
   the GSM alphabet with `{password}`); the image built from it contains the language.
 
 The same directory also changes **single texts** of a built-in language: `env/config/locales/de.json` with only the
-keys to change, e.g. `{ "addin": { "tabs.shares": "Freigaben" } }`. An unknown `LANGUAGE` stops the start with a
+keys to change, e.g. `{ "addin": { "tabs.shares": "Freigaben" } }` – or the contact at the end of the help:
+`{ "addin": { "help.support": "Fragen? IT-Service, Tel. 1234, it@example.com" } }`. An unknown `LANGUAGE` stops the start with a
 message listing the available languages (`docker logs cloudshare`).
 
 ## Operation
@@ -400,7 +433,7 @@ Every push and pull request runs the pipeline in `.github/workflows/image.yml`:
 
 The repository also uses Dependabot, CodeQL and secret scanning with push protection (*Security* tab).
 
-The compose and recipient pictures are rendered from [docs/mockups](docs/mockups) (they contain the exact markup the
+The compose, recipient and sender pictures are rendered from [docs/mockups](docs/mockups) (they contain the exact markup the
 add-in and the server produce with `LANGUAGE=en` – update them when the pane, the card or the password mail changes)
 with Edge, from the repository root, one after the other (absolute paths and an own profile, otherwise a running Edge
 swallows the screenshot):
@@ -410,12 +443,12 @@ $edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 $repo = (Get-Location).Path; $url = "file:///" + ($repo -replace '\\','/') + "/docs/mockups"
 $opts = "--headless=new", "--hide-scrollbars", "--user-data-dir=$env:TEMP\cloudshare-edge"
 foreach ($shot in @(("outlook-compose", "compose-send", "1440,1010"), ("mail-received", "mail-received", "760,706"),
-                    ("password-mail", "password-mail", "760,548"))) {
+                    ("password-mail", "password-mail", "760,566"), ("sender-notices", "sender-notices", "760,942"))) {
   Start-Process -Wait $edge ($opts + "--window-size=$($shot[2])", "--screenshot=$repo\docs\images\$($shot[0]).png", "$url/$($shot[1]).html")
 }
 ```
 
 The pane pictures (`taskpane-*.png`) come from the UI tests in English ("README pictures" in
 `addin/e2e/taskpane.e2e.ts`, served below `/en/` by `addin/e2e/serve.mjs`): attachments `readme-send`,
-`readme-message`, `readme-dark`, `readme-shares`, `readme-read` and `readme-connect` of the artifact `ui-test-report`, already as tall
+`readme-message`, `readme-dark`, `readme-shares`, `readme-read`, `readme-help` and `readme-connect` of the artifact `ui-test-report`, already as tall
 as the content.

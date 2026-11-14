@@ -71,9 +71,11 @@ const expireField = $<HTMLDivElement>("expire-field");
 const messageDaysField = $<HTMLDivElement>("message-days-field");
 const tabSend = $<HTMLButtonElement>("tab-send");
 const tabShares = $<HTMLButtonElement>("tab-shares");
+const helpToggle = $<HTMLButtonElement>("help-toggle");
+const helpClose = $<HTMLButtonElement>("help-close");
 const panelSend = $<HTMLDivElement>("panel-send");
 const panelShares = $<HTMLDivElement>("panel-shares");
-const tabList = $<HTMLDivElement>("tabs");
+const panelHelp = $<HTMLElement>("panel-help");
 const mailSection = $<HTMLElement>("mail-section");
 const mailShares = $<HTMLDivElement>("mail-shares");
 const mailNone = $<HTMLParagraphElement>("mail-none");
@@ -1337,17 +1339,38 @@ async function insertMessage() {
 
 // --- Tabs ------------------------------------------------------------------------------
 
-function selectTab(tab: "send" | "shares") {
-  const shares = tab === "shares";
-  tabSend.setAttribute("aria-selected", String(!shares));
-  tabShares.setAttribute("aria-selected", String(shares));
-  panelSend.hidden = shares;
-  panelShares.hidden = !shares;
-  if (shares) loadShares().catch((err) => setStatus(errorMessage(err), "error"));
+type Tab = "send" | "shares";
+/** The tab shown – also while the guide covers it, so closing the guide returns there. */
+let currentTab: Tab = "send";
+
+/** Shows a tab ("Senden", "Meine Freigaben") and closes the guide; `load: false` when the list is loaded elsewhere. */
+function selectTab(tab: Tab, load = true) {
+  currentTab = tab;
+  tabSend.setAttribute("aria-selected", String(tab === "send"));
+  tabShares.setAttribute("aria-selected", String(tab === "shares"));
+  showHelp(false);
+  if (tab === "shares" && load) loadShares().catch((err) => setStatus(errorMessage(err), "error"));
+}
+
+/** The user guide ("?" at the top right) in place of the current tab; closed, that tab shows again. */
+function showHelp(open: boolean) {
+  helpToggle.setAttribute("aria-expanded", String(open));
+  panelHelp.hidden = !open;
+  panelSend.hidden = open || currentTab !== "send";
+  panelShares.hidden = open || currentTab !== "shares";
 }
 
 tabSend.addEventListener("click", () => selectTab("send"));
 tabShares.addEventListener("click", () => selectTab("shares"));
+helpToggle.addEventListener("click", () => {
+  const open = panelHelp.hidden === true;
+  showHelp(open);
+  if (open) helpClose.focus(); // screen readers start in the guide
+});
+helpClose.addEventListener("click", () => {
+  showHelp(false);
+  helpToggle.focus();
+});
 
 // --- My shares ("Meine Freigaben") -----------------------------------------------------
 
@@ -1747,11 +1770,10 @@ async function mailTokens(): Promise<Set<string>> {
   return new Set(Array.from(html.matchAll(/\/s\/([A-Za-z0-9]+)/g), (match) => match[1]));
 }
 
-/** Read mode: no "Senden" tab, only the shares; follows the selected mail while the pane is pinned. */
+/** Read mode: no "Senden" tab, the shares (and "Hilfe"); follows the selected mail while the pane is pinned. */
 async function startReadView() {
-  tabList.hidden = true;
-  panelSend.hidden = true;
-  panelShares.hidden = false;
+  tabSend.hidden = true;
+  selectTab("shares", false); // loaded as soon as the connection is known (showConnection)
   mailSection.hidden = false;
   try {
     Office.context.mailbox.addHandlerAsync(Office.EventType.ItemChanged, () => {

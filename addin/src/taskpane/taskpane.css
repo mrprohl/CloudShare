@@ -428,3 +428,39 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .password-panel .label:first-child { margin-top: 0; }
 .password-panel .hint { margin-bottom: 8px; }
 .share-actions .show-password[aria-expanded="true"] { background: var(--bg1-pressed); color: var(--fg1); }
+
+/* --- Help ("Hilfe"): short sections to open as needed ------------------------------------------- */
+/* The "?" at the right of the tab row opens the guide in place of the current tab. */
+.tabbar { display: flex; align-items: stretch; border-bottom: 1px solid var(--stroke2); padding-right: 8px; }
+.tabbar .tabs { flex: 1; min-width: 0; border-bottom: 0; }
+.help-toggle { align-self: center; margin: 0; color: var(--fg2); }
+.help-toggle[aria-expanded="true"] { background: var(--bg1-pressed); color: var(--brand-fg); }
+.help-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0 6px; }
+.help-header .btn-subtle { margin: 0 -6px 0 0; }
+.help { color: var(--fg1); }
+.help-intro { margin: 4px 0 12px; color: var(--fg2); }
+.help-section { border-bottom: 1px solid var(--stroke2); }
+.help-section:first-of-type { border-top: 1px solid var(--stroke2); }
+.help-section > summary {
+  display: flex; align-items: center; gap: 8px; padding: 10px 2px;
+  font-weight: 600; cursor: pointer; list-style: none;
+}
+.help-section > summary::-webkit-details-marker { display: none; }
+.help-section > summary::before {
+  content: ""; flex: none; width: 7px; height: 7px; margin: 0 3px;
+  border: solid var(--fg2); border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg); transition: transform 0.15s ease;
+}
+.help-section[open] > summary::before { transform: rotate(45deg); }
+.help-section > summary:hover { color: var(--brand-fg-hover); }
+.help-section > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 2px; }
+.help-section ol, .help-section ul { margin: 0 0 10px; padding-left: 22px; }
+.help-section li { margin: 0 0 6px; }
+.help-section p { margin: 0 0 10px; }
+.help-important {
+  padding: 6px 10px; border-left: 3px solid var(--brand-bg); border-radius: 2px;
+  background: var(--brand-tint-bg); color: var(--fg1);
+}
+.help-section dl { margin: 0 0 6px; }
+.help-section dt { font-weight: 600; margin: 0 0 2px; }
+.help-section dd { margin: 0 0 10px; color: var(--fg2); }
+.help-support { margin: 14px 0 4px; }

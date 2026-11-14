@@ -943,7 +943,9 @@ const SENT_MAIL = '<p>Hallo,</p><a href="https://cloud.example.com/s/a">Herunter
 
 test("reading a mail: its links on top, the other shares below, nothing to insert", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: SHARES, readBody: SENT_MAIL });
-  await expect(page.locator("#tabs")).toBeHidden(); // no "Senden" tab when reading
+  await expect(page.locator("#tab-send")).toBeHidden(); // no "Senden" tab when reading
+  await expect(page.locator("#tab-shares")).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#help-toggle")).toBeVisible(); // the guide is there too
   await expect(page.locator("#panel-send")).toBeHidden();
   const inMail = page.locator("#mail-shares .share");
   await expect(inMail).toHaveCount(2);
@@ -980,7 +982,7 @@ test("reading a mail before connecting Nextcloud: connect view, then the shares"
   await expect(page.locator("#connect-view")).toBeVisible();
   await page.click("#connect");
   await expect(page.locator("#mail-shares .share")).toHaveCount(2, { timeout: 10_000 });
-  await expect(page.locator("#tabs")).toBeHidden();
+  await expect(page.locator("#tab-send")).toBeHidden();
 });
 
 test("Meine Freigaben: upload links are not inserted again without password", async ({ page }) => {
@@ -990,6 +992,55 @@ test("Meine Freigaben: upload links are not inserted again without password", as
   await page.locator("#shares .share").nth(2).locator(".insert").click();
   await expect(page.locator("#status")).toContainText("Links zum Hochladen brauchen immer ein Kennwort");
   expect(calls.some((c) => c.path.endsWith("/link"))).toBe(false);
+});
+
+// --- Help -----------------------------------------------------------------------------------------------------------
+
+test("Hilfe: the \"?\" at the top right opens the guide in place of the tab, readable at 320 px", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await openTaskpane(page);
+  await expectNoHorizontalScroll(page); // tabs and "?" fit
+  const toggle = page.locator("#help-toggle");
+  await expect(toggle).toHaveAttribute("aria-label", "Hilfe");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#panel-help")).toBeVisible();
+  await expect(page.locator("#help-close")).toBeFocused(); // screen readers start in the guide
+  await expect(page.locator("#help-heading")).toHaveText("Hilfe");
+  await expect(page.locator("#panel-send")).toBeHidden();
+  const help = page.locator("#panel-help");
+  await expect(help).not.toContainText("help."); // every text exists in the language file
+  const sections = help.locator("details");
+  await expect(sections).toHaveCount(7);
+  // The most common task is open, the rest closed until needed.
+  await expect(sections.nth(1).locator("summary")).toHaveText("Große Dateien senden");
+  await expect(sections.nth(1)).toHaveAttribute("open", "");
+  await expect(sections.nth(6)).not.toHaveAttribute("open", "");
+  await sections.nth(6).locator("summary").click();
+  await expect(sections.nth(6)).toHaveAttribute("open", "");
+  await expect(sections.nth(6)).toContainText("Ich habe den Link an die falsche Person geschickt.");
+  await expect(help).toContainText("Personenbezogene oder vertrauliche Daten versenden Sie bitte immer mit Kennwort.");
+  await expectAccessible(page);
+  await expectNoHorizontalScroll(page);
+  await shot(page, "help");
+
+  // "×" closes it: back where the user was, focus on the "?".
+  await page.click("#help-close");
+  await expect(page.locator("#panel-help")).toBeHidden();
+  await expect(page.locator("#panel-send")).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(toggle).toBeFocused();
+
+  // Opened from "Meine Freigaben": a click on a tab closes it as well.
+  await page.click("#tab-shares");
+  await toggle.click();
+  await expect(page.locator("#panel-shares")).toBeHidden();
+  await toggle.click(); // the "?" again closes it
+  await expect(page.locator("#panel-shares")).toBeVisible();
+  await toggle.click();
+  await page.click("#tab-send");
+  await expect(page.locator("#panel-help")).toBeHidden();
+  await expect(page.locator("#panel-send")).toBeVisible();
 });
 
 // --- Look ----------------------------------------------------------------------------------------------------------
@@ -1069,6 +1120,15 @@ test.describe("README pictures (English)", () => {
     await expect(page.locator("#mail-shares .share")).toHaveCount(2);
     await expect(page.locator("#mail-heading")).toHaveText("In this message");
     await readmeShot(page, "read");
+  });
+
+  test("Help", async ({ page }) => {
+    await openTaskpane(page, { lang: "en", config: README_CONFIG });
+    await page.click("#help-toggle");
+    await expect(page.locator("#panel-help details").nth(1)).toHaveAttribute("open", "");
+    await expect(page.locator("#panel-help")).not.toContainText("help.");
+    await expectAccessible(page);
+    await readmeShot(page, "help");
   });
 
   test("Connect", async ({ page }) => {

@@ -294,7 +294,7 @@ async function sendStepBySms(
     log.warn({ err, user: job.ownerUpn, to: maskPhone(to) }, "Password SMS failed – note to the sender, no password sent");
     await recordDelivery(tokens, { owner: job.owner, channel: "sms", to: maskPhone(to), at: Date.now(), status: "failed" });
     const files = translate("mail.files", { count: partFiles(part).length, name: partFiles(part)[0] });
-    const html = smsProblemMailHtml({ files, subject, to: maskPhone(to), reason: (err as Error).message });
+    const html = smsProblemMailHtml({ fileNames: partFiles(part), subject, to: maskPhone(to), reason: (err as Error).message });
     // A failed note must not fail the step – that would retry the SMS on every pass of the watcher.
     await sendMail(graphToken, { to: [sender ?? job.ownerUpn], cc: [], bcc: [] },
       translate("mail.smsFailedSubject", { subject: subject || files }), html, sender)

@@ -64,6 +64,11 @@ describe("download confirmation", () => {
     expect(subject).toBe("Heruntergeladen: Angebot.pdf");
     expect(html).toContain("„Angebot.pdf“ aus Ihrer Nachricht „Unterlagen“");
     expect(html).toContain("erika@example.test");
+    // Common layout of the automatic mails: a green card with the file, the line that CloudShare sent it.
+    expect(html).toContain("border-left:4px solid #107c10");
+    expect(html).toContain("Datei heruntergeladen");
+    expect(html).toMatch(/Zum ersten Mal heruntergeladen am .* · Link gültig bis /);
+    expect(html).toContain("automatisch von CloudShare");
     expect(pendingNotices().some(([t]) => t === "tokA")).toBe(false);
 
     await runNotices(quietLog(), registeredAt + 3 * 3_600_000);
