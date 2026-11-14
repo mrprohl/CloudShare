@@ -291,10 +291,51 @@ function renderPicked() {
 
 
 fileInput.addEventListener("change", () => {
-  pickedFiles = [...pickedFiles, ...Array.from(fileInput.files ?? [])];
+  addPickedFiles(Array.from(fileInput.files ?? []));
   fileInput.value = "";
-  renderPicked();
 });
+
+function addPickedFiles(files: File[]) {
+  if (files.length === 0) return;
+  pickedFiles = [...pickedFiles, ...files];
+  renderPicked();
+}
+
+// Drag & drop from Explorer / desktop onto the "Senden" tab – needs no file dialog. In classic Outlook (WebView2)
+// the dialog sometimes opens behind the Outlook window, which looks like "nothing happens".
+const dropZone = $<HTMLDivElement>("panel-send");
+const hasFiles = (event: DragEvent) => Array.from(event.dataTransfer?.types ?? []).includes("Files");
+let dragDepth = 0;
+dropZone.addEventListener("dragenter", (event) => {
+  if (!hasFiles(event)) return;
+  event.preventDefault();
+  dragDepth++;
+  dropZone.classList.add("dropping");
+});
+dropZone.addEventListener("dragover", (event) => {
+  if (!hasFiles(event)) return;
+  event.preventDefault(); // allows the drop
+  event.dataTransfer!.dropEffect = "copy";
+});
+dropZone.addEventListener("dragleave", () => {
+  dragDepth = Math.max(0, dragDepth - 1);
+  if (dragDepth === 0) dropZone.classList.remove("dropping");
+});
+dropZone.addEventListener("drop", (event) => {
+  if (!hasFiles(event)) return;
+  event.preventDefault(); // otherwise the WebView would open the file itself
+  dragDepth = 0;
+  dropZone.classList.remove("dropping");
+  // Folders cannot be uploaded – they arrive as entries without type and size 0 (and fail to read).
+  const files = Array.from(event.dataTransfer?.files ?? []).filter((f) => f.size > 0 || f.type !== "");
+  addPickedFiles(files);
+  if (files.length > 0) {
+    setStatus(`${files.length === 1 ? "Eine Datei wurde" : `${files.length} Dateien wurden`} hinzugefügt.`, "success");
+  }
+});
+// Dropping a file next to the drop zone must not navigate the taskpane away.
+window.addEventListener("dragover", (event) => event.preventDefault());
+window.addEventListener("drop", (event) => event.preventDefault());
 
 function base64ToBlob(base64: string): Blob {
   const binary = atob(base64);
