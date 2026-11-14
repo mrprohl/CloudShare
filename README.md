@@ -70,6 +70,12 @@ and the password options are free again.
 **Receiving files:** **"Link zum Hochladen einfügen"** inserts a link through which the recipients can upload files –
 also very large ones – straight into your Nextcloud (folder `Outlook-Dateianforderungen`).
 
+**Confidential message:** under **"Vertrauliche Nachricht"** you type a text instead of choosing a file – e.g. access
+data – and click **"Nachricht als Link einfügen"**. The text does not go into the mail: it is stored encrypted in
+Vaultwarden as a Send protected with the chosen password, and the mail gets a card with **"Nachricht öffnen"**. The
+password reaches the recipients like for files (password mail, other address or SMS). At most 1000 characters,
+available for at most 30 days (Vaultwarden's limit), then deleted.
+
 <br clear="right">
 
 <img src="docs/images/taskpane-shares.png" alt="Tab Meine Freigaben: four links with download status, password status and the buttons Kopieren, Einfügen, Zurückziehen" width="300" align="right">

@@ -44,6 +44,9 @@ vi.mock("../src/graph.js", async (importOriginal) => ({
 }));
 vi.mock("../src/vaultwarden.js", () => ({
   createPasswordSend: vi.fn(async () => ({ url: "https://vault.example.test/#/send/abc", id: "send-1" })),
+  createMessageSend: vi.fn(async () => ({ url: "https://vault.example.test/#/send/msg/key123", id: "send-msg" })),
+  MESSAGE_MAX_LENGTH: 1000,
+  MESSAGE_MAX_DAYS: 30,
   setSendMaxAccess: vi.fn(async () => undefined),
   initVault: vi.fn(),
 }));
@@ -64,6 +67,7 @@ const { createJob, getJob } = await import("../src/jobs.js");
 const vaultwarden = await import("../src/vaultwarden.js");
 const createPasswordSend = vi.mocked(vaultwarden.createPasswordSend);
 const setSendMaxAccess = vi.mocked(vaultwarden.setSendMaxAccess);
+const createMessageSend = vi.mocked(vaultwarden.createMessageSend);
 
 const app = await buildApp({ logger: false });
 const as = (user: string) => ({ authorization: `Bearer user-${user}` });
@@ -127,6 +131,7 @@ describe("authentication", () => {
     ["DELETE", "/api/nextcloud/connection"],
     ["POST", "/api/uploads"],
     ["POST", "/api/requests"],
+    ["POST", "/api/messages"],
     ["GET", "/api/shares"],
     ["DELETE", "/api/shares/1"],
     ["POST", "/api/jobs/x/arm"],
@@ -310,6 +315,53 @@ describe("upload links", () => {
     expect(folder[0]).toBe("Outlook-Dateianforderungen");
     expect(permissions).toBe(4);
     expect(label).toBe("Dateianforderung");
+  });
+});
+
+describe("confidential messages", () => {
+  const send = (payload: Record<string, unknown>) =>
+    app.inject({ method: "POST", url: "/api/messages", headers: as("anna"), payload });
+
+  it("stores the text only in a password-protected Send and attaches it to the mail's job", async () => {
+    createMessageSend.mockClear();
+    const res = await send({ text: "  Zugang: anna / Sommer2026  ", password: STRONG, expireDays: 7, step: "msg1" });
+    expect(res.statusCode).toBe(200);
+    const [label, text, password, expiresAt] = createMessageSend.mock.calls[0];
+    expect(label).toBe("Vertrauliche Nachricht");
+    expect(text).toBe("Zugang: anna / Sommer2026"); // trimmed
+    expect(password).toBe(STRONG);
+    expect(Math.round((expiresAt.getTime() - Date.now()) / DAY)).toBe(7);
+    const body = res.json();
+    expect(body.shareUrl).toBe("https://vault.example.test/#/send/msg/key123");
+    expect(body.capped).toBe(false);
+    const job = getJob(body.jobId)!;
+    expect(job.owner).toBe("oid-anna");
+    expect(job.separate?.[0].fileNames).toEqual(["Vertrauliche Nachricht"]);
+  });
+
+  it("caps the lifetime at Vaultwarden's limit", async () => {
+    createMessageSend.mockClear();
+    const res = await send({ text: "x", password: STRONG, expireDays: 60 });
+    expect(res.json().capped).toBe(true);
+    expect(Math.round((createMessageSend.mock.calls[0][3].getTime() - Date.now()) / DAY)).toBe(30);
+  });
+
+  it.each([
+    ["an empty text", { text: "   ", password: STRONG }],
+    ["a text over 1000 characters", { text: "x".repeat(1001), password: STRONG }],
+    ["no text", { password: STRONG }],
+    ["a weak password", { text: "geheim", password: "kurz" }],
+    ["no password", { text: "geheim", noPassword: true }],
+  ])("refuses %s", async (_name, payload) => {
+    createMessageSend.mockClear();
+    const res = await send(payload);
+    expect(res.statusCode).toBe(400);
+    expect(createMessageSend).not.toHaveBeenCalled();
+  });
+
+  it("tells the add-in the limits", async () => {
+    const config = (await app.inject({ method: "GET", url: "/api/config" })).json();
+    expect(config).toMatchObject({ messageMaxLength: 1000, messageMaxDays: 30 });
   });
 });
 

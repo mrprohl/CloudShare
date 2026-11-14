@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filesCard, filesText, requestCard, requestText } from "../src/taskpane/mailCard";
+import { filesCard, filesText, messageCard, messageText, requestCard, requestText } from "../src/taskpane/mailCard";
 
 const formatSize = (bytes: number) => `${bytes} B`;
 const files = [
@@ -83,5 +83,17 @@ describe("plain-text versions", () => {
     expect(text).toContain("- Angebot.pdf (1000 B): https://cloud.example.test/s/a");
     expect(text).toContain("--\nMax Mustermann");
     expect(requestText("https://cloud.example.test/s/up", "27.11.2026", "")).toContain("https://cloud.example.test/s/up");
+  });
+});
+
+describe("messageCard", () => {
+  it("links the confidential message without its text and points to the password", () => {
+    const url = "https://vault.example.test/#/send/abc/key123";
+    const html = messageCard(url, "27.11.2026", "");
+    expect(html).toContain("Vertrauliche Nachricht für Sie");
+    expect(html).toContain(`href="${url}"`);
+    expect(html).toContain(">Nachricht öffnen<");
+    expect(html).toContain("Gültig bis 27.11.2026 · Das Kennwort erhalten Sie in einer separaten Nachricht.");
+    expect(messageText(url, "27.11.2026", "Max")).toContain(`Vertrauliche Nachricht für Sie (gültig bis 27.11.2026):\n${url}`);
   });
 });

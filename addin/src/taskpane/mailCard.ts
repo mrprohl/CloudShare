@@ -109,6 +109,15 @@ export function requestCard(url: string, expireDate: string, footer: string): st
   return frame(t("card.requestTitle"), rows, cardNote(expireDate, true), footer);
 }
 
+/** Card for a confidential message: the text itself is not in the mail, only the password-protected link to it. */
+export function messageCard(url: string, expireDate: string, footer: string): string {
+  const rows =
+    `<div style="font-size:14px;line-height:20px;color:#424242;margin:0 0 12px;">` +
+    `${escapeHtml(t("card.messageText"))}</div>` +
+    button(url, t("card.messageOpen"));
+  return frame(t("card.messageTitle"), rows, cardNote(expireDate, true), footer);
+}
+
 /** Plain-text versions for mails composed in text format. */
 const textFooter = (footer: string) => (footer ? `--\n${footer}\n` : "");
 
@@ -125,6 +134,10 @@ export function filesText(
     (withPassword ? `${t("card.passwordNote")}\n` : "") +
     textFooter(footer)
   );
+}
+
+export function messageText(url: string, expireDate: string, footer: string): string {
+  return `\n${t("card.messagePlain", { date: expireDate })}\n${url}\n${t("card.passwordNote")}\n` + textFooter(footer);
 }
 
 export function requestText(url: string, expireDate: string, footer: string): string {

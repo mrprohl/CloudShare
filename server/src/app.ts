@@ -39,7 +39,7 @@ import { clampInt, isEmailAddress } from "./limits.js";
 import { locale, t } from "./i18n.js";
 import { passwordProblem } from "./password.js";
 import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } from "./store.js";
-import { createPasswordSend, setSendMaxAccess } from "./vaultwarden.js";
+import { createMessageSend, createPasswordSend, MESSAGE_MAX_DAYS, MESSAGE_MAX_LENGTH, setSendMaxAccess } from "./vaultwarden.js";
 
 function nextcloudFor(user: User): NextcloudClient {
   const creds = getCredentials(user.oid);
@@ -247,6 +247,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     trace: config.clientTrace,
     smsEnabled: smsEnabled(),
     smsDefaultCountry: config.smsDefaultCountry,
+    messageMaxLength: MESSAGE_MAX_LENGTH,
+    messageMaxDays: MESSAGE_MAX_DAYS,
   }));
 
   /**
@@ -477,6 +479,30 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       shareInfo(shareUrl, uploadLinkItem(), expireDate));
     req.log.info({ user: user.upn, folder: folder.join("/") }, "Upload link created");
     return { shareUrl, expireDate, jobId };
+  });
+
+  // --- Confidential message ("Vertrauliche Nachricht") ---------------------------
+  /**
+   * A text instead of a file: stored only as a password-protected Vaultwarden Send (never in Nextcloud), the link goes
+   * into the mail as a card, the password goes out like for files (same job, step, channel). Always with a password;
+   * at most MESSAGE_MAX_DAYS days (Vaultwarden's limit), even if "Link gültig für" is longer.
+   */
+  app.post<{ Body: ShareRequest & { jobId?: string; text?: unknown } }>("/api/messages", async (req) => {
+    const user = await authenticate(req);
+    const text = typeof req.body?.text === "string" ? req.body.text.replace(/\r\n/g, "\n").trim() : "";
+    if (!text || text.length > MESSAGE_MAX_LENGTH) {
+      throw new HttpError(400, t("server.messageInvalid", { max: MESSAGE_MAX_LENGTH }));
+    }
+    const { password, maxAccess } = shareSettings(req.body);
+    const wanted = clampInt(req.body?.expireDays, config.defaultExpireDays, 1, config.maxExpireDays);
+    const days = Math.min(wanted, MESSAGE_MAX_DAYS);
+    const expiresAt = new Date(Date.now() + days * 86_400_000);
+    const expireDate = expiresAt.toISOString().slice(0, 10);
+    const item = t("server.messageItem");
+    const send = await createMessageSend(item, text, password, expiresAt);
+    const jobId = await attachToJob(user, req.body?.jobId, item, password, maxAccess, req.body?.step);
+    req.log.info({ user: user.upn, days, length: text.length }, "Confidential message created");
+    return { shareUrl: send.url, expireDate, jobId, capped: days < wanted };
   });
 
   // --- My shares ("Meine Freigaben") ------------------------------------------------

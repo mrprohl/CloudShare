@@ -44,3 +44,11 @@ describe("password mail", () => {
     expect(passwordMailHtml({ ...base, maxAccessCount: 1, fileNames: ["a.pdf"] })).toContain("nur einmal abrufbar");
   });
 });
+
+describe("password mail for a confidential message", () => {
+  it("shows an envelope instead of a file type", () => {
+    const html = passwordMailHtml({ fileNames: ["Vertrauliche Nachricht"], sendUrl: "https://vault.example.test/#/send/p", subject: "Zugang", expireDays: 7 });
+    expect(html).toContain("&#9993;");
+    expect(html).toContain("Vertrauliche Nachricht");
+  });
+});
