@@ -105,7 +105,7 @@ recipients like for files. At most 1000 characters; under "Validity", **"Message
 read (default 5 days, at most 30 – Vaultwarden's limit), then it is deleted.
 
 **Receiving files** (**Request**): **"Insert upload link"** inserts a link through which the recipients can upload
-files – also very large ones – straight into your Nextcloud (folder `CloudShare-Dateianforderungen`).
+files – also very large ones – straight into your Nextcloud (folder `CloudShare-File-Requests`).
 
 Confidential messages and upload links always have a password, so "No password" is not offered there.
 
@@ -242,7 +242,7 @@ deployed again.
 | `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` | – | Entra ID app registration |
 | `NEXTCLOUD_URL` | – | Public address of Nextcloud |
 | `NEXTCLOUD_FOLDER` | `CloudShare` | Folder for uploaded files in each user's Nextcloud |
-| `NEXTCLOUD_REQUEST_FOLDER` | `CloudShare-Dateianforderungen` | Folder for files received through upload links |
+| `NEXTCLOUD_REQUEST_FOLDER` | `CloudShare-File-Requests` | Folder for files received through upload links |
 | `CREDENTIAL_KEY` | – | Key for the stored Nextcloud app passwords (`openssl rand -base64 32`); changing it disconnects all users |
 | `ATTACHMENT_THRESHOLD_MB` | `5` | From this size CloudShare steps in (hint while writing, check on send) |
 | `ATTACHMENT_POLICY` | `suggest` | `suggest`: ask once, "Send Anyway" possible · `enforce`: large attachments only via CloudShare |
@@ -268,7 +268,7 @@ by hand if you want them:
 | `ATTACHMENT_THRESHOLD_MB` | `1` | `5` |
 | `ATTACHMENT_POLICY` | `enforce` | `suggest` |
 | `MAIL_FOOTER` | `'{displayName} · {jobTitle}\n{company} · Tel. {phone} · {email}'` | empty |
-| `NEXTCLOUD_REQUEST_FOLDER` | `Outlook-Dateianforderungen` | `CloudShare-Dateianforderungen` – rename the folder in Nextcloud as well, otherwise "My shares" no longer finds older upload links |
+| `NEXTCLOUD_REQUEST_FOLDER` | `Outlook-Dateianforderungen` | `CloudShare-File-Requests` – rename the folder in Nextcloud as well, otherwise "My shares" no longer finds older upload links |
 
 ### Password by SMS (optional)
 
@@ -341,9 +341,9 @@ Update the stack; CloudShare puts the texts into the add-in files when it starts
 cache in classic Outlook (see *Operation*), reload Outlook on the web. One language applies to all users of an
 installation; recipients get the password mail and the SMS in the same language. Not affected by `LANGUAGE`:
 
-- **Nextcloud folder names** – `NEXTCLOUD_REQUEST_FOLDER` stays as set (default `CloudShare-Dateianforderungen`), so
-  "My shares" keeps finding older links. For an English installation set it in `setup.sh` / `env/cloudshare.env`
-  before the first use, e.g. `CloudShare file requests`.
+- **Nextcloud folder names** – `NEXTCLOUD_REQUEST_FOLDER` stays as set (default `CloudShare-File-Requests`), so
+  "My shares" keeps finding older links. To have it in German, set it in `setup.sh` / `env/cloudshare.env` before
+  the first use, e.g. `CloudShare-Dateianforderungen`.
 - **`templates.json`** holds one set of texts – translate it as well, or remove it to use the built-in texts of the
   language.
 - **`MAIL_FOOTER`** is written by the admin (e.g. `Tel.` vs. `Phone`).
