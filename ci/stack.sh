@@ -203,9 +203,10 @@ smoke() {
 node_in() {
   local image=$1 script=$2
   ( set -a; . "$base/env/cloudshare.env"; set +a
+    # DOWNLOAD_NOTICE: download confirmations are only stored with it switched on.
     docker run --rm --user 1000:1000 --read-only --network none \
       -e DATA_DIR=/data -e PUBLIC_BASE_URL -e ENTRA_TENANT_ID -e ENTRA_CLIENT_ID -e ENTRA_CLIENT_SECRET \
-      -e NEXTCLOUD_URL -e CREDENTIAL_KEY -e BW_PASSWORD \
+      -e NEXTCLOUD_URL -e CREDENTIAL_KEY -e BW_PASSWORD -e DOWNLOAD_NOTICE=true \
       -v cloudshare_data:/data -v "$base/ci:/ci:ro" --entrypoint node "$image" "$script" )
 }
 
