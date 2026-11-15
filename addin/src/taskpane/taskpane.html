@@ -48,14 +48,6 @@
 
         <div id="panel-shares" class="panel" role="tabpanel" aria-labelledby="tab-shares" hidden>
           <div class="content">
-            <div class="toolbar">
-              <span class="caption" id="shares-hint">%%t:addin.shares.hint%%</span>
-              <button type="button" id="refresh-shares" class="btn btn-icon" title="%%t:addin.shares.refresh%%" aria-label="%%t:addin.shares.refresh%%">
-                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
-                  <path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </button>
-            </div>
             <!-- Only when the pane was opened from a mail being read (taskpane.html?view=read): the links found in that
                  mail first, then the others. -->
             <section id="mail-section" aria-labelledby="mail-heading" hidden>
@@ -192,17 +184,20 @@
               <div class="field" id="expire-field">
                 <label for="expire" class="label">%%t:addin.expire.label%%</label>
                 <div class="input-group input-narrow">
-                  <input type="number" id="expire" class="input" min="1" />
+                  <input type="number" id="expire" class="input" min="1" aria-describedby="expire-hint" />
                   <span class="suffix">%%t:addin.expire.suffix%%</span>
                 </div>
+                <!-- Text set by renderValidity: download (files) or upload (Anfordern). -->
+                <p class="hint" id="expire-hint">%%t:addin.expire.hint%%</p>
               </div>
 
               <div class="field" id="message-days-field" hidden>
                 <label for="message-days" class="label">%%t:addin.message.daysLabel%%</label>
                 <div class="input-group input-narrow">
-                  <input type="number" id="message-days" class="input" min="1" />
+                  <input type="number" id="message-days" class="input" min="1" aria-describedby="message-days-hint" />
                   <span class="suffix">%%t:addin.expire.suffix%%</span>
                 </div>
+                <p class="hint" id="message-days-hint">%%t:addin.message.daysHint%%</p>
               </div>
 
               <div class="field" id="max-access-field">
@@ -294,11 +289,11 @@
             <details class="help-section">
               <summary>%%t:addin.help.shares.title%%</summary>
               <p>%%t:addin.help.shares.text%%</p>
-              <ul>
-                <li>%%t:addin.help.shares.copy%%</li>
-                <li>%%t:addin.help.shares.password%%</li>
-                <li>%%t:addin.help.shares.insert%%</li>
-                <li>%%t:addin.help.shares.revoke%%</li>
+              <ul class="help-icons">
+                <li><span class="help-icon" data-icon="copy"></span>%%t:addin.help.shares.copy%%</li>
+                <li><span class="help-icon" data-icon="password"></span>%%t:addin.help.shares.password%%</li>
+                <li><span class="help-icon" data-icon="insert"></span>%%t:addin.help.shares.insert%%</li>
+                <li><span class="help-icon danger" data-icon="revoke"></span>%%t:addin.help.shares.revoke%%</li>
               </ul>
             </details>
 
@@ -311,6 +306,8 @@
                 <dd>%%t:addin.help.faq.expired.a%%</dd>
                 <dt>%%t:addin.help.faq.wrong.q%%</dt>
                 <dd>%%t:addin.help.faq.wrong.a%%</dd>
+                <dt>%%t:addin.help.faq.unsent.q%%</dt>
+                <dd>%%t:addin.help.faq.unsent.a%%</dd>
                 <dt>%%t:addin.help.faq.sms.q%%</dt>
                 <dd>%%t:addin.help.faq.sms.a%%</dd>
                 <dt>%%t:addin.help.faq.who.q%%</dt>

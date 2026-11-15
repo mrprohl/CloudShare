@@ -351,6 +351,11 @@ test("Link gültig für / Kennwort abrufbar: capped at the maximum with a note, 
   const status = page.locator("#status");
   await openValidity(page);
   await expect(page.locator("#validity-summary")).toBeHidden(); // the fields themselves are visible now
+  // Every field explains itself – "Link gültig für" by what the link is for.
+  await expect(page.locator("#expire-hint")).toHaveText("So lange können die Empfänger die Dateien herunterladen – danach ist der Link gesperrt.");
+  await chooseKind(page, "request");
+  await expect(page.locator("#expire-hint")).toHaveText("So lange können die Empfänger über den Link Dateien hochladen – danach ist er gesperrt.");
+  await chooseKind(page, "files");
 
   // With a password a link lasts at most as long as its password in Vaultwarden: 30 days.
   await page.fill("#expire", "500");
@@ -444,12 +449,12 @@ test("Kennwort per SMS: number required, normalized to E.164 and stored on the j
   await expect(page.locator("#password-to-hint")).toContainText("in einer SMS an diese Nummer");
 
   await page.click("#submit");
-  await expect(page.locator("#status")).toContainText("Bitte die Mobilnummer angeben");
+  await expect(page.locator("#status")).toContainText("Bitte die Rufnummer angeben");
   await expect(page.locator("#password-sms")).toBeFocused();
 
   await page.fill("#password-sms", "12");
   await page.press("#password-sms", "Tab");
-  await expect(page.locator("#status")).toContainText("Bitte eine gültige Mobilnummer angeben");
+  await expect(page.locator("#status")).toContainText("Bitte eine gültige Rufnummer angeben");
 
   await page.fill("#password-sms", "0170 / 123 45 67");
   await page.press("#password-sms", "Tab");
@@ -803,6 +808,7 @@ test("Nachricht: inserts a card with the link, never the text, and shares the pa
   await fullShot(page, "message-light");
   await openValidity(page);
   await expect(page.locator("#expire-field")).toBeHidden(); // no Nextcloud link for a text
+  await expect(page.locator("#message-days-hint")).toHaveText("So lange können die Empfänger die Nachricht mit dem Kennwort öffnen – danach wird sie gelöscht.");
   await expect(page.locator("#message-days")).toHaveValue("5");
   await page.fill("#message-days", "45");
   await page.locator("#message-days").blur();
@@ -900,7 +906,7 @@ const SHARES = [
   { id: "11", kind: "file", name: "Präsentation.pptx", url: "https://cloud.example.com/s/a", sharedAt: Date.parse("2026-11-10"),
     expiration: "2099-11-24", downloads: { count: 2, last: "2026-11-11T09:30:00Z" }, received: null, protected: true,
     password: { channel: "sms", to: "+49 170 •••• 67", status: "delivered", at: Date.parse("2026-11-10T10:00:00Z"), deliveredAt: Date.parse("2026-11-10T10:00:09Z") } },
-  { id: "12", kind: "file", name: "Angebot.pdf", url: "https://cloud.example.com/s/b", sharedAt: Date.parse("2026-11-12"),
+  { id: "12", kind: "file", name: "Angebot.pdf", url: "https://cloud.example.com/s/b", sharedAt: Date.parse("2099-11-12"),
     expiration: "2099-11-26", downloads: { count: 0, last: null }, received: null, protected: false },
   { id: "13", kind: "request", name: "Upload-Link", url: "https://cloud.example.com/s/c", sharedAt: Date.parse("2026-11-01"),
     expiration: "2099-11-15", downloads: null, received: 3 },
@@ -912,15 +918,28 @@ test("Meine Freigaben: shows the state of each link and revokes after confirmati
   const calls = await openTaskpane(page, { shares: SHARES });
   await page.click("#tab-shares");
   const rows = page.locator("#shares .share");
-  await expect(rows).toHaveCount(4);
+  // All valid links, no expired one ("Alt.zip"), no refresh button and no "last 30 days".
+  await expect(rows).toHaveCount(3);
+  await expect(page.locator("#shares")).not.toContainText("Alt.zip");
+  await expect(page.locator("#refresh-shares")).toHaveCount(0);
   await expect(rows.nth(0).locator(".state-text")).toContainText("2× heruntergeladen");
   await expect(rows.nth(1).locator(".state-text")).toHaveText("Noch nicht heruntergeladen");
   await expect(rows.nth(2).locator(".state-text")).toHaveText("3 Dateien empfangen");
-  await expect(rows.nth(3).locator(".state-text")).toHaveText("Abgelaufen");
-  await expect(rows.nth(0).locator(".share-meta").first()).toContainText("mit Kennwort");
-  await expect(rows.nth(0).locator(".share-password")).toContainText("Kennwort per SMS an +49 170 •••• 67 – zugestellt um");
-  await expect(rows.nth(1).locator(".share-meta").first()).toContainText("ohne Kennwort");
-  await expect(rows.nth(1).locator(".share-password")).toBeHidden();
+  // One short line: period and password – the word "Kennwort" only once.
+  const meta = rows.nth(0).locator(".share-meta").first();
+  await expect(meta.locator(".share-period")).toHaveText("10.11.2026 – 24.11.2099");
+  await expect(meta.locator(".share-password")).toContainText("Kennwort per SMS an +49 170 •••• 67 – zugestellt um");
+  expect((await meta.textContent())!.match(/Kennwort/g)).toHaveLength(1);
+  await expect(rows.nth(1).locator(".share-period")).toHaveText("12.11. – 26.11.2099"); // same year: no year at the start
+  await expect(rows.nth(1).locator(".share-password")).toHaveText("ohne Kennwort");
+  await expect(rows.nth(2).locator(".share-password")).toHaveText("mit Kennwort");
+  // Icons instead of words; the words are the buttons' names.
+  await expect(rows.nth(0).locator(".copy")).toHaveAttribute("aria-label", "Link kopieren");
+  await expect(rows.nth(0).locator(".insert")).toHaveAttribute("aria-label", "Als neuen Link in diese Nachricht einfügen");
+  await expect(rows.nth(0).locator(".revoke")).toHaveAttribute("aria-label", "Freigabe zurückziehen");
+  await expect(rows.nth(0).locator(".share-actions")).toHaveText("");
+  await rows.nth(0).locator(".copy").click();
+  await expect(rows.nth(0).locator(".copy")).toHaveAttribute("aria-label", "Kopiert");
   await expectAccessible(page);
   await expectNoHorizontalScroll(page);
   await shot(page, "shares-light");
@@ -930,7 +949,7 @@ test("Meine Freigaben: shows the state of each link and revokes after confirmati
   await expect(revoke).toHaveText("Wirklich?");
   expect(calls.some((c) => c.method === "DELETE")).toBe(false); // first click only asks
   await revoke.click();
-  await expect(rows).toHaveCount(3);
+  await expect(rows).toHaveCount(2);
   expect(calls.filter((c) => c.method === "DELETE").map((c) => c.path)).toEqual(["/api/shares/12"]);
   await expect(page.locator("#status")).toContainText("„Angebot.pdf“ ist nicht mehr abrufbar.");
 });
@@ -943,10 +962,29 @@ test("Meine Freigaben: a failed SMS says whether it was sent at all, and how to 
   await page.click("#tab-shares");
   const rows = page.locator("#shares .share");
   // seven.io refused it right away (key, credit, limit).
-  await expect(rows.nth(0).locator(".share-password")).toHaveText("Kennwort per SMS an +49 170 •••• 67 – nicht versendet – bitte über „Kennwort“ erneut senden");
+  await expect(rows.nth(0).locator(".share-password")).toHaveText("Kennwort per SMS an +49 170 •••• 67 – nicht versendet – bitte erneut senden");
   // seven.io accepted it and reported "not delivered" later.
-  await expect(rows.nth(1).locator(".share-password")).toHaveText("Kennwort per SMS an +49 170 •••• 67 – nicht zugestellt – bitte über „Kennwort“ erneut senden");
+  await expect(rows.nth(1).locator(".share-password")).toHaveText("Kennwort per SMS an +49 170 •••• 67 – nicht zugestellt – bitte erneut senden");
   await expect(rows.nth(1).locator(".share-password")).toHaveClass(/failed/);
+});
+
+test("Meine Freigaben: links of a mail not sent (e.g. a discarded draft) say so and when they are revoked", async ({ page }) => {
+  const revokeAt = Date.parse("2099-11-22T10:00:00Z");
+  await openTaskpane(page, {
+    shares: [
+      { ...SHARES[0], id: "31", password: null, unsent: true, revokeAt },
+      { ...SHARES[0], id: "32", password: null, unsent: true, revokeAt: null },
+      SHARES[1],
+    ],
+  });
+  await page.click("#tab-shares");
+  const rows = page.locator("#shares .share");
+  await expect(rows.nth(0).locator(".share-unsent")).toHaveText(
+    `Nicht gesendet – wird die Nachricht bis 22.11.2099 nicht gesendet, zieht CloudShare den Link zurück.`,
+  );
+  await expect(rows.nth(1).locator(".share-unsent")).toHaveText("Nicht gesendet – das Kennwort wurde noch nicht verschickt.");
+  await expect(rows.nth(2).locator(".share-unsent")).toBeHidden();
+  await expectAccessible(page);
 });
 
 test("Meine Freigaben: Kennwort shows the password and sends it again the same ways as the first time", async ({ page }) => {
@@ -955,7 +993,7 @@ test("Meine Freigaben: Kennwort shows the password and sends it again the same w
   const rows = page.locator("#shares .share");
   await expect(rows.nth(1).locator(".show-password")).toBeHidden(); // no password to show (link without password)
   const toggle = rows.nth(0).locator(".show-password");
-  await expect(toggle).toHaveText("Kennwort");
+  await expect(toggle).toHaveAttribute("aria-label", "Kennwort von „Präsentation.pptx“ anzeigen und erneut senden");
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   const panel = rows.nth(0).locator(".password-panel");
@@ -967,7 +1005,7 @@ test("Meine Freigaben: Kennwort shows the password and sends it again the same w
   await shot(page, "password-panel");
 
   // The same choices as when sending: recipients of the message, another address, SMS.
-  await expect(panel.locator("select option")).toHaveText(["Empfänger der Nachricht", "Andere E-Mail-Adresse", "Mobilnummer (SMS)"]);
+  await expect(panel.locator("select option")).toHaveText(["Empfänger der Nachricht", "Andere E-Mail-Adresse", "Rufnummer (SMS)"]);
 
   // Recipients of the message: To, Cc and Bcc as the first time – nothing to type, the hint names them.
   await panel.locator("select").selectOption("recipients");
@@ -1025,7 +1063,7 @@ test("reading a mail: its links on top, the other shares below, nothing to inser
   await expect(inMail.nth(0).locator(".share-name")).toHaveText("Präsentation.pptx");
   await expect(inMail.nth(0).locator(".share-password")).toContainText("zugestellt um");
   await expect(inMail.nth(1).locator(".share-name")).toHaveText("Upload-Link");
-  await expect(page.locator("#shares .share")).toHaveCount(2); // Angebot.pdf, Alt.zip
+  await expect(page.locator("#shares .share")).toHaveCount(1); // Angebot.pdf (Alt.zip has expired)
   await expect(page.locator("#mail-none")).toBeHidden();
   await expect(page.locator(".share .insert").first()).toBeHidden(); // a mail being read cannot take a link
   await expectAccessible(page);
@@ -1040,13 +1078,13 @@ test("reading a mail: its links on top, the other shares below, nothing to inser
   });
   await expect(page.locator("#mail-none")).toHaveText("Diese Nachricht enthält keine CloudShare-Links von Ihnen.");
   await expect(page.locator("#mail-shares .share")).toHaveCount(0);
-  await expect(page.locator("#shares .share")).toHaveCount(4);
+  await expect(page.locator("#shares .share")).toHaveCount(3);
 
   // Revoking works here too.
   const revoke = page.locator("#shares .share").nth(1).locator(".revoke");
   await revoke.click();
   await revoke.click();
-  await expect(page.locator("#shares .share")).toHaveCount(3);
+  await expect(page.locator("#shares .share")).toHaveCount(2);
   expect(calls.filter((c) => c.method === "DELETE").map((c) => c.path)).toEqual(["/api/shares/12"]);
 });
 
@@ -1179,7 +1217,7 @@ test.describe("README pictures (English)", () => {
     const shares = SHARES_EN.map((share, i) => (i === 0 ? { ...share, passwordAvailable: true } : share));
     await openTaskpane(page, { lang: "en", shares, config: README_CONFIG });
     await page.click("#tab-shares");
-    await expect(page.locator("#shares .share")).toHaveCount(4);
+    await expect(page.locator("#shares .share")).toHaveCount(3);
     await expect(page.locator("#shares .share").nth(1).locator(".state-text")).toHaveText("Not downloaded yet");
     // "Password" opened at the first link: the password and "Send again to".
     await page.locator("#shares .share").nth(0).locator(".show-password").click();

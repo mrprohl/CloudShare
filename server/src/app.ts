@@ -26,6 +26,7 @@ import {
   setJobSender,
   setPartsExpiry,
   takeSmsQuota,
+  unsentShares,
   type StepShare,
 } from "./jobs.js";
 import {
@@ -34,12 +35,10 @@ import {
   pollLoginFlow,
   QUOTA_EXCEEDED,
   startLoginFlow,
-  type PublicShare,
 } from "./nextcloud.js";
-import { expireOnRevoke, registerForCleanup } from "./cleanup.js";
+import { registerForCleanup } from "./cleanup.js";
 import { deliveryFor, recordDelivery, updateSmsStatus } from "./deliveries.js";
 import {
-  forgetPasswordToken,
   originalRecipients,
   passwordRefFor,
   passwordRefsForTokens,
@@ -59,6 +58,7 @@ import {
   smsNumber,
   smsNumberProblem,
 } from "./sms.js";
+import { isCloudShareShare, isRequestShare, revokeShare, tokenOf } from "./shares.js";
 import { defaultTemplates, render, templatesFor } from "./templates.js";
 import { clampInt, isEmailAddress } from "./limits.js";
 import { formatDate, locale, t } from "./i18n.js";
@@ -67,7 +67,6 @@ import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } f
 import {
   createMessageSend,
   createPasswordSend,
-  deleteSend,
   MESSAGE_MAX_LENGTH,
   readSendPassword,
   setSendExpiry,
@@ -213,9 +212,6 @@ async function attachNoticeJob(user: User, requestedJobId: unknown, share: StepS
   }
   return createNoticeJob(user.oid, user.upn, share);
 }
-
-/** Share token: the last segment of a link URL. */
-const tokenOf = (url: string) => url.replace(/\/+$/, "").split("/").pop() ?? "";
 
 /**
  * How the password of a link went out, for "Meine Freigaben" (null before sending or for older links).
@@ -629,29 +625,29 @@ export async function buildApp(options: { logger?: boolean } = {}) {
 
   // --- My shares ("Meine Freigaben") ------------------------------------------------
 
-  const isCloudShareShare = (s: PublicShare) =>
-    s.path.startsWith(`/${config.nextcloudFolder}/`) || s.path.startsWith(`/${config.requestFolder}/`);
-
-  /** "Meine Freigaben" shows the links of the last 30 days. */
-  const SHARES_DAYS = 30;
   /** Upper bound per request: every file link costs one activity lookup in Nextcloud. */
   const SHARES_MAX = 100;
 
-  /** CloudShare's public links of the last 30 days (newest first) with download/upload status. */
+  /**
+   * "Meine Freigaben": all valid CloudShare links (newest first) with download/upload status. Expired links are left
+   * out – Nextcloud removes them only in its daily housekeeping.
+   */
   app.get("/api/shares", async (req) => {
     const user = await authenticate(req);
     const nc = nextcloudFor(user);
     const { id: uid } = await nc.userInfo();
-    const since = Date.now() - SHARES_DAYS * 86_400_000;
+    const today = new Date().toISOString().slice(0, 10);
     const shares = (await nc.listPublicShares())
-      .filter((s) => isCloudShareShare(s) && s.sharedAt >= since)
+      .filter((s) => isCloudShareShare(s) && (s.expiration === null || s.expiration >= today))
       .sort((a, b) => b.sharedAt - a.sharedAt)
       .slice(0, SHARES_MAX);
+    const unsent = unsentShares(user.oid);
 
     return Promise.all(
       shares.map(async (s) => {
-        const request = s.permissions === 4 && s.isFolder;
+        const request = isRequestShare(s);
         const segments = s.path.split("/").filter(Boolean);
+        const token = tokenOf(s.url);
         return {
           id: s.id,
           kind: request ? "request" : "file",
@@ -663,7 +659,11 @@ export async function buildApp(options: { logger?: boolean } = {}) {
           // How the password went out (after sending): channel, masked recipient, SMS delivery status.
           password: passwordDelivery(s.url, user.oid),
           // Its password can still be shown and sent again ("Kennwort" in the list).
-          passwordAvailable: passwordRefFor(tokenOf(s.url), user.oid) !== null,
+          passwordAvailable: passwordRefFor(token, user.oid) !== null,
+          // The mail with this link has not been seen sent yet (password not sent) – e.g. a discarded draft – and
+          // when CloudShare revokes the link if it stays that way (null: not automatically).
+          unsent: unsent.has(token),
+          revokeAt: unsent.get(token) ?? null,
           downloads: request ? null : await nc.publicDownloads(s.fileId).catch(() => null),
           received: request ? await nc.countFiles(uid, segments).catch(() => null) : null,
         };
@@ -678,27 +678,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     const shares = await nc.listPublicShares();
     const share = shares.find((s) => s.id === req.params.id);
     if (!share || !isCloudShareShare(share)) throw new HttpError(404, t("server.shareNotFound"));
-    await nc.deleteShare(share.id);
-    // The password is no longer needed once no link of its step is left – delete its Sends right away.
-    for (const sendId of await forgetPasswordToken(tokenOf(share.url), user.oid)) {
-      await deleteSend(sendId).catch((err) => req.log.warn({ err, user: user.upn }, "Send of a revoked link not deleted"));
-    }
-
-    // A revoked file link counts as expired: the upload folder goes to the trash (CLEANUP_AFTER_DAYS) unless another
-    // valid link still points to it. Received files of an upload link are never deleted.
-    const segments = share.path.split("/").filter(Boolean);
-    const folder = `/${segments.slice(0, 2).join("/")}/`;
-    const today = new Date().toISOString().slice(0, 10);
-    const otherLinkActive = shares.some(
-      (s) => s.id !== share.id && s.path.startsWith(folder) && (s.expiration === null || s.expiration >= today),
-    );
-    const request = share.permissions === 4 && share.isFolder;
-    const file = request
-      ? "kept"
-      : await expireOnRevoke(user.oid, segments, otherLinkActive, async (target) => {
-          const { id: uid } = await nc.userInfo();
-          await nc.deletePath(uid, target);
-        });
+    const file = await revokeShare(nc, user.oid, share, shares, req.log);
     req.log.info({ user: user.upn, path: share.path, file }, "Share revoked");
     return { ok: true, file, deleteAfterDays: config.cleanupAfterDays };
   });
@@ -805,7 +785,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const share = (await nc.listPublicShares()).find((s) => s.id === req.params.id);
       if (!share || !isCloudShareShare(share)) throw new HttpError(404, t("server.shareNotFound"));
 
-      const request = share.permissions === 4 && share.isFolder;
+      const request = isRequestShare(share);
       const noPassword = req.body?.noPassword === true;
       if (request && noPassword) throw new HttpError(400, t("server.requestNeedsPassword"));
       const { password, expireDate, passwordLink } = shareSettings(req.body, !noPassword);

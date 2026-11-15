@@ -73,6 +73,16 @@ describe("templates", () => {
     expect(warnings.join("\n")).toMatch(/non-GSM characters/);
   });
 
+  it("warns if the password is not on a line of its own in the SMS", () => {
+    const warnings: string[] = [];
+    loadTemplates(file({ templates: { default: { sms_template: "Ihr Kennwort: {password}" } } }), (m) => warnings.push(m));
+    expect(warnings.join("\n")).toMatch(/on a line of its own/);
+    warnings.length = 0;
+    loadTemplates(file({ templates: { default: { sms_template: "Ihr Kennwort:\n{password}" } } }), (m) => warnings.push(m));
+    loadTemplates(file({ templates: { default: { sms_template: "{password} ist Ihr Kennwort" } } }), (m) => warnings.push(m));
+    expect(warnings).toEqual([]);
+  });
+
   it("falls back to the built-in texts for invalid JSON", () => {
     const warnings: string[] = [];
     expect(templatesFor({}, loadTemplates(file("{ kaputt"), (m) => warnings.push(m)))).toEqual(defaultTemplates());

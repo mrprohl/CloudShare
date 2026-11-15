@@ -73,7 +73,7 @@ vi.mock("../src/nextcloud.js", async (importOriginal) => {
 
 const { buildApp } = await import("../src/app.js");
 const { saveCredentials } = await import("../src/credentials.js");
-const { createJob, getJob } = await import("../src/jobs.js");
+const { armJob, createJob, getJob } = await import("../src/jobs.js");
 const vaultwarden = await import("../src/vaultwarden.js");
 const createPasswordSend = vi.mocked(vaultwarden.createPasswordSend);
 const setSendMaxAccess = vi.mocked(vaultwarden.setSendMaxAccess);
@@ -442,12 +442,15 @@ describe("confidential messages", () => {
 });
 
 describe("my shares", () => {
+  /** YYYY-MM-DD `offset` days from today. */
+  const day = (offset: number) => new Date(Date.now() + offset * DAY).toISOString().slice(0, 10);
   const shares = [
-    { id: "1", path: "/CloudShare/2026-11-13_ab/a.pdf", url: "u1", expiration: "2026-11-27", sharedAt: Date.now() - 2 * DAY, fileId: 11, isFolder: false, permissions: 1, label: "", size: 4096, hasPassword: true },
+    { id: "1", path: "/CloudShare/2026-11-13_ab/a.pdf", url: "u1", expiration: day(12), sharedAt: Date.now() - 2 * DAY, fileId: 11, isFolder: false, permissions: 1, label: "", size: 4096, hasPassword: true },
     { id: "2", path: "/CloudShare-File-Requests/2026-11-13_cd", url: "u2", expiration: null, sharedAt: Date.now() - DAY, fileId: 12, isFolder: true, permissions: 4, label: "Dateianforderung", size: null, hasPassword: true },
     { id: "3", path: "/Privat/urlaub.jpg", url: "u3", expiration: null, sharedAt: Date.now(), fileId: 13, isFolder: false, permissions: 1, label: "", size: 4096, hasPassword: false },
-    { id: "4", path: "/CloudShare/2026-09-01_ef/alt.pdf", url: "u4", expiration: null, sharedAt: Date.now() - 31 * DAY, fileId: 14, isFolder: false, permissions: 1, label: "", size: 1, hasPassword: false },
+    { id: "4", path: "/CloudShare/2026-09-01_ef/alt.pdf", url: "u4", expiration: day(-1), sharedAt: Date.now() - 31 * DAY, fileId: 14, isFolder: false, permissions: 1, label: "", size: 1, hasPassword: false },
     { id: "5", path: "/CloudShare/2026-11-13_gh/offen.pdf", url: "u5", expiration: null, sharedAt: Date.now() - 3 * DAY, fileId: 15, isFolder: false, permissions: 1, label: "", size: 1, hasPassword: false },
+    { id: "6", path: "/CloudShare/2026-09-01_ij/lang.pdf", url: "u6", expiration: day(30), sharedAt: Date.now() - 60 * DAY, fileId: 16, isFolder: false, permissions: 1, label: "", size: 1, hasPassword: false },
   ];
 
   it("lists only CloudShare links with their status", async () => {
@@ -456,11 +459,13 @@ describe("my shares", () => {
     nc.countFiles.mockResolvedValue(3);
     const res = await app.inject({ method: "GET", url: "/api/shares", headers: as("anna") });
     expect(res.statusCode).toBe(200);
-    // Newest first, only CloudShare folders, only the last 30 days ("alt.pdf" is 31 days old).
+    // Newest first, only CloudShare folders, every valid link however old ("lang.pdf": 60 days, valid without
+    // password), no expired one ("alt.pdf" expired yesterday).
     expect(res.json()).toEqual([
       expect.objectContaining({ id: "2", kind: "request", name: "Dateianforderung", received: 3, downloads: null, protected: true }),
       expect.objectContaining({ id: "1", kind: "file", name: "a.pdf", downloads: { count: 2, last: "2026-11-13T10:20:00+00:00" }, protected: true }),
       expect.objectContaining({ id: "5", kind: "file", name: "offen.pdf", protected: false }),
+      expect.objectContaining({ id: "6", kind: "file", name: "lang.pdf", protected: false }),
     ]);
   });
 
@@ -555,6 +560,31 @@ describe("my shares", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json().kind).toBe("request");
     expect(nc.createPublicShare.mock.calls[0][3]).toBe(4);
+  });
+
+  it("marks links whose mail was not sent (yet) and tells when CloudShare revokes them", async () => {
+    nc.listPublicShares.mockResolvedValue(shares);
+    nc.createPublicShare.mockResolvedValue("https://cloud.example.test/s/unsent1");
+    const res = await link("1", { password: STRONG, expireDays: 7, step: "step-unsent" });
+    const linked = { ...shares[0], id: "21", url: "https://cloud.example.test/s/unsent1", sharedAt: Date.now() };
+    nc.listPublicShares.mockResolvedValue([...shares, linked]);
+    nc.publicDownloads.mockResolvedValue({ count: 0, last: null });
+    nc.countFiles.mockResolvedValue(0);
+    const list = async () =>
+      (await app.inject({ method: "GET", url: "/api/shares", headers: as("anna") })).json() as Array<{
+        id: string;
+        unsent: boolean;
+        revokeAt: number | null;
+      }>;
+
+    const before = await list();
+    expect(before.find((s) => s.id === "21")).toMatchObject({ unsent: true });
+    expect(before.find((s) => s.id === "21")!.revokeAt).toBeGreaterThan(Date.now() + 6 * DAY); // job expiry: 7 days
+    expect(before.find((s) => s.id === "1")).toMatchObject({ unsent: false, revokeAt: null });
+
+    // "Send" pressed: the mail is on its way – no longer shown as not sent.
+    await armJob(res.json().jobId, { graphToken: "t", tokenExpiresAt: Date.now() + 3_600_000, armedAt: Date.now() });
+    expect((await list()).find((s) => s.id === "21")?.unsent).toBe(false);
   });
 
   it("only links CloudShare shares again and checks the password", async () => {
