@@ -154,6 +154,20 @@ describe("NextcloudClient", () => {
     expect(await new NextcloudClient(creds).countFiles("max-uid", ["CloudShare-File-Requests", "f"])).toBe(2);
     expect(call(0).init.method).toBe("PROPFIND");
   });
+
+  it("lists the names of received files, without the folder itself or subfolders", async () => {
+    const xml =
+      `<?xml version="1.0"?><d:multistatus xmlns:d="DAV:">` +
+      `<d:response><d:href>/f/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response>` +
+      `<d:response><d:href>/f/Nachweis%20M%C3%A4rz.pdf</d:href><d:propstat><d:prop><d:resourcetype/></d:prop></d:propstat></d:response>` +
+      `<d:response><d:href>/f/sub/</d:href><d:propstat><d:prop><d:resourcetype><d:collection/></d:resourcetype></d:prop></d:propstat></d:response>` +
+      `<d:response><d:href>/f/b.pdf</d:href><d:propstat><d:prop><d:resourcetype/></d:prop></d:propstat></d:response>` +
+      `</d:multistatus>`;
+    mockFetch(new Response(xml, { status: 207 }), new Response("", { status: 404 }));
+    const client = new NextcloudClient(creds);
+    expect(await client.listFiles("max-uid", ["CloudShare-File-Requests", "f"])).toEqual(["Nachweis März.pdf", "b.pdf"]);
+    expect(await client.listFiles("max-uid", ["CloudShare-File-Requests", "gone"])).toBeNull();
+  });
 });
 
 describe("startLoginFlow", () => {

@@ -17,6 +17,7 @@ const nc = vi.hoisted(() => ({
   deleteShare: vi.fn(),
   publicDownloads: vi.fn(),
   countFiles: vi.fn(),
+  listFiles: vi.fn(),
   revokeAppPassword: vi.fn(),
   deletePath: vi.fn(),
   linkPasswordEnforced: vi.fn(),
@@ -368,6 +369,15 @@ describe("upload links", () => {
     expect(folder[0]).toBe("CloudShare-File-Requests");
     expect(permissions).toBe(4);
     expect(label).toBe("Dateianforderung");
+    // Watched for received files once the mail is sent (UPLOAD_NOTICE) – a new folder holds nothing yet.
+    expect(getJob(res.json().jobId)?.separate).toBeUndefined();
+  });
+
+  it("marks the upload link in a step, so the upload notification watches it", async () => {
+    const res = await app.inject({ method: "POST", url: "/api/requests", headers: as("anna"), payload: { password: STRONG, step: "req-1" } });
+    expect(getJob(res.json().jobId)?.separate?.[0].shares).toEqual([
+      expect.objectContaining({ token: "abc", request: true, knownFiles: [] }),
+    ]);
   });
 });
 
@@ -556,10 +566,13 @@ describe("my shares", () => {
   it("links an upload folder again only with password, as a create-only share", async () => {
     nc.listPublicShares.mockResolvedValue(shares);
     expect((await link("2", { noPassword: true })).statusCode).toBe(400);
-    const res = await link("2", { password: STRONG });
+    nc.listFiles.mockResolvedValue(["schon-da.pdf"]);
+    const res = await link("2", { password: STRONG, step: "req-again" });
     expect(res.statusCode).toBe(200);
     expect(res.json().kind).toBe("request");
     expect(nc.createPublicShare.mock.calls[0][3]).toBe(4);
+    // Files received through the earlier link are not reported again by the upload notification.
+    expect(getJob(res.json().jobId)?.separate?.[0].shares?.[0]).toMatchObject({ request: true, knownFiles: ["schon-da.pdf"] });
   });
 
   it("marks links whose mail was not sent (yet) and tells when CloudShare revokes them", async () => {

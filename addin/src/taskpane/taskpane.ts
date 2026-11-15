@@ -72,12 +72,13 @@ const messageDaysField = $<HTMLDivElement>("message-days-field");
 const expireHint = $<HTMLParagraphElement>("expire-hint");
 const tabSend = $<HTMLButtonElement>("tab-send");
 const tabShares = $<HTMLButtonElement>("tab-shares");
+const tabMail = $<HTMLButtonElement>("tab-mail");
+const panelMail = $<HTMLDivElement>("panel-mail");
 const helpToggle = $<HTMLButtonElement>("help-toggle");
 const helpClose = $<HTMLButtonElement>("help-close");
 const panelSend = $<HTMLDivElement>("panel-send");
 const panelShares = $<HTMLDivElement>("panel-shares");
 const panelHelp = $<HTMLElement>("panel-help");
-const mailSection = $<HTMLElement>("mail-section");
 const mailShares = $<HTMLDivElement>("mail-shares");
 const mailNone = $<HTMLParagraphElement>("mail-none");
 const sharesList = $<HTMLDivElement>("shares");
@@ -1388,17 +1389,19 @@ async function insertMessage() {
 
 // --- Tabs ------------------------------------------------------------------------------
 
-type Tab = "send" | "shares";
+/** "send" | "shares" while writing ("Senden" | "Meine Freigaben"), "mail" | "shares" while reading. */
+type Tab = "send" | "mail" | "shares";
 /** The tab shown – also while the guide covers it, so closing the guide returns there. */
 let currentTab: Tab = "send";
 
-/** Shows a tab ("Senden", "Meine Freigaben") and closes the guide; `load: false` when the list is loaded elsewhere. */
+/** Shows a tab and closes the guide; `load: false` when the list is loaded elsewhere. */
 function selectTab(tab: Tab, load = true) {
   currentTab = tab;
   tabSend.setAttribute("aria-selected", String(tab === "send"));
+  tabMail.setAttribute("aria-selected", String(tab === "mail"));
   tabShares.setAttribute("aria-selected", String(tab === "shares"));
   showHelp(false);
-  if (tab === "shares" && load) loadShares().catch((err) => setStatus(errorMessage(err), "error"));
+  if (tab !== "send" && load) loadShares().catch((err) => setStatus(errorMessage(err), "error"));
 }
 
 /** The user guide ("?" at the top right) in place of the current tab; closed, that tab shows again. */
@@ -1406,10 +1409,12 @@ function showHelp(open: boolean) {
   helpToggle.setAttribute("aria-expanded", String(open));
   panelHelp.hidden = !open;
   panelSend.hidden = open || currentTab !== "send";
+  panelMail.hidden = open || currentTab !== "mail";
   panelShares.hidden = open || currentTab !== "shares";
 }
 
 tabSend.addEventListener("click", () => selectTab("send"));
+tabMail.addEventListener("click", () => selectTab("mail"));
 tabShares.addEventListener("click", () => selectTab("shares"));
 helpToggle.addEventListener("click", () => {
   const open = panelHelp.hidden === true;
@@ -1489,6 +1494,16 @@ function shareState(share: ShareItem): { text: string; done: boolean } {
         done: true,
       }
     : { text: t("shares.notDownloaded"), done: false };
+}
+
+/**
+ * A file name split for shortening in the middle: the start gets the "…" when the line is too short, the end – the
+ * extension and a few characters before it – always stays visible. Short names are not split.
+ */
+function nameParts(name: string): [string, string] {
+  const ext = /\.[A-Za-z0-9]{1,8}$/.exec(name)?.[0] ?? "";
+  const keep = Math.min(ext.length + 4, 12);
+  return name.length <= keep + 6 ? [name, ""] : [name.slice(0, name.length - keep), name.slice(-keep)];
 }
 
 /** Still valid today (Nextcloud removes expired links only once a day; the server already leaves them out). */
@@ -1688,6 +1703,7 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
 function shareRow(share: ShareItem): HTMLElement {
   const row = document.createElement("div");
   row.className = "share";
+  row.dataset.id = share.id; // reading a mail, a link can be in both lists
   const state = shareState(share);
   row.innerHTML =
     (share.kind === "request" ? REQUEST_ICON : FILE_ICON) +
@@ -1712,8 +1728,17 @@ function shareRow(share: ShareItem): HTMLElement {
   label(row.querySelector<HTMLButtonElement>(".copy")!, t("shares.copyLabel"));
   label(row.querySelector<HTMLButtonElement>(".insert")!, t("shares.insertLabel"));
   label(row.querySelector<HTMLButtonElement>(".revoke")!, t("shares.revokeLabel"));
-  row.querySelector<HTMLElement>(".share-name")!.textContent = share.name;
-  row.querySelector<HTMLElement>(".share-name")!.title = share.name;
+  // Too long for the line: shortened in the middle ("cloudshare-icon-va…nten.png"), so the extension stays visible.
+  const [start, end] = nameParts(share.name);
+  const nameStart = document.createElement("span");
+  nameStart.className = "name-start";
+  nameStart.textContent = start;
+  const nameEnd = document.createElement("span");
+  nameEnd.className = "name-end";
+  nameEnd.textContent = end;
+  const name = row.querySelector<HTMLElement>(".share-name")!;
+  name.replaceChildren(nameStart, nameEnd);
+  name.title = share.name;
 
   // "15.11. – 29.11.2026 · Kennwort per SMS an +49 170 •••• 72 – übermittelt": the word "Kennwort" only once.
   const period = row.querySelector<HTMLElement>(".share-period")!;
@@ -1799,7 +1824,7 @@ function shareRow(share: ShareItem): HTMLElement {
         { method: "DELETE" },
         await getToken(),
       );
-      row.remove();
+      document.querySelectorAll(`.share[data-id="${CSS.escape(share.id)}"]`).forEach((other) => other.remove());
       // A revoked link counts as expired: the server moved the file to the trash or scheduled it (CLEANUP_AFTER_DAYS).
       const fate =
         share.kind === "request"
@@ -1892,21 +1917,18 @@ async function loadShares() {
   sharesLoadedAt = Date.now();
   const shares = (await api<ShareItem[]>("/api/shares", {}, await getToken())).filter(isValid);
   if (readMode) {
-    // The links of the mail being read on top, the others below.
+    // "Diese Nachricht": the links of the mail being read; "Meine Freigaben": all of them.
     const tokens = await mailTokens();
-    const inMail = (share: ShareItem) => tokens.has(shareToken(share.url));
-    mailShares.replaceChildren(...shares.filter(inMail).map(shareRow));
-    sharesList.replaceChildren(...shares.filter((share) => !inMail(share)).map(shareRow));
-  } else {
-    sharesList.replaceChildren(...shares.map(shareRow));
+    mailShares.replaceChildren(...shares.filter((share) => tokens.has(shareToken(share.url))).map(shareRow));
   }
+  sharesList.replaceChildren(...shares.map(shareRow));
   renderEmptyLists();
 }
 
 /** Back in the pane (other window, other app): fresh download and password states, unless a panel is open. */
 function reloadSharesOnReturn() {
   const panelOpen = document.querySelector(".password-panel:not([hidden])") !== null;
-  if (currentTab !== "shares" || helpToggle.getAttribute("aria-expanded") === "true" || panelOpen) return;
+  if (currentTab === "send" || helpToggle.getAttribute("aria-expanded") === "true" || panelOpen) return;
   if (document.visibilityState !== "visible" || Date.now() - sharesLoadedAt < 10_000) return;
   loadShares().catch(() => undefined);
 }
@@ -1915,7 +1937,7 @@ document.addEventListener("visibilitychange", reloadSharesOnReturn);
 
 /** "Noch keine Freigaben" / "keine Links in dieser Nachricht" when a list is (or became) empty. */
 function renderEmptyLists() {
-  noShares.hidden = sharesList.childElementCount > 0 || mailShares.childElementCount > 0;
+  noShares.hidden = sharesList.childElementCount > 0;
   mailNone.hidden = mailShares.childElementCount > 0;
 }
 
@@ -1930,14 +1952,17 @@ async function mailTokens(): Promise<Set<string>> {
   return new Set(Array.from(html.matchAll(/\/s\/([A-Za-z0-9]+)/g), (match) => match[1]));
 }
 
-/** Read mode: no "Senden" tab, the shares (and "Hilfe"); follows the selected mail while the pane is pinned. */
+/**
+ * Read mode: tabs "Diese Nachricht" (the links of the mail being read, in place of "Senden") and "Meine Freigaben"
+ * (plus "Hilfe"); follows the selected mail while the pane is pinned.
+ */
 async function startReadView() {
   tabSend.hidden = true;
-  selectTab("shares", false); // loaded as soon as the connection is known (showConnection)
-  mailSection.hidden = false;
+  tabMail.hidden = false;
+  selectTab("mail", false); // loaded as soon as the connection is known (showConnection)
   try {
     Office.context.mailbox.addHandlerAsync(Office.EventType.ItemChanged, () => {
-      loadShares().catch((err) => setStatus(errorMessage(err), "error"));
+      selectTab("mail"); // another mail: its links
     });
   } catch {
     // Pinning is not available in every Outlook version – the pane then closes with the mail anyway.

@@ -319,6 +319,29 @@ export class NextcloudClient {
     // The folder itself is one response and one collection.
     return Math.max(0, responses - folders);
   }
+
+  /** Names of the files directly in a folder (no subfolders), e.g. uploads received through an upload link. */
+  async listFiles(uid: string, segments: string[]): Promise<string[] | null> {
+    const res = await this.request("PROPFIND", this.davFiles(uid, segments), {
+      Depth: "1",
+      "Content-Type": "application/xml",
+    }, '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>');
+    if (!res.ok) return null;
+    const xml = await res.text();
+    const names: string[] = [];
+    for (const response of xml.split(/<d:response>/).slice(1)) {
+      if (/<d:collection\s*\/>/.test(response)) continue; // the folder itself or a subfolder
+      const href = /<d:href>([^<]+)<\/d:href>/.exec(response)?.[1];
+      const last = href?.replace(/\/+$/, "").split("/").pop();
+      if (!last) continue;
+      try {
+        names.push(decodeURIComponent(last));
+      } catch {
+        names.push(last);
+      }
+    }
+    return names;
+  }
 }
 
 export interface PublicShare {

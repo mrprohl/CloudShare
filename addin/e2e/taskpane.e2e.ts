@@ -446,6 +446,8 @@ test("Kennwort per SMS: number required, normalized to E.164 and stored on the j
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)], config: { smsEnabled: true, smsDefaultCountry: "49" } });
   await page.selectOption("#password-channel", "sms");
   await expect(page.locator("#password-sms")).toBeVisible();
+  // Both ways of writing a number are accepted – both are shown as examples.
+  await expect(page.locator("#password-sms")).toHaveAttribute("placeholder", "0170 1234567 oder +49 170 1234567");
   await expect(page.locator("#password-to-hint")).toContainText("in einer SMS an diese Nummer");
 
   await page.click("#submit");
@@ -1052,40 +1054,51 @@ test("Meine Freigaben: Als Link einfügen creates a new link with this mail's pa
 const SENT_MAIL = '<p>Hallo,</p><a href="https://cloud.example.com/s/a">Herunterladen</a>' +
   '<a href="https://cloud.example.com/s/c">Dateien hochladen</a><a href="https://example.org/s/zzz">Shop</a>';
 
-test("reading a mail: its links on top, the other shares below, nothing to insert", async ({ page }) => {
+test("reading a mail: tabs 'Diese Nachricht' and 'Meine Freigaben', nothing to insert", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: SHARES, readBody: SENT_MAIL });
-  await expect(page.locator("#tab-send")).toBeHidden(); // no "Senden" tab when reading
-  await expect(page.locator("#tab-shares")).toHaveAttribute("aria-selected", "true");
+  // No "Senden" when reading: "Diese Nachricht" (opened first) takes its place, "Meine Freigaben" as when writing.
+  await expect(page.locator("#tab-send")).toBeHidden();
+  await expect(page.locator(".tabs [role=tab]:visible")).toHaveText(["Diese Nachricht", "Meine Freigaben"]);
+  await expect(page.locator("#tab-mail")).toHaveAttribute("aria-selected", "true");
   await expect(page.locator("#help-toggle")).toBeVisible(); // the guide is there too
   await expect(page.locator("#panel-send")).toBeHidden();
+  await expect(page.locator("#panel-shares")).toBeHidden();
   const inMail = page.locator("#mail-shares .share");
   await expect(inMail).toHaveCount(2);
   await expect(inMail.nth(0).locator(".share-name")).toHaveText("Präsentation.pptx");
   await expect(inMail.nth(0).locator(".share-password")).toContainText("zugestellt um");
   await expect(inMail.nth(1).locator(".share-name")).toHaveText("Upload-Link");
-  await expect(page.locator("#shares .share")).toHaveCount(1); // Angebot.pdf (Alt.zip has expired)
   await expect(page.locator("#mail-none")).toBeHidden();
   await expect(page.locator(".share .insert").first()).toBeHidden(); // a mail being read cannot take a link
+  await expect(page.locator("#panel-mail")).not.toContainText("Weitere Freigaben");
   await expectAccessible(page);
   await expectNoHorizontalScroll(page);
   await shot(page, "read-view");
-  expect(calls.filter((c) => c.path === "/api/shares")).toHaveLength(1);
 
-  // Pinned pane, the user selects another mail without CloudShare links.
+  // "Meine Freigaben": every valid link, those of this mail included (Alt.zip has expired).
+  await page.click("#tab-shares");
+  await expect(page.locator("#panel-mail")).toBeHidden();
+  await expect(page.locator("#shares .share .share-name")).toHaveText(["Präsentation.pptx", "Angebot.pdf", "Upload-Link"]);
+  await expectAccessible(page);
+
+  // Revoked in one list, gone from both.
+  await page.click("#tab-mail");
+  const revoke = page.locator("#mail-shares .share").nth(1).locator(".revoke");
+  await revoke.click();
+  await revoke.click();
+  await expect(page.locator("#mail-shares .share")).toHaveCount(1);
+  await expect(page.locator("#shares .share")).toHaveCount(2);
+  expect(calls.filter((c) => c.method === "DELETE").map((c) => c.path)).toEqual(["/api/shares/13"]);
+
+  // Pinned pane, the user selects another mail without CloudShare links: back to "Diese Nachricht".
+  await page.click("#tab-shares");
   await page.evaluate(() => {
     (window as unknown as { __officeConfig: { readBody: string } }).__officeConfig.readBody = "<p>Keine Links</p>";
     (window as unknown as { __officeHandlers: Record<string, () => void> }).__officeHandlers.olkItemSelectedChanged();
   });
+  await expect(page.locator("#tab-mail")).toHaveAttribute("aria-selected", "true");
   await expect(page.locator("#mail-none")).toHaveText("Diese Nachricht enthält keine CloudShare-Links von Ihnen.");
   await expect(page.locator("#mail-shares .share")).toHaveCount(0);
-  await expect(page.locator("#shares .share")).toHaveCount(3);
-
-  // Revoking works here too.
-  const revoke = page.locator("#shares .share").nth(1).locator(".revoke");
-  await revoke.click();
-  await revoke.click();
-  await expect(page.locator("#shares .share")).toHaveCount(2);
-  expect(calls.filter((c) => c.method === "DELETE").map((c) => c.path)).toEqual(["/api/shares/12"]);
 });
 
 test("reading a mail before connecting Nextcloud: connect view, then the shares", async ({ page }) => {
@@ -1176,6 +1189,31 @@ test("narrow taskpane (320 px): no horizontal scrolling", async ({ page }) => {
   await shot(page, "send-320px");
 });
 
+test("Meine Freigaben at 320 px: a long name is shortened in the middle, the icons stay in its line", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  const long = "cloudshare-icon-varianten-mit-sehr-langem-namen und Leerzeichen-final.png";
+  await openTaskpane(page, { shares: [{ ...SHARES[0], name: long, passwordAvailable: true }, SHARES[1]] });
+  await page.click("#tab-shares");
+  const row = page.locator("#shares .share").first();
+  const name = row.locator(".share-name");
+  await expect(name).toHaveText(long); // the whole name for screen readers …
+  await expect(name).toHaveAttribute("title", long); // … and as tooltip
+  await expect(name.locator(".name-end")).toHaveText("inal.png"); // the extension stays visible
+  const start = name.locator(".name-start");
+  expect(await start.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true); // the "…" is in the start
+  // Icons in the line of the name, not wrapped below it.
+  const nameBox = (await name.boundingBox())!;
+  for (const icon of ["copy", "show-password", "insert", "revoke"]) {
+    const box = (await row.locator(`.${icon}`).boundingBox())!;
+    expect(Math.abs(box.y + box.height / 2 - (nameBox.y + nameBox.height / 2))).toBeLessThan(6);
+    expect(box.x).toBeGreaterThan(nameBox.x + nameBox.width - 1);
+  }
+  // A short name is not split.
+  await expect(page.locator("#shares .share").nth(1).locator(".name-end")).toHaveText("");
+  await expectNoHorizontalScroll(page);
+  await shot(page, "shares-320px-long-name");
+});
+
 // --- README pictures (English) -------------------------------------------------------------------------------------
 // The README shows the pane in English: same mocks, texts from locales/en.json (attachments "readme-*").
 
@@ -1229,7 +1267,8 @@ test.describe("README pictures (English)", () => {
   test("Reading a sent mail", async ({ page }) => {
     await openTaskpane(page, { lang: "en", shares: SHARES_EN, config: README_CONFIG, readBody: SENT_MAIL });
     await expect(page.locator("#mail-shares .share")).toHaveCount(2);
-    await expect(page.locator("#mail-heading")).toHaveText("In this message");
+    await expect(page.locator("#tab-mail")).toHaveText("This message");
+    await expect(page.locator("#tab-shares")).toHaveText("My shares");
     await readmeShot(page, "read");
   });
 

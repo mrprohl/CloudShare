@@ -21,6 +21,7 @@ Object.assign(process.env, {
   // Three spellings on purpose: a name, an ISO alpha-3 code and a calling code.
   SMS_ALLOWED_COUNTRIES: "Deutschland; AUT, +41",
   DOWNLOAD_NOTICE: "true",
+  UPLOAD_NOTICE: "true",
   TEMPLATES_FILE: path.join(tmpdir(), "cloudshare-no-templates.json"),
   DATA_DIR: mkdtempSync(path.join(tmpdir(), "cloudshare-test-")),
 });
