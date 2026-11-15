@@ -329,7 +329,7 @@
     "sso.13007": "Outlook hat kein Anmeldetoken für CloudShare erhalten. Bitte die IT informieren (App-Registrierung: Anwendungs-ID-URI, autorisierte Clientanwendungen, Administratorzustimmung).",
     "sso.13008": "Eine Anmeldung läuft bereits. Bitte kurz warten und erneut versuchen.",
     "sso.13010": "Die Anmeldung ist in diesem Browser blockiert (Sicherheitszonen). Bitte Outlook-Seite und Anmeldeseite derselben Zone zuordnen.",
-    "sso.13012": "Die Anmeldung wird in dieser Umgebung nicht unterstützt (Add-in muss über das Admin Center bereitgestellt sein).",
+    "sso.13012": "Die Anmeldung wird in dieser Outlook-Umgebung nicht unterstützt.",
     "sso.13013": "Zu viele Anmeldeversuche. Bitte kurz warten und erneut versuchen."
   },
   "server": {
