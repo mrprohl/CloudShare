@@ -755,13 +755,15 @@ describe("rate limiting", () => {
 });
 
 describe("showing and sending the password again", () => {
+  /** The sent mail went to Erika, Cc to her boss and Bcc to the archive. */
+  const DISTRIBUTION = { to: ["erika@example.test"], cc: ["chef@example.test"], bcc: ["archiv@example.test"] };
   const share = { id: "41", path: "/CloudShare/2026-11-13_ab/vertrag.pdf", url: "https://cloud.example.test/s/tokvertrag",
     expiration: "2099-12-01", sharedAt: Date.now(), fileId: 41, isFolder: false, permissions: 1, label: "", size: 1, hasPassword: true };
   const register = async () => {
     const { registerPasswordRef } = await import("../src/passwordRefs.js");
     await registerPasswordRef({
       owner: "oid-anna", ownerUpn: "anna@example.test", sendId: "send-r1", tokens: ["tokvertrag"], fileNames: ["vertrag.pdf"],
-      keepUntil: Date.now() + 10 * DAY, subject: "Vertrag", mailTo: ["erika@example.test"], sms: "+491701234567",
+      keepUntil: Date.now() + 10 * DAY, subject: "Vertrag", recipients: DISTRIBUTION, sms: "+491701234567",
       maxAccessCount: 3,
     });
   };
@@ -781,7 +783,7 @@ describe("showing and sending the password again", () => {
   it("shows the password only to its sender and only for its links", async () => {
     const res = await app.inject({ method: "GET", url: "/api/shares/41/password", headers: as("anna") });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ password: "KateGeteFi45", mailTo: ["erika@example.test"], sms: "+491701234567" });
+    expect(res.json()).toEqual({ password: "KateGeteFi45", recipients: DISTRIBUTION, otherTo: [], sms: "+491701234567" });
     expect(vi.mocked(vaultwarden.readSendPassword)).toHaveBeenCalledWith("send-r1");
     expect((await app.inject({ method: "GET", url: "/api/shares/41/password", headers: as("bernd") })).statusCode).toBe(404);
     expect((await app.inject({ method: "GET", url: "/api/shares/99/password", headers: as("anna") })).statusCode).toBe(404);
@@ -789,21 +791,37 @@ describe("showing and sending the password again", () => {
     expect(list[0].passwordAvailable).toBe(true);
   });
 
-  it("sends it again as a password mail with a new Send – never the password itself in the mail", async () => {
+  it("sends it again to the recipients of the message like the first time – To, Cc and Bcc as they were", async () => {
     createPasswordSend.mockClear();
-    const res = await resend("anna", { channel: "mail", to: "erika@example.test; chef@example.test" });
+    const res = await resend("anna", { channel: "recipients" });
     expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ channel: "recipients", to: "erika@example.test, chef@example.test" }); // Bcc not shown
     const [, password, maxAccess, days, keepUntil] = createPasswordSend.mock.calls[0];
-    expect([password, maxAccess, days]).toEqual(["KateGeteFi45", 3, 5]);
+    expect([password, maxAccess, days]).toEqual(["KateGeteFi45", 3, 5]); // a new Send with the same password
     expect(Math.round((keepUntil! - Date.now()) / DAY)).toBe(10); // deleted together with the links
+    expect((await sendMail()).mock.calls).toHaveLength(1); // one mail, as the first time
     const [token, recipients, subject, html] = (await sendMail()).mock.calls[0];
     expect(token).toBe("graph-token");
-    expect(recipients).toEqual({ to: ["erika@example.test", "chef@example.test"], cc: [], bcc: [] });
+    expect(recipients).toEqual(DISTRIBUTION);
     expect(subject).toContain("Vertrag");
     expect(html).toContain("https://vault.example.test/#/send/abc");
-    expect(html).not.toContain("KateGeteFi45");
+    expect(html).not.toContain("KateGeteFi45"); // never the password itself
     const { deliveryFor } = await import("../src/deliveries.js");
     expect(deliveryFor("tokvertrag", "oid-anna")).toMatchObject({ channel: "mail", to: "erika@example.test, chef@example.test" });
+  });
+
+  it("sends it again to other addresses, each in a mail of its own – nobody sees the others", async () => {
+    createPasswordSend.mockClear();
+    const res = await resend("anna", { channel: "mail", to: "kollege@example.test; buergerin@example.test" });
+    expect(res.statusCode).toBe(200);
+    expect(createPasswordSend).toHaveBeenCalledOnce();
+    expect((await sendMail()).mock.calls.map((c) => c[1])).toEqual([
+      { to: ["kollege@example.test"], cc: [], bcc: [] },
+      { to: ["buergerin@example.test"], cc: [], bcc: [] },
+    ]);
+    // Suggested again next time.
+    const shown = (await app.inject({ method: "GET", url: "/api/shares/41/password", headers: as("anna") })).json();
+    expect(shown.otherTo).toEqual(["kollege@example.test", "buergerin@example.test"]);
   });
 
   it("sends it again by SMS to a number of the sender's choice", async () => {

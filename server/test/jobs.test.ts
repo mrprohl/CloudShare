@@ -306,9 +306,41 @@ describe("password by SMS, deliveries and download notices", () => {
     // The password can be sent again later; the mail's recipients are suggested.
     expect(passwordRefFor("tok-mail-2", "oid")).toMatchObject({
       sendId: "send-a", tokens: ["tok-mail-1", "tok-mail-2"], fileNames: ["a.pdf", "b.png"],
-      mailTo: ["erika@example.test", "chef@example.test"], maxAccessCount: 3,
+      recipients: { to: ["erika@example.test"], cc: ["chef@example.test"], bcc: [] }, maxAccessCount: 3,
     });
     expect(passwordRefFor("tok-mail-2", "someone-else")).toBeNull();
+  });
+
+  it("sends the password mail with the distribution of the sent mail – To, Cc and Bcc as they were", async () => {
+    const id = await createSeparateJob("oid", "max@example.test", {
+      step: "s1", fileNames: ["a.pdf"], sendUrl: "https://vault/#/send/a", sendId: "send-bcc", maxAccessCount: 3,
+      shares: [share("tok-bcc", "a.pdf")],
+    });
+    await arm(id);
+    const distribution = { to: ["erika@example.test"], cc: ["chef@example.test"], bcc: ["archiv@example.test", "buergerin@example.test"] };
+    sentOnlyFor(id, { ...sentMessage, recipients: distribution });
+
+    await checkJobs(quietLog());
+
+    expect(sendMail).toHaveBeenCalledOnce();
+    expect(sendMail.mock.calls[0][1]).toEqual(distribution); // Bcc recipients get it too, still hidden from the others
+    expect(deliveryFor("tok-bcc", "oid")?.to).toBe("erika@example.test, chef@example.test"); // Bcc not shown
+    expect(passwordRefFor("tok-bcc", "oid")?.recipients).toEqual(distribution); // sent again exactly like this
+  });
+
+  it("remembers another address as such, for sending the password again the same way", async () => {
+    const id = await createSeparateJob("oid", "max@example.test", {
+      step: "s1", fileNames: ["a.pdf"], sendUrl: "https://vault/#/send/a", sendId: "send-other", maxAccessCount: 3,
+      shares: [share("tok-other", "a.pdf")],
+    });
+    await setJobPasswordTo(id, "kollege@example.test");
+    await arm(id);
+    sentOnlyFor(id);
+
+    await checkJobs(quietLog());
+
+    expect(sendMail.mock.calls[0][1]).toEqual({ to: ["kollege@example.test"], cc: [], bcc: [] });
+    expect(passwordRefFor("tok-other", "oid")).toMatchObject({ otherTo: ["kollege@example.test"], recipients: sentMessage.recipients });
   });
 
   it("links without password: no password mail, no SMS – only the download confirmation once the mail was sent", async () => {

@@ -278,18 +278,22 @@ and Revoke work as in the compose pane; Insert is hidden.
 
 Once a step's mail was sent, the watcher records where its password lives: `passwordRefs.ts`,
 `/data/password-refs.json` (encrypted like the jobs) with the **Send ID** – never the password –, the links' tokens,
-file names, subject, where the password went (addresses, SMS number) and the sender. It is kept until the links
+file names, subject, the distribution of the sent mail (To, Cc, Bcc), another address or SMS number the password
+went to, and the sender. It is kept until the links
 expire (`keepUntil`, the Send's deletion date) and only ever returned to its owner.
 
 In "My shares" and in the read mode (2.9) such links get **Password** (`passwordAvailable` in `GET /api/shares`):
 
 - `GET /api/shares/:id/password` – the server reads the password from the Send with the service account
   (`readSendPassword`; also after the recipients' access ended) and returns it with the suggested targets.
-- `POST /api/shares/:id/password/send` – `{ channel: "sms", to }`: SMS to that number (same template and daily limit
-  as the first one); `{ channel: "mail", to }`: a **new** Send with the same password (default access and days,
-  deleted with the links) and a password mail to up to 20 addresses, sent as the user via Graph (delegated, like the
-  first one, also from a shared mailbox). The mail never contains the password itself. The delivery shown in
-  "My shares" is updated.
+- `POST /api/shares/:id/password/send` – the same ways as the first time (the pane preselects the way it went then):
+  `{ channel: "recipients" }` sends the password mail with the **distribution of the sent mail** – To, Cc and Bcc as
+  they were (`PasswordRef.recipients`, taken from "Sent Items"; older entries fall back to `mailTo`);
+  `{ channel: "mail", to }` sends it to up to 20 other addresses, **each in a mail of its own**, so nobody sees the
+  others (remembered in `otherTo`); `{ channel: "sms", to }` sends an SMS to that number (same template and daily
+  limit as the first one). A mail gets a **new** Send with the same password (default access and days, deleted with
+  the links) and goes out as the user via Graph (delegated, like the first one, also from a shared mailbox); it never
+  contains the password itself. "My shares" shows the new delivery – To and Cc, never Bcc.
 
 Revoking the last link of a step deletes its Sends at once (`forgetPasswordToken`); otherwise Vaultwarden deletes them
 when the links expire. Steps sent before this version have no entry – their password cannot be shown.
@@ -304,7 +308,7 @@ when the links expire. Steps sent before this version have no entry – their pa
 | `/data/password-jobs.json` | Password jobs: owner, sender name and department, file names, Sends and links per step (`separate`), `passwordTo` / `passwordSms`, armed Graph token | 7 days |
 | `/data/cleanup.json` | Upload folders with expiry date per owner | Until deleted |
 | `/data/deliveries.json` | Per link: channel, masked recipient, SMS message ID and status | 120 days |
-| `/data/password-refs.json` | Per sent step: Send ID (never the password), link tokens, file names, subject, where the password went (addresses, SMS number), sender | Until the links expire |
+| `/data/password-refs.json` | Per sent step: Send ID (never the password), link tokens, file names, subject, distribution of the sent mail (To, Cc, Bcc), other address / SMS number, sender | Until the links expire |
 | `/data/download-notices.json` | Links waiting for their first download (sender, subject, recipients, expiry) | Until downloaded / expired |
 | Memory (`store.ts`) | Running uploads (12 h), pending Nextcloud logins (20 min) | Lost on restart → single instance only |
 | `roamingSettings` | Last server configuration (for the handlers) | Per mailbox |

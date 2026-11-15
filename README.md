@@ -117,9 +117,10 @@ Confidential messages and upload links always have a password, so "No password" 
 valid, whether they have a password, and how often they were downloaded (or how many files were received).
 
 - **Copy** – copies the link.
-- **Password** – for links with password, until they expire: shows the password and sends it **again** – by **SMS**
-  to a number or as a **password mail** to addresses (suggested: where it went the first time). The mail again only
-  contains a link to the password, never the password itself.
+- **Password** – for links with password, until they expire: shows the password and sends it **again**, the same
+  ways as the first time (preselected: the way it went then): to the **recipients of the message** – To, Cc and Bcc
+  exactly as in the sent mail –, to **other addresses** (each gets a mail of its own, nobody sees the others) or by
+  **SMS**. A mail again only contains a link to the password, never the password itself.
 - **Insert** – inserts the file again into the mail you are writing, as a *new* link with a new password.
 - **Revoke** – ends the link at once (two clicks). The file then counts as expired and is moved to your
   Nextcloud trash.
