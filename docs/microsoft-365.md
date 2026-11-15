@@ -197,9 +197,10 @@ Notes:
 
 ## 5. Optional: application permission for the download confirmation
 
-Only for `DOWNLOAD_NOTICE=true` and `UPLOAD_NOTICE=true`: the confirmation mails are sent days later, when the user's
-delegated token has long expired, so CloudShare uses its own **application** permission. With it CloudShare also tells the sender when seven.io
-reports a password SMS as not delivered (without it, only "My shares" shows that).
+Only for `DOWNLOAD_NOTICE=true`, `UPLOAD_NOTICE=true` and `SMS_NOTICE=true`: these mails are sent days later, when the
+user's delegated token has long expired, so CloudShare uses its own **application** permission (download
+confirmation, files received through an upload link, password SMS reported as not delivered – without it, only
+"My shares" shows these).
 
 1. App registration → *API permissions* → *Add a permission* → *Microsoft Graph* → **Application permissions** →
    `Mail.Send` → *Grant admin consent*.
@@ -216,7 +217,8 @@ reports a password SMS as not delivered (without it, only "My shares" shows that
 3. Remove the tenant-wide `Mail.Send` **application** permission from the app registration again (step 1), so only
    the scoped RBAC assignment applies. Check with
    `Test-ServicePrincipalAuthorization -Identity <client-id> -Resource <mailbox>`.
-4. Set `DOWNLOAD_NOTICE=true` and/or `UPLOAD_NOTICE=true` in `env/cloudshare.env` and update the stack.
+4. Set `DOWNLOAD_NOTICE=true`, `UPLOAD_NOTICE=true` and/or `SMS_NOTICE=true` in `env/cloudshare.env` and update
+   the stack.
 
 ## 6. Checking the setup
 

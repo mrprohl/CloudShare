@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { callingCode, countryName, parseCountries, resolveCountry } from "../src/countries.js";
-import { config, envRegex } from "../src/config.js";
+import { config, envFlag, envRegex } from "../src/config.js";
 import {
   mapReportStatus,
   maskPhone,
@@ -104,6 +104,15 @@ describe("SMS (seven.io)", () => {
 
   it.each(["", "12", "abc", "+0123456789", "0170 12", "+49 170 1234567 99999"])("rejects %j", (input) => {
     expect(normalizePhone(input, "49")).toBeNull();
+  });
+
+  it("SMS_NOTICE switches the note about an undelivered SMS; unset it follows DOWNLOAD_NOTICE as before", () => {
+    expect(config.smsNotice).toBe(true); // SMS_NOTICE=true in the tests
+    expect(envFlag("SMS_NOTICE", "DOWNLOAD_NOTICE", { SMS_NOTICE: "true" })).toBe(true);
+    expect(envFlag("SMS_NOTICE", "DOWNLOAD_NOTICE", { SMS_NOTICE: "false", DOWNLOAD_NOTICE: "true" })).toBe(false);
+    expect(envFlag("SMS_NOTICE", "DOWNLOAD_NOTICE", { DOWNLOAD_NOTICE: "true" })).toBe(true); // older setups
+    expect(envFlag("SMS_NOTICE", "DOWNLOAD_NOTICE", {})).toBe(false);
+    expect(envFlag("UPLOAD_NOTICE", undefined, { DOWNLOAD_NOTICE: "true" })).toBe(false); // no fallback
   });
 
   it("masks numbers for logs and the status line", () => {

@@ -1054,11 +1054,11 @@ test("Meine Freigaben: Als Link einfügen creates a new link with this mail's pa
 const SENT_MAIL = '<p>Hallo,</p><a href="https://cloud.example.com/s/a">Herunterladen</a>' +
   '<a href="https://cloud.example.com/s/c">Dateien hochladen</a><a href="https://example.org/s/zzz">Shop</a>';
 
-test("reading a mail: tabs 'Diese Nachricht' and 'Meine Freigaben', nothing to insert", async ({ page }) => {
+test("reading a mail: tabs 'Nachricht' and 'Meine Freigaben', nothing to insert", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: SHARES, readBody: SENT_MAIL });
-  // No "Senden" when reading: "Diese Nachricht" (opened first) takes its place, "Meine Freigaben" as when writing.
+  // No "Senden" when reading: "Nachricht" (opened first) takes its place, "Meine Freigaben" as when writing.
   await expect(page.locator("#tab-send")).toBeHidden();
-  await expect(page.locator(".tabs [role=tab]:visible")).toHaveText(["Diese Nachricht", "Meine Freigaben"]);
+  await expect(page.locator(".tabs [role=tab]:visible")).toHaveText(["Nachricht", "Meine Freigaben"]);
   await expect(page.locator("#tab-mail")).toHaveAttribute("aria-selected", "true");
   await expect(page.locator("#help-toggle")).toBeVisible(); // the guide is there too
   await expect(page.locator("#panel-send")).toBeHidden();
@@ -1090,7 +1090,7 @@ test("reading a mail: tabs 'Diese Nachricht' and 'Meine Freigaben', nothing to i
   await expect(page.locator("#shares .share")).toHaveCount(2);
   expect(calls.filter((c) => c.method === "DELETE").map((c) => c.path)).toEqual(["/api/shares/13"]);
 
-  // Pinned pane, the user selects another mail without CloudShare links: back to "Diese Nachricht".
+  // Pinned pane, the user selects another mail without CloudShare links: back to "Nachricht".
   await page.click("#tab-shares");
   await page.evaluate(() => {
     (window as unknown as { __officeConfig: { readBody: string } }).__officeConfig.readBody = "<p>Keine Links</p>";
@@ -1189,6 +1189,19 @@ test("narrow taskpane (320 px): no horizontal scrolling", async ({ page }) => {
   await shot(page, "send-320px");
 });
 
+test("reading a mail at 320 px: the tab names stay on one line", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await openTaskpane(page, { shares: SHARES, readBody: SENT_MAIL });
+  for (const id of ["#tab-mail", "#tab-shares"]) {
+    const tab = page.locator(id);
+    await expect(tab).toBeVisible();
+    expect((await tab.boundingBox())!.height).toBeLessThan(50); // one line of 20 px plus padding, not two
+  }
+  await expect(page.locator("#tab-mail")).toHaveAttribute("title", "Nachricht"); // full name if ever shortened
+  await expectNoHorizontalScroll(page);
+  await shot(page, "read-320px");
+});
+
 test("Meine Freigaben at 320 px: a long name is shortened in the middle, the icons stay in its line", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   const long = "cloudshare-icon-varianten-mit-sehr-langem-namen und Leerzeichen-final.png";
@@ -1267,7 +1280,7 @@ test.describe("README pictures (English)", () => {
   test("Reading a sent mail", async ({ page }) => {
     await openTaskpane(page, { lang: "en", shares: SHARES_EN, config: README_CONFIG, readBody: SENT_MAIL });
     await expect(page.locator("#mail-shares .share")).toHaveCount(2);
-    await expect(page.locator("#tab-mail")).toHaveText("This message");
+    await expect(page.locator("#tab-mail")).toHaveText("Message");
     await expect(page.locator("#tab-shares")).toHaveText("My shares");
     await readmeShot(page, "read");
   });

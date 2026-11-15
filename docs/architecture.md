@@ -202,8 +202,9 @@ wins) – Nextcloud's housekeeping deletes expired shares, so the date could not
     the step counts as done (no retry of the SMS on every pass).
   - seven.io reports it later as not delivered: delivery reports arrive at `/webhooks/seven` (secret in the query,
     compared in constant time, idempotent, webhook and classic form callback) and update `deliveries.ts`; a newly
-    failed SMS triggers the note with CloudShare's app token (`sendMailAsApp`) – only with `DOWNLOAD_NOTICE=true`
-    (application permission `Mail.Send`), otherwise "My shares" shows it only.
+    failed SMS triggers the note with CloudShare's app token (`sendMailAsApp`) – only with `SMS_NOTICE=true`
+    (application permission `Mail.Send`; unset it follows `DOWNLOAD_NOTICE`, `envFlag`), otherwise "My shares"
+    shows it only.
 
 How the password of each link went out (channel, masked recipient, SMS status) is shown in "My shares".
 
@@ -285,7 +286,7 @@ test checks the German texts in the running stack.
 
 The manifest also adds the CloudShare button to the ribbon of a mail being **read** (`MessageReadCommandSurface`,
 pinnable via `SupportsPinning`; legacy `ItemRead` form for older clients). It opens `taskpane.html?view=read`: no
-"Send" tab; the tabs are "This message" (`#tab-mail`, opened first and again when a pinned pane moves to another mail:
+"Send" tab; the tabs are "Message" (`#tab-mail`, opened first and again when a pinned pane moves to another mail:
 the links of that mail) and "My shares" (the same list as while writing). A link revoked in one list
 disappears from both.
 
