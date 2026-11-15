@@ -78,6 +78,10 @@ function validateLevel(level: unknown, where: string, warn: (msg: string) => voi
         continue;
       }
       if (!isGsm(value)) warn(`templates: ${where}.sms_template has non-GSM characters – the SMS is limited to 70 characters`);
+      // Phones wrap long lines and may hyphenate the password where they do ("KateGete-Fi45"), so it is copied wrong.
+      if (!/(^|\n)\{password\}/.test(value)) {
+        warn(`templates: ${where}.sms_template: put {password} on a line of its own ("…:\\n{password}") – phones may hyphenate it where they wrap the line`);
+      }
       // 12 characters for the password, about 25 for a sender name.
       const estimate = gsmLength(value.replace("{password}", "x".repeat(12)).replace("{sender_name}", "x".repeat(25)));
       if (estimate > 160) warn(`templates: ${where}.sms_template is about ${estimate} characters – billed as several SMS`);

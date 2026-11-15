@@ -59,7 +59,7 @@ describe("language files", () => {
 
   it.each(languages)("%s has a usable SMS text", (lang) => {
     const sms = loadLocale(lang).templates.sms_template;
-    expect(sms).toContain("{password}");
+    expect(sms).toContain("\n{password}"); // a line of its own: phones may hyphenate a wrapped password
     expect(isGsm(sms)).toBe(true);
     expect(gsmLength(sms.replace("{password}", "x".repeat(12)).replace("{sender_name}", "x".repeat(25)))).toBeLessThanOrEqual(160);
     expect(Object.keys(loadLocale(lang).templates).sort()).toEqual(Object.keys(TEMPLATE_FIELDS).sort());
@@ -139,7 +139,7 @@ describe("i18n", () => {
   it("fills the add-in files at startup", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "cloudshare-public-"));
     mkdirSync(path.join(dir, "assets"));
-    writeFileSync(path.join(dir, "taskpane.html"), '<html lang="%%LANG%%"><button title="%%t:addin.shares.refresh%%">%%t:addin.submit.button%%</button></html>');
+    writeFileSync(path.join(dir, "taskpane.html"), '<html lang="%%LANG%%"><button title="%%t:addin.tabs.shares%%">%%t:addin.submit.button%%</button></html>');
     writeFileSync(path.join(dir, "manifest.xml"), '<DefaultLocale>%%LOCALE%%</DefaultLocale><Description DefaultValue="%%t:manifest.description%%"/>');
     // Minified bundle: the marker is a plain string literal.
     writeFileSync(path.join(dir, "commands.js"), 'var bundle="%%CLOUDSHARE_I18N%%";result=JSON.parse(bundle);');
@@ -148,7 +148,7 @@ describe("i18n", () => {
     expect(localizePublic(dir, english, "en")).toBe(3);
 
     const html = readFileSync(path.join(dir, "taskpane.html"), "utf8");
-    expect(html).toBe('<html lang="en"><button title="Refresh">Insert &lt;&quot;link&quot;&gt; &amp; go</button></html>');
+    expect(html).toBe('<html lang="en"><button title="My shares">Insert &lt;&quot;link&quot;&gt; &amp; go</button></html>');
     expect(readFileSync(path.join(dir, "manifest.xml"), "utf8")).toContain("<DefaultLocale>en-GB</DefaultLocale>");
     const js = readFileSync(path.join(dir, "commands.js"), "utf8");
     expect(js).not.toContain("%%");

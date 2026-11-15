@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // The watcher talks to Graph only through these two functions – replace them with test doubles.
 vi.mock("../src/graph.js", () => ({
@@ -15,8 +15,9 @@ vi.mock("../src/sms.js", async (importOriginal) => ({
   sendSms: vi.fn(async () => "77000001"),
 }));
 
+import type { UnsentLinks } from "../src/jobs.js";
 const graph = await import("../src/graph.js");
-const { addFileToJob, addFileToPart, addNoticeShare, addSeparatePart, armJob, checkJobs, createJob, createNoticeJob, createSeparateJob, getJob, setJobPasswordTo } =
+const { addFileToJob, addFileToPart, addNoticeShare, addSeparatePart, armJob, checkJobs, createJob, createNoticeJob, createSeparateJob, getJob, setJobPasswordTo, onUnsentExpired, unsentShares } =
   await import("../src/jobs.js");
 const { quietLog } = await import("./helpers.js");
 const vaultwarden = await import("../src/vaultwarden.js");
@@ -373,5 +374,97 @@ describe("password by SMS, deliveries and download notices", () => {
     const notices = new Map(pendingNotices());
     expect(notices.get("tok-free-1")).toMatchObject({ fileName: "frei.pdf", subject: "Unterlagen" });
     expect(notices.get("tok-free-2")?.fileName).toBe("frei2.pdf");
+  });
+});
+
+describe("mails that were never sent", () => {
+  const share = (token: string) => ({ token, name: `${token}.pdf`, expireDate: "2099-12-01" });
+  const DAY = 86_400_000;
+  /** Runs the watcher as if `days` had passed – every job created so far is then expired. */
+  const checkAfter = async (days: number, log = quietLog()) => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now + days * DAY);
+    try {
+      await checkJobs(log);
+    } finally {
+      clock.mockRestore();
+    }
+    return log;
+  };
+  const handler = vi.fn<(links: UnsentLinks, log: unknown) => Promise<void>>();
+
+  beforeEach(() => {
+    handler.mockReset().mockResolvedValue(undefined);
+    onUnsentExpired(handler);
+  });
+  afterEach(() => onUnsentExpired(undefined));
+
+  it("lists the links of a draft not sent yet, with the day they are revoked", async () => {
+    const id = await createSeparateJob("oid-unsent", "max@example.test", {
+      step: "s1", fileNames: ["u1.pdf"], sendUrl: "https://vault/#/send/u1", sendId: "send-u1", maxAccessCount: 3, shares: [share("tok-u1")],
+    });
+    const unsent = unsentShares("oid-unsent");
+    expect(unsent.get("tok-u1")).toBe(getJob(id)!.expiresAt);
+    expect(unsentShares("someone-else").size).toBe(0);
+
+    await arm(id); // "Send" pressed: on its way
+    expect(unsentShares("oid-unsent").has("tok-u1")).toBe(false);
+  });
+
+  it("keeps a draft alive while links are added to it", async () => {
+    const id = await createSeparateJob("oid-unsent", "max@example.test", {
+      step: "s1", fileNames: ["u2.pdf"], sendUrl: "https://vault/#/send/u2", maxAccessCount: 3, shares: [share("tok-u2")],
+    });
+    getJob(id)!.expiresAt = Date.now() + 60_000; // created long ago
+    await addFileToPart(id, "s1", "u3.pdf", share("tok-u3"));
+    expect(getJob(id)!.expiresAt).toBeGreaterThan(Date.now() + 6 * DAY);
+  });
+
+  it("revokes the links and Sends of a draft that expired without Send ever being pressed", async () => {
+    const id = await createSeparateJob("oid-unsent", "max@example.test", {
+      step: "s1", fileNames: ["u4.pdf"], sendUrl: "https://vault/#/send/u4", sendId: "send-u4", maxAccessCount: 3, shares: [share("tok-u4")],
+    });
+    await addSeparatePart(id, {
+      step: "s2", fileNames: ["u5.pdf"], sendUrl: "https://vault/#/send/u5", sendId: "send-u5", maxAccessCount: 1, shares: [share("tok-u5")],
+    });
+
+    await checkAfter(6); // not expired yet
+    expect(handler.mock.calls.some(([links]) => links.tokens.includes("tok-u4"))).toBe(false);
+
+    await checkAfter(8);
+    const call = handler.mock.calls.find(([links]) => links.tokens.includes("tok-u4"));
+    expect(call?.[0]).toEqual({ owner: "oid-unsent", ownerUpn: "max@example.test", tokens: ["tok-u4", "tok-u5"], sendIds: ["send-u4", "send-u5"] });
+    expect(getJob(id)).toBeUndefined();
+  });
+
+  it("leaves the links alone if Send was pressed (the mail may have gone out unseen) or they have no password", async () => {
+    const armed = await createSeparateJob("oid-unsent", "max@example.test", {
+      step: "s1", fileNames: ["u6.pdf"], sendUrl: "https://vault/#/send/u6", sendId: "send-u6", maxAccessCount: 3, shares: [share("tok-u6")],
+    });
+    await arm(armed, { armedAt: Date.now() - 16 * 60_000 });
+    await checkJobs(quietLog()); // not found in Sent Items → disarmed, but it was armed once
+    const free = await createNoticeJob("oid-unsent", "max@example.test", share("tok-u7"));
+
+    await checkAfter(8);
+    const tokens = handler.mock.calls.flatMap(([links]) => links.tokens);
+    expect(tokens).not.toContain("tok-u6");
+    expect(tokens).not.toContain("tok-u7");
+    expect(getJob(armed)).toBeUndefined();
+    expect(getJob(free)).toBeUndefined();
+  });
+
+  it("tries again later when the links could not be revoked", async () => {
+    const id = await createSeparateJob("oid-unsent", "max@example.test", {
+      step: "s1", fileNames: ["u8.pdf"], sendUrl: "https://vault/#/send/u8", sendId: "send-u8", maxAccessCount: 3, shares: [share("tok-u8")],
+    });
+    handler.mockRejectedValue(new Error("Nextcloud unreachable"));
+    const log = await checkAfter(8);
+    expect(getJob(id)).toBeDefined();
+    expect(log.warn).toHaveBeenCalled();
+
+    handler.mockReset().mockResolvedValue(undefined);
+    await checkAfter(9);
+    expect(handler.mock.calls.some(([links]) => links.tokens.includes("tok-u8"))).toBe(true);
+    expect(getJob(id)).toBeUndefined();
   });
 });

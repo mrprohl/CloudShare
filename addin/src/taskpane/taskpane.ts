@@ -69,6 +69,7 @@ const validitySection = $<HTMLDivElement>("validity-section");
 const validitySummary = $<HTMLSpanElement>("validity-summary");
 const expireField = $<HTMLDivElement>("expire-field");
 const messageDaysField = $<HTMLDivElement>("message-days-field");
+const expireHint = $<HTMLParagraphElement>("expire-hint");
 const tabSend = $<HTMLButtonElement>("tab-send");
 const tabShares = $<HTMLButtonElement>("tab-shares");
 const helpToggle = $<HTMLButtonElement>("help-toggle");
@@ -81,7 +82,6 @@ const mailShares = $<HTMLDivElement>("mail-shares");
 const mailNone = $<HTMLParagraphElement>("mail-none");
 const sharesList = $<HTMLDivElement>("shares");
 const noShares = $<HTMLParagraphElement>("no-shares");
-const refreshSharesButton = $<HTMLButtonElement>("refresh-shares");
 const expireInput = $<HTMLInputElement>("expire");
 const maxAccessInput = $<HTMLInputElement>("max-access");
 const submitButton = $<HTMLButtonElement>("submit");
@@ -647,7 +647,7 @@ function smsNumberProblem(number: string, scope: "channel" | "resend" = "channel
   return null;
 }
 
-/** "Mobile numbers from Germany and Austria are possible." – only if SMS_ALLOWED_COUNTRIES limits them. */
+/** "Phone numbers from Germany and Austria are possible." – only if SMS_ALLOWED_COUNTRIES limits them. */
 const smsCountriesHint = () =>
   (serverConfig.smsCountryCodes ?? []).length > 0 ? ` ${t("channel.smsCountries", { countries: serverConfig.smsCountries ?? "" })}` : "";
 
@@ -1171,6 +1171,7 @@ function renderValidity() {
   // password is in the SMS itself and works as long as the link does).
   const passwordLink = !withoutPassword() && selectedChannel() !== "sms";
   expireField.hidden = kind === "message";
+  expireHint.textContent = t(kind === "request" ? "expire.hintRequest" : "expire.hint");
   messageDaysField.hidden = kind !== "message";
   maxAccessField.hidden = !passwordLink;
   passwordDaysField.hidden = !passwordLink;
@@ -1445,6 +1446,10 @@ interface ShareItem {
   } | null;
   /** The password can still be shown and sent again ("Kennwort"). */
   passwordAvailable?: boolean;
+  /** The mail with this link has not been seen sent yet (e.g. a discarded draft) – the password did not go out. */
+  unsent?: boolean;
+  /** When CloudShare revokes the link if the mail is still not sent (ms); null: not automatically. */
+  revokeAt?: number | null;
 }
 
 /** "Kennwort per SMS an +49 170 •••• 78 – zugestellt um 14:05" for the "Meine Freigaben" list. */
@@ -1467,26 +1472,34 @@ const REQUEST_ICON =
 const formatDateTime = (iso: string) =>
   new Date(iso).toLocaleString(locale(), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
-/** Status line: downloads for files, received uploads for upload links, or "abgelaufen". */
-function shareState(share: ShareItem): { text: string; done: boolean; expired: boolean } {
-  const expired = share.expiration !== null && share.expiration < new Date().toISOString().slice(0, 10);
-  if (expired) return { text: t("shares.expired"), done: false, expired: true };
+/** Status line: downloads for files, received uploads for upload links. */
+function shareState(share: ShareItem): { text: string; done: boolean } {
   if (share.kind === "request") {
-    if (share.received === null) return { text: t("shares.statusUnknown"), done: false, expired: false };
+    if (share.received === null) return { text: t("shares.statusUnknown"), done: false };
     return share.received > 0
-      ? { text: t("shares.received", { count: share.received }), done: true, expired: false }
-      : { text: t("shares.noneReceived"), done: false, expired: false };
+      ? { text: t("shares.received", { count: share.received }), done: true }
+      : { text: t("shares.noneReceived"), done: false };
   }
-  if (!share.downloads) return { text: t("shares.downloadUnknown"), done: false, expired: false };
+  if (!share.downloads) return { text: t("shares.downloadUnknown"), done: false };
   return share.downloads.count > 0
     ? {
         text: share.downloads.last
           ? t("shares.downloadedLast", { count: share.downloads.count, time: formatDateTime(share.downloads.last) })
           : t("shares.downloaded", { count: share.downloads.count }),
         done: true,
-        expired: false,
       }
-    : { text: t("shares.notDownloaded"), done: false, expired: false };
+    : { text: t("shares.notDownloaded"), done: false };
+}
+
+/** Still valid today (Nextcloud removes expired links only once a day; the server already leaves them out). */
+const isValid = (share: ShareItem) => share.expiration === null || share.expiration >= new Date().toISOString().slice(0, 10);
+
+/** Start of a link's period, without the year if it ends in the same year: "15.11." (de) / "15/11" (en-GB). */
+function shortDate(sharedAt: number, expiration: string): string {
+  const from = new Date(sharedAt);
+  return from.getFullYear() === Number(expiration.slice(0, 4))
+    ? from.toLocaleDateString(locale(), { day: "2-digit", month: "2-digit" })
+    : from.toLocaleDateString(locale());
 }
 
 /** Copies text; the async clipboard API is not available in every Outlook version. */
@@ -1509,6 +1522,26 @@ const COPY_ICON =
   '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="7" width="9" height="10" rx="1.5" fill="none" ' +
   'stroke="currentColor" stroke-width="1.4"/><path d="M13 4.5V4a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h.5" ' +
   'fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
+
+/** Icons of the actions in "Meine Freigaben" (Fluent style, 20 × 20) – also shown next to their explanation in the help. */
+const icon = (paths: string) =>
+  `<svg class="icon" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" ` +
+  `stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
+const ICONS = {
+  copy: COPY_ICON,
+  copied: icon('<path d="M4.5 10.5l3.5 3.5 7.5-8"/>'),
+  password: icon('<circle cx="7" cy="13" r="3.5"/><path d="M9.5 10.5L16 4M13.5 6.5l2 2M11.8 8.2l1.4 1.4"/>'),
+  insert: icon(
+    '<path d="M8.5 11.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-1 1"/>' +
+      '<path d="M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l1-1"/>',
+  ),
+  revoke: icon('<circle cx="10" cy="10" r="6.5"/><path d="M5.4 5.4l9.2 9.2"/>'),
+} as const;
+
+/** The help explains the actions with their icons: `<span data-icon="copy">` gets the icon. */
+document.querySelectorAll<HTMLElement>("[data-icon]").forEach((slot) => {
+  slot.innerHTML = ICONS[slot.dataset.icon as keyof typeof ICONS] ?? "";
+});
 
 interface SentPassword {
   password: string;
@@ -1659,40 +1692,51 @@ function shareRow(share: ShareItem): HTMLElement {
   row.innerHTML =
     (share.kind === "request" ? REQUEST_ICON : FILE_ICON) +
     `<div class="share-body">` +
-    `<div class="share-name"></div>` +
-    `<div class="share-meta"></div><div class="share-meta share-password" hidden></div>` +
-    `<div class="share-state${state.done ? " done" : ""}${state.expired ? " expired" : ""}">` +
-    `<span class="dot-state" aria-hidden="true"></span><span class="state-text"></span></div>` +
+    `<div class="share-head"><div class="share-name"></div>` +
+    // Icons only: the taskpane is narrow (Outlook sets its width); the text is in title / aria-label (and the help).
     `<div class="share-actions">` +
-    // Short labels: the taskpane is narrow (Outlook sets its width); the full text is in title / aria-label.
-    `<button type="button" class="btn btn-subtle copy"></button>` +
-    `<button type="button" class="btn btn-subtle show-password" aria-expanded="false" hidden></button>` +
-    `<button type="button" class="btn btn-subtle insert"></button>` +
-    `<button type="button" class="btn btn-subtle btn-danger revoke"></button>` +
-    `</div><div class="password-panel" hidden></div></div>`;
-  const label = (button: HTMLButtonElement, text: string, full: string) => {
-    button.textContent = text;
-    button.title = full;
-    button.setAttribute("aria-label", full);
+    `<button type="button" class="btn btn-subtle btn-icon copy">${ICONS.copy}</button>` +
+    `<button type="button" class="btn btn-subtle btn-icon show-password" aria-expanded="false" hidden>${ICONS.password}</button>` +
+    `<button type="button" class="btn btn-subtle btn-icon insert">${ICONS.insert}</button>` +
+    `<button type="button" class="btn btn-subtle btn-icon btn-danger revoke">${ICONS.revoke}</button>` +
+    `</div></div>` +
+    `<div class="share-meta"><span class="share-period"></span> · <span class="share-password"></span></div>` +
+    `<div class="share-meta share-unsent" hidden></div>` +
+    `<div class="share-state${state.done ? " done" : ""}">` +
+    `<span class="dot-state" aria-hidden="true"></span><span class="state-text"></span></div>` +
+    `<div class="password-panel" hidden></div></div>`;
+  const label = (button: HTMLButtonElement, text: string) => {
+    button.title = text;
+    button.setAttribute("aria-label", text);
   };
-  label(row.querySelector<HTMLButtonElement>(".copy")!, t("shares.copy"), t("shares.copyLabel"));
-  label(row.querySelector<HTMLButtonElement>(".insert")!, t("shares.insert"), t("shares.insertLabel"));
-  label(row.querySelector<HTMLButtonElement>(".revoke")!, t("shares.revoke"), t("shares.revokeLabel"));
+  label(row.querySelector<HTMLButtonElement>(".copy")!, t("shares.copyLabel"));
+  label(row.querySelector<HTMLButtonElement>(".insert")!, t("shares.insertLabel"));
+  label(row.querySelector<HTMLButtonElement>(".revoke")!, t("shares.revokeLabel"));
   row.querySelector<HTMLElement>(".share-name")!.textContent = share.name;
   row.querySelector<HTMLElement>(".share-name")!.title = share.name;
-  row.querySelector<HTMLElement>(".share-meta")!.textContent = [
-    t("shares.sharedOn", { date: new Date(share.sharedAt).toLocaleDateString(locale()) }),
-    share.expiration ? t("shares.validUntil", { date: formatDate(share.expiration) }) : "",
-    share.protected === undefined ? "" : t(share.protected ? "shares.withPassword" : "shares.withoutPassword"),
-  ]
+
+  // "15.11. – 29.11.2026 · Kennwort per SMS an +49 170 •••• 72 – übermittelt": the word "Kennwort" only once.
+  const period = row.querySelector<HTMLElement>(".share-period")!;
+  const sharedOn = new Date(share.sharedAt).toLocaleDateString(locale());
+  period.textContent = share.expiration
+    ? t("shares.period", { from: shortDate(share.sharedAt, share.expiration), until: formatDate(share.expiration) })
+    : t("shares.since", { from: sharedOn });
+  period.title = [t("shares.sharedOn", { date: sharedOn }), share.expiration ? t("shares.validUntil", { date: formatDate(share.expiration) }) : ""]
     .filter(Boolean)
-    .join(" · ");
+    .join(", ");
+  const passwordLine = row.querySelector<HTMLElement>(".share-password")!;
+  passwordLine.textContent = share.password
+    ? passwordText(share.password)
+    : t(share.protected === false ? "shares.withoutPassword" : "shares.withPassword");
+  passwordLine.classList.toggle("failed", share.password?.status === "failed");
+
   row.querySelector<HTMLElement>(".state-text")!.textContent = state.text;
-  if (share.password) {
-    const line = row.querySelector<HTMLElement>(".share-password")!;
-    line.textContent = passwordText(share.password);
+  if (share.unsent) {
+    const line = row.querySelector<HTMLElement>(".share-unsent")!;
+    line.textContent = share.revokeAt
+      ? t("shares.unsentRevoke", { date: new Date(share.revokeAt).toLocaleDateString(locale()) })
+      : t("shares.unsent");
     line.hidden = false;
-    line.classList.toggle("failed", share.password.status === "failed");
   }
 
   // "Kennwort": show the password of a sent link and send it again (until the link expires).
@@ -1702,7 +1746,7 @@ function shareRow(share: ShareItem): HTMLElement {
     panel.id = `password-panel-${share.id.replace(/\W/g, "")}`;
     toggle.setAttribute("aria-controls", panel.id);
     toggle.hidden = false;
-    label(toggle, t("shares.password"), t("shares.passwordLabel", { name: share.name }));
+    label(toggle, t("shares.passwordLabel", { name: share.name }));
     toggle.addEventListener("click", () => {
       const open = panel.hidden === true;
       toggle.setAttribute("aria-expanded", String(open));
@@ -1714,8 +1758,12 @@ function shareRow(share: ShareItem): HTMLElement {
   const copy = row.querySelector<HTMLButtonElement>(".copy")!;
   copy.addEventListener("click", async () => {
     await copyText(share.url);
-    copy.textContent = t("shares.copied");
-    setTimeout(() => (copy.textContent = t("shares.copy")), 2000);
+    copy.innerHTML = ICONS.copied;
+    label(copy, t("shares.copied"));
+    setTimeout(() => {
+      copy.innerHTML = ICONS.copy;
+      label(copy, t("shares.copyLabel"));
+    }, 2000);
   });
 
   // A new link for this mail with the settings of the "Senden" tab – the original password cannot be recovered.
@@ -1731,13 +1779,14 @@ function shareRow(share: ShareItem): HTMLElement {
   revoke.addEventListener("click", async () => {
     if (Date.now() > armedUntil) {
       armedUntil = Date.now() + 4000;
+      // The icon becomes the word "Wirklich?" until the second click (or 4 s).
       revoke.textContent = t("shares.confirm");
-      revoke.setAttribute("aria-label", t("shares.confirmLabel"));
+      label(revoke, t("shares.confirmLabel"));
       revoke.classList.add("confirm");
       setTimeout(() => {
         if (Date.now() >= armedUntil) {
-          revoke.textContent = t("shares.revoke");
-          revoke.setAttribute("aria-label", t("shares.revokeLabel"));
+          revoke.innerHTML = ICONS.revoke;
+          label(revoke, t("shares.revokeLabel"));
           revoke.classList.remove("confirm");
         }
       }, 4100);
@@ -1835,24 +1884,34 @@ async function linkAgain(share: ShareItem, button: HTMLButtonElement) {
   }
 }
 
+/** When the list was last loaded – it reloads when the pane comes back into view, at most every 10 s. */
+let sharesLoadedAt = 0;
+
+/** All valid links (newest first); there is no refresh button – the list loads with the tab and on return. */
 async function loadShares() {
-  refreshSharesButton.disabled = true;
-  try {
-    const shares = await api<ShareItem[]>("/api/shares", {}, await getToken());
-    if (readMode) {
-      // The links of the mail being read on top, the others below.
-      const tokens = await mailTokens();
-      const inMail = (share: ShareItem) => tokens.has(shareToken(share.url));
-      mailShares.replaceChildren(...shares.filter(inMail).map(shareRow));
-      sharesList.replaceChildren(...shares.filter((share) => !inMail(share)).map(shareRow));
-    } else {
-      sharesList.replaceChildren(...shares.map(shareRow));
-    }
-    renderEmptyLists();
-  } finally {
-    refreshSharesButton.disabled = false;
+  sharesLoadedAt = Date.now();
+  const shares = (await api<ShareItem[]>("/api/shares", {}, await getToken())).filter(isValid);
+  if (readMode) {
+    // The links of the mail being read on top, the others below.
+    const tokens = await mailTokens();
+    const inMail = (share: ShareItem) => tokens.has(shareToken(share.url));
+    mailShares.replaceChildren(...shares.filter(inMail).map(shareRow));
+    sharesList.replaceChildren(...shares.filter((share) => !inMail(share)).map(shareRow));
+  } else {
+    sharesList.replaceChildren(...shares.map(shareRow));
   }
+  renderEmptyLists();
 }
+
+/** Back in the pane (other window, other app): fresh download and password states, unless a panel is open. */
+function reloadSharesOnReturn() {
+  const panelOpen = document.querySelector(".password-panel:not([hidden])") !== null;
+  if (currentTab !== "shares" || helpToggle.getAttribute("aria-expanded") === "true" || panelOpen) return;
+  if (document.visibilityState !== "visible" || Date.now() - sharesLoadedAt < 10_000) return;
+  loadShares().catch(() => undefined);
+}
+window.addEventListener("focus", reloadSharesOnReturn);
+document.addEventListener("visibilitychange", reloadSharesOnReturn);
 
 /** "Noch keine Freigaben" / "keine Links in dieser Nachricht" when a list is (or became) empty. */
 function renderEmptyLists() {
@@ -1890,9 +1949,6 @@ async function startReadView() {
   }
 }
 
-refreshSharesButton.addEventListener("click", () => {
-  loadShares().catch((err) => setStatus(errorMessage(err), "error"));
-});
 
 Office.onReady(async () => {
   applyOfficeTheme();

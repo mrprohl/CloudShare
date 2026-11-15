@@ -149,7 +149,13 @@ download confirmation.
    only to the address from "to another email address" – from the same sender. Sent parts are
    remembered, so a retry after an error sends nothing twice. Typical delay: 20–60 s after the main mail.
 4. If the mail does not show up within 15 minutes (sending cancelled or failed), the job is disarmed and stays open
-   for further links. Jobs expire after 7 days.
+   for further links. Jobs expire 7 days after their last link was added.
+5. Links are created when they are inserted, not when the mail is sent. Until the watcher has seen the mail sent,
+   "My shares" marks the links of a job as **not sent** (`unsent`, `revokeAt` in `GET /api/shares`, from
+   `unsentShares`). A job that expires without "Send" ever having been pressed (`armedOnce: false` – the draft was
+   discarded) has its links revoked and its Sends deleted (`revokeUnsentLinks` in `shares.ts`, retried hourly while
+   Nextcloud is unreachable). Jobs that were armed once are left alone – the mail may have gone out without the
+   watcher seeing it – and so are links without password, which may have been sent from a client without CloudShare.
 
 If the add-in cannot run at all, SoftBlock lets the mail through – otherwise a CloudShare outage would stop all mail.
 The handlers cache the last configuration in `roamingSettings`, so the attachment policy also applies while the
@@ -175,7 +181,7 @@ wins) – Nextcloud's housekeeping deletes expired shares, so the date could not
 
 - **Recipients of the message** (default) – the password mail to the mail's actual recipients;
 - **Another email address** – the password mail only to that address;
-- **Mobile number (SMS)** (only with `SEVEN_API_KEY`, otherwise not in the list) – one SMS per step via seven.io (`sms.ts`), sent by the watcher after the
+- **Phone number (SMS)** (only with `SEVEN_API_KEY`, otherwise not in the list) – one SMS per step via seven.io (`sms.ts`), sent by the watcher after the
   mail appeared in "Sent Items", like the password mail. The number is entered in the pane and normalised to E.164
   (`0170 …` → `+49170…`, `SMS_DEFAULT_COUNTRY`; also `+49 (0)170 …`, `tel:` and typographic dashes).
   `SMS_ALLOWED_COUNTRIES` (`countries.ts`: ISO codes, calling codes, German/English names, groups like `DACH`/`EU`)
@@ -209,7 +215,8 @@ with a fixed set of placeholders. Resolution per field: `users[<sender UPN>]` �
 built-in texts of the language (section `templates` of the language file); the department and display name are read
 from the sender's profile when arming. `templates.json` holds one set of texts for all languages – after a change of
 `LANGUAGE` translate it as well. At start the file is validated: `{password}` outside the SMS, an SMS without `{password}` or with the link / a file name drop the
-field (built-in text instead); unknown placeholders, non-GSM characters and SMS above 160 characters are warnings.
+field (built-in text instead); unknown placeholders, non-GSM characters, SMS above 160 characters and a `{password}`
+that does not start a line (phones may hyphenate a wrapped password) are warnings.
 A broken file never stops CloudShare. Example: `templates.example.json`.
 
 ### 2.7 Download confirmation
@@ -312,7 +319,7 @@ when the links expire. Steps sent before this version have no entry – their pa
 | Draft: `item.sessionData` (`DraftState`, `shared/office.ts`) | `jobId`, `separate` (passwords per step), `noPassword`, `passwordTo` / `passwordSms` (channel), `maxAccess`, `links` (tokens of inserted cards); legacy drafts: `password` | Until the draft is sent or closed |
 | Draft: custom property `cloudshareJob` | Job ID; travels with the sent mail into "Sent Items" | With the mail |
 | `/data/nextcloud-credentials.json` | Nextcloud app password per `oid` | Until disconnect / 401 |
-| `/data/password-jobs.json` | Password jobs: owner, sender name and department, file names, Sends and links per step (`separate`), `passwordTo` / `passwordSms`, armed Graph token | 7 days |
+| `/data/password-jobs.json` | Password jobs: owner, sender name and department, file names, Sends and links per step (`separate`), `passwordTo` / `passwordSms`, armed Graph token | 7 days after the last link |
 | `/data/cleanup.json` | Upload folders with expiry date per owner | Until deleted |
 | `/data/deliveries.json` | Per link: channel, masked recipient, SMS message ID and status | 120 days |
 | `/data/password-refs.json` | Per sent step: Send ID (never the password), link tokens, file names, subject, distribution of the sent mail (To, Cc, Bcc), other address / SMS number, sender | Until the links expire |
@@ -341,7 +348,7 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `POST /api/uploads`, `PUT …/:id/chunks/:n`, `POST …/:id/complete`, `DELETE …/:id` | Chunked upload, share link |
 | `POST /api/requests` | Upload link ("Receive files from recipients") |
 | `POST /api/messages` | Confidential message: text → password-protected Vaultwarden Send, joins the mail's password job |
-| `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "My shares": list (30 days, max. 100), revoke, insert again; also the read mode (2.9) |
+| `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "My shares": list (all valid links, newest first, max. 100; no refresh button – loaded with the tab and when the pane regains focus), revoke, insert again; also the read mode (2.9) |
 | `GET /api/shares/:id/password`, `POST /api/shares/:id/password/send` | The password of a sent link (owner only, until the link expires) and sending it again by SMS or password mail (2.10) |
 | `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send), `passwordTo` or `passwordSms` until the password went out |
 | `POST /api/jobs/:id/arm` | Arm the password mail (send handler); also reads the sender's name and department for the templates |

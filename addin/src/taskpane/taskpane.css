@@ -368,8 +368,6 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .section-text { margin: 0 0 8px; }
 
 /* --- My shares ----------------------------------------------------------------------- */
-.toolbar { display: flex; align-items: center; justify-content: space-between; margin: 0 0 8px; }
-.toolbar .caption { margin: 0; }
 .share-list { display: flex; flex-direction: column; }
 .share {
   display: flex;
@@ -379,15 +377,20 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 }
 .share .file-icon { margin-top: 2px; }
 .share-body { flex: 1; min-width: 0; }
-.share-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-head { display: flex; align-items: center; gap: 4px; min-height: 28px; margin-top: -4px; }
+.share-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .share-meta { font-size: 12px; line-height: 16px; color: var(--fg3); }
 .share-password.failed { color: var(--danger-fg); }
+.share-unsent { color: var(--fg2); font-weight: 600; }
 .share-state { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; margin-top: 2px; color: var(--fg2); }
 .share-state .dot-state { width: 8px; height: 8px; border-radius: 50%; background: var(--stroke1); flex: none; }
 .share-state.done .dot-state { background: var(--success-fg); }
-.share-state.expired { color: var(--fg3); }
-.share-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; margin-left: -8px; }
-.share-actions .btn { height: 28px; min-width: 0; padding: 3px 8px; font-weight: 400; font-size: 13px; }
+/* Icon buttons at the right of the name; the revoke button shows "Wirklich?" as text until confirmed. */
+.share-actions { display: flex; flex: none; margin-right: -6px; }
+.share-actions .btn { height: 28px; min-width: 28px; width: auto; padding: 0 4px; margin: 0; font-weight: 400; font-size: 13px; }
+.share-actions .btn .icon { color: var(--fg2); }
+.share-actions .btn:hover .icon { color: var(--fg1); }
+.share-actions .btn-danger .icon { color: var(--danger-fg); }
 .btn-danger { color: var(--danger-fg); }
 .btn-danger.confirm { background: var(--danger-bg); border-color: var(--danger-stroke); }
 
@@ -440,6 +443,10 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .help { color: var(--fg1); }
 .help-intro { margin: 4px 0 12px; color: var(--fg2); }
 .help-section { border-bottom: 1px solid var(--stroke2); }
+.help-icons { list-style: none; padding-left: 0; }
+.help-icons li { display: flex; align-items: flex-start; gap: 8px; }
+.help-icon { flex: none; display: inline-flex; color: var(--fg2); }
+.help-icon.danger { color: var(--danger-fg); }
 .help-section:first-of-type { border-top: 1px solid var(--stroke2); }
 .help-section > summary {
   display: flex; align-items: center; gap: 8px; padding: 10px 2px;

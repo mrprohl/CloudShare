@@ -95,12 +95,28 @@ export interface PasswordJob {
   noPassword?: boolean;
   noticeShares?: StepShare[];
   dispatched: boolean;
+  /** Seven days after the last link was added; then the job is dropped (see checkJobs). */
   expiresAt: number;
   armed?: ArmedSend;
+  /**
+   * "Send" was pressed at least once. false: never – if the job expires that way, the mail was never sent (draft
+   * discarded) and its links are revoked. Missing in jobs from older versions: unknown, their links are left alone.
+   */
+  armedOnce?: boolean;
+}
+
+/** The links and Sends of a mail that was never sent, for revoking them (see onUnsentExpired). */
+export interface UnsentLinks {
+  owner: string;
+  ownerUpn: string;
+  tokens: string[];
+  sendIds: string[];
 }
 
 const MINUTE = 60_000;
 const JOB_TTL = 7 * 24 * 60 * MINUTE;
+/** Revoking the links of a mail never sent failed (Nextcloud unreachable): next try after this time. */
+const UNSENT_RETRY = 60 * MINUTE;
 /** How long after "Send" the watcher looks for the mail in "Sent Items". */
 const ARM_WINDOW = 15 * MINUTE;
 const POLL_INTERVAL = 20_000;
@@ -126,6 +142,39 @@ const persist = () => write(JSON.stringify(seal(JSON.stringify(Object.fromEntrie
 
 export const getJob = (id: string) => jobs.get(id);
 
+/** A link was added: the job lives another JOB_TTL from now (a draft being worked on is not "never sent"). */
+const touch = (job: PasswordJob) => {
+  job.expiresAt = Date.now() + JOB_TTL;
+};
+
+/** Never sent: created by this version, "Send" never pressed, nothing dispatched – links with a password only. */
+const neverSent = (job: PasswordJob) => job.armedOnce === false && !job.dispatched && !job.noPassword;
+
+/** Share tokens of a job's links (only steps record them; jobs without steps from older versions have none). */
+const jobTokens = (job: PasswordJob, pendingOnly = false) =>
+  (job.separate ?? []).filter((part) => !(pendingOnly && part.dispatched)).flatMap((part) => (part.shares ?? []).map((s) => s.token));
+
+/**
+ * Links of the owner whose mail CloudShare has not seen sent yet (password not sent): token → when they are revoked if
+ * the mail is still not sent (ms), or null if they are not revoked automatically. For "Meine Freigaben".
+ * Links "Ohne Kennwort" are not tracked: they may well have gone out from a client without CloudShare.
+ */
+export function unsentShares(owner: string): Map<string, number | null> {
+  const unsent = new Map<string, number | null>();
+  for (const job of jobs.values()) {
+    if (job.owner !== owner || job.dispatched || job.noPassword || job.armed) continue;
+    for (const token of jobTokens(job, true)) unsent.set(token, neverSent(job) ? job.expiresAt : null);
+  }
+  return unsent;
+}
+
+type UnsentHandler = (links: UnsentLinks, log: Pick<FastifyBaseLogger, "info" | "warn">) => Promise<void>;
+let unsentHandler: UnsentHandler | undefined;
+/** What to do with the links of a job that expired without its mail ever being sent (index.ts: revoke them). */
+export function onUnsentExpired(handler: UnsentHandler | undefined) {
+  unsentHandler = handler;
+}
+
 export async function createJob(
   owner: string,
   ownerUpn: string,
@@ -144,13 +193,16 @@ export async function createJob(
     sendId,
     dispatched: false,
     expiresAt: Date.now() + JOB_TTL,
+    armedOnce: false,
   });
   await persist();
   return id;
 }
 
 export async function addFileToJob(id: string, fileName: string): Promise<void> {
-  jobs.get(id)!.fileNames.push(fileName);
+  const job = jobs.get(id)!;
+  job.fileNames.push(fileName);
+  touch(job);
   await persist();
 }
 
@@ -166,6 +218,7 @@ export async function createSeparateJob(owner: string, ownerUpn: string, part: S
     maxAccessCount: part.maxAccessCount,
     dispatched: false,
     expiresAt: Date.now() + JOB_TTL,
+    armedOnce: false,
   });
   await persist();
   return id;
@@ -192,6 +245,7 @@ export async function addNoticeShare(id: string, share: StepShare): Promise<void
   const job = jobs.get(id)!;
   job.fileNames.push(share.name);
   (job.noticeShares ??= []).push(share);
+  touch(job);
   await persist();
 }
 
@@ -208,6 +262,7 @@ export async function addSeparatePart(id: string, part: SeparatePart): Promise<v
   const job = jobs.get(id)!;
   job.fileNames.push(...part.fileNames);
   (job.separate ??= []).push(part);
+  touch(job);
   await persist();
 }
 
@@ -221,6 +276,7 @@ export async function addFileToPart(id: string, step: string, fileName: string, 
   const part = findPart(id, step)!;
   part.fileNames.push(fileName);
   if (share) (part.shares ??= []).push(share);
+  touch(job);
   await persist();
 }
 
@@ -251,7 +307,9 @@ export async function setJobMaxAccess(id: string, maxAccessCount: number): Promi
 
 /** Marks the job as "send pressed"; the watcher sends the password mail once the mail appears in "Sent Items". */
 export async function armJob(id: string, armed: ArmedSend): Promise<void> {
-  jobs.get(id)!.armed = armed;
+  const job = jobs.get(id)!;
+  job.armed = armed;
+  job.armedOnce = true;
   await persist();
 }
 
@@ -311,6 +369,21 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
   let changed = false;
   for (const [id, job] of jobs) {
     if (job.expiresAt < now) {
+      // A draft with links that was never sent (discarded): its links never left the mailbox – revoke them.
+      if (unsentHandler && neverSent(job)) {
+        const sendIds = [job.sendId, ...(job.separate ?? []).map((part) => part.sendId)].filter((s): s is string => Boolean(s));
+        const tokens = jobTokens(job);
+        try {
+          if (tokens.length || sendIds.length) {
+            await unsentHandler({ owner: job.owner, ownerUpn: job.ownerUpn, tokens, sendIds: [...new Set(sendIds)] }, log);
+          }
+        } catch (err) {
+          log.warn({ err, user: job.ownerUpn, jobId: id }, "Links of a mail never sent not revoked, retrying later");
+          job.expiresAt = now + UNSENT_RETRY;
+          changed = true;
+          continue;
+        }
+      }
       jobs.delete(id);
       changed = true;
       continue;

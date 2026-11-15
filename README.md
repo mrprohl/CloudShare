@@ -81,7 +81,7 @@ three.
      link can download the file while the link is valid; no password goes out, and that mail cannot get a
      confidential message or upload link any more (the pane says so).
 3. **"Send the password to"**: the recipients of the mail (default), **another e-mail address** (e.g. a colleague),
-   or a **mobile number (SMS)** if SMS is set up – the password arrives as plain text, sent after the mail.
+   or a **phone number (SMS)** if SMS is set up – the password arrives as plain text, sent after the mail.
 4. **"Validity"** is collapsed and shows its values in one line, e.g. "Link 14 days · Password link 5 days, opens 3
    times". Open it to change **"Link valid for"** (days the download link works – with a password at most 30, see below), **"Password can be opened"** (how
    often the password link opens) and **"Password link valid for"** (days the password can be fetched – default 5,
@@ -111,19 +111,24 @@ Confidential messages and upload links always have a password, so "No password" 
 
 <br clear="right">
 
-<img src="docs/images/taskpane-shares.png" alt="Tab My shares: four links with download and password status and the buttons Copy, Password, Insert, Revoke; at the first link Password is open with the password and Send again to" width="300" align="right">
+<img src="docs/images/taskpane-shares.png" alt="Tab My shares: three links with period, password and download status and the icons Copy, Password, Insert, Revoke next to the name; at the first link Password is open with the password and Send again to" width="300" align="right">
 
-**"My shares"** lists your CloudShare links of the last 30 days: when they were shared, until when they are
-valid, whether they have a password, and how often they were downloaded (or how many files were received).
+**"My shares"** lists all your valid CloudShare links, newest first – one short line each for the period
+("10.11. – 24.11.2026"), the password (with / without, or how it went out: "Password by text message to … –
+delivered") and the downloads (or received files). It loads when you open the tab and again when you come back to
+the pane; expired links are not listed. A link is created when it is inserted; until its mail has been sent it says
+**"Not sent"**. If the mail is never sent (draft discarded), CloudShare revokes the link after 7 days.
+
+The icons next to the name (their names show on hover and are explained in the help):
 
 - **Copy** – copies the link.
-- **Password** – for links with password, until they expire: shows the password and sends it **again**, the same
+- **Password** (key) – for links with password, until they expire: shows the password and sends it **again**, the same
   ways as the first time (preselected: the way it went then): to the **recipients of the message** – To, Cc and Bcc
   exactly as in the sent mail –, to **other addresses** (each gets a mail of its own, nobody sees the others) or by
   **SMS**. A mail again only contains a link to the password, never the password itself.
-- **Insert** – inserts the file again into the mail you are writing, as a *new* link with a new password.
-- **Revoke** – ends the link at once (two clicks). The file then counts as expired and is moved to your
-  Nextcloud trash.
+- **Insert** (chain) – inserts the file again into the mail you are writing, as a *new* link with a new password.
+- **Revoke** (crossed-out circle) – ends the link at once (two clicks: the icon turns into "Sure?"). The file then
+  counts as expired and is moved to your Nextcloud trash.
 
 Expired files are cleaned up automatically as well (see `CLEANUP_AFTER_DAYS`).
 
@@ -134,7 +139,7 @@ Expired files are cleaned up automatically as well (see `CLEANUP_AFTER_DAYS`).
 **Status of a sent mail:** the **CloudShare** button is also there while you **read** a mail – e.g. in *Sent Items*.
 It opens "My shares" with the links of that mail on top (**"In this message"**: downloads, how the password went
 out, validity) and your other shares below. **Pin** the pane (pin icon in its header) and it follows the mail you
-select. Copy and Revoke work as usual; nothing is inserted there. Links of the last 30 days are listed; confidential
+select. Copy and Revoke work as usual; nothing is inserted there. All valid links are listed; confidential
 messages are not (they are not stored in Nextcloud).
 
 <br clear="right">
@@ -279,12 +284,12 @@ by hand if you want them:
 
 ### Password by SMS (optional)
 
-The password can go out as an SMS instead of a password mail ("Send the password to" → **Mobile number (SMS)**). It
+The password can go out as an SMS instead of a password mail ("Send the password to" → **Phone number (SMS)**). It
 is sent after the mail, through [seven.io](https://www.seven.io); without `SEVEN_API_KEY` the option is not offered.
 
 1. **seven.io:** create an account with prepaid credit, create an API key (*Developer → API Keys*) and choose the
    sender – a phone number or up to 11 letters/digits (recipients cannot reply to a text sender). Conclude a data
-   processing agreement: the recipients' mobile numbers go to seven.io.
+   processing agreement: the recipients' phone numbers go to seven.io.
 2. **`env/cloudshare.env`:**
 
    ```bash
@@ -324,7 +329,7 @@ is sent after the mail, through [seven.io](https://www.seven.io); without `SEVEN
    `https://cloudshare.example.com/webhooks/seven?token=<SEVEN_WEBHOOK_SECRET>` for the event `dlr`. Without it the
    SMS still goes out, but "My shares" only shows "submitted" instead of "delivered at …" / "not delivered".
 4. **Check:** `curl -s https://cloudshare.example.com/api/config` contains `"smsEnabled":true`; after reloading the
-   pane, "Send the password to" offers **Mobile number (SMS)**. Send a test mail with your own number –
+   pane, "Send the password to" offers **Phone number (SMS)**. Send a test mail with your own number –
    `docker logs cloudshare 2>&1 | grep -i sms` shows the SMS and, with the webhook, `SMS delivery report`.
 
 **If an SMS fails, the password goes out no other way** – CloudShare never sends it on its own by mail. The sender
@@ -384,7 +389,8 @@ installation; recipients get the password mail and the SMS in the same language.
 values, keeping the keys and the `{placeholders}`. Keys ending in `_one` / `_other` are the singular and plural form.
 `_meta.locale` (e.g. `fr-FR`) sets the date and number format and the manifest's `DefaultLocale`. Use Outlook's own
 terms of that language, keep the SMS text (`templates.sms_template`) in the GSM alphabet (no accents beyond it, or the
-SMS shrinks to 70 characters). Texts that are missing fall back to English. Two ways to use it:
+SMS shrinks to 70 characters) with `{password}` on a line of its own (`…:\n{password}` – phones may hyphenate a
+password where they wrap the line). Texts that are missing fall back to English. Two ways to use it:
 
 - **Without a new image:** put the file into `/opt/cloudshare/env/config/locales/` (mounted read-only as
   `/config/locales`, directory `755`, file `644`), set `LANGUAGE=fr`, update the stack.
