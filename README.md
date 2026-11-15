@@ -333,7 +333,7 @@ is sent after the mail, through [seven.io](https://www.seven.io); without `SEVEN
    `server.…`) in the language files – adjust them via `env/config/locales` if your own rules need other words.
 3. **Delivery reports** (optional, recommended): in the seven.io dashboard (*Developer → Webhooks*) add
    `https://cloudshare.example.com/webhooks/seven?token=<SEVEN_WEBHOOK_SECRET>` for the event `dlr`. Without it the
-   SMS still goes out, but "My shares" only shows "submitted" instead of "delivered at …" / "not delivered".
+   SMS still goes out, but "My shares" only shows "submitted" instead of "delivered on …" / "not delivered".
 4. **Check:** `curl -s https://cloudshare.example.com/api/config` contains `"smsEnabled":true`; after reloading the
    pane, "Send the password to" offers **Phone number (SMS)**. Send a test mail with your own number –
    `docker logs cloudshare 2>&1 | grep -i sms` shows the SMS and, with the webhook, `SMS delivery report`.

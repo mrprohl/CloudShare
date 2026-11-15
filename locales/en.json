@@ -234,7 +234,7 @@
     "shares.passwordMail": "Password by email to {to}",
     "shares.passwordSms": "Password by text message to {to} – {status}",
     "shares.smsDelivered": "delivered",
-    "shares.smsDeliveredAt": "delivered at {time}",
+    "shares.smsDeliveredAt": "delivered on {time}",
     "shares.smsFailed": "not sent – please send it again",
     "shares.smsUndelivered": "not delivered – please send it again",
     "shares.smsSubmitted": "submitted",
