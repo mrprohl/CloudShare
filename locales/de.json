@@ -234,7 +234,7 @@
     "shares.passwordMail": "Kennwort per Mail an {to}",
     "shares.passwordSms": "Kennwort per SMS an {to} – {status}",
     "shares.smsDelivered": "zugestellt",
-    "shares.smsDeliveredAt": "zugestellt um {time}",
+    "shares.smsDeliveredAt": "zugestellt am {time}",
     "shares.smsFailed": "nicht versendet – bitte erneut senden",
     "shares.smsUndelivered": "nicht zugestellt – bitte erneut senden",
     "shares.smsSubmitted": "übermittelt",

@@ -1475,13 +1475,12 @@ interface ShareItem {
   revokeAt?: number | null;
 }
 
-/** "Kennwort per SMS an +49 170 •••• 78 – zugestellt um 14:05" for the "Meine Freigaben" list. */
+/** "Kennwort per SMS an +49 170 •••• 78 – zugestellt am 16.11.2026, 14:05" for the "Meine Freigaben" list. */
 function passwordText(p: NonNullable<ShareItem["password"]>): string {
-  const time = (ms: number) => new Date(ms).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
   if (p.channel === "mail") return t("shares.passwordMail", { to: p.to });
   const status =
     p.status === "delivered"
-      ? p.deliveredAt ? t("shares.smsDeliveredAt", { time: time(p.deliveredAt) }) : t("shares.smsDelivered")
+      ? p.deliveredAt ? t("shares.smsDeliveredAt", { time: formatDateTime(p.deliveredAt) }) : t("shares.smsDelivered")
       : p.status === "failed" ? t(p.refused ? "shares.smsFailed" : "shares.smsUndelivered")
       : t("shares.smsSubmitted");
   return t("shares.passwordSms", { to: p.to, status });
@@ -1492,8 +1491,10 @@ const REQUEST_ICON =
   '<path d="M10 13V4m0 0L6.5 7.5M10 4l3.5 3.5M4 12v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3" fill="none" ' +
   'stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-const formatDateTime = (iso: string) =>
-  new Date(iso).toLocaleString(locale(), { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+/** Day with year and time: "16.11.2026, 00:42" (de) / "16/11/2026, 00:42" (en-GB). */
+function formatDateTime(when: string | number): string {
+  return new Date(when).toLocaleString(locale(), { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+}
 
 /** Status line: downloads for files, received uploads for upload links. */
 function shareState(share: ShareItem): { text: string; done: boolean } {

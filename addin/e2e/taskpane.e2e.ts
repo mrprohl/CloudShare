@@ -938,13 +938,13 @@ test("Meine Freigaben: shows the state of each link and revokes after confirmati
   await page.click("#tab-send");
   await expect(refresh).toBeHidden();
   await page.click("#tab-shares");
-  await expect(rows.nth(0).locator(".state-text")).toContainText("2× heruntergeladen");
+  await expect(rows.nth(0).locator(".state-text")).toHaveText("2× heruntergeladen, zuletzt 11.11.2026, 10:30"); // with the year
   await expect(rows.nth(1).locator(".state-text")).toHaveText("Noch nicht heruntergeladen");
   await expect(rows.nth(2).locator(".state-text")).toHaveText("3 Dateien empfangen");
   // One short line: period and password – the word "Kennwort" only once.
   const meta = rows.nth(0).locator(".share-meta").first();
   await expect(meta.locator(".share-period")).toHaveText("10.11.2026 – 24.11.2099");
-  await expect(meta.locator(".share-password")).toContainText("Kennwort per SMS an +49 170 •••• 67 – zugestellt um");
+  await expect(meta.locator(".share-password")).toContainText("Kennwort per SMS an +49 170 •••• 67 – zugestellt am 10.11.2026, 11:00");
   expect((await meta.textContent())!.match(/Kennwort/g)).toHaveLength(1);
   await expect(rows.nth(1).locator(".share-period")).toHaveText("12.11. – 26.11.2099"); // same year: no year at the start
   await expect(rows.nth(1).locator(".share-password")).toHaveText("ohne Kennwort");
@@ -1080,7 +1080,7 @@ test("reading a mail: tabs 'Nachricht' and 'Meine Freigaben', nothing to insert"
   const inMail = page.locator("#mail-shares .share");
   await expect(inMail).toHaveCount(2);
   await expect(inMail.nth(0).locator(".share-name")).toHaveText("Präsentation.pptx");
-  await expect(inMail.nth(0).locator(".share-password")).toContainText("zugestellt um");
+  await expect(inMail.nth(0).locator(".share-password")).toContainText("zugestellt am 10.11.2026, 11:00");
   await expect(inMail.nth(1).locator(".share-name")).toHaveText("Upload-Link");
   await expect(page.locator("#mail-none")).toBeHidden();
   // Reading a mail too: "Aktualisieren" in the tab bar, the account line at the bottom.
