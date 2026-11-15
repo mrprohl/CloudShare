@@ -198,27 +198,77 @@ Notes:
 ## 5. Optional: application permission for the download confirmation
 
 Only for `DOWNLOAD_NOTICE=true`, `UPLOAD_NOTICE=true` and `SMS_NOTICE=true`: these mails are sent days later, when the
-user's delegated token has long expired, so CloudShare uses its own **application** permission (download
+user's delegated token has long expired, so CloudShare uses its own **application** permission `Mail.Send` (download
 confirmation, files received through an upload link, password SMS reported as not delivered – without it, only
-"My shares" shows these).
+"My shares" shows these). CloudShare only ever sends such a mail as the user who shared the link, to that user (or to
+the shared mailbox the original mail came from). Only `Mail.Send` is needed: nothing is read with this permission –
+subject and recipients were taken from *Sent Items* with the delegated token when the mail was sent, downloads and
+uploads come from Nextcloud. There is no application version of `Mail.Send.Shared`, and none is needed.
 
-1. App registration → *API permissions* → *Add a permission* → *Microsoft Graph* → **Application permissions** →
-   `Mail.Send` → *Grant admin consent*.
-2. Restrict it to the CloudShare users with **Exchange Online RBAC for applications** – otherwise the app could send
-   as any mailbox of the tenant:
+**All delegated permissions of step 2 stay** – including the delegated `Mail.Send`, `Mail.Send.Shared`, `Mail.Read`
+and `Mail.Read.Shared`. They serve the password mail: right after sending, CloudShare finds the mail in *Sent Items*
+and sends the password with the user's own token, as the user or the shared mailbox (also "send again" in
+"My shares"). The application permission cannot replace them; it is only used days later for the hints above.
+
+| `Mail.Send` | Token | When | For |
+|---|---|---|---|
+| delegated | the user's, when "Send" is pressed | seconds to minutes later | password mail, sending it again |
+| application | CloudShare's own | days later, the user's token has expired | download confirmation, files received, SMS not delivered |
+
+The permission belongs to the registration CloudShare signs in with: **`CloudShare Server`** from step 2 (its client
+ID is `ENTRA_CLIENT_ID`) – not the registration "CloudShare" that *Integrated apps* creates. Choose **one** of two ways:
+
+### Way A (recommended): only the CloudShare users – Exchange RBAC for applications
+
+Exchange grants `Mail.Send` to the app, limited to the members of one group. **No** application permission is entered
+in Entra. The hints are always sent from the mailbox of the user who shared the link (never from a shared mailbox),
+so the group holds the **users** – shared mailboxes need not be in it.
+
+1. A mail-enabled security group (or distribution group) with the CloudShare users, e.g. "CloudShare users".
+2. Note two IDs of `CloudShare Server`: the *Application (client) ID* (= `ENTRA_CLIENT_ID`) and the *Object ID* of the
+   **enterprise application** (Entra → *Enterprise applications* – German *Unternehmensanwendungen* → CloudShare
+   Server → *Overview*) – not the object ID of the app registration.
+3. In Exchange Online PowerShell (role *Organization Management*) – fill in the first three lines, run the rest as is:
    ```powershell
+   $appId    = "<ENTRA_CLIENT_ID>"
+   $objectId = "<object ID of the enterprise application>"
+   $group    = "CloudShare users"
+
    Connect-ExchangeOnline
-   New-ManagementScope -Name "CloudShare users" -RecipientRestrictionFilter "MemberOfGroup -eq '<distinguished name of the group>'"
-   New-ServicePrincipal -AppId <client-id> -ObjectId <object ID of the enterprise application> -DisplayName CloudShare
-   New-ManagementRoleAssignment -App <client-id> -Role "Application Mail.Send" -CustomResourceScope "CloudShare users"
+   # Makes the app known to Exchange.
+   New-ServicePrincipal -AppId $appId -ObjectId $objectId -DisplayName "CloudShare Server"
+   # The scope: every member of the group. This is what limits the permission – without it Mail.Send would apply to
+   # all mailboxes (then way B is the simpler way to get the same).
+   $dn = (Get-Group $group).DistinguishedName
+   New-ManagementScope -Name "CloudShare users" -RecipientRestrictionFilter "MemberOfGroup -eq '$dn'"
+   # Mail.Send for the app, within that scope.
+   New-ManagementRoleAssignment -App $appId -Role "Application Mail.Send" -CustomResourceScope "CloudShare users"
    ```
-   The object ID is that of the *enterprise application* (Entra → *Enterprise applications* → CloudShare), not of
-   the app registration.
-3. Remove the tenant-wide `Mail.Send` **application** permission from the app registration again (step 1), so only
-   the scoped RBAC assignment applies. Check with
-   `Test-ServicePrincipalAuthorization -Identity <client-id> -Resource <mailbox>`.
-4. Set `DOWNLOAD_NOTICE=true`, `UPLOAD_NOTICE=true` and/or `SMS_NOTICE=true` in `env/cloudshare.env` and update
-   the stack.
+   New CloudShare users only need to be added to the group.
+4. Make sure the app registration has **no** `Mail.Send` of type *Application* (*API permissions* – German
+   *API-Berechtigungen*: a row `Mail.Send · Application / Anwendung · Send mail as any user`). If there is one, remove
+   it (*…* → *Remove permission* / *Berechtigung entfernen*): Exchange adds an Entra grant to the RBAC scope, so with
+   it the app could still send as any mailbox. The **delegated** `Mail.Send` / `Mail.Send.Shared` stay – the password
+   mail needs them.
+5. Check (changes can take up to two hours to apply):
+   ```powershell
+   Test-ServicePrincipalAuthorization -Identity $appId -Resource <mailbox of a CloudShare user>  # InScope: True
+   Test-ServicePrincipalAuthorization -Identity $appId -Resource <any other mailbox>             # InScope: False
+   ```
+
+### Way B (simple): all mailboxes – application permission in Entra
+
+App registration `CloudShare Server` → *API permissions* → *Add a permission* → *Microsoft Graph* → **Application
+permissions** → `Mail.Send` → *Add permissions* → *Grant admin consent*. The row then reads
+`Mail.Send · Application / Anwendung · Send mail as any user · Granted`. The app may then send as **any** mailbox of the
+tenant – CloudShare only does so for the user who shared a link, but the permission itself is not limited. Switch to
+way A later by doing its steps 1–5 (step 4 removes this row again).
+
+### Then
+
+Set `DOWNLOAD_NOTICE=true`, `UPLOAD_NOTICE=true` and/or `SMS_NOTICE=true` in `env/cloudshare.env` and update the stack.
+Without the permission these mails fail with a warning in the log (`Note about an undelivered SMS not sent`, `… check
+failed, retrying later`); everything else keeps working.
 
 ## 6. Checking the setup
 
