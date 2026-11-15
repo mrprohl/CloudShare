@@ -142,6 +142,11 @@ export const config = {
    * credentials) – restrict it to the CloudShare users with Exchange RBAC for applications.
    */
   downloadNotice: process.env.DOWNLOAD_NOTICE === "true",
+  /**
+   * Mail to the sender when files arrive through an upload link ("Anfordern"), at most one per check (10 minutes).
+   * Same application permission Mail.Send as the download confirmation.
+   */
+  uploadNotice: process.env.UPLOAD_NOTICE === "true",
 
   /** Optional text templates (SMS, password mail, download confirmation): default → department → user. */
   templatesFile: process.env.TEMPLATES_FILE ?? "/config/templates.json",

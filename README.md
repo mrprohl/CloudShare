@@ -50,6 +50,8 @@ message was sent automatically by CloudShare."** The colour of the card says wha
 password (to the recipients), **green** – downloaded, **red** – a problem.
 
 - **Download confirmation** (only with `DOWNLOAD_NOTICE=true`): when a recipient downloads a file for the first time.
+- **Files received** (only with `UPLOAD_NOTICE=true`): when files arrive through an upload link ("Request") – the
+  new file names, a button to the folder in Nextcloud; checked every 10 minutes, so several uploads come as one mail.
 - **Text message not sent / not delivered** (only with SMS): the SMS with the password failed. The note contains
   neither the password nor a link to it – the password goes out no other way; send it again with **"Password"** in
   "My shares".
@@ -134,13 +136,13 @@ Expired files are cleaned up automatically as well (see `CLEANUP_AFTER_DAYS`).
 
 <br clear="right">
 
-<img src="docs/images/taskpane-read.png" alt="Pane opened from a sent mail: under In this message the two links of that mail with download and password status, below them the other shares" width="300" align="right">
+<img src="docs/images/taskpane-read.png" alt="Pane opened from a sent mail: tabs This message and My shares; under This message the two links of that mail with download and password status" width="300" align="right">
 
 **Status of a sent mail:** the **CloudShare** button is also there while you **read** a mail – e.g. in *Sent Items*.
-It opens "My shares" with the links of that mail on top (**"In this message"**: downloads, how the password went
-out, validity) and your other shares below. **Pin** the pane (pin icon in its header) and it follows the mail you
-select. Copy and Revoke work as usual; nothing is inserted there. All valid links are listed; confidential
-messages are not (they are not stored in Nextcloud).
+The pane then has the tabs **"This message"** (opened first, in place of "Send": the links of that mail – downloads,
+how the password went out, validity) and **"My shares"** (all valid links, as when writing). **Pin** the pane (pin
+icon in its header) and it follows the mail you select. Copy, Password and Revoke work as usual; nothing is inserted
+there. Confidential messages are not listed (they are not stored in Nextcloud).
 
 <br clear="right">
 
@@ -264,6 +266,7 @@ deployed again.
 | `SMS_ALLOWED_COUNTRIES` | empty (all) | Countries SMS may go to, e.g. `DE, AT, CH` or `DACH` – ISO codes, calling codes (`+49`), German or English names (`Österreich`, `Austria`), `EU`, `EWR`; see [Password by SMS](#password-by-sms-optional) |
 | `SMS_BLOCKED_NUMBERS` / `SMS_ALLOWED_NUMBERS` | `^\+49(800\|900\|180)` / empty | Regular expressions on the number (`+491701234567`): matching numbers are refused / only matching numbers are accepted. Mobile and landline numbers are allowed; the default blocks 0800, 0900 and 0180 numbers |
 | `DOWNLOAD_NOTICE` | off | `true`: mail to the sender on the first download, and a note when seven.io reports a password SMS as not delivered (needs the Entra application permission `Mail.Send`, see [microsoft-365.md → 5](docs/microsoft-365.md#5-optional-application-permission-for-the-download-confirmation)) |
+| `UPLOAD_NOTICE` | off | `true`: mail to the sender when files arrive through an upload link ("Anfordern"), at most one per link every 10 minutes, until the link expires (same application permission `Mail.Send`) |
 | `CLEANUP_AFTER_DAYS` | `0` | Uploaded files go to the Nextcloud trash this many days after their link expired or was revoked; `off` = never. Received files are never deleted |
 | `MAIL_FOOTER` | empty | Optional footer of the card, filled from the sender's Microsoft 365 profile, e.g. `'{displayName} · {jobTitle}\n{company} · Tel. {phone} · {email}'`; placeholders and rules in `cloudshare.env.example`. Empty = no footer (`setup.sh`: Enter) |
 | `VAULTWARDEN_URL`, `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD` | – | Vaultwarden service account |

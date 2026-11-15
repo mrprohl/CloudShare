@@ -251,11 +251,15 @@ async function noteUndeliveredSms(refs: PasswordRef[], log: Pick<FastifyBaseLogg
   }
 }
 
-/** Token (last URL segment), name and expiry of a link just created. */
-const shareInfo = (url: string, name: string, expireDate: string): StepShare => ({
+/**
+ * Token (last URL segment), name and expiry of a link just created. Upload links also carry the files already in their
+ * folder (`knownFiles`), so the upload notification only reports files that arrive later.
+ */
+const shareInfo = (url: string, name: string, expireDate: string, knownFiles?: string[]): StepShare => ({
   token: url.replace(/\/+$/, "").split("/").pop() ?? "",
   name,
   expireDate,
+  ...(knownFiles ? { request: true as const, knownFiles } : {}),
 });
 
 const formatBytes = (bytes: number) =>
@@ -593,7 +597,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     // Create-only share ("file drop"): recipients can upload but cannot see or download anything.
     const shareUrl = await nc.createPublicShare(folder, password, expireDate, 4, t("server.requestLabel"));
     const jobId = await attachToJob(user, req.body?.jobId, uploadLinkItem(), password, passwordLink, req.body?.step,
-      shareInfo(shareUrl, uploadLinkItem(), expireDate));
+      shareInfo(shareUrl, uploadLinkItem(), expireDate, [])); // a new folder: nothing received yet
     req.log.info({ user: user.upn, folder: folder.join("/") }, "Upload link created");
     return { shareUrl, expireDate, jobId };
   });
@@ -796,7 +800,11 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         ? await nc.createPublicShare(segments, password, expireDate, 4, t("server.requestLabel"))
         : await nc.createPublicShare(segments, noPassword ? undefined : password, expireDate);
       if (!request) await registerForCleanup(user.oid, segments, expireDate);
-      const info = shareInfo(shareUrl, request ? uploadLinkItem() : fileName, expireDate);
+      // An upload folder linked again may already hold files: the upload notification only reports new ones.
+      const knownFiles = request
+        ? config.uploadNotice ? ((await nc.listFiles((await nc.userInfo()).id, segments)) ?? []) : []
+        : undefined;
+      const info = shareInfo(shareUrl, request ? uploadLinkItem() : fileName, expireDate, knownFiles);
       const jobId = noPassword
         ? await attachNoticeJob(user, req.body?.jobId, info)
         : await attachToJob(user, req.body?.jobId, request ? uploadLinkItem() : fileName, password, passwordLink, req.body?.step, info);

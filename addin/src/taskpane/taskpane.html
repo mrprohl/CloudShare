@@ -33,6 +33,8 @@
         <div class="tabbar">
           <div class="tabs" id="tabs" role="tablist" aria-label="CloudShare">
             <button type="button" role="tab" id="tab-send" class="tab" aria-selected="true" aria-controls="panel-send">%%t:addin.tabs.send%%</button>
+            <!-- Reading a mail: "Diese Nachricht" takes the place of "Senden". -->
+            <button type="button" role="tab" id="tab-mail" class="tab" aria-selected="false" aria-controls="panel-mail" hidden>%%t:addin.tabs.mail%%</button>
             <button type="button" role="tab" id="tab-shares" class="tab" aria-selected="false" aria-controls="panel-shares">%%t:addin.tabs.shares%%</button>
           </div>
           <!-- User guide: opens in place of the current tab, the same button or "×" closes it. -->
@@ -46,16 +48,16 @@
           </button>
         </div>
 
+        <!-- Only when the pane was opened from a mail being read (taskpane.html?view=read): the links of that mail. -->
+        <div id="panel-mail" class="panel" role="tabpanel" aria-labelledby="tab-mail" hidden>
+          <div class="content">
+            <div id="mail-shares" class="share-list" aria-live="polite"></div>
+            <p class="caption" id="mail-none" hidden>%%t:addin.read.none%%</p>
+          </div>
+        </div>
+
         <div id="panel-shares" class="panel" role="tabpanel" aria-labelledby="tab-shares" hidden>
           <div class="content">
-            <!-- Only when the pane was opened from a mail being read (taskpane.html?view=read): the links found in that
-                 mail first, then the others. -->
-            <section id="mail-section" aria-labelledby="mail-heading" hidden>
-              <h2 class="section-title" id="mail-heading">%%t:addin.read.thisMail%%</h2>
-              <div id="mail-shares" class="share-list" aria-live="polite"></div>
-              <p class="caption" id="mail-none" hidden>%%t:addin.read.none%%</p>
-              <h2 class="section-title">%%t:addin.read.others%%</h2>
-            </section>
             <div id="shares" class="share-list" aria-live="polite"></div>
             <p class="caption" id="no-shares" hidden>%%t:addin.shares.none%%</p>
           </div>

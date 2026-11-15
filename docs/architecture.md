@@ -230,6 +230,13 @@ first download the sender gets a mail (`download_notice_*` templates above a gre
 then. Entries are dropped after the download or when the link expired. No IP addresses or data about the person who
 downloaded are kept.
 
+**Upload notification** (`UPLOAD_NOTICE=true`, separate switch, same app token): upload links ("Anfordern") carry
+`request: true` and `knownFiles` in their `StepShare` (the files already in the folder when the link was created –
+none for a new folder, the received ones when an upload folder is linked again) and are registered as
+`kind: "upload"`. Each pass lists the folder (`listFiles`, WebDAV `PROPFIND` depth 1) and mails the sender the files
+not reported yet – at most one mail per link and pass (green card with up to 10 names and "and N more", button to the
+folder in Nextcloud, texts `mail.uploaded*`). The entry stays until the link expired.
+
 ### 2.8 Languages
 
 `LANGUAGE` (default `de`; `de` and `en` are included) picks `locales/<language>.json`. `i18n.ts` merges, per text:
@@ -278,7 +285,9 @@ test checks the German texts in the running stack.
 
 The manifest also adds the CloudShare button to the ribbon of a mail being **read** (`MessageReadCommandSurface`,
 pinnable via `SupportsPinning`; legacy `ItemRead` form for older clients). It opens `taskpane.html?view=read`: no
-"Send" tab, only "My shares" with the links of that mail on top ("In this message") and the other shares below.
+"Send" tab; the tabs are "This message" (`#tab-mail`, opened first and again when a pinned pane moves to another mail:
+the links of that mail) and "My shares" (the same list as while writing). A link revoked in one list
+disappears from both.
 
 The mail is matched by its body, not by a server-side record: the pane reads the HTML body (`body.getAsync`) and
 collects the tokens of Nextcloud links (`/s/<token>`); the shares of `GET /api/shares` whose token is among them belong

@@ -60,6 +60,10 @@ export interface StepShare {
   token: string;
   name: string;
   expireDate: string;
+  /** An upload link ("Anfordern"): watched for received files (UPLOAD_NOTICE) instead of downloads. */
+  request?: true;
+  /** Files already in the upload folder when the link was created – not reported as received. */
+  knownFiles?: string[];
 }
 
 /** End of the last day the links are valid (ms) – for steps created before `sendKeepUntil` existed. */
@@ -417,7 +421,10 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
       // "Kennwort an andere Adresse": only that address gets the password, not the recipients of the mail.
       const recipients = job.passwordTo ? { to: [job.passwordTo], cc: [], bcc: [] } : message.recipients;
       const sender = message.from ?? armed.mailbox;
-      /** Download confirmation for these links, now that subject and recipients of the sent mail are known. */
+      /**
+       * Download confirmation (file links) and upload notification (upload links) for these links, now that subject
+       * and recipients of the sent mail are known.
+       */
       const watchDownloads = (shares: StepShare[]) =>
         registerNotices(
           shares.map((s): [string, Notice] => [
@@ -432,6 +439,7 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
               recipients: message.recipients.to.concat(message.recipients.cc).join(", "),
               expireDate: s.expireDate,
               registeredAt: Date.now(),
+              ...(s.request ? { kind: "upload" as const, knownFiles: s.knownFiles ?? [] } : {}),
             },
           ]),
         ).catch((err) => log.warn({ err, user: job.ownerUpn }, "Download confirmation could not be registered"));

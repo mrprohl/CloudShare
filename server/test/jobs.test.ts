@@ -310,6 +310,8 @@ describe("password by SMS, deliveries and download notices", () => {
       shares: [share("tok-mail-1", "a.pdf")],
     });
     await addFileToPart(id, "s1", "b.png", share("tok-mail-2", "b.png"));
+    await addFileToPart(id, "s1", "Upload-Link für Ihre Dateien",
+      { ...share("tok-mail-3", "Upload-Link für Ihre Dateien"), request: true, knownFiles: ["vorher.pdf"] });
     await arm(id);
     sentOnlyFor(id);
 
@@ -320,10 +322,13 @@ describe("password by SMS, deliveries and download notices", () => {
     expect(deliveryFor("tok-mail-2", "someone-else")).toBeUndefined();
     const notices = new Map(pendingNotices());
     expect(notices.get("tok-mail-1")).toMatchObject({ fileName: "a.pdf", subject: "Unterlagen", notifyTo: "max@example.test" });
+    expect(notices.get("tok-mail-1")?.kind).toBeUndefined(); // file link: first download
     expect(notices.get("tok-mail-2")?.fileName).toBe("b.png");
+    // The upload link is watched for received files (UPLOAD_NOTICE), not for downloads.
+    expect(notices.get("tok-mail-3")).toMatchObject({ kind: "upload", knownFiles: ["vorher.pdf"], subject: "Unterlagen" });
     // The password can be sent again later; the mail's recipients are suggested.
     expect(passwordRefFor("tok-mail-2", "oid")).toMatchObject({
-      sendId: "send-a", tokens: ["tok-mail-1", "tok-mail-2"], fileNames: ["a.pdf", "b.png"],
+      sendId: "send-a", tokens: ["tok-mail-1", "tok-mail-2", "tok-mail-3"], fileNames: ["a.pdf", "b.png", "Upload-Link für Ihre Dateien"],
       recipients: { to: ["erika@example.test"], cc: ["chef@example.test"], bcc: [] }, maxAccessCount: 3,
     });
     expect(passwordRefFor("tok-mail-2", "someone-else")).toBeNull();

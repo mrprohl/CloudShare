@@ -378,7 +378,10 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .share .file-icon { margin-top: 2px; }
 .share-body { flex: 1; min-width: 0; }
 .share-head { display: flex; align-items: center; gap: 4px; min-height: 28px; margin-top: -4px; }
-.share-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Name shortened in the middle: the start takes the "…", the end (extension) always stays – see nameParts. */
+.share-name { flex: 1; min-width: 0; display: flex; font-weight: 600; white-space: pre; } /* pre: a space at the cut stays */
+.share-name .name-start { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.share-name .name-end { flex: none; }
 .share-meta { font-size: 12px; line-height: 16px; color: var(--fg3); }
 .share-password.failed { color: var(--danger-fg); }
 .share-unsent { color: var(--fg2); font-weight: 600; }
