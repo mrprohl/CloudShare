@@ -65,6 +65,10 @@ const CONFIG = {
   trace: false,
   smsEnabled: false,
   smsDefaultCountry: "49",
+  smsCountryCodes: [] as string[], // SMS_ALLOWED_COUNTRIES empty = all countries
+  smsCountries: "",
+  smsAllowedNumbers: "", // SMS_ALLOWED_NUMBERS empty = every number
+  smsBlockedNumbers: "^\\+49(800|900|180)", // default of SMS_BLOCKED_NUMBERS
   messageMaxLength: 1000,
   sendExpireDays: 5,
   sendMaxExpireDays: 30,
@@ -458,6 +462,35 @@ test("Kennwort per SMS: number required, normalized to E.164 and stored on the j
   await expect.poll(() => calls.filter((c) => c.method === "PATCH").map((c) => JSON.parse(c.body!.toString())))
     .toEqual([{ passwordSms: "+491701234567" }]);
   expect(JSON.parse((await officeLog(page)).session["cloudshare-state"])).toMatchObject({ passwordSms: "+491701234567" });
+});
+
+test("Kennwort per SMS: numbers of other countries and service numbers are refused right away", async ({ page }) => {
+  const calls = await openTaskpane(page, {
+    attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)],
+    config: { smsEnabled: true, smsCountryCodes: ["49", "43", "41"], smsCountries: "Deutschland, Österreich und Schweiz" },
+  });
+  await page.selectOption("#password-channel", "sms");
+  await expect(page.locator("#password-to-hint")).toContainText("Möglich sind Rufnummern aus Deutschland, Österreich und Schweiz.");
+
+  await page.fill("#password-sms", "+44 7700 900123");
+  await page.press("#password-sms", "Tab");
+  await expect(page.locator("#status")).toContainText("nur an Rufnummern aus Deutschland, Österreich und Schweiz");
+  await expect(page.locator("#password-sms")).toHaveAttribute("aria-invalid", "true");
+
+  await page.click("#submit"); // no link with a number the password could never reach
+  await expect(page.locator("#status")).toContainText("nur an Rufnummern aus Deutschland, Österreich und Schweiz");
+  expect(calls.filter((c) => c.method === "PATCH")).toEqual([]);
+
+  await page.fill("#password-sms", "0800 123 45 67"); // service number (SMS_BLOCKED_NUMBERS)
+  await page.press("#password-sms", "Tab");
+  await expect(page.locator("#status")).toContainText("Service- und Sondernummern wie 0800, 0180 oder 0900 sind ausgeschlossen");
+  await expect(page.locator("#password-sms")).toHaveAttribute("aria-invalid", "true");
+
+  await page.fill("#password-sms", "+43 (0)664 123 45 67");
+  await page.press("#password-sms", "Tab");
+  await expect(page.locator("#password-sms")).toHaveValue("+436641234567");
+  await expect(page.locator("#password-sms")).not.toHaveAttribute("aria-invalid", "true");
+  await expect(page.locator("#status")).toContainText("per SMS an +436641234567");
 });
 
 test("Kennwort an eine andere E-Mail-Adresse chosen without an address: no link until it is there", async ({ page }) => {

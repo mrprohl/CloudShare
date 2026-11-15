@@ -18,6 +18,8 @@ Object.assign(process.env, {
   // SMS and download confirmation switched on, so their code paths are tested (seven.io and Graph are mocked).
   SEVEN_API_KEY: "test-seven-key",
   SEVEN_WEBHOOK_SECRET: "test-webhook-secret",
+  // Three spellings on purpose: a name, an ISO alpha-3 code and a calling code.
+  SMS_ALLOWED_COUNTRIES: "Deutschland; AUT, +41",
   DOWNLOAD_NOTICE: "true",
   TEMPLATES_FILE: path.join(tmpdir(), "cloudshare-no-templates.json"),
   DATA_DIR: mkdtempSync(path.join(tmpdir(), "cloudshare-test-")),

@@ -606,13 +606,50 @@ async function rememberShareChoice(jobId: string | null, noPassword = jobId === 
 
 const looksLikeEmail = (value: string) => /^[^\s@,;<>"()]+@[^\s@,;<>"()]+\.[^\s@,;<>"()]{2,}$/.test(value);
 
-/** Same rules as the server (server/src/sms.ts): E.164, "00" → "+", leading "0" → default country code. */
+/**
+ * Same rules as the server (server/src/sms.ts): "tel:" and the "(0)" of "+49 (0)170 …" removed, E.164, "00" → "+",
+ * leading "0" → default country code.
+ */
 function normalizePhone(input: string): string | null {
-  let number = input.trim().replace(/[\s\-./()]/g, "");
+  let number = input
+    .trim()
+    .replace(/^tel:/i, "")
+    .replace(/＋/g, "+")
+    .replace(/(\d)\s*\(0\)/g, "$1")
+    .replace(/[\s\-‐‑–—./()]/g, "");
   if (number.startsWith("00")) number = `+${number.slice(2)}`;
   else if (/^0[1-9]/.test(number)) number = `+${serverConfig.smsDefaultCountry ?? "49"}${number.slice(1)}`;
   return /^\+[1-9]\d{7,14}$/.test(number) ? number : null;
 }
+
+/** SMS_ALLOWED_NUMBERS / SMS_BLOCKED_NUMBERS from the server; null if empty or not readable here (the server checks). */
+function numberRule(source: string | undefined): RegExp | null {
+  if (!source) return null;
+  try {
+    return new RegExp(source);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Why no SMS may go to this number (E.164), or null – the server's checks (smsNumberProblem in server/src/sms.ts):
+ * SMS_ALLOWED_COUNTRIES (calling codes are prefix-free, so "starts with +<code>" is exact), then the number rules.
+ */
+function smsNumberProblem(number: string, scope: "channel" | "resend" = "channel"): string | null {
+  const codes = serverConfig.smsCountryCodes ?? [];
+  if (codes.length > 0 && !codes.some((code) => number.startsWith(`+${code}`))) {
+    return t(`${scope}.smsCountry`, { countries: serverConfig.smsCountries ?? "" });
+  }
+  const allowed = numberRule(serverConfig.smsAllowedNumbers);
+  if (allowed && !allowed.test(number)) return t(`${scope}.smsNumberNotAllowed`);
+  if (numberRule(serverConfig.smsBlockedNumbers)?.test(number)) return t(`${scope}.smsNumberBlocked`);
+  return null;
+}
+
+/** "Mobile numbers from Germany and Austria are possible." – only if SMS_ALLOWED_COUNTRIES limits them. */
+const smsCountriesHint = () =>
+  (serverConfig.smsCountryCodes ?? []).length > 0 ? ` ${t("channel.smsCountries", { countries: serverConfig.smsCountries ?? "" })}` : "";
 
 type Channel = "recipients" | "mail" | "sms";
 const selectedChannel = (): Channel => {
@@ -621,7 +658,7 @@ const selectedChannel = (): Channel => {
 };
 
 const channelHint = (channel: Channel) =>
-  channel === "mail" ? t("channel.hintMail") : channel === "sms" ? t("channel.hintSms") : "";
+  channel === "mail" ? t("channel.hintMail") : channel === "sms" ? t("channel.hintSms") + smsCountriesHint() : "";
 
 function showChannel(channel: Channel) {
   channelSelect.value = channel;
@@ -641,7 +678,7 @@ function channelTarget(): { passwordTo?: string; passwordSms?: string } | null {
   }
   if (channel === "sms") {
     const number = normalizePhone(passwordSmsInput.value);
-    return number ? { passwordTo: undefined, passwordSms: number } : null;
+    return number && !smsNumberProblem(number) ? { passwordTo: undefined, passwordSms: number } : null;
   }
   return { passwordTo: undefined, passwordSms: undefined };
 }
@@ -699,8 +736,15 @@ passwordSmsInput.addEventListener("change", () => {
     setStatus(t("channel.smsInvalid"), "error");
     return;
   }
-  passwordSmsInput.removeAttribute("aria-invalid");
   passwordSmsInput.value = number;
+  // Told right away – not only when the link is inserted.
+  const numberProblem = smsNumberProblem(number);
+  if (numberProblem) {
+    passwordSmsInput.setAttribute("aria-invalid", "true");
+    setStatus(numberProblem, "error");
+    return;
+  }
+  passwordSmsInput.removeAttribute("aria-invalid");
   void applyChannel({ passwordTo: undefined, passwordSms: number });
 });
 
@@ -724,7 +768,11 @@ function settingsProblem(kind: "file" | "request" | "message"): string | null {
     const input = sms ? passwordSmsInput : passwordToInput;
     input.setAttribute("aria-invalid", "true");
     input.focus();
-    if (sms) return t(input.value.trim() ? "channel.smsInvalidShort" : "channel.smsMissing");
+    if (sms) {
+      const number = normalizePhone(input.value);
+      if (number) return smsNumberProblem(number) ?? t("channel.smsInvalidShort");
+      return t(input.value.trim() ? "channel.smsInvalidShort" : "channel.smsMissing");
+    }
     return t(input.value.trim() ? "channel.mailInvalidShort" : "channel.mailMissing");
   }
   return null;
@@ -1552,14 +1600,40 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
     hint.textContent =
       value === "recipients"
         ? t("resend.recipientsHint", { list: distributionText(sent.recipients) })
-        : t(sms ? "resend.smsHint" : "resend.mailHint");
+        : sms
+          ? t("resend.smsHint") + smsCountriesHint()
+          : t("resend.mailHint");
+    target.removeAttribute("aria-invalid");
   };
   channel.addEventListener("change", showChannel);
   showChannel();
 
+  /** A number from a country SMS may not go to: told when it is entered and instead of sending. */
+  const smsTargetProblem = (): string | null => {
+    if (channel.value !== "sms") return null;
+    const number = normalizePhone(target.value);
+    return number ? smsNumberProblem(number, "resend") : null;
+  };
+  target.addEventListener("change", () => {
+    const problem = smsTargetProblem();
+    if (problem) {
+      target.setAttribute("aria-invalid", "true");
+      setStatus(problem, "error");
+    } else {
+      target.removeAttribute("aria-invalid");
+    }
+  });
+
   const send = panel.querySelector<HTMLButtonElement>(".send-password")!;
   send.textContent = t("resend.send");
   send.addEventListener("click", async () => {
+    const problem = smsTargetProblem();
+    if (problem) {
+      target.setAttribute("aria-invalid", "true");
+      target.focus();
+      setStatus(problem, "error");
+      return;
+    }
     send.disabled = true;
     setStatus(t("resend.sending"));
     try {

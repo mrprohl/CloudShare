@@ -237,14 +237,31 @@ describe("password jobs", () => {
 
 describe("password by SMS, deliveries and download notices", () => {
   const share = (token: string, name: string) => ({ token, name, expireDate: "2099-12-01" });
-  const smsJob = async (token: string) => {
+  const smsJob = async (token: string, number = "+491701234567") => {
     const id = await createSeparateJob("oid", "max@example.test", {
       step: "s1", fileNames: ["a.pdf"], sendUrl: "https://vault/#/send/a", sendId: "send-a", maxAccessCount: 3,
       shares: [share(token, "a.pdf")],
     });
-    await setJobPasswordTo(id, undefined, "+491701234567");
+    await setJobPasswordTo(id, undefined, number);
     return id;
   };
+
+  it("sends no SMS to a country SMS_ALLOWED_COUNTRIES no longer allows – only the note to the sender", async () => {
+    const id = await smsJob("tok-sms-us", "+12025550123"); // entered before the admin limited the countries
+    await arm(id);
+    sentOnlyFor(id);
+
+    await checkJobs(quietLog());
+
+    expect(sendSms).not.toHaveBeenCalled();
+    expect(sendMail).toHaveBeenCalledOnce();
+    const [, recipients, subject, html] = sendMail.mock.calls[0];
+    expect(recipients).toEqual({ to: ["max@example.test"], cc: [], bcc: [] });
+    expect(subject).toBe("SMS nicht versendet – Unterlagen");
+    expect(html).toContain("Deutschland, Österreich und Schweiz");
+    expect(html).not.toContain("KateGeteFi45");
+    expect(deliveryFor("tok-sms-us", "oid")).toMatchObject({ channel: "sms", status: "failed" });
+  });
 
   it("sends the password of a step by SMS instead of a mail and keeps the Send for sending it again", async () => {
     const id = await smsJob("tok-sms-1");
