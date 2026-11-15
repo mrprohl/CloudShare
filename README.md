@@ -1,14 +1,15 @@
 # CloudShare
 
-**Send large files from Outlook as password-protected Nextcloud links – with the password delivered automatically in
-a second mail.**
+**Send large files from Outlook as password-protected Nextcloud links – with the password delivered automatically on
+a separate way: in a second mail or by text message.**
 
 CloudShare is an Outlook add-in for Microsoft 365 / Exchange Online (classic Outlook on Windows, new Outlook and
 Outlook on the web). Instead of attaching a large file, the sender clicks **"Insert file as link"**: the file is
 uploaded to the sender's own Nextcloud and a download card is inserted into the mail. As soon as the mail has really
-been sent, the recipients get a second mail with a link to the password (a Vaultwarden Send that can only be opened a
-limited number of times). The same way the sender can insert a **confidential message** (never part of the mail) or an
-**upload link** through which the recipients send files back.
+been sent, the password goes out on its own – by default as a second mail to the recipients with a link to the
+password (a Vaultwarden Send that can only be opened a limited number of times), or to another address, or as a
+**text message** (SMS via seven.io, optional) straight to a phone. The same way the sender can insert a
+**confidential message** (never part of the mail) or an **upload link** through which the recipients send files back.
 
 ![A compose window in new Outlook: the CloudShare button in the ribbon, a download card with three files in the mail, and the CloudShare pane on the right](docs/images/outlook-compose.png)
 
@@ -52,9 +53,9 @@ password (to the recipients), **green** – downloaded, **red** – a problem.
 - **Download confirmation** (only with `DOWNLOAD_NOTICE=true`): when a recipient downloads a file for the first time.
 - **Files received** (only with `UPLOAD_NOTICE=true`): when files arrive through an upload link ("Request") – the
   new file names, a button to the folder in Nextcloud; checked every 10 minutes, so several uploads come as one mail.
-- **Text message not sent / not delivered** (only with SMS): the SMS with the password failed. The note contains
-  neither the password nor a link to it – the password goes out no other way; send it again with **"Password"** in
-  "My shares".
+- **Text message not sent / not delivered** (only with SMS; "not delivered", reported later by seven.io, only with
+  `SMS_NOTICE=true`): the SMS with the password failed. The note contains neither the password nor a link to it –
+  the password goes out no other way; send it again with **"Password"** (key icon) in "My shares".
 
 <br clear="right">
 
@@ -136,10 +137,10 @@ Expired files are cleaned up automatically as well (see `CLEANUP_AFTER_DAYS`).
 
 <br clear="right">
 
-<img src="docs/images/taskpane-read.png" alt="Pane opened from a sent mail: tabs This message and My shares; under This message the two links of that mail with download and password status" width="300" align="right">
+<img src="docs/images/taskpane-read.png" alt="Pane opened from a sent mail: tabs Message and My shares; under Message the two links of that mail with download and password status" width="300" align="right">
 
 **Status of a sent mail:** the **CloudShare** button is also there while you **read** a mail – e.g. in *Sent Items*.
-The pane then has the tabs **"This message"** (opened first, in place of "Send": the links of that mail – downloads,
+The pane then has the tabs **"Message"** (opened first, in place of "Send": the links of that mail – downloads,
 how the password went out, validity) and **"My shares"** (all valid links, as when writing). **Pin** the pane (pin
 icon in its header) and it follows the mail you select. Copy, Password and Revoke work as usual; nothing is inserted
 there. Confidential messages are not listed (they are not stored in Nextcloud).
@@ -265,8 +266,9 @@ deployed again.
 | `SMS_DEFAULT_COUNTRY` / `SMS_MAX_PER_DAY` | `49` / `50` | Country code for numbers like `0170 …` / SMS per user and day |
 | `SMS_ALLOWED_COUNTRIES` | empty (all) | Countries SMS may go to, e.g. `DE, AT, CH` or `DACH` – ISO codes, calling codes (`+49`), German or English names (`Österreich`, `Austria`), `EU`, `EWR`; see [Password by SMS](#password-by-sms-optional) |
 | `SMS_BLOCKED_NUMBERS` / `SMS_ALLOWED_NUMBERS` | `^\+49(800\|900\|180)` / empty | Regular expressions on the number (`+491701234567`): matching numbers are refused / only matching numbers are accepted. Mobile and landline numbers are allowed; the default blocks 0800, 0900 and 0180 numbers |
-| `DOWNLOAD_NOTICE` | off | `true`: mail to the sender on the first download, and a note when seven.io reports a password SMS as not delivered (needs the Entra application permission `Mail.Send`, see [microsoft-365.md → 5](docs/microsoft-365.md#5-optional-application-permission-for-the-download-confirmation)) |
+| `DOWNLOAD_NOTICE` | off | `true`: mail to the sender on the first download (needs the Entra application permission `Mail.Send`, see [microsoft-365.md → 5](docs/microsoft-365.md#5-optional-application-permission-for-the-download-confirmation)) |
 | `UPLOAD_NOTICE` | off | `true`: mail to the sender when files arrive through an upload link ("Anfordern"), at most one per link every 10 minutes, until the link expires (same application permission `Mail.Send`) |
+| `SMS_NOTICE` | like `DOWNLOAD_NOTICE` | `true`: note to the sender when seven.io reports a password SMS as not delivered later (same application permission `Mail.Send`; unset it follows `DOWNLOAD_NOTICE`, which switched it before). A note about an SMS seven.io refuses right away needs no switch |
 | `CLEANUP_AFTER_DAYS` | `0` | Uploaded files go to the Nextcloud trash this many days after their link expired or was revoked; `off` = never. Received files are never deleted |
 | `MAIL_FOOTER` | empty | Optional footer of the card, filled from the sender's Microsoft 365 profile, e.g. `'{displayName} · {jobTitle}\n{company} · Tel. {phone} · {email}'`; placeholders and rules in `cloudshare.env.example`. Empty = no footer (`setup.sh`: Enter) |
 | `VAULTWARDEN_URL`, `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD` | – | Vaultwarden service account |
@@ -344,8 +346,8 @@ corrected number) or as a password mail. Two kinds of failure:
   "not sent", the log the reason (`Password SMS failed`).
 - **seven.io accepts it, but reports later that it could not be delivered** (e.g. wrong number, phone off for days –
   only with the delivery reports of step 3): "My shares" shows "not delivered". The note needs CloudShare's own
-  app permission (that of the download confirmation, `DOWNLOAD_NOTICE=true`), because no user is signed in at that
-  moment; without it only "My shares" shows it.
+  app permission (`SMS_NOTICE=true`, application permission `Mail.Send` as for the download confirmation), because
+  no user is signed in at that moment; without it only "My shares" shows it.
 
 ### Text templates (optional)
 

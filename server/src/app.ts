@@ -235,10 +235,10 @@ function passwordDelivery(url: string, owner: string) {
 /**
  * seven.io reported an SMS as not delivered: tell the sender – without password or link – so they send it again in
  * CloudShare. No user token exists at that point; only CloudShare's own app token can send, which needs the application
- * permission of the download confirmation (DOWNLOAD_NOTICE=true). Without it "Meine Freigaben" shows "nicht zugestellt".
+ * permission Mail.Send (SMS_NOTICE=true). Without it "Meine Freigaben" shows "nicht zugestellt".
  */
 async function noteUndeliveredSms(refs: PasswordRef[], log: Pick<FastifyBaseLogger, "warn">) {
-  if (!config.downloadNotice || refs.length === 0) return;
+  if (!config.smsNotice || refs.length === 0) return;
   try {
     const token = await appGraphToken();
     for (const ref of refs) {

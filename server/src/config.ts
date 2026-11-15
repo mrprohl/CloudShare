@@ -31,6 +31,11 @@ function cleanupDays(): number | null {
   return value;
 }
 
+/** A switch from the environment ("true" = on); unset, it takes the value of `fallbackName` (an older switch). */
+export function envFlag(name: string, fallbackName?: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  return (env[name] ?? (fallbackName ? env[fallbackName] : undefined)) === "true";
+}
+
 /** A regular expression from the environment; null if empty. Throws on an invalid one so a typo stops the start. */
 export function envRegex(name: string, fallback: string, raw = process.env[name] ?? fallback): RegExp | null {
   const source = raw.trim();
@@ -141,12 +146,19 @@ export const config = {
    * Mail to the sender on the first download of a link. Needs the application permission Mail.Send (client
    * credentials) – restrict it to the CloudShare users with Exchange RBAC for applications.
    */
-  downloadNotice: process.env.DOWNLOAD_NOTICE === "true",
+  downloadNotice: envFlag("DOWNLOAD_NOTICE"),
   /**
    * Mail to the sender when files arrive through an upload link ("Anfordern"), at most one per check (10 minutes).
    * Same application permission Mail.Send as the download confirmation.
    */
-  uploadNotice: process.env.UPLOAD_NOTICE === "true",
+  uploadNotice: envFlag("UPLOAD_NOTICE"),
+  /**
+   * Mail to the sender when seven.io reports a password SMS as not delivered later (webhook) – no user token exists
+   * then, so it needs the same application permission Mail.Send. Unset: follows DOWNLOAD_NOTICE, which switched it
+   * before this setting existed. (A note about an SMS seven.io refuses right away needs no switch: it goes out with
+   * the sender's own token when the mail is sent.)
+   */
+  smsNotice: envFlag("SMS_NOTICE", "DOWNLOAD_NOTICE"),
 
   /** Optional text templates (SMS, password mail, download confirmation): default → department → user. */
   templatesFile: process.env.TEMPLATES_FILE ?? "/config/templates.json",

@@ -309,14 +309,19 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .btn-icon[aria-pressed="true"] { background: var(--bg1-pressed); }
 
 /* --- Tabs (Fluent 2 TabList) ------------------------------------------------------ */
+/* Tab names never wrap; in a pane narrower than Outlook's default a name is shortened with "…" (full name in title). */
 .tabs { display: flex; gap: 4px; padding: 4px 12px 0; border-bottom: 1px solid var(--stroke2); }
 .tab {
   position: relative;
+  min-width: 0;
   padding: 10px 10px 12px;
   border: none;
   background: transparent;
   color: var(--fg2);
   font: 400 14px/20px var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
 }
 .tab:hover { color: var(--fg1); }

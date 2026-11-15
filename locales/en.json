@@ -29,7 +29,7 @@
 
     "tabs.send": "Send",
     "tabs.shares": "My shares",
-    "tabs.mail": "This message",
+    "tabs.mail": "Message",
     "help.button": "Help",
     "help.heading": "Help",
     "help.close": "Close help",
@@ -57,7 +57,7 @@
     "help.request.title": "Receiving files from others",
     "help.request.text": "Choose “Request” at the top and click “Insert upload link”. The recipients – for example citizens or partners – can upload files to you through it, very large ones too. The files end up in your Nextcloud.",
     "help.shares.title": "Overview: My shares",
-    "help.shares.text": "Under “My shares” you see all your valid links: how long they last, whether the file was downloaded and how the password was sent. Open a sent message and click “CloudShare” there: “This message” shows the links of that message, “My shares” all of them. The icons next to the name:",
+    "help.shares.text": "Under “My shares” you see all your valid links: how long they last, whether the file was downloaded and how the password was sent. Open a sent message and click “CloudShare” there: “Message” shows the links of that message, “My shares” all of them. The icons next to the name:",
     "help.shares.copy": "Copy – copies the link.",
     "help.shares.password": "Password – shows the password and sends it again, by email or text message.",
     "help.shares.insert": "Insert – inserts the file as a new link into the message you are writing.",

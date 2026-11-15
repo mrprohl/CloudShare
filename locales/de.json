@@ -29,7 +29,7 @@
 
     "tabs.send": "Senden",
     "tabs.shares": "Meine Freigaben",
-    "tabs.mail": "Diese Nachricht",
+    "tabs.mail": "Nachricht",
     "help.button": "Hilfe",
     "help.heading": "Hilfe",
     "help.close": "Hilfe schließen",
@@ -57,7 +57,7 @@
     "help.request.title": "Dateien von anderen erhalten",
     "help.request.text": "Wählen Sie oben „Anfordern“ und klicken Sie auf „Link zum Hochladen einfügen“. Die Empfänger – zum Beispiel Bürgerinnen und Bürger oder Partner – können darüber Dateien an Sie hochladen, auch sehr große. Die Dateien landen in Ihrer Nextcloud.",
     "help.shares.title": "Überblick: Meine Freigaben",
-    "help.shares.text": "Unter „Meine Freigaben“ sehen Sie alle Ihre gültigen Links: wie lange sie gelten, ob die Datei heruntergeladen wurde und wie das Kennwort verschickt wurde. Öffnen Sie eine gesendete Nachricht und klicken dort auf „CloudShare“, zeigt „Diese Nachricht“ die Links dieser Nachricht und „Meine Freigaben“ alle. Die Symbole rechts neben dem Namen:",
+    "help.shares.text": "Unter „Meine Freigaben“ sehen Sie alle Ihre gültigen Links: wie lange sie gelten, ob die Datei heruntergeladen wurde und wie das Kennwort verschickt wurde. Öffnen Sie eine gesendete Nachricht und klicken dort auf „CloudShare“, zeigt „Nachricht“ die Links dieser Nachricht und „Meine Freigaben“ alle. Die Symbole rechts neben dem Namen:",
     "help.shares.copy": "Kopieren – kopiert den Link.",
     "help.shares.password": "Kennwort – zeigt das Kennwort und schickt es erneut, per E-Mail oder SMS.",
     "help.shares.insert": "Einfügen – fügt die Datei als neuen Link in die Nachricht ein, die Sie gerade schreiben.",

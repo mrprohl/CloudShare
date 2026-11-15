@@ -1917,7 +1917,7 @@ async function loadShares() {
   sharesLoadedAt = Date.now();
   const shares = (await api<ShareItem[]>("/api/shares", {}, await getToken())).filter(isValid);
   if (readMode) {
-    // "Diese Nachricht": the links of the mail being read; "Meine Freigaben": all of them.
+    // "Nachricht": the links of the mail being read; "Meine Freigaben": all of them.
     const tokens = await mailTokens();
     mailShares.replaceChildren(...shares.filter((share) => tokens.has(shareToken(share.url))).map(shareRow));
   }
@@ -1953,7 +1953,7 @@ async function mailTokens(): Promise<Set<string>> {
 }
 
 /**
- * Read mode: tabs "Diese Nachricht" (the links of the mail being read, in place of "Senden") and "Meine Freigaben"
+ * Read mode: tabs "Nachricht" (the links of the mail being read, in place of "Senden") and "Meine Freigaben"
  * (plus "Hilfe"); follows the selected mail while the pane is pinned.
  */
 async function startReadView() {
