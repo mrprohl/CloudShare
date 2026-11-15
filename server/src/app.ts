@@ -47,7 +47,18 @@ import {
   type PasswordRef,
 } from "./passwordRefs.js";
 import { passwordMailHtml, smsProblemMailHtml } from "./passwordMail.js";
-import { mapReportStatus, maskPhone, normalizePhone, parseDeliveryReport, sendSms, smsEnabled } from "./sms.js";
+import {
+  mapReportStatus,
+  maskPhone,
+  normalizePhone,
+  parseDeliveryReport,
+  sendSms,
+  smsCountryCodes,
+  smsCountryList,
+  smsEnabled,
+  smsNumber,
+  smsNumberProblem,
+} from "./sms.js";
 import { defaultTemplates, render, templatesFor } from "./templates.js";
 import { clampInt, isEmailAddress } from "./limits.js";
 import { formatDate, locale, t } from "./i18n.js";
@@ -347,6 +358,12 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     trace: config.clientTrace,
     smsEnabled: smsEnabled(),
     smsDefaultCountry: config.smsDefaultCountry,
+    // SMS_ALLOWED_COUNTRIES: calling codes for the check while typing and the names for the hint ([] / "" = all).
+    smsCountryCodes: smsCountryCodes(),
+    smsCountries: smsCountryList(),
+    // SMS_ALLOWED_NUMBERS / SMS_BLOCKED_NUMBERS as regular expressions on the E.164 number ("" = none).
+    smsAllowedNumbers: config.smsAllowedNumbers?.source ?? "",
+    smsBlockedNumbers: config.smsBlockedNumbers?.source ?? "",
     messageMaxLength: MESSAGE_MAX_LENGTH,
     sendExpireDays: config.sendExpireDays,
     sendMaxExpireDays: config.sendMaxExpireDays,
@@ -727,8 +744,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
 
       if (channel === "sms") {
         if (!smsEnabled()) throw new HttpError(409, t("server.smsNotConfigured"));
-        const number = normalizePhone(target);
-        if (!number) throw new HttpError(400, t("server.phoneInvalid"));
+        const number = smsNumber(target);
         if (!takeSmsQuota(user.oid)) throw new HttpError(429, t("server.smsDailyLimit", { max: config.smsMaxPerDay }));
         const password = await readSendPassword(ref.sendId);
         const messageId = await sendSms(number, render(templates.sms_template, { password, sender_name: ref.senderName ?? "" }));
@@ -825,9 +841,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const body = req.body ?? {};
 
       if (body.passwordSms !== undefined && body.passwordSms !== "") {
-        const number = typeof body.passwordSms === "string" ? normalizePhone(body.passwordSms) : null;
         if (!smsEnabled()) throw new HttpError(409, t("server.smsNotConfigured"));
-        if (!number) throw new HttpError(400, t("server.phoneInvalid"));
+        const number = smsNumber(body.passwordSms);
         await setJobPasswordTo(req.params.id, undefined, number);
         // The link of an SMS step's Send is never sent: let its access last as long as the Send (until the links expire).
         const expiresAt = Date.now() + config.sendMaxExpireDays * 86_400_000;
@@ -880,7 +895,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     // "Kennwort an andere Adresse" from the draft – normally already set by the taskpane, ignored if not valid.
     const passwordTo = req.body?.passwordTo;
     const passwordSms = typeof req.body?.passwordSms === "string" ? normalizePhone(req.body.passwordSms) : null;
-    if (passwordSms && smsEnabled()) {
+    // A number no SMS may go to is ignored here: the job keeps the number the taskpane set before.
+    if (passwordSms && smsEnabled() && !smsNumberProblem(passwordSms)) {
       await setJobPasswordTo(req.params.id, undefined, passwordSms);
     } else if (typeof passwordTo === "string" && isEmailAddress(passwordTo.trim())) {
       await setJobPasswordTo(req.params.id, passwordTo.trim());

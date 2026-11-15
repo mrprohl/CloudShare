@@ -618,6 +618,36 @@ describe("password by SMS (seven.io)", () => {
     expect(getJob(id)?.passwordTo).toBe("kollege@example.test");
   });
 
+  it("allows SMS only to the countries of SMS_ALLOWED_COUNTRIES and names them", async () => {
+    // setup.ts: "Deutschland; AUT, +41"
+    expect((await app.inject({ method: "GET", url: "/api/config" })).json()).toMatchObject({
+      smsCountryCodes: ["49", "43", "41"],
+      smsCountries: "Deutschland, Österreich und Schweiz",
+    });
+    const id = await createJob("oid-anna", "anna@example.test", "a.pdf", "https://vault/#/send/x", 3, "send-9");
+    expect((await patch(id, { passwordSms: "+43 (0)664 1234567" })).statusCode).toBe(200);
+    expect(getJob(id)?.passwordSms).toBe("+436641234567");
+
+    const refused = await patch(id, { passwordSms: "+1 202 555 0123" });
+    expect(refused.statusCode).toBe(400);
+    expect(refused.json().error).toContain("Deutschland, Österreich und Schweiz");
+    expect(getJob(id)?.passwordSms).toBe("+436641234567"); // unchanged
+
+    const service = await patch(id, { passwordSms: "0800 1234567" }); // SMS_BLOCKED_NUMBERS (default)
+    expect(service.statusCode).toBe(400);
+    expect(service.json().error).toContain("0800, 0180 oder 0900");
+    expect((await patch(id, { passwordSms: "030 1234567" })).statusCode).toBe(200); // landline is fine
+    expect(getJob(id)?.passwordSms).toBe("+49301234567");
+    expect((await app.inject({ method: "GET", url: "/api/config" })).json()).toMatchObject({
+      smsAllowedNumbers: "",
+      smsBlockedNumbers: "^\\+49(800|900|180)",
+    });
+
+    // Arming with a number of another country keeps the number the taskpane set.
+    await app.inject({ method: "POST", url: `/api/jobs/${id}/arm`, headers: as("anna"), payload: { passwordSms: "0044 7700 900123" } });
+    expect(getJob(id)?.passwordSms).toBe("+49301234567");
+  });
+
   it("takes the number and the sender's profile when arming", async () => {
     const id = await createJob("oid-anna", "anna@example.test", "a.pdf", "https://vault/#/send/x", 3, "send-9");
     await app.inject({ method: "POST", url: `/api/jobs/${id}/arm`, headers: as("anna"), payload: { passwordSms: "+49 170 7654321" } });
@@ -838,6 +868,8 @@ describe("showing and sending the password again", () => {
   it("refuses invalid targets and other people's links", async () => {
     expect((await resend("anna", { channel: "mail", to: "keine adresse" })).statusCode).toBe(400);
     expect((await resend("anna", { channel: "sms", to: "12" })).statusCode).toBe(400);
+    expect((await resend("anna", { channel: "sms", to: "+44 7700 900123" })).statusCode).toBe(400); // not allowed
+    expect((await sendSms()).mock.calls).toHaveLength(0);
     expect((await resend("anna", { channel: "fax", to: "x" })).statusCode).toBe(400);
     expect((await resend("bernd", { channel: "mail", to: "bernd@example.test" })).statusCode).toBe(404);
     expect((await sendMail()).mock.calls).toHaveLength(0);

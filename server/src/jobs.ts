@@ -21,7 +21,7 @@ import { recordDelivery } from "./deliveries.js";
 import { registerNotices, type Notice } from "./notices.js";
 import { passwordMailHtml, smsProblemMailHtml } from "./passwordMail.js";
 import { registerPasswordRef } from "./passwordRefs.js";
-import { maskPhone, sendSms, smsEnabled } from "./sms.js";
+import { maskPhone, sendSms, smsEnabled, smsNumberProblem } from "./sms.js";
 import { createAtomicWriter, seal, unseal, type Sealed } from "./storage.js";
 import { defaultTemplates, render, templatesFor, type Templates } from "./templates.js";
 import { readSendPassword } from "./vaultwarden.js";
@@ -285,6 +285,9 @@ async function sendStepBySms(
   const to = job.passwordSms!;
   try {
     if (!smsEnabled()) throw new Error(translate("server.smsNotConfigured"));
+    // SMS_ALLOWED_COUNTRIES / _NUMBERS / SMS_BLOCKED_NUMBERS may have changed since the number was entered.
+    const problem = smsNumberProblem(to);
+    if (problem) throw new Error(problem);
     if (!takeSmsQuota(job.owner)) throw new Error(translate("server.smsDailyLimit", { max: config.smsMaxPerDay }));
     const password = await readSendPassword(part.sendId!);
     const messageId = await sendSms(to, render(t.sms_template, { password, sender_name: job.senderName ?? "" }));

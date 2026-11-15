@@ -23,6 +23,12 @@ export interface ServerConfig {
   /** SMS channel configured on the server (seven.io); country code for numbers entered without one. */
   smsEnabled?: boolean;
   smsDefaultCountry?: string;
+  /** SMS_ALLOWED_COUNTRIES: calling codes SMS may go to and their country names as text ([] / "" = all countries). */
+  smsCountryCodes?: string[];
+  smsCountries?: string;
+  /** SMS_ALLOWED_NUMBERS / SMS_BLOCKED_NUMBERS: regular expressions on the E.164 number ("" = none). */
+  smsAllowedNumbers?: string;
+  smsBlockedNumbers?: string;
   /** Confidential message: longest text (characters). */
   messageMaxLength?: number;
   /** Password link and confidential message (Vaultwarden Sends): default and maximum lifetime in days. */

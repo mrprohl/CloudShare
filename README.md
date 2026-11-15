@@ -256,6 +256,8 @@ deployed again.
 | `SEND_EXPIRE_DAYS` / `SEND_MAX_EXPIRE_DAYS` | `5` / `30` | Days the password link and confidential messages stay available: default / maximum the sender may choose (at most 30 – Vaultwarden keeps Sends at most 31 days) |
 | `SEVEN_API_KEY`, `SEVEN_SENDER`, `SEVEN_WEBHOOK_SECRET` | – / `CloudShare` / – | Password by SMS via seven.io; without a key the option is not offered – see [Password by SMS](#password-by-sms-optional) |
 | `SMS_DEFAULT_COUNTRY` / `SMS_MAX_PER_DAY` | `49` / `50` | Country code for numbers like `0170 …` / SMS per user and day |
+| `SMS_ALLOWED_COUNTRIES` | empty (all) | Countries SMS may go to, e.g. `DE, AT, CH` or `DACH` – ISO codes, calling codes (`+49`), German or English names (`Österreich`, `Austria`), `EU`, `EWR`; see [Password by SMS](#password-by-sms-optional) |
+| `SMS_BLOCKED_NUMBERS` / `SMS_ALLOWED_NUMBERS` | `^\+49(800\|900\|180)` / empty | Regular expressions on the number (`+491701234567`): matching numbers are refused / only matching numbers are accepted. Mobile and landline numbers are allowed; the default blocks 0800, 0900 and 0180 numbers |
 | `DOWNLOAD_NOTICE` | off | `true`: mail to the sender on the first download, and a note when seven.io reports a password SMS as not delivered (needs the Entra application permission `Mail.Send`, see [microsoft-365.md → 5](docs/microsoft-365.md#5-optional-application-permission-for-the-download-confirmation)) |
 | `CLEANUP_AFTER_DAYS` | `0` | Uploaded files go to the Nextcloud trash this many days after their link expired or was revoked; `off` = never. Received files are never deleted |
 | `MAIL_FOOTER` | empty | Optional footer of the card, filled from the sender's Microsoft 365 profile, e.g. `'{displayName} · {jobTitle}\n{company} · Tel. {phone} · {email}'`; placeholders and rules in `cloudshare.env.example`. Empty = no footer (`setup.sh`: Enter) |
@@ -291,9 +293,33 @@ is sent after the mail, through [seven.io](https://www.seven.io); without `SEVEN
    SEVEN_WEBHOOK_SECRET='…'      # openssl rand -hex 24
    SMS_DEFAULT_COUNTRY='49'      # optional: country code for numbers like 0170 …
    SMS_MAX_PER_DAY='50'          # optional: SMS per user and day
+   SMS_ALLOWED_COUNTRIES='DACH'  # optional: countries SMS may go to (empty = all)
    ```
 
    Then update the stack.
+
+   `SMS_ALLOWED_COUNTRIES` limits cost and misuse. Each entry may be written as an ISO code (`DE`, `DEU`), a calling
+   code (`+49`, `0049`, `49`), a name in German or English with or without umlauts (`Österreich`, `Oesterreich`,
+   `Austria`), a short form (`UK`, `USA`) or a group (`DACH`, `EU`, `EWR`/`EEA`), separated by commas or
+   semicolons. An entry CloudShare does not know stops the start with a message naming it. The pane names the allowed
+   countries below the number field and refuses another country's number as soon as it is entered; the server
+   checks again before every SMS. A number shows only its calling code, so countries sharing one cannot be told
+   apart: `USA` also allows Canada and the Caribbean (+1), `UK` also Jersey, Guernsey and the Isle of Man (+44).
+   `SMS_DEFAULT_COUNTRY` must be one of the allowed countries.
+
+   SMS may go to mobile **and landline** numbers. Rules on the number
+   itself are regular expressions on its international form (`+491701234567` – whatever the user typed, `0170 …`,
+   `0049 …` or `+49 (0)170 …`, is converted first), checked after the countries:
+
+   ```bash
+   SMS_BLOCKED_NUMBERS='^\+49(800|900|180)'     # default: no 0800, 0900 or 0180 numbers; '' = no block
+   SMS_ALLOWED_NUMBERS='^\+491(5|6|7)\d{8,9}$'  # example: only German mobile numbers (015…, 016…, 017…)
+   ```
+
+   `SMS_ALLOWED_NUMBERS` (empty by default) accepts only matching numbers, `SMS_BLOCKED_NUMBERS` refuses matching
+   ones. Use single quotes. An invalid expression stops the start with a message. The pane tells the user as soon as
+   the number is entered; the texts are `channel.smsNumberBlocked` / `channel.smsNumberNotAllowed` (and `resend.…`,
+   `server.…`) in the language files – adjust them via `env/config/locales` if your own rules need other words.
 3. **Delivery reports** (optional, recommended): in the seven.io dashboard (*Developer → Webhooks*) add
    `https://cloudshare.example.com/webhooks/seven?token=<SEVEN_WEBHOOK_SECRET>` for the event `dlr`. Without it the
    SMS still goes out, but "My shares" only shows "submitted" instead of "delivered at …" / "not delivered".

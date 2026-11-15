@@ -1,3 +1,5 @@
+import { callingCodeOf, parseCountries } from "./countries.js";
+
 function required(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`Environment variable ${name} is missing`);
@@ -27,6 +29,17 @@ function cleanupDays(): number | null {
   const value = Number(raw);
   if (!Number.isInteger(value) || value < 0) throw new Error("Environment variable CLEANUP_AFTER_DAYS is invalid");
   return value;
+}
+
+/** A regular expression from the environment; null if empty. Throws on an invalid one so a typo stops the start. */
+export function envRegex(name: string, fallback: string, raw = process.env[name] ?? fallback): RegExp | null {
+  const source = raw.trim();
+  if (!source) return null;
+  try {
+    return new RegExp(source);
+  } catch (err) {
+    throw new Error(`Environment variable ${name} is no valid regular expression: ${(err as Error).message}`);
+  }
 }
 
 function oneOf<T extends string>(name: string, values: readonly T[], fallback: T): T {
@@ -108,6 +121,19 @@ export const config = {
   sevenUrl: process.env.SEVEN_URL ?? "https://gateway.seven.io/api",
   /** Country code for numbers entered without one (e.g. "0170 …" → +49 170 …). */
   smsDefaultCountry: process.env.SMS_DEFAULT_COUNTRY ?? "49",
+  /**
+   * Countries SMS may go to (ISO codes, calling codes or names, see countries.ts), e.g. "DE, AT, CH" or "DACH";
+   * empty = all. Checked in the taskpane while the number is entered and again before every SMS.
+   */
+  smsAllowedCountries: parseCountries(process.env.SMS_ALLOWED_COUNTRIES ?? "", process.env.LANGUAGE?.trim().toLowerCase() || "de"),
+  /**
+   * Regular expressions on the number in E.164 ("+491701234567"), checked after the countries: SMS_ALLOWED_NUMBERS
+   * (empty = every number) must match, SMS_BLOCKED_NUMBERS must not. Mobile and landline numbers are allowed; the
+   * default blocks German freephone, premium-rate and shared-cost numbers (0800, 0900, 0180 …). Only German mobile
+   * numbers: SMS_ALLOWED_NUMBERS='^\+491(5|6|7)\d{8,9}$'.
+   */
+  smsAllowedNumbers: envRegex("SMS_ALLOWED_NUMBERS", ""),
+  smsBlockedNumbers: envRegex("SMS_BLOCKED_NUMBERS", "^\\+49(800|900|180)"),
   /** Upper limit of SMS per user and day (cost and abuse protection). */
   smsMaxPerDay: number("SMS_MAX_PER_DAY", 50),
 
@@ -140,4 +166,11 @@ export const config = {
 
 if (config.sendExpireDays > config.sendMaxExpireDays) {
   throw new Error("SEND_EXPIRE_DAYS must not be larger than SEND_MAX_EXPIRE_DAYS");
+}
+
+const allowedCodes = config.smsAllowedCountries.map(callingCodeOf);
+if (allowedCodes.length > 0 && !allowedCodes.includes(config.smsDefaultCountry)) {
+  throw new Error(
+    `SMS_DEFAULT_COUNTRY (${config.smsDefaultCountry}) must belong to SMS_ALLOWED_COUNTRIES – numbers like 0170 … would all be refused`,
+  );
 }

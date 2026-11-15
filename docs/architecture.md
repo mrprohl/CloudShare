@@ -177,7 +177,14 @@ wins) – Nextcloud's housekeeping deletes expired shares, so the date could not
 - **Another email address** – the password mail only to that address;
 - **Mobile number (SMS)** (only with `SEVEN_API_KEY`, otherwise not in the list) – one SMS per step via seven.io (`sms.ts`), sent by the watcher after the
   mail appeared in "Sent Items", like the password mail. The number is entered in the pane and normalised to E.164
-  (`0170 …` → `+49170…`, `SMS_DEFAULT_COUNTRY`). The password exists in readable form only in the step's Vaultwarden
+  (`0170 …` → `+49170…`, `SMS_DEFAULT_COUNTRY`; also `+49 (0)170 …`, `tel:` and typographic dashes).
+  `SMS_ALLOWED_COUNTRIES` (`countries.ts`: ISO codes, calling codes, German/English names, groups like `DACH`/`EU`)
+  limits the countries by calling code; then `SMS_ALLOWED_NUMBERS` (must match, empty = all) and
+  `SMS_BLOCKED_NUMBERS` (must not match, default `^\+49(800|900|180)`: no 0800/0900/0180 numbers) check the E.164
+  number as regular expressions – mobile and landline numbers are fine. `/api/config` hands the pane the calling
+  codes, the names and both expressions (`smsNumberProblem` in `sms.ts` and `taskpane.ts`); the pane refuses such a
+  number as soon as it is entered (and in "Send again"), the server on `PATCH` and resend (400) and the watcher
+  before every SMS (then the note of a failed SMS). The password exists in readable form only in the step's Vaultwarden
   Send; the watcher reads it from there right before sending (`readSendPassword`). The Send stays until the links
   expire (2.10). The password-link settings do not apply (the pane hides "Password can be opened" and "Password link
   valid for"): the link of an SMS step's Send is never sent, so its access lasts as long as the Send (`PATCH` sets
@@ -479,8 +486,10 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   validity). Tables and inline styles only, so they render in classic Outlook, Outlook on the web, Gmail and on phones.
   The colours are duplicated in `mailCard.ts` and `mailLayout.ts`; keep them in sync. Plain-text mails get a text
   version of the link card. `MAIL_FOOTER` (optional) is a template filled from the sender's profile (`footer.ts`).
-- Icons (`addin/assets/icon-*.png`): the Nextcloud mark as bold rings with an upload arrow; icon URLs carry a version
-  parameter because Outlook caches icons by URL.
+- Icons (`addin/assets/icon-*.png`): the rings of the Nextcloud logo, taken unchanged from
+  its SVG path, with an upload arrow in the hole of the middle ring. Rendered by `addin/scripts/render-icons.ps1`
+  (Windows PowerShell, System.Drawing; drawn at 8x and scaled down). Icon URLs in the
+  manifest carry a version parameter because Outlook caches icons by URL – change it together with the icons.
 
 ## 9. Limits and risks
 
