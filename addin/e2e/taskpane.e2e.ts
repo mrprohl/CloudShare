@@ -1163,7 +1163,7 @@ test("dark Office theme: dark pane, still accessible", async ({ page }) => {
   await expectAccessible(page);
   await fullShot(page, "send-dark");
   await page.click("#tab-shares");
-  await expect(page.locator("#shares .share")).toHaveCount(4);
+  await expect(page.locator("#shares .share")).toHaveCount(3); // the expired "Alt.zip" is not listed
   await expectAccessible(page);
   await shot(page, "shares-dark");
 });
