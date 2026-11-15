@@ -37,6 +37,13 @@
             <button type="button" role="tab" id="tab-mail" class="tab" title="%%t:addin.tabs.mail%%" aria-selected="false" aria-controls="panel-mail" hidden>%%t:addin.tabs.mail%%</button>
             <button type="button" role="tab" id="tab-shares" class="tab" title="%%t:addin.tabs.shares%%" aria-selected="false" aria-controls="panel-shares">%%t:addin.tabs.shares%%</button>
           </div>
+          <!-- Reloads the link lists; only on "Nachricht" and "Meine Freigaben" (selectTab). -->
+          <button type="button" id="refresh-shares" class="btn btn-icon btn-subtle tabbar-action" title="%%t:addin.shares.refresh%%"
+            aria-label="%%t:addin.shares.refresh%%" hidden>
+            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+              <path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
           <!-- User guide: opens in place of the current tab, the same button or "×" closes it. -->
           <button type="button" id="help-toggle" class="btn btn-icon btn-subtle help-toggle" title="%%t:addin.help.button%%"
             aria-label="%%t:addin.help.button%%" aria-expanded="false" aria-controls="panel-help">
@@ -54,6 +61,10 @@
             <div id="mail-shares" class="share-list" aria-live="polite"></div>
             <p class="caption" id="mail-none" hidden>%%t:addin.read.none%%</p>
           </div>
+          <!-- Account line as in "Senden": Nextcloud user, free space, disconnect (filled by showConnection). -->
+          <footer class="footer">
+            <p class="caption account"><span class="account-name"></span> · <a href="#" class="disconnect-link">%%t:addin.disconnect.link%%</a></p>
+          </footer>
         </div>
 
         <div id="panel-shares" class="panel" role="tabpanel" aria-labelledby="tab-shares" hidden>
@@ -61,6 +72,9 @@
             <div id="shares" class="share-list" aria-live="polite"></div>
             <p class="caption" id="no-shares" hidden>%%t:addin.shares.none%%</p>
           </div>
+          <footer class="footer">
+            <p class="caption account"><span class="account-name"></span> · <a href="#" class="disconnect-link">%%t:addin.disconnect.link%%</a></p>
+          </footer>
         </div>
 
         <div id="panel-send" class="panel" role="tabpanel" aria-labelledby="tab-send">
@@ -227,7 +241,7 @@
           <div class="progress" id="progress" hidden><div class="progress-bar" id="progress-bar"></div></div>
           <button type="button" id="submit" class="btn btn-primary btn-block">%%t:addin.submit.button%%</button>
           <p class="caption account">
-            <span id="account"></span> · <a href="#" id="disconnect">%%t:addin.disconnect.link%%</a>
+            <span id="account" class="account-name"></span> · <a href="#" id="disconnect" class="disconnect-link">%%t:addin.disconnect.link%%</a>
           </p>
         </footer>
         </div>

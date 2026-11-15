@@ -358,7 +358,7 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `POST /api/uploads`, `PUT …/:id/chunks/:n`, `POST …/:id/complete`, `DELETE …/:id` | Chunked upload, share link |
 | `POST /api/requests` | Upload link ("Receive files from recipients") |
 | `POST /api/messages` | Confidential message: text → password-protected Vaultwarden Send, joins the mail's password job |
-| `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "My shares": list (all valid links, newest first, max. 100; no refresh button – loaded with the tab and when the pane regains focus), revoke, insert again; also the read mode (2.9) |
+| `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "My shares": list (all valid links, newest first, max. 100; loaded with the tab, when the pane regains focus and by the refresh button in the tab bar), revoke, insert again; also the read mode (2.9) |
 | `GET /api/shares/:id/password`, `POST /api/shares/:id/password/send` | The password of a sent link (owner only, until the link expires) and sending it again by SMS or password mail (2.10) |
 | `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send), `passwordTo` or `passwordSms` until the password went out |
 | `POST /api/jobs/:id/arm` | Arm the password mail (send handler); also reads the sender's name and department for the templates |

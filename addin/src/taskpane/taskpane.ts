@@ -73,6 +73,7 @@ const expireHint = $<HTMLParagraphElement>("expire-hint");
 const tabSend = $<HTMLButtonElement>("tab-send");
 const tabShares = $<HTMLButtonElement>("tab-shares");
 const tabMail = $<HTMLButtonElement>("tab-mail");
+const refreshSharesButton = $<HTMLButtonElement>("refresh-shares");
 const panelMail = $<HTMLDivElement>("panel-mail");
 const helpToggle = $<HTMLButtonElement>("help-toggle");
 const helpClose = $<HTMLButtonElement>("help-close");
@@ -196,7 +197,10 @@ function showConnection(status: ConnectionStatus) {
   connectView.hidden = status.connected;
   sendView.hidden = !status.connected;
   connectHint.hidden = true;
-  accountText.textContent = `${status.loginName ?? ""}${storageText(status)}`;
+  // The account line at the bottom of every tab ("Senden", "Nachricht", "Meine Freigaben").
+  const account = `${status.loginName ?? ""}${storageText(status)}`;
+  accountText.textContent = account;
+  document.querySelectorAll<HTMLElement>(".account-name").forEach((line) => (line.textContent = account));
   applyPasswordPolicy(status.passwordEnforced === true);
   // Reading a mail: the list is all there is – load it as soon as the connection is there (also right after connecting).
   if (readMode && status.connected) loadShares().catch((err) => setStatus(errorMessage(err), "error"));
@@ -273,7 +277,7 @@ connectButton.addEventListener("click", async () => {
   }
 });
 
-$<HTMLAnchorElement>("disconnect").addEventListener("click", async (e) => {
+async function disconnect(e: Event) {
   e.preventDefault();
   try {
     await api("/api/nextcloud/connection", { method: "DELETE" }, await getToken());
@@ -282,7 +286,9 @@ $<HTMLAnchorElement>("disconnect").addEventListener("click", async (e) => {
   } catch (err) {
     setStatus(t("disconnect.failed", { error: errorMessage(err) }), "error");
   }
-});
+}
+// "Trennen" in the account line of every tab.
+document.querySelectorAll<HTMLAnchorElement>(".disconnect-link").forEach((link) => link.addEventListener("click", disconnect));
 
 // --- File lists ------------------------------------------------------------------
 
@@ -1411,6 +1417,8 @@ function showHelp(open: boolean) {
   panelSend.hidden = open || currentTab !== "send";
   panelMail.hidden = open || currentTab !== "mail";
   panelShares.hidden = open || currentTab !== "shares";
+  // "Aktualisieren" only where there is a link list to reload.
+  refreshSharesButton.hidden = open || currentTab === "send";
 }
 
 tabSend.addEventListener("click", () => selectTab("send"));
@@ -1424,6 +1432,16 @@ helpToggle.addEventListener("click", () => {
 helpClose.addEventListener("click", () => {
   showHelp(false);
   helpToggle.focus();
+});
+refreshSharesButton.addEventListener("click", () => {
+  refreshSharesButton.disabled = true;
+  refreshSharesButton.setAttribute("aria-busy", "true");
+  loadShares()
+    .catch((err) => setStatus(errorMessage(err), "error"))
+    .then(() => {
+      refreshSharesButton.disabled = false;
+      refreshSharesButton.removeAttribute("aria-busy");
+    });
 });
 
 // --- My shares ("Meine Freigaben") -----------------------------------------------------

@@ -122,6 +122,7 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
   border-top: 1px solid var(--stroke2);
 }
 .footer .account { margin-top: 8px; text-align: center; overflow-wrap: anywhere; }
+.footer .account:first-child { margin-top: 0; } /* "Nachricht" / "Meine Freigaben": only the account line */
 
 .empty-state { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 24px; text-align: center; }
 .empty-icon { width: 48px; height: 48px; color: var(--brand-fg); }
@@ -444,7 +445,7 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* The "?" at the right of the tab row opens the guide in place of the current tab. */
 .tabbar { display: flex; align-items: stretch; border-bottom: 1px solid var(--stroke2); padding-right: 8px; }
 .tabbar .tabs { flex: 1; min-width: 0; border-bottom: 0; }
-.help-toggle { align-self: center; margin: 0; color: var(--fg2); }
+.help-toggle, .tabbar-action { align-self: center; margin: 0; color: var(--fg2); }
 .help-toggle[aria-expanded="true"] { background: var(--bg1-pressed); color: var(--brand-fg); }
 .help-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0 6px; }
 .help-header .btn-subtle { margin: 0 -6px 0 0; }

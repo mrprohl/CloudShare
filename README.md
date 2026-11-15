@@ -119,7 +119,8 @@ Confidential messages and upload links always have a password, so "No password" 
 **"My shares"** lists all your valid CloudShare links, newest first – one short line each for the period
 ("10.11. – 24.11.2026"), the password (with / without, or how it went out: "Password by text message to … –
 delivered") and the downloads (or received files). It loads when you open the tab and again when you come back to
-the pane; expired links are not listed. A link is created when it is inserted; until its mail has been sent it says
+the pane; **Refresh** (⟳ next to the "?") reloads it at any time. Expired links are not listed. At the bottom, as in
+"Send": the Nextcloud account, its free space and "Disconnect". A link is created when it is inserted; until its mail has been sent it says
 **"Not sent"**. If the mail is never sent (draft discarded), CloudShare revokes the link after 7 days.
 
 The icons next to the name (their names show on hover and are explained in the help):
