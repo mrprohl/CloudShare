@@ -431,7 +431,7 @@
     "automatic": "This message was sent automatically by CloudShare.",
     "smsFailedText": "The text message with the password for your message “{subject}” could not be sent.",
     "smsUndeliveredText": "The text message with the password for your message “{subject}” was not delivered.",
-    "smsFailedHint": "The password was not sent any other way. Open CloudShare in Outlook – in the sent message or under “My shares” – and click “Password” at the link: there you see the password and can send it again, by text message or email.",
+    "smsFailedHint": "The password was not sent any other way. Open CloudShare in Outlook – in the sent message or under “My shares” – and click the key icon (“Password”) at the link: there you see the password and can send it again, by text message or email.",
     "noSubject": "(no subject)"
   },
   "templates": {

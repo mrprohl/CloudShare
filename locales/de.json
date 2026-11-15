@@ -431,7 +431,7 @@
     "automatic": "Diese Nachricht wurde automatisch von CloudShare versendet.",
     "smsFailedText": "die SMS mit dem Kennwort für Ihre Nachricht „{subject}“ konnte nicht versendet werden.",
     "smsUndeliveredText": "die SMS mit dem Kennwort für Ihre Nachricht „{subject}“ wurde nicht zugestellt.",
-    "smsFailedHint": "Das Kennwort wurde nicht auf anderem Weg verschickt. Öffnen Sie in Outlook CloudShare – in der gesendeten Nachricht oder unter „Meine Freigaben“ – und klicken Sie beim Link auf „Kennwort“: Dort sehen Sie das Kennwort und können es erneut senden, per SMS oder E-Mail.",
+    "smsFailedHint": "Das Kennwort wurde nicht auf anderem Weg verschickt. Öffnen Sie in Outlook CloudShare – in der gesendeten Nachricht oder unter „Meine Freigaben“ – und klicken Sie beim Link auf das Schlüssel-Symbol („Kennwort“): Dort sehen Sie das Kennwort und können es erneut senden, per SMS oder E-Mail.",
     "noSubject": "(ohne Betreff)"
   },
   "templates": {
