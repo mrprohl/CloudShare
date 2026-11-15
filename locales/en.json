@@ -329,7 +329,7 @@
     "sso.13007": "Outlook did not get a sign-in token for CloudShare. Please contact IT (app registration: application ID URI, authorised client applications, admin consent).",
     "sso.13008": "A sign-in is already in progress. Please wait a moment and try again.",
     "sso.13010": "Sign-in is blocked in this browser (security zones). Please put the Outlook page and the sign-in page into the same zone.",
-    "sso.13012": "Sign-in is not supported in this environment (the add-in must be deployed via the admin center).",
+    "sso.13012": "Sign-in is not supported in this Outlook environment.",
     "sso.13013": "Too many sign-in attempts. Please wait a moment and try again."
   },
   "server": {

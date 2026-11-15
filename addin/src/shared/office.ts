@@ -88,7 +88,10 @@ async function requestToken(): Promise<string> {
       const token = await Office.auth.getAccessToken({
         allowSignInPrompt: true,
         allowConsentPrompt: true,
-        forMSGraphAccess: true,
+        // No forMSGraphAccess: with it Office refuses the token (13012) whenever it does not see the admin consent
+        // for the Graph scopes in its own deployment record – even for a correctly deployed add-in whose consent
+        // was granted in Entra. Missing consent shows up instead on the server, when the On-Behalf-Of exchange for
+        // Graph fails (HttpError 403 with the Entra message, see onBehalfOf in server/src/auth.ts).
       });
       cachedToken = { token, expiresAt: tokenExpiry(token) };
       return token;
