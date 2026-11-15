@@ -1464,15 +1464,33 @@ const COPY_ICON =
 
 interface SentPassword {
   password: string;
-  /** Where the password mail went – suggested for sending it again by mail. */
-  mailTo: string[];
+  /** Distribution of the sent mail – "Empfänger der Nachricht" sends the password again exactly like this. */
+  recipients: { to: string[]; cc: string[]; bcc: string[] };
+  /** Other address(es) the password went to ("Andere E-Mail-Adresse") – suggested again. */
+  otherTo: string[];
   /** Number of the SMS (E.164, "" if none) – suggested for sending it again by SMS. */
   sms: string;
 }
 
+type ResendChannel = "recipients" | "mail" | "sms";
+
+/** "An: a, b · Cc: c · Bcc: d" – who gets the password again with "Empfänger der Nachricht". */
+function distributionText(r: SentPassword["recipients"]): string {
+  const fields: Array<[string, string[]]> = [
+    [t("resend.fieldTo"), r.to],
+    [t("resend.fieldCc"), r.cc],
+    [t("resend.fieldBcc"), r.bcc],
+  ];
+  return fields
+    .filter(([, list]) => list.length > 0)
+    .map(([label, list]) => `${label}: ${list.join(", ")}`)
+    .join(" · ");
+}
+
 /**
  * "Kennwort" at a sent link: the password (read from its Vaultwarden Send by the server, only for its sender) and
- * "Erneut senden an" – by SMS, or as a password mail with a link to the password (never as plain text in a mail).
+ * "Kennwort senden an" – the same ways as the first time: the recipients of the message (To, Cc, Bcc as they were),
+ * other addresses (each gets its own mail) or SMS; a mail only ever contains a link to the password.
  * Loaded on every opening, so it always shows the current state.
  */
 async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
@@ -1512,21 +1530,29 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
   });
 
   const channel = panel.querySelector<HTMLSelectElement>(`#${id}-channel`)!;
-  const options: Array<["mail" | "sms", string]> = [["mail", t("resend.mail")]];
-  if (serverConfig.smsEnabled) options.push(["sms", t("resend.sms")]);
+  const options: Array<[ResendChannel, string]> = [["recipients", t("channel.recipients")], ["mail", t("channel.mail")]];
+  if (serverConfig.smsEnabled) options.push(["sms", t("channel.sms")]);
   for (const [value, text] of options) channel.add(new Option(text, value));
-  channel.value = share.password?.channel === "sms" && serverConfig.smsEnabled ? "sms" : "mail";
+  // Preselected: the way the password went the first time.
+  channel.value =
+    share.password?.channel === "sms" && serverConfig.smsEnabled ? "sms" : sent.otherTo.length > 0 ? "mail" : "recipients";
 
   const target = panel.querySelector<HTMLInputElement>(`#${id}-to`)!;
   const hint = panel.querySelector<HTMLParagraphElement>(`#${id}-hint`)!;
   const showChannel = () => {
-    const sms = channel.value === "sms";
+    const value = channel.value as ResendChannel;
+    const sms = value === "sms";
+    // The recipients of the message need no input – the hint names them.
+    target.hidden = value === "recipients";
     target.type = sms ? "tel" : "text";
     target.autocomplete = sms ? "tel" : "email";
-    target.value = sms ? sent.sms : sent.mailTo.join(", ");
+    target.value = sms ? sent.sms : value === "mail" ? sent.otherTo.join(", ") : "";
     target.placeholder = t(sms ? "channel.smsPlaceholder" : "resend.mailPlaceholder");
     target.setAttribute("aria-label", t(sms ? "resend.smsLabel" : "resend.mailLabel"));
-    hint.textContent = t(sms ? "resend.smsHint" : "resend.mailHint");
+    hint.textContent =
+      value === "recipients"
+        ? t("resend.recipientsHint", { list: distributionText(sent.recipients) })
+        : t(sms ? "resend.smsHint" : "resend.mailHint");
   };
   channel.addEventListener("change", showChannel);
   showChannel();
@@ -1537,12 +1563,13 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
     send.disabled = true;
     setStatus(t("resend.sending"));
     try {
-      const result = await api<{ channel: "mail" | "sms"; to: string }>(
+      const result = await api<{ channel: ResendChannel; to: string }>(
         `/api/shares/${encodeURIComponent(share.id)}/password/send`,
         { method: "POST", body: JSON.stringify({ channel: channel.value, to: target.value }) },
         await getToken(),
       );
-      setStatus(t(result.channel === "sms" ? "resend.sentSms" : "resend.sentMail", { to: result.to }), "success");
+      const sentKey = { recipients: "resend.sentRecipients", mail: "resend.sentMail", sms: "resend.sentSms" }[result.channel];
+      setStatus(t(sentKey, { to: result.to }), "success");
       loadShares().catch(() => undefined); // shows the new state of the password
     } catch (err) {
       setStatus(t("resend.failed", { error: errorMessage(err) }), "error");

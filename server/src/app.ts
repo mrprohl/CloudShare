@@ -9,7 +9,7 @@ import { existsSync } from "node:fs";
 import { appGraphToken, authenticate, HttpError, onBehalfOf, type User } from "./auth.js";
 import { config, SEND_DAYS_LIMIT } from "./config.js";
 import { getCredentials, removeCredentials, saveCredentials } from "./credentials.js";
-import { fetchProfile, GRAPH_PROFILE_SCOPES, GRAPH_SCOPES, sendMail, sendMailAsApp } from "./graph.js";
+import { fetchProfile, GRAPH_PROFILE_SCOPES, GRAPH_SCOPES, sendMail, sendMailAsApp, type MailRecipients } from "./graph.js";
 import {
   addFileToJob,
   addNoticeShare,
@@ -38,7 +38,14 @@ import {
 } from "./nextcloud.js";
 import { expireOnRevoke, registerForCleanup } from "./cleanup.js";
 import { deliveryFor, recordDelivery, updateSmsStatus } from "./deliveries.js";
-import { forgetPasswordToken, passwordRefFor, passwordRefsForTokens, updatePasswordRef, type PasswordRef } from "./passwordRefs.js";
+import {
+  forgetPasswordToken,
+  originalRecipients,
+  passwordRefFor,
+  passwordRefsForTokens,
+  updatePasswordRef,
+  type PasswordRef,
+} from "./passwordRefs.js";
 import { passwordMailHtml, smsProblemMailHtml } from "./passwordMail.js";
 import { mapReportStatus, maskPhone, normalizePhone, parseDeliveryReport, sendSms, smsEnabled } from "./sms.js";
 import { defaultTemplates, render, templatesFor } from "./templates.js";
@@ -690,19 +697,22 @@ export async function buildApp(options: { logger?: boolean } = {}) {
 
   /**
    * "Kennwort" in "Meine Freigaben": the password of a sent link, read from its Send – only for its sender and only
-   * until the link expires – plus where it went (suggested for sending it again).
+   * until the link expires – plus where it went the first time, for sending it again the same way.
    */
   app.get<{ Params: { id: string } }>("/api/shares/:id/password", { config: { rateLimit: strictLimit } }, async (req) => {
     const user = await authenticate(req);
     const ref = await ownPasswordRef(user, req.params.id);
     const password = await readSendPassword(ref.sendId);
     req.log.info({ user: user.upn, shareId: req.params.id }, "Password shown to its sender");
-    return { password, mailTo: ref.mailTo, sms: ref.sms ?? "" };
+    return { password, recipients: originalRecipients(ref), otherTo: ref.otherTo ?? [], sms: ref.sms ?? "" };
   });
 
   /**
-   * "Kennwort erneut senden": by SMS to a number, or as a password mail to addresses – never as plain text in a mail.
-   * The mail gets a new Send with the same password (the recipients' access to the first one may have ended), deleted
+   * "Kennwort erneut senden" – the same ways as the first time, never as plain text in a mail:
+   *   recipients – the password mail with the distribution of the sent mail (To, Cc, Bcc as they were);
+   *   mail       – to other addresses, each in its own mail (nobody sees the others);
+   *   sms        – by SMS to a number.
+   * A mail gets a new Send with the same password (the recipients' access to the first one may have ended), deleted
    * with the links; it goes out as the sender through Graph like the first password mail.
    */
   app.post<{ Params: { id: string }; Body: { channel?: unknown; to?: unknown } }>(
@@ -713,8 +723,9 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const ref = await ownPasswordRef(user, req.params.id);
       const target = typeof req.body?.to === "string" ? req.body.to : "";
       const templates = templatesFor({ upn: ref.ownerUpn, department: ref.department });
+      const channel = req.body?.channel;
 
-      if (req.body?.channel === "sms") {
+      if (channel === "sms") {
         if (!smsEnabled()) throw new HttpError(409, t("server.smsNotConfigured"));
         const number = normalizePhone(target);
         if (!number) throw new HttpError(400, t("server.phoneInvalid"));
@@ -727,11 +738,24 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         return { channel: "sms", to: maskPhone(number) };
       }
 
-      if (req.body?.channel !== "mail") throw new HttpError(400, t("server.channelInvalid"));
-      const addresses = [...new Set(target.split(/[\s,;]+/).filter(Boolean))];
-      if (addresses.length === 0 || addresses.length > 20 || !addresses.every(isEmailAddress)) {
-        throw new HttpError(400, t("server.recipientsInvalid", { max: 20 }));
+      if (channel !== "mail" && channel !== "recipients") throw new HttpError(400, t("server.channelInvalid"));
+      // Who gets a mail: the original distribution in one mail, or every other address in a mail of its own.
+      let mails: MailRecipients[];
+      let others: string[] = [];
+      if (channel === "recipients") {
+        const original = originalRecipients(ref);
+        if (original.to.length + original.cc.length + original.bcc.length === 0) {
+          throw new HttpError(400, t("server.recipientsInvalid", { max: 20 }));
+        }
+        mails = [original];
+      } else {
+        others = [...new Set(target.split(/[\s,;]+/).filter(Boolean))];
+        if (others.length === 0 || others.length > 20 || !others.every(isEmailAddress)) {
+          throw new HttpError(400, t("server.recipientsInvalid", { max: 20 }));
+        }
+        mails = others.map((address) => ({ to: [address], cc: [], bcc: [] }));
       }
+
       const password = await readSendPassword(ref.sendId);
       const send = await createPasswordSend(`CloudShare: ${ref.fileNames[0]}`, password, ref.maxAccessCount, config.sendExpireDays, ref.keepUntil);
       const files = t("mail.files", { count: ref.fileNames.length, name: ref.fileNames[0] });
@@ -740,11 +764,14 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const html = passwordMailHtml({ fileNames: ref.fileNames, sendUrl: send.url, maxAccessCount: ref.maxAccessCount, subject: ref.subject,
         expireDays: config.sendExpireDays, introTemplate: customIntro, senderName: ref.senderName, expiresOn: formatDate(send.expiresAt) });
       const { token } = await onBehalfOf(user, GRAPH_SCOPES);
-      await sendMail(token, { to: addresses, cc: [], bcc: [] }, subject, html, ref.from);
-      await recordDelivery(ref.tokens, { owner: user.oid, channel: "mail", to: addresses.join(", "), at: Date.now() });
-      await updatePasswordRef(ref.sendId, { mailTo: addresses, resentSend: send.id });
-      req.log.info({ user: user.upn, recipients: addresses.length }, "Password sent again by mail");
-      return { channel: "mail", to: addresses.join(", ") };
+      for (const recipients of mails) await sendMail(token, recipients, subject, html, ref.from);
+
+      // Shown in "Meine Freigaben" like the first time: To and Cc (Bcc stays hidden), or the other addresses.
+      const shown = (channel === "recipients" ? [...mails[0].to, ...mails[0].cc] : others).join(", ");
+      await recordDelivery(ref.tokens, { owner: user.oid, channel: "mail", to: shown, at: Date.now() });
+      await updatePasswordRef(ref.sendId, { otherTo: channel === "mail" ? others : undefined, resentSend: send.id });
+      req.log.info({ user: user.upn, channel, mails: mails.length }, "Password sent again by mail");
+      return { channel, to: shown };
     },
   );
 

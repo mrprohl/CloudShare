@@ -7,6 +7,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { config } from "./config.js";
+import type { MailRecipients } from "./graph.js";
 import { createAtomicWriter, seal, unseal, type Sealed } from "./storage.js";
 
 export interface PasswordRef {
@@ -20,8 +21,15 @@ export interface PasswordRef {
   keepUntil: number;
   /** Subject of the sent mail ("" if it had none). */
   subject: string;
-  /** Where the password mail went (recipients or the other address) – suggested for sending it again by mail. */
-  mailTo: string[];
+  /**
+   * Recipients of the sent mail as they were (To, Cc, Bcc) – "Empfänger der Nachricht" sends the password again with
+   * exactly this distribution. Entries written before it existed have only `mailTo`.
+   */
+  recipients?: MailRecipients;
+  /** Address(es) the password went to instead of the recipients ("Andere E-Mail-Adresse") – suggested again. */
+  otherTo?: string[];
+  /** Entries before `recipients`: To and Cc of the mail (or the other address) – fallback only. */
+  mailTo?: string[];
   /** Number the password went to by SMS (E.164) – suggested for sending it again by SMS; only the owner sees it. */
   sms?: string;
   /** Sender of the mail (shared mailbox) – a password mail sent again goes out the same way. */
@@ -73,11 +81,11 @@ export function passwordRefFor(token: string, owner: string): PasswordRef | null
 /** Remembers where the password went last and the Send of a password mail sent again. */
 export async function updatePasswordRef(
   sendId: string,
-  change: { mailTo?: string[]; sms?: string; resentSend?: string },
+  change: { otherTo?: string[]; sms?: string; resentSend?: string },
 ): Promise<void> {
   const ref = refs.get(sendId);
   if (!ref) return;
-  if (change.mailTo) ref.mailTo = change.mailTo;
+  if (change.otherTo) ref.otherTo = change.otherTo;
   if (change.sms) ref.sms = change.sms;
   if (change.resentSend) (ref.resentSends ??= []).push(change.resentSend);
   await persist();
@@ -98,3 +106,7 @@ export async function forgetPasswordToken(token: string, owner: string): Promise
 /** Entries holding these tokens (seven.io reported an SMS of theirs as not delivered). */
 export const passwordRefsForTokens = (tokens: string[]) =>
   [...refs.values()].filter((ref) => ref.tokens.some((t) => tokens.includes(t)));
+
+/** The original distribution of the mail (To, Cc, Bcc); older entries: their `mailTo` as To. */
+export const originalRecipients = (ref: PasswordRef): MailRecipients =>
+  ref.recipients ?? { to: ref.mailTo ?? [], cc: [], bcc: [] };

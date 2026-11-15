@@ -137,11 +137,12 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     if (/^DELETE \/api\/shares\/.+$/.test(route_)) return json({ ok: true });
     if (/^PATCH \/api\/jobs\/[^/]+$/.test(route_)) return json({ maxAccess: JSON.parse(call.body!.toString()).maxAccess });
     if (/^GET \/api\/shares\/\d+\/password$/.test(route_)) {
-      return json({ password: "KateGeteFi45", mailTo: ["erika@example.com"], sms: "+491701234567" });
+      return json({ password: "KateGeteFi45", sms: "+491701234567", otherTo: [],
+        recipients: { to: ["erika@example.com"], cc: ["chef@example.com"], bcc: ["archiv@example.com"] } });
     }
     if (/^POST \/api\/shares\/\d+\/password\/send$/.test(route_)) {
       const { channel, to } = JSON.parse(call.body!.toString());
-      return json({ channel, to: channel === "sms" ? "+49 171 •••• 21" : to });
+      return json({ channel, to: channel === "sms" ? "+49 171 •••• 21" : channel === "recipients" ? "erika@example.com, chef@example.com" : to });
     }
     if (/^POST \/api\/shares\/\d+\/link$/.test(route_)) {
       const id = call.path.split("/")[3];
@@ -915,7 +916,7 @@ test("Meine Freigaben: a failed SMS says whether it was sent at all, and how to 
   await expect(rows.nth(1).locator(".share-password")).toHaveClass(/failed/);
 });
 
-test("Meine Freigaben: Kennwort shows the password and sends it again – by SMS or mail", async ({ page }) => {
+test("Meine Freigaben: Kennwort shows the password and sends it again the same ways as the first time", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: [{ ...SHARES[0], passwordAvailable: true }, SHARES[1]], config: { smsEnabled: true } });
   await page.click("#tab-shares");
   const rows = page.locator("#shares .share");
@@ -932,13 +933,31 @@ test("Meine Freigaben: Kennwort shows the password and sends it again – by SMS
   await expectAccessible(page);
   await shot(page, "password-panel");
 
-  await panel.locator("select").selectOption("mail");
-  await expect(panel.locator(".channel-input")).toHaveValue("erika@example.com");
-  await panel.locator(".channel-input").fill("erika@example.com, chef@example.com");
+  // The same choices as when sending: recipients of the message, another address, SMS.
+  await expect(panel.locator("select option")).toHaveText(["Empfänger der Nachricht", "Andere E-Mail-Adresse", "Mobilnummer (SMS)"]);
+
+  // Recipients of the message: To, Cc and Bcc as the first time – nothing to type, the hint names them.
+  await panel.locator("select").selectOption("recipients");
+  await expect(panel.locator(".channel-input")).toBeHidden();
+  await expect(panel.locator(".hint")).toHaveText("Wie beim ersten Mal – An: erika@example.com · Cc: chef@example.com · Bcc: archiv@example.com");
   await panel.locator(".send-password").click();
-  await expect(page.locator("#status")).toHaveText("Das Kennwort wurde an erika@example.com, chef@example.com geschickt.");
-  const sent = calls.find((c) => c.path === "/api/shares/11/password/send")!;
-  expect(JSON.parse(sent.body!.toString())).toEqual({ channel: "mail", to: "erika@example.com, chef@example.com" });
+  await expect(page.locator("#status")).toHaveText(
+    "Das Kennwort wurde wie beim ersten Mal an die Empfänger der Nachricht geschickt (erika@example.com, chef@example.com).");
+  const sends = () => calls.filter((c) => c.path === "/api/shares/11/password/send").map((c) => JSON.parse(c.body!.toString()));
+  expect(sends()[0]).toEqual({ channel: "recipients", to: "" });
+
+  // Other addresses: each gets a mail of its own (server), typed here.
+  // The list reloads after sending (new state of the password) – wait for it, then open the panel again.
+  await expect.poll(() => calls.filter((c) => c.path === "/api/shares").length).toBe(2);
+  await expect(panel).toBeHidden();
+  await toggle.click();
+  await panel.locator("select").selectOption("mail");
+  await expect(panel.locator(".channel-input")).toHaveValue("");
+  await expect(panel.locator(".hint")).toHaveText("Jede Adresse erhält eine eigene Nachricht mit einem Link zum Kennwort.");
+  await panel.locator(".channel-input").fill("kollege@example.com, buergerin@example.com");
+  await panel.locator(".send-password").click();
+  await expect(page.locator("#status")).toHaveText("Das Kennwort wurde an kollege@example.com, buergerin@example.com geschickt.");
+  expect(sends()[1]).toEqual({ channel: "mail", to: "kollege@example.com, buergerin@example.com" });
 });
 
 test("Meine Freigaben: Als Link einfügen creates a new link with this mail's password", async ({ page }) => {
