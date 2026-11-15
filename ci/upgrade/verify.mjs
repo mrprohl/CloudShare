@@ -1,5 +1,5 @@
 // CI only – runs inside the NEW image (ci/stack.sh upgrade) on the data written by seed.mjs with the previous image:
-// every connection and password job must still be readable and unchanged.
+// everything the previous version wrote must still be readable and unchanged.
 import { readFileSync } from "node:fs";
 
 const expected = JSON.parse(readFileSync("/data/ci-upgrade-expected.json", "utf8"));
@@ -30,6 +30,41 @@ for (const [id, job] of Object.entries(expected.jobs)) {
   check(actual.dispatched === false, `  not dispatched`);
   check(Boolean(actual.armed) === job.armed, `  armed state unchanged`);
   if (job.mailbox) check(actual.armed?.mailbox === job.mailbox, `  shared mailbox unchanged`);
+}
+
+if (expected.separate) {
+  const { id, owner, step, sendId, token } = expected.separate;
+  const part = getJob(id)?.separate?.[0];
+  check(getJob(id)?.owner === owner && part?.step === step && part?.sendId === sendId, "job with one password per step readable");
+  check(part?.shares?.[0]?.token === token, "  its links unchanged");
+}
+
+if (expected.delivery) {
+  const { deliveryFor } = await import("/app/dist/deliveries.js");
+  const { token, owner, ...fields } = expected.delivery;
+  const actual = deliveryFor(token, owner);
+  check(Object.entries(fields).every(([key, value]) => actual?.[key] === value), "SMS delivery status readable");
+}
+
+if (expected.notice) {
+  const { pendingNotices } = await import("/app/dist/notices.js");
+  const actual = new Map(pendingNotices()).get(expected.notice.token);
+  check(actual?.fileName === expected.notice.fileName && actual?.subject === expected.notice.subject,
+    "pending download confirmation readable");
+}
+
+if (expected.cleanup) {
+  const { cleanupEntries } = await import("/app/dist/cleanup.js");
+  const { owner, folder, expireDate } = expected.cleanup;
+  check(cleanupEntries().some((e) => e.owner === owner && e.folder.join("/") === folder.join("/") && e.expireDate === expireDate),
+    "upload folder in the cleanup list readable");
+}
+
+if (expected.passwordRef) {
+  const { passwordRefFor } = await import("/app/dist/passwordRefs.js");
+  const { token, owner, sendId, sms } = expected.passwordRef;
+  const actual = passwordRefFor(token, owner);
+  check(actual?.sendId === sendId && actual?.sms === sms, "password entry for sending it again readable");
 }
 
 process.exit(failures ? 1 : 0);

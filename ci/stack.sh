@@ -163,12 +163,19 @@ smoke() {
     && curl -sk https://localhost/commands.js | grep -q 'alert.button'; then
     ok "texts of LANGUAGE=de in the add-in files"
   else fail "language texts missing in the add-in files"; fi
+  grep -q 'MessageReadCommandSurface' <<<"$manifest" && grep -q 'https://localhost/taskpane.html?view=read' <<<"$manifest" \
+    && ok "manifest.xml has the button for mails being read" || fail "read button missing in manifest.xml"
+  grep -q 'id="help-toggle"' <<<"$pane" && grep -q 'Häufige Fragen' <<<"$pane" \
+    && ok "user guide (Hilfe) in the pane" || fail "user guide missing in the pane"
   config=$(curl -sk https://localhost/api/config)
-  jq -e '.attachmentPolicy == "suggest" and .thresholdMb == 5 and .sendMaxAccessCount == 3' <<<"$config" >/dev/null \
-    && ok "/api/config reflects the settings" || fail "/api/config: $config"
+  jq -e '.attachmentPolicy == "suggest" and .thresholdMb == 5 and .sendMaxAccessCount == 3 and .passwordLinkMaxDays == 30' \
+    <<<"$config" >/dev/null && ok "/api/config reflects the settings" || fail "/api/config: $config"
   expect_status 401 "/api/shares without login" https://localhost/api/shares
   expect_status 401 "/api/nextcloud/status with an invalid token" -H 'Authorization: Bearer invalid' \
     https://localhost/api/nextcloud/status
+  expect_status 401 "password of a link without login" https://localhost/api/shares/1/password
+  expect_status 401 "sending a password again without login" -X POST https://localhost/api/shares/1/password/send
+  expect_status 404 "SMS webhook without its secret" -X POST https://localhost/webhooks/seven
   head -c 13000000 /dev/zero > /tmp/cloudshare-13mb.bin
   expect_status 413 "request body over 12 MB rejected by Caddy" -X PUT --data-binary @/tmp/cloudshare-13mb.bin \
     -H 'Content-Type: application/octet-stream' https://localhost/api/uploads/x/chunks/0
@@ -196,9 +203,10 @@ smoke() {
 node_in() {
   local image=$1 script=$2
   ( set -a; . "$base/env/cloudshare.env"; set +a
+    # DOWNLOAD_NOTICE: download confirmations are only stored with it switched on.
     docker run --rm --user 1000:1000 --read-only --network none \
       -e DATA_DIR=/data -e PUBLIC_BASE_URL -e ENTRA_TENANT_ID -e ENTRA_CLIENT_ID -e ENTRA_CLIENT_SECRET \
-      -e NEXTCLOUD_URL -e CREDENTIAL_KEY -e BW_PASSWORD \
+      -e NEXTCLOUD_URL -e CREDENTIAL_KEY -e BW_PASSWORD -e DOWNLOAD_NOTICE=true \
       -v cloudshare_data:/data -v "$base/ci:/ci:ro" --entrypoint node "$image" "$script" )
 }
 
@@ -213,7 +221,7 @@ upgrade() {
   docker volume create --label com.docker.compose.project=cloudshare --label com.docker.compose.volume=data \
     cloudshare_data >/dev/null
 
-  if node_in "$previous" /ci/upgrade/seed.mjs >/dev/null; then ok "previous version wrote connections and password jobs"
+  if seeded=$(node_in "$previous" /ci/upgrade/seed.mjs); then ok "previous version $seeded"
   else fail "previous version could not write its data"; return; fi
 
   echo "  new version reads them:"

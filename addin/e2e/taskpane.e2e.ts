@@ -48,15 +48,26 @@ interface Scenario {
 
 interface ApiCall { method: string; path: string; body: Buffer | null }
 
+/**
+ * GET /api/config as the server answers it (server/src/app.ts) – every field, with the server's defaults except where
+ * a test needs something else: a 1 MB threshold (small fixtures), "enforce" and a footer template.
+ */
 const CONFIG = {
   thresholdMb: 1,
   attachmentPolicy: "enforce",
   defaultExpireDays: 14,
   maxExpireDays: 90,
+  passwordLinkMaxDays: 30, // links with password last only as long as their Vaultwarden Send
   chunkSize: 1 * MiB,
   sendMaxAccessCount: 3,
   sendMaxAccessLimit: 20,
   mailFooter: "{displayName} · {jobTitle}",
+  trace: false,
+  smsEnabled: false,
+  smsDefaultCountry: "49",
+  messageMaxLength: 1000,
+  sendExpireDays: 5,
+  sendMaxExpireDays: 30,
 };
 
 /** Opens the taskpane with the given mail and backend state; returns the list of API calls made by the pane. */
@@ -336,11 +347,21 @@ test("Link gültig für / Kennwort abrufbar: capped at the maximum with a note, 
   await openValidity(page);
   await expect(page.locator("#validity-summary")).toBeHidden(); // the fields themselves are visible now
 
+  // With a password a link lasts at most as long as its password in Vaultwarden: 30 days.
+  await page.fill("#expire", "500");
+  await page.press("#expire", "Tab");
+  await expect(page.locator("#expire")).toHaveValue("30");
+  await expect(status).toContainText("Höchstens 30 Tage möglich – der Wert wurde auf 30 gesetzt.");
+  await expect(status).toContainText("Neue Links sind 30 Tage gültig.");
+
+  // Without password up to SHARE_MAX_EXPIRE_DAYS; back with a password it is capped again.
+  await page.click("label:has(#mode-none)");
   await page.fill("#expire", "500");
   await page.press("#expire", "Tab");
   await expect(page.locator("#expire")).toHaveValue("90");
   await expect(status).toContainText("Höchstens 90 Tage möglich – der Wert wurde auf 90 gesetzt.");
-  await expect(status).toContainText("Neue Links sind 90 Tage gültig.");
+  await page.click("label:has(#mode-random)");
+  await expect(page.locator("#expire")).toHaveValue("30");
 
   await page.fill("#expire", "10");
   await page.press("#expire", "Tab");

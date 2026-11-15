@@ -65,7 +65,8 @@ export default function () {
 
   const done = http.post(
     `${BASE}/api/uploads/${uploadId}/complete`,
-    JSON.stringify({ password: "kT7#pQ2m!xV9wR4e_Hn3", expireDays: 14, maxAccess: 3 }),
+    // As the taskpane sends it: one "Als Link einfügen" step (own password and Send), password link 5 days.
+    JSON.stringify({ password: "kT7#pQ2m!xV9wR4e_Hn3", expireDays: 14, maxAccess: 3, passwordDays: 5, step: `load-${__VU}-${__ITER}-${uploadId.slice(0, 8)}` }),
     { ...json(token), tags: { step: "complete" } },
   );
   check(done, {
