@@ -223,6 +223,10 @@ Microsoft 365 admin center → *Settings → Integrated apps → Upload custom a
 until Outlook shows the button (when writing and when reading a mail). Details and how to check the result:
 [docs/microsoft-365.md → Deploying the add-in](docs/microsoft-365.md#3-deploying-the-add-in).
 
+**Two things to know:** deploy only after `ENTRA_CLIENT_ID` is set – Microsoft 365 keeps the manifest as it read it.
+And the upload creates a **second app registration "CloudShare"** without a client secret: it belongs to the
+deployment, so never use its ID for `ENTRA_CLIENT_ID` and do not delete it (name your own one e.g. `CloudShare Server`).
+
 Alternative with a clearer error message (Exchange Online PowerShell):
 `New-App -OrganizationApp -Url https://cloudshare.example.com/manifest.xml -ProvidedTo Everyone -DefaultStateForUser Enabled`
 

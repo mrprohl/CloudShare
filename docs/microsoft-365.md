@@ -47,7 +47,8 @@ Outlook ──Office SSO──► token for "api://cloudshare.example.com/<clien
 ### 2.1 Register the app
 
 1. **New registration** (*Neue Registrierung*):
-   - Name: `CloudShare`
+   - Name: `CloudShare Server` – not just `CloudShare`: deploying the add-in (step 3) creates a second registration
+     named `CloudShare`, and the two are easy to mix up
    - Supported account types: **Accounts in this organizational directory only** (single tenant)
    - Redirect URI: leave empty
 2. **Register**. On the *Overview* page copy:
@@ -128,7 +129,15 @@ scope them to Outlook as well.
 ## 3. Deploying the add-in
 
 CloudShare must be running and reachable at `https://cloudshare.example.com` first – Microsoft reads the manifest from
-there.
+there. **Deploy only after `ENTRA_CLIENT_ID` is set** (step 2) and the manifest shows it:
+
+```bash
+curl -s https://cloudshare.example.com/manifest.xml | grep -E '<Version>|<Id>|<Resource>'
+```
+
+`<Id>` under `<WebApplicationInfo>` and `<Resource>` must contain the client ID of 2.1. Microsoft 365 keeps the
+manifest as it was when it read it – a later change of the client ID only reaches Outlook with a higher manifest
+version (*Update*) or by removing the app and deploying it again.
 
 [Microsoft 365 admin center](https://admin.microsoft.com) → *Settings → Integrated apps* (*Einstellungen → Integrierte
 Apps*) → **Upload custom apps** (*Benutzerdefinierte Apps hochladen*):
@@ -152,6 +161,13 @@ New-App -OrganizationApp -Url https://cloudshare.example.com/manifest.xml -Provi
 
 Notes:
 
+- **A second app registration "CloudShare" appears.** Deploying the add-in in *Integrated apps* makes Microsoft 365
+  create an app registration of its own, named after the add-in and without a client secret (*App registrations* →
+  *All applications*, created on the day of the upload). It belongs to the deployment, not to CloudShare:
+  - do **not** put its ID into `ENTRA_CLIENT_ID` – CloudShare uses the registration of step 2 (the one with the
+    client secret, `CloudShare Server`);
+  - do **not** change or delete it while the add-in is deployed. Removing the add-in and deploying it again creates
+    a new one; the old one can then be deleted.
 - The manifest's name, description and ribbon tooltip come from the configured language (`LANGUAGE`). Microsoft
   365 reads the manifest with a delay – the pane itself and its texts change immediately after a stack update.
 - The send check (Smart Alert) is part of the manifest; nothing else has to be enabled per user. Users cannot remove
@@ -220,6 +236,7 @@ reports a password SMS as not delivered (without it, only "My shares" shows that
 |---|---|---|
 | Client secret | before it expires (2.5) | new secret → `ENTRA_CLIENT_SECRET` in `env/cloudshare.env` → update the stack → delete the old secret |
 | CloudShare's address changes | – | Application ID URI (2.3), DNS, `PUBLIC_BASE_URL`; then deploy the add-in again with the new manifest URL |
+| Switching to another app registration | – | set it up completely (2.1–2.5, and 2.6 / 2.7 / 5 if used) → `ENTRA_CLIENT_ID` and `ENTRA_CLIENT_SECRET` → update the stack → check the manifest (3) → remove the add-in in *Integrated apps* and deploy it again → only then delete the old registration. Users keep their Nextcloud connection (stored per user, not per app). Until Outlook has the new manifest, sign-in in the pane fails – plan a quiet time |
 | New Graph permission in a CloudShare release | per release notes | add it (2.4), grant admin consent |
 | Users leave the CloudShare group | – | with 2.6 / 5 the access ends automatically |
 
@@ -240,4 +257,5 @@ Messages are quoted in English (`LANGUAGE=en`), the German text of the default i
 | Sign-in error `AADSTS50105` | user not assigned while *Assignment required* is on | 2.6 |
 | No password mail, log `Graph sendMail failed (HTTP 403)` for a shared mailbox | no *Send As* / *Send on Behalf* right | 4 |
 | Download confirmation fails with `ErrorAccessDenied` | application permission missing or RBAC scope does not contain the sender | 5 |
+| Pane: sign-in error right after a new deployment, `ENTRA_CLIENT_ID` shows the ID of a registration **without** client secret | the registration Microsoft 365 created for the deployment was taken instead of the one of step 2 | use the client ID of 2.1 (the registration with the secret); see the notes of 3 |
 | The CloudShare button does not appear | deployment still in progress (up to 24 h), user not assigned, or an old Outlook cache | admin center → *Integrated apps*; classic Outlook: clear `%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\` |
