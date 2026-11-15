@@ -920,10 +920,24 @@ test("Meine Freigaben: shows the state of each link and revokes after confirmati
   const calls = await openTaskpane(page, { shares: SHARES });
   await page.click("#tab-shares");
   const rows = page.locator("#shares .share");
-  // All valid links, no expired one ("Alt.zip"), no refresh button and no "last 30 days".
+  // All valid links, no expired one ("Alt.zip"), no "last 30 days".
   await expect(rows).toHaveCount(3);
   await expect(page.locator("#shares")).not.toContainText("Alt.zip");
-  await expect(page.locator("#refresh-shares")).toHaveCount(0);
+  // "Aktualisieren" in the tab bar reloads the list; on "Senden" there is none.
+  const loads = () => calls.filter((c) => c.path === "/api/shares").length;
+  const refresh = page.locator("#refresh-shares");
+  await expect(refresh).toBeVisible();
+  await expect(refresh).toHaveAttribute("aria-label", "Aktualisieren");
+  const before = loads();
+  await refresh.click();
+  await expect.poll(loads).toBe(before + 1);
+  await expect(refresh).toBeEnabled();
+  // The account line as in "Senden".
+  await expect(page.locator("#panel-shares .account-name")).toHaveText("max [12,5 GB von 50 GB frei]");
+  await expect(page.locator("#panel-shares .disconnect-link")).toHaveText("Verbindung trennen");
+  await page.click("#tab-send");
+  await expect(refresh).toBeHidden();
+  await page.click("#tab-shares");
   await expect(rows.nth(0).locator(".state-text")).toContainText("2× heruntergeladen");
   await expect(rows.nth(1).locator(".state-text")).toHaveText("Noch nicht heruntergeladen");
   await expect(rows.nth(2).locator(".state-text")).toHaveText("3 Dateien empfangen");
@@ -1069,6 +1083,10 @@ test("reading a mail: tabs 'Nachricht' and 'Meine Freigaben', nothing to insert"
   await expect(inMail.nth(0).locator(".share-password")).toContainText("zugestellt um");
   await expect(inMail.nth(1).locator(".share-name")).toHaveText("Upload-Link");
   await expect(page.locator("#mail-none")).toBeHidden();
+  // Reading a mail too: "Aktualisieren" in the tab bar, the account line at the bottom.
+  await expect(page.locator("#refresh-shares")).toBeVisible();
+  await expect(page.locator("#panel-mail .account-name")).toHaveText("max [12,5 GB von 50 GB frei]");
+  await expect(page.locator("#panel-mail .disconnect-link")).toBeVisible();
   await expect(page.locator(".share .insert").first()).toBeHidden(); // a mail being read cannot take a link
   await expect(page.locator("#panel-mail")).not.toContainText("Weitere Freigaben");
   await expectAccessible(page);

@@ -213,6 +213,7 @@
     "insert.notTaken": "Outlook did not put the link into the message. Please click into the message body and insert it again – you can also copy the link under “My shares”.",
 
     "shares.none": "You have not shared any files with CloudShare yet.",
+    "shares.refresh": "Refresh",
     "read.none": "This message contains no CloudShare links of yours.",
     "shares.sharedOn": "Shared on {date}",
     "shares.validUntil": "valid until {date}",

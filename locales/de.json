@@ -213,6 +213,7 @@
     "insert.notTaken": "Outlook hat den Link nicht in die Nachricht übernommen. Bitte in den Nachrichtentext klicken und erneut einfügen – den Link können Sie auch unter „Meine Freigaben“ kopieren.",
 
     "shares.none": "Sie haben noch keine Dateien mit CloudShare freigegeben.",
+    "shares.refresh": "Aktualisieren",
     "read.none": "Diese Nachricht enthält keine CloudShare-Links von Ihnen.",
     "shares.sharedOn": "Freigegeben am {date}",
     "shares.validUntil": "gültig bis {date}",
