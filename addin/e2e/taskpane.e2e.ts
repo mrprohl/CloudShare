@@ -1651,7 +1651,8 @@ test("a long account name at 320 px: shortened with \"…\", the storage stays w
   await openTaskpane(page, { loginName: name });
   const toggle = page.locator("#account-toggle");
   await expect(toggle).toHaveText(name); // the whole name for screen readers …
-  await expect(toggle).toHaveAttribute("title", new RegExp(`^Angemeldet als ${name.replace(/\./g, "\\.")}\\n`)); // … and on hover
+  // … and on hover.
+  await expect(toggle).toHaveAttribute("title", `Angemeldet als ${name}\nNextcloud-Konto: Einstellungen, Hilfe und Verbindung`);
   const shown = page.locator("#account");
   expect(await shown.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true); // cut short with "…"
   const storage = page.locator("#account-storage");
