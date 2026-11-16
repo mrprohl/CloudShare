@@ -5,6 +5,7 @@ const nc = vi.hoisted(() => ({
   listPublicShares: vi.fn(),
   deleteShare: vi.fn(),
   deletePath: vi.fn(),
+  publicDownloads: vi.fn(),
 }));
 vi.mock("../src/nextcloud.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/nextcloud.js")>();
@@ -34,6 +35,7 @@ const links = { owner: "oid-max", ownerUpn: "max@example.test", tokens: ["tokA",
 beforeEach(async () => {
   for (const fn of Object.values(nc)) fn.mockReset();
   nc.userInfo.mockResolvedValue({ id: "uid", free: null });
+  nc.publicDownloads.mockResolvedValue({ count: 0, last: null });
   deleteSend.mockClear();
   await saveCredentials("oid-max", { loginName: "max", appPassword: "pw" });
 });
@@ -61,6 +63,19 @@ describe("links of a mail that was never sent", () => {
     await revokeUnsentLinks(links, quietLog());
     expect(nc.deleteShare.mock.calls.map((c) => c[0])).toEqual(["1"]);
     expect(nc.deletePath).not.toHaveBeenCalled();
+  });
+
+  it("keeps a link that was already downloaded – it reached someone", async () => {
+    nc.listPublicShares.mockResolvedValue([
+      share("1", "/CloudShare/2026-11-13_ab12cd34/a.pdf", "tokA"),
+      { ...share("2", "/CloudShare/2026-11-13_ab12cd34/b.pdf", "tokB"), fileId: 2 },
+    ]);
+    nc.publicDownloads.mockImplementation(async (fileId: number) =>
+      fileId === 2 ? { count: 1, last: "2026-11-16T09:04:00+00:00" } : { count: 0, last: null },
+    );
+    await revokeUnsentLinks(links, quietLog());
+    expect(nc.deleteShare.mock.calls.map((c) => c[0])).toEqual(["1"]);
+    expect(nc.deletePath).not.toHaveBeenCalled(); // b.pdf is still shared
   });
 
   it("skips users no longer connected and throws if Nextcloud is unreachable (retried later)", async () => {

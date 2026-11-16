@@ -1239,8 +1239,10 @@ test("Meine Freigaben: links of a mail not sent (e.g. a discarded draft) say so 
   const revokeAt = Date.parse("2099-11-22T10:00:00Z");
   await openTaskpane(page, {
     shares: [
-      { ...SHARES[0], id: "31", password: null, unsent: true, revokeAt },
-      { ...SHARES[0], id: "32", password: null, unsent: true, revokeAt: null },
+      { ...SHARES[0], id: "31", password: null, unsent: true, revokeAt, downloads: { count: 0, last: null } },
+      { ...SHARES[0], id: "32", password: null, unsent: true, revokeAt: null, downloads: { count: 0, last: null } },
+      // Downloaded although CloudShare has not seen the mail sent (e.g. opened by the sender): only the password is missing.
+      { ...SHARES[0], id: "33", password: null, unsent: true, revokeAt: null },
       SHARES[1],
     ],
   });
@@ -1250,7 +1252,9 @@ test("Meine Freigaben: links of a mail not sent (e.g. a discarded draft) say so 
     `Nicht gesendet – wird die Nachricht bis 22.11.2099 nicht gesendet, zieht CloudShare den Link zurück.`,
   );
   await expect(rows.nth(1).locator(".share-unsent")).toHaveText("Nicht gesendet – das Kennwort wurde noch nicht verschickt.");
-  await expect(rows.nth(2).locator(".share-unsent")).toBeHidden();
+  await expect(rows.nth(2).locator(".share-unsent")).toHaveText("Kennwort noch nicht verschickt.");
+  await expect(rows.nth(2).locator(".state-text")).toContainText("2× heruntergeladen");
+  await expect(rows.nth(3).locator(".share-unsent")).toBeHidden();
   await expectAccessible(page);
 });
 

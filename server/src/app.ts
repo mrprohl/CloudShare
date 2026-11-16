@@ -708,6 +708,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         const request = isRequestShare(s);
         const segments = s.path.split("/").filter(Boolean);
         const token = tokenOf(s.url);
+        const downloads = request ? null : await nc.publicDownloads(s.fileId).catch(() => null);
         return {
           id: s.id,
           kind: request ? "request" : "file",
@@ -721,10 +722,11 @@ export async function buildApp(options: { logger?: boolean } = {}) {
           // Its password can still be shown and sent again ("Kennwort" in the list).
           passwordAvailable: passwordRefFor(token, user.oid) !== null,
           // The mail with this link has not been seen sent yet (password not sent) – e.g. a discarded draft – and
-          // when CloudShare revokes the link if it stays that way (null: not automatically).
+          // when CloudShare revokes the link if it stays that way (null: not automatically – also once it was
+          // downloaded: then it reached someone, e.g. sent from an Outlook without CloudShare; revokeUnsentLinks).
           unsent: unsent.has(token),
-          revokeAt: unsent.get(token) ?? null,
-          downloads: request ? null : await nc.publicDownloads(s.fileId).catch(() => null),
+          revokeAt: downloads?.count ? null : (unsent.get(token) ?? null),
+          downloads,
           received: request ? await nc.countFiles(uid, segments).catch(() => null) : null,
         };
       }),

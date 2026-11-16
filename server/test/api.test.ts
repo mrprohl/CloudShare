@@ -626,6 +626,10 @@ describe("my shares", () => {
     expect(before.find((s) => s.id === "21")!.revokeAt).toBeGreaterThan(Date.now() + 6 * DAY); // job expiry: 7 days
     expect(before.find((s) => s.id === "1")).toMatchObject({ unsent: false, revokeAt: null });
 
+    // Downloaded already (e.g. sent from an Outlook without CloudShare): still unsent, but not revoked automatically.
+    nc.publicDownloads.mockResolvedValue({ count: 1, last: "2026-11-16T09:04:00+00:00" });
+    expect((await list()).find((s) => s.id === "21")).toMatchObject({ unsent: true, revokeAt: null });
+
     // "Send" pressed: the mail is on its way – no longer shown as not sent.
     await armJob(res.json().jobId, { graphToken: "t", tokenExpiresAt: Date.now() + 3_600_000, armedAt: Date.now() });
     expect((await list()).find((s) => s.id === "21")?.unsent).toBe(false);
