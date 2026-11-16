@@ -444,7 +444,7 @@ test("settings: an own signature is plain text with paragraphs – stored as typ
   await page.locator("#settings-signature-format").selectOption("text");
   const text = page.locator("#settings-signature-text");
   await expect(text).toBeVisible();
-  await expect(page.locator("#settings-signature-hint")).toContainText("Eine Leerzeile beginnt einen neuen Absatz.");
+  await expect(page.locator("#settings-signature-hint")).toHaveText("Steht als Text am Ende der Nachricht mit dem Kennwort.");
   await text.fill("Mit freundlichen Grüßen\n\n{displayName}\nTel. {phone}");
   // The "i" folds out the placeholders; a click inserts one at the cursor.
   const info = page.locator("#settings-placeholders-toggle");
@@ -1455,11 +1455,12 @@ test("Verlauf: the subject is the title and opens the mail; confidential message
   await page.click("#tab-shares");
   const rows = page.locator("#shares .share");
   await expect(rows.nth(0).locator(".share-title")).toHaveText("Unterlagen Neubau");
-  // Hovering the subject: when and to whom it went, then how to open it.
+  // Hovering the subject: when and to whom it went; screen readers hear that it opens the mail.
   await expect(rows.nth(0).locator(".share-title")).toHaveAttribute(
     "title",
-    "Gesendet am 16.11.2026, 10:04 Uhr an erika@example.com, max@example.com\nCc: chef@example.com\nNachricht öffnen",
+    "Gesendet am 16.11.2026, 10:04 Uhr an erika@example.com, max@example.com\nCc: chef@example.com",
   );
+  await expect(rows.nth(0).locator(".share-title")).toHaveAttribute("aria-label", "Unterlagen Neubau, Nachricht öffnen");
   // Below the subject what went out: the label "Datei" and the file name.
   await expect(rows.nth(0).locator(".share-item .badge")).toHaveText("Datei");
   await expect(rows.nth(0).locator(".share-item .share-name")).toHaveAttribute("title", "Präsentation.pptx");

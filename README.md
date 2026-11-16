@@ -201,7 +201,7 @@ Outlook add-in ──HTTPS──► Caddy (Let's Encrypt) ──► CloudShare c
   granted once; CloudShare stores it encrypted.
 - The password mail is sent **as the sender** via Microsoft Graph, only after the mail appears in "Sent
   Items" – also for shared mailboxes.
-- All texts come from a language file (`locales/de.json`, `locales/en.json`, …): the add-in follows the Outlook language (English if there is no file for it); what the recipients get – link card, password mail, SMS – comes in the language chosen under "Language for the recipients" (preselected in the settings); notes to the sender use `LANGUAGE`.
+- All texts come from a language file (`locales/de.json`, `locales/en.json`, …): the add-in follows the Outlook language (English if there is no file for it); what the recipients get – link card, password mail, SMS – comes in the language chosen under "Language for the recipients" (preselected in the settings); notes to the sender (download and upload confirmation, SMS notes) come in the language of their add-in.
 - One Docker container plus Caddy, no database. Details, data flows and design decisions:
   **[docs/architecture.md](docs/architecture.md)**.
 
@@ -267,7 +267,7 @@ deployed again.
 | Setting | Default | Meaning |
 |---|---|---|
 | `PUBLIC_BASE_URL` | – | Public address of CloudShare, e.g. `https://cloudshare.example.com` |
-| `LANGUAGE` | `en` | Language of the mails and SMS CloudShare sends (password mail and SMS, download/upload confirmation, SMS notes): `de`, `en` or an own one. The add-in itself follows the Outlook language, see [Languages](#languages) |
+| `LANGUAGE` | `en` | Default language: preselected "Language for the recipients" (password mail, SMS, link card), and the language of notes to the sender whose add-in language is unknown (mails sent before this version): `de`, `en` or an own one. The add-in itself follows the Outlook language, see [Languages](#languages) |
 | `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` | – | Entra ID app registration |
 | `NEXTCLOUD_URL` | – | Public address of Nextcloud |
 | `NEXTCLOUD_FOLDER` | `CloudShare` | Folder for uploaded files in each user's Nextcloud |
@@ -366,7 +366,9 @@ corrected number) or as a password mail. Two kinds of failure:
 
 The SMS text, the subject and intro of the password mail and the download confirmation can be changed in
 `env/config/templates.json` – one default plus overrides per department (from the sender's Microsoft 365 profile) and
-per sender address. The texts are the part above the card; the card itself (files, button, details) and the line
+per sender address. Every level may hold texts per language (`"languages": { "en": { … } }`): the SMS and the
+password mail use those of the language chosen for the recipients, the download confirmation those of the sender's
+add-in language. The texts are the part above the card; the card itself (files, button, details) and the line
 "sent automatically by CloudShare" stay, so every mail keeps the common layout. Start from
 [`templates.example.json`](templates.example.json):
 
@@ -411,10 +413,10 @@ manifest – comes from one language file per language in [`locales/`](locales) 
 come in the display language of the Outlook client; if CloudShare has no file for it, in English. A regional variant
 uses its language (`de-AT`, `de-CH` → `de`). Every language in `locales/` and in `env/config/locales/` is offered.
 
-**`LANGUAGE`** in `env/cloudshare.env` (`en` by default) is the language of everything CloudShare sends itself and the
-preselected "Language for the recipients" (each user can choose another one in the settings and for each message –
-link card, password mail and SMS then come in it). Notes to the sender always use `LANGUAGE`: the
-download and upload confirmations and the notes about text messages:
+**`LANGUAGE`** in `env/cloudshare.env` (`en` by default) is the preselected "Language for the recipients" (each user
+can choose another one in the settings and for each message – link card, password mail and SMS then come in it). The
+notes to the sender – download and upload confirmations, notes about text messages – come in the language their
+add-in had when they sent the mail; `LANGUAGE` only where that is unknown (mails sent before this version):
 
 ```bash
 LANGUAGE=de
@@ -426,13 +428,15 @@ cache in classic Outlook (see *Operation*), reload Outlook on the web. Not affec
 - **Nextcloud folder names** – `NEXTCLOUD_REQUEST_FOLDER` stays as set (default `CloudShare-File-Requests`), so
   "History" keeps finding older links. To have it in German, set it in `setup.sh` / `env/cloudshare.env` before
   the first use, e.g. `CloudShare-Dateianforderungen`.
-- **`templates.json`** holds one set of texts – translate it as well, or remove it to use the built-in texts of the
-  language.
+- **`templates.json`** – add the texts of the language under `"languages"` (see above), or leave fields out to use the
+  built-in texts of the language.
 - **`MAIL_FOOTER`** is written by the admin (e.g. `Tel.` vs. `Phone`).
 - Outlook's own buttons (e.g. "Send Anyway", in German Outlook "Trotzdem senden") follow the user's Outlook language.
 
 **Adding a language** – copy [`locales/en.json`](locales/en.json) to `<code>.json` (e.g. `fr.json`) and translate the
-values, keeping the keys and the `{placeholders}`. Keys ending in `_one` / `_other` are the singular and plural form.
+values, keeping the keys and the `{placeholders}`. Keys ending in `_one` / `_other` are the singular and plural form. In
+`_meta`, `locale` is the language's Outlook locale (e.g. `fr-FR`) and the optional `regions` further variants that
+should show the same ribbon texts (e.g. `["fr-BE", "fr-CH", "fr-CA"]`).
 `_meta.locale` (e.g. `fr-FR`) sets the date and number format and the `Locale` of the language's Overrides in the manifest. Use Outlook's own
 terms of that language, keep the SMS text (`templates.sms_template`) in the GSM alphabet (no accents beyond it, or the
 SMS shrinks to 70 characters) with `{password}` on a line of its own (`…:\n{password}` – phones may hyphenate a

@@ -16,7 +16,7 @@ import type { FastifyBaseLogger } from "fastify";
 import { config } from "./config.js";
 import { findSentMessage, sendMail } from "./graph.js";
 import { recordSentMail } from "./history.js";
-import { formatDate, inRecipientLanguage, t as translate } from "./i18n.js";
+import { formatDate, inRecipientLanguage, inSenderLanguage, t as translate } from "./i18n.js";
 import { recordDelivery } from "./deliveries.js";
 import { registerNotices, type Notice } from "./notices.js";
 import { passwordMailHtml, smsProblemMailHtml } from "./passwordMail.js";
@@ -33,6 +33,9 @@ export interface ArmedSend {
   armedAt: number;
   /** Shared mailbox in the "From" field (send as / on behalf); its "Sent Items" are searched as well. */
   mailbox?: string;
+  /** Language of the sender's add-in when they pressed "Send" – the notes to them (download confirmation, files
+   *  received, SMS problems) come in it. */
+  language?: string;
 }
 
 /**
@@ -359,6 +362,8 @@ async function sendStepBySms(
   sender: string | null | undefined,
   subject: string,
   log: Pick<FastifyBaseLogger, "info" | "warn">,
+  /** Language of the sender's add-in – the note about a failed SMS comes in it. */
+  senderLanguage?: string,
 ) {
   try {
     if (!smsEnabled()) throw new Error(translate("server.smsNotConfigured"));
@@ -376,11 +381,15 @@ async function sendStepBySms(
   } catch (err) {
     log.warn({ err, user: job.ownerUpn, to: maskPhone(to) }, "Password SMS failed – note to the sender, no password sent");
     await recordDelivery(tokens, { owner: job.owner, channel: "sms", to: maskPhone(to), at: Date.now(), status: "failed" });
-    const files = translate("mail.files", { count: partFiles(part).length, name: partFiles(part)[0] });
-    const html = smsProblemMailHtml({ fileNames: partFiles(part), subject, to: maskPhone(to), reason: (err as Error).message });
+    // The note to the sender in the language of their add-in.
+    const { html, noteSubject } = inSenderLanguage(senderLanguage, () => ({
+      html: smsProblemMailHtml({ fileNames: partFiles(part), subject, to: maskPhone(to), reason: (err as Error).message }),
+      noteSubject: translate("mail.smsFailedSubject", {
+        subject: subject || translate("mail.files", { count: partFiles(part).length, name: partFiles(part)[0] }),
+      }),
+    }));
     // A failed note must not fail the step – that would retry the SMS on every pass of the watcher.
-    await sendMail(graphToken, { to: [sender ?? job.ownerUpn], cc: [], bcc: [] },
-      translate("mail.smsFailedSubject", { subject: subject || files }), html, sender)
+    await sendMail(graphToken, { to: [sender ?? job.ownerUpn], cc: [], bcc: [] }, noteSubject, html, sender)
       .catch((mailErr) => log.warn({ err: mailErr, user: job.ownerUpn }, "Note about the failed SMS not sent"));
   }
 }
@@ -457,6 +466,8 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
               recipients: message.recipients.to.concat(message.recipients.cc).join(", "),
               expireDate: s.expireDate,
               registeredAt: Date.now(),
+              // The confirmation to the sender in the language of their add-in.
+              language: armed.language,
               ...(s.request ? { kind: "upload" as const, knownFiles: s.knownFiles ?? [] } : {}),
             },
           ]),
@@ -511,7 +522,7 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
             const key = deliveryKey(way);
             if (part.sentWays?.includes(key)) continue;
             if (way.channel === "sms") {
-              if (part.sendId) await sendStepBySms(job, part, way.to, t, tokens, armed.graphToken, sender, message.subject, log);
+              if (part.sendId) await sendStepBySms(job, part, way.to, t, tokens, armed.graphToken, sender, message.subject, log, armed.language);
             } else {
               const to = way.channel === "mail" ? { to: [way.to], cc: [], bcc: [] } : message.recipients;
               const mail = mailFor();
@@ -530,6 +541,7 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
             await registerPasswordRef({
               owner: job.owner,
               language: part.language,
+              senderLanguage: armed.language,
               ownerUpn: job.ownerUpn,
               sendId: part.sendId,
               tokens,

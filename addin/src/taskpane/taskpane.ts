@@ -2088,9 +2088,11 @@ function shareRow(share: ShareItem): HTMLElement {
       const button = title as HTMLButtonElement;
       button.type = "button";
       button.addEventListener("click", () => void openSentMail(share));
+      // That it opens the mail shows as a link on hover; screen readers hear it with the subject.
+      button.setAttribute("aria-label", `${title.textContent}, ${t("shares.openMail")}`);
     }
-    const tooltip = [...sent, share.mailId ? t("shares.openMail") : ""].filter(Boolean).join("\n");
-    if (tooltip) title.title = tooltip;
+    // The tooltip only says when and to whom it went.
+    if (sent.length) title.title = sent.filter(Boolean).join("\n");
     // What went out, as a label like "Groß" at the attachments: "Datei" before the file name, "Dateianforderung" and
     // "Vertrauliche Nachricht" (in colour, so it stands out) on their own.
     const item = document.createElement("div");

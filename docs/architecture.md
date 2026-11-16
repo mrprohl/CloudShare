@@ -259,16 +259,24 @@ Two kinds of language:
   (`de-AT` → `de`), else English (`pickLanguage`, the same rule in `addin/src/shared/i18n.ts` and
   `server/src/i18n.ts`). That covers the taskpane, info bar, Smart Alerts, the link card and the error messages the
   server returns to the add-in.
-- **`LANGUAGE`** (default `en`) is the language of everything the server sends on its own – download/upload
-  confirmation, SMS notes to the sender – the first guess of the taskpane page and the preselected language for the
-  recipients.
+- **`LANGUAGE`** (default `en`) is the first guess of the taskpane page, the preselected language for the recipients
+  and the fallback for notes to the sender whose add-in language is unknown.
 - **"Language for the recipients"** (`#recipient-language` in "Validity and language", preselected from the personal
   setting `recipientLanguage`, kept per draft in `DraftState.recipientLanguage`): the link card is rendered in it
   (`inLanguage` in `addin/src/shared/i18n.ts`), and every link request carries it as `language`. The server keeps it
   per step (`SeparatePart.language`, the first link of a step decides) and writes the step's password mail and SMS in
   it (`inRecipientLanguage` in `i18n.ts`: sections `mail` and `templates`, dates); sending the password again uses the
   same language (`PasswordRef.language`). The names in the password mail ("Confidential message", upload link) follow
-  it too (`tIn`). Notes to the sender stay in `LANGUAGE`.
+  it too (`tIn`).
+- **Notes to the sender** (download and upload confirmation, SMS not sent / not delivered) come in the language of
+  their add-in when they pressed "Send": the send handler's `X-CloudShare-Language` is kept with the armed job
+  (`ArmedSend.language`, `requestLanguageCode`) and passed on to the notices (`Notice.language`) and the password entry
+  (`PasswordRef.senderLanguage`); the notes are rendered in it with `inSenderLanguage`.
+- **`templates.json`** may hold texts per language on every level (`"languages": { "en": {…} }`); `templatesFor` uses
+  those of the language of the mail being written (`mailLanguage`: the recipients' or the sender's), over the level's
+  own.
+- **Manifest:** each language's texts are given as Overrides for its `_meta.locale` and the regional variants in
+  `_meta.regions` (German: de-DE, de-AT, de-CH, de-LU, de-LI – `manifestLocales`), so Outlook need not guess.
 
 Each language is `locales/<language>.json`. `i18n.ts` merges, per text:
 
@@ -637,12 +645,10 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
 5. **Bitwarden CLI and Vaultwarden versions must match** (`BW_CLI_VERSION` in the `Dockerfile`).
 6. **Trademark:** the icon uses the Nextcloud mark – fine for internal use; check Nextcloud's trademark guidelines
    before distributing CloudShare to third parties.
-7. **Languages:** the add-in follows each user's Outlook language, and what the recipients get – link card, password
-   mail, SMS – the "Language for the recipients" chosen per mail (2.8). The notes to the sender (download and upload
-   confirmation, SMS notes) still use `LANGUAGE` for everyone, and `templates.json` is not per language: its own texts
-   apply in every language (only the built-in defaults follow the recipients' language). The ribbon label
-   comes from a manifest `Override` for the language's `_meta.locale` (e.g. `de-DE`) – how Outlook treats other
-   regional variants there (e.g. `de-AT`) is up to Outlook; the pane itself maps them to their language.
+7. **Languages:** the add-in follows each user's Outlook language, what the recipients get the language chosen per
+   mail, the notes to the sender the language of their add-in (2.8). Only mails sent before this version fall back
+   to `LANGUAGE`, and a regional variant not listed in `_meta.regions` is left to Outlook (the pane maps it to its
+   language anyway).
 8. **Possible later:** OIDC token exchange (e.g. Keycloak) instead of app passwords would remove the connect step –
    not built on purpose: Keycloak supports exchanging an external (Entra) token only in its legacy preview feature, and
    the background tasks would still need a stored offline token, so it would add risk without a security gain.

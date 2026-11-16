@@ -24,7 +24,8 @@ import { config } from "./config.js";
 
 export type Section = Record<string, string>;
 export interface LocaleFile {
-  _meta: { name: string; locale: string };
+  /** Own name, locale for dates, and further Outlook locales that get the same manifest texts (regional variants). */
+  _meta: { name: string; locale: string; regions?: string[] };
   addin: Section;
   manifest: Section;
   server: Section;
@@ -168,6 +169,18 @@ export function inRecipientLanguage<T>(lang: string | undefined, fn: () => T): T
   return known ? recipientLanguage.run(known, fn) : fn();
 }
 
+/**
+ * The same for a note to the sender (download confirmation, files received, SMS problem): in the language of their
+ * add-in when the mail was sent (PasswordJob.senderLanguage), else LANGUAGE.
+ */
+export const inSenderLanguage = <T>(lang: string | undefined, fn: () => T): T => inRecipientLanguage(lang, fn);
+
+/** Language of the mail being written right now (inRecipientLanguage / inSenderLanguage), else LANGUAGE. */
+export const mailLanguage = () => recipientLanguage.getStore() ?? language;
+
+/** The language of the request being handled (X-CloudShare-Language: the add-in's), if one was given. */
+export const requestLanguageCode = (): string | undefined => requestLanguage.getStore();
+
 /** Text of `key` in `lang` (LANGUAGE if unknown) – e.g. the label of a message in the recipients' language. */
 export const tIn = (lang: string | undefined, key: string, vars?: Record<string, string | number>) => {
   const file = all[knownLanguage(lang) ?? language] ?? active;
@@ -243,6 +256,13 @@ function fillMarkup(content: string, languages: Record<string, LocaleFile>, lang
 }
 
 /**
+ * Outlook locales a language's manifest texts are given for: its own locale and its regional variants (`_meta.regions`,
+ * e.g. de-AT, de-CH) – so Outlook does not have to guess for a variant without an Override of its own.
+ */
+const manifestLocales = (meta: { locale: string; regions?: string[] }) =>
+  [...new Set([meta.locale, ...(Array.isArray(meta.regions) ? meta.regions : [])])].filter((l) => /^[a-z]{2,3}-[A-Za-z]{2,4}$/.test(l));
+
+/**
  * manifest.xml: an element `<X DefaultValue="%%t:section.key%%"/>` gets the text of `fallback` (English) as
  * DefaultValue and one Override per other language (`<bt:Override>` inside bt:String, `<Override>` at the top level),
  * so Outlook shows the ribbon and the description in the client's language. %%LOCALE%% is the fallback's locale.
@@ -255,7 +275,7 @@ function localizeManifest(xml: string, languages: Record<string, LocaleFile>, fa
       const prefix = tag.includes(":") ? `${tag.split(":")[0]}:` : "";
       const value = (lang: string) => escapeMarkup(textOf(languages[lang], section, key));
       const overrides = others
-        .map((lang) => `<${prefix}Override Locale="${languages[lang]._meta.locale}" Value="${value(lang)}"/>`)
+        .map((lang) => manifestLocales(languages[lang]._meta).map((locale) => `<${prefix}Override Locale="${locale}" Value="${value(lang)}"/>`).join(""))
         .join("");
       return `<${tag}${before}DefaultValue="${value(fallback)}"${after}>${overrides}</${tag}>`;
     },

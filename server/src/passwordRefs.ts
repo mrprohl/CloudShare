@@ -38,6 +38,8 @@ export interface PasswordRef {
   department?: string;
   /** Language the recipients got the password in – sending it again uses it too. */
   language?: string;
+  /** Language of the sender's add-in when the mail was sent – a later note about an undelivered SMS comes in it. */
+  senderLanguage?: string;
 }
 
 const refs = new PersistentMap<PasswordRef>("password-refs");

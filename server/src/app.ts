@@ -63,7 +63,7 @@ import { accessIdOf, isMessageToken, messageFor, messagesOf, recordDraftSubject,
 import { isCloudShareShare, isRequestShare, revokeMessage, revokeShare, tokenOf } from "./shares.js";
 import { defaultTemplates, render, smsFiles, templatesFor } from "./templates.js";
 import { clampInt, isEmailAddress } from "./limits.js";
-import { formatDate, inRecipientLanguage, knownLanguage, locale, t, tIn, withRequestLanguage } from "./i18n.js";
+import { formatDate, inRecipientLanguage, inSenderLanguage, knownLanguage, locale, requestLanguageCode, t, tIn, withRequestLanguage } from "./i18n.js";
 import { passwordProblem } from "./password.js";
 import { signatureHtml } from "./signature.js";
 import { availableSettings, defaultSettings, parseSettings, resetSettings, saveSettings, settingsFor } from "./settings.js";
@@ -280,9 +280,14 @@ async function noteUndeliveredSms(refs: PasswordRef[], log: Pick<FastifyBaseLogg
     const token = await appGraphToken();
     for (const ref of refs) {
       if (!settingsFor(ref.owner).smsNotice) continue; // the user switched it off (settings)
-      const files = t("mail.files", { count: ref.fileNames.length, name: ref.fileNames[0] });
-      const html = smsProblemMailHtml({ fileNames: ref.fileNames, subject: ref.subject, to: ref.sms ? maskPhone(ref.sms) : "" });
-      await sendMailAsApp(token, ref.owner, ref.from ?? ref.ownerUpn, t("mail.smsUndeliveredSubject", { subject: ref.subject || files }), html);
+      // In the language of the sender's add-in when the mail was sent.
+      const { html, subject } = inSenderLanguage(ref.senderLanguage, () => ({
+        html: smsProblemMailHtml({ fileNames: ref.fileNames, subject: ref.subject, to: ref.sms ? maskPhone(ref.sms) : "" }),
+        subject: t("mail.smsUndeliveredSubject", {
+          subject: ref.subject || t("mail.files", { count: ref.fileNames.length, name: ref.fileNames[0] }),
+        }),
+      }));
+      await sendMailAsApp(token, ref.owner, ref.from ?? ref.ownerUpn, subject, html);
     }
   } catch (err) {
     log.warn({ err }, "Note about an undelivered SMS not sent");
@@ -1103,7 +1108,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       });
 
     const { token, expiresAt } = await onBehalfOf(user, GRAPH_SCOPES);
-    await armJob(req.params.id, { graphToken: token, tokenExpiresAt: expiresAt, armedAt: Date.now(), mailbox });
+    await armJob(req.params.id, { graphToken: token, tokenExpiresAt: expiresAt, armedAt: Date.now(), mailbox, language: requestLanguageCode() });
     req.log.info({ user: user.upn, jobId: req.params.id, mailbox }, "Password mail armed");
     return { ok: true };
   });

@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { defaultTemplates, gsmLength, isGsm, loadTemplates, render, renderHtml, smsFiles, templatesFor, toGsm } from "../src/templates.js";
+import { inRecipientLanguage } from "../src/i18n.js";
 
 const dir = mkdtempSync(path.join(tmpdir(), "cloudshare-templates-"));
 function file(content: unknown) {
@@ -36,6 +37,31 @@ describe("templates", () => {
     expect(user.download_notice_subject).toBe("Nur für mich"); // user beats default
     expect(user.mail_password_subject).toBe(defaultTemplates().mail_password_subject); // not set anywhere
     expect(templatesFor({ upn: "x@example.de", department: "Andere" }, loaded).sms_template).toBe("Standard {password}");
+  });
+
+  it("uses the texts of the mail's language where a level has them", () => {
+    const warnings: string[] = [];
+    const loaded = loadTemplates(
+      file({
+        templates: {
+          default: {
+            sms_template: "Kennwort:\n{password}",
+            languages: { EN: { sms_template: "Password:\n{password}" }, fr: { mail_password_subject: "Mot de passe {password}" } },
+          },
+          users: { "max@example.test": { download_notice_subject: "Nur für mich", languages: { en: { download_notice_subject: "Just for me" } } } },
+        },
+      }),
+      (m) => warnings.push(m),
+    );
+    const de = templatesFor({ upn: "max@example.test" }, loaded); // LANGUAGE (de in the tests)
+    expect(de.sms_template).toBe("Kennwort:\n{password}");
+    expect(de.download_notice_subject).toBe("Nur für mich");
+    const en = inRecipientLanguage("en", () => templatesFor({ upn: "max@example.test" }, loaded));
+    expect(en.sms_template).toBe("Password:\n{password}");
+    expect(en.download_notice_subject).toBe("Just for me");
+    expect(en.mail_password_subject).toBe(inRecipientLanguage("en", () => defaultTemplates().mail_password_subject)); // built-in English
+    // Checked like any other text: {password} outside the SMS is dropped.
+    expect(warnings.some((w) => w.includes("default.languages.fr.mail_password_subject must not contain {password}"))).toBe(true);
   });
 
   it("drops fields that would leak something and warns about the rest", () => {

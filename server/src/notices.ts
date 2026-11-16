@@ -15,7 +15,7 @@ import type { FastifyBaseLogger } from "fastify";
 import { appGraphToken, HttpError } from "./auth.js";
 import { config } from "./config.js";
 import { getCredentials, removeCredentials } from "./credentials.js";
-import { locale, t } from "./i18n.js";
+import { inSenderLanguage, locale, t } from "./i18n.js";
 import { sendMailAsApp } from "./graph.js";
 import { NextcloudClient, NOT_CONNECTED } from "./nextcloud.js";
 import { PersistentMap } from "./db.js";
@@ -39,6 +39,8 @@ export interface Notice {
   kind?: "upload";
   /** Upload link: the files already reported (or there before the link was sent). */
   knownFiles?: string[];
+  /** Language of the sender's add-in when the mail was sent – the confirmation comes in it (else LANGUAGE). */
+  language?: string;
 }
 
 /** Is this kind of notice switched on (DOWNLOAD_NOTICE / UPLOAD_NOTICE)? */
@@ -116,19 +118,22 @@ export async function runNotices(log: Pick<FastifyBaseLogger, "info" | "warn">, 
           appToken ??= await appGraphToken();
           const shown = received.slice(0, MAX_NAMES);
           const more = received.length - shown.length;
-          const html = mailDocument({
-            opening: paragraph(t("mail.uploadedText", { subject: n.subject || t("mail.noSubject"), recipients: n.recipients })),
-            card: {
-              accent: "success",
-              title: t("mail.uploadedTitle", { count: received.length }),
-              files: shown,
-              button: { label: t("mail.uploadedButton"), url: `${config.nextcloudUrl}/index.php/apps/files/?dir=${encodeURIComponent(share.path)}` },
-              details: [more > 0 ? t("mail.uploadedMore", { count: more }) : "", t("mail.uploadedDetails", { date: formatDay(n.expireDate) })]
-                .filter(Boolean)
-                .join(" · "),
-            },
-          });
-          const subject = t("mail.uploadedSubject", { count: received.length, subject: n.subject || t("mail.noSubject") });
+          // In the language of the sender's add-in when the mail was sent.
+          const { html, subject } = inSenderLanguage(n.language, () => ({
+            html: mailDocument({
+              opening: paragraph(t("mail.uploadedText", { subject: n.subject || t("mail.noSubject"), recipients: n.recipients })),
+              card: {
+                accent: "success",
+                title: t("mail.uploadedTitle", { count: received.length }),
+                files: shown,
+                button: { label: t("mail.uploadedButton"), url: `${config.nextcloudUrl}/index.php/apps/files/?dir=${encodeURIComponent(share.path)}` },
+                details: [more > 0 ? t("mail.uploadedMore", { count: more }) : "", t("mail.uploadedDetails", { date: formatDay(n.expireDate) })]
+                  .filter(Boolean)
+                  .join(" · "),
+              },
+            }),
+            subject: t("mail.uploadedSubject", { count: received.length, subject: n.subject || t("mail.noSubject") }),
+          }));
           await sendMailAsApp(appToken, owner, n.notifyTo, subject, html);
           n.knownFiles = [...known, ...received];
           notices.save(token);
@@ -140,25 +145,30 @@ export async function runNotices(log: Pick<FastifyBaseLogger, "info" | "warn">, 
         // Only downloads after the password went out (earlier links of the same file do not count).
         if (!downloads?.last || Date.parse(downloads.last) < n.registeredAt - 60_000) continue;
         appToken ??= await appGraphToken();
-        const texts = templatesFor({ upn: n.ownerUpn, department: n.department });
-        const values = {
-          filename: n.fileName,
-          subject: n.subject || t("mail.noSubject"),
-          downloaded_at: formatTime(downloads.last),
-          expires: formatDay(n.expireDate),
-          recipients: n.recipients,
-        };
-        // Common layout (mailLayout.ts): the text of the template, then a green card with the file.
-        const html = mailDocument({
-          opening: renderHtml(texts.download_notice_body, values, TEXT_STYLE),
-          card: {
-            accent: "success",
-            title: t("mail.downloadedTitle"),
-            files: [n.fileName],
-            details: t("mail.downloadedDetails", { time: values.downloaded_at, date: values.expires }),
-          },
+        // In the language of the sender's add-in when the mail was sent (texts, dates).
+        const lastDownload = downloads.last;
+        const { html, subject } = inSenderLanguage(n.language, () => {
+          const texts = templatesFor({ upn: n.ownerUpn, department: n.department });
+          const values = {
+            filename: n.fileName,
+            subject: n.subject || t("mail.noSubject"),
+            downloaded_at: formatTime(lastDownload),
+            expires: formatDay(n.expireDate),
+            recipients: n.recipients,
+          };
+          // Common layout (mailLayout.ts): the text of the template, then a green card with the file.
+          const html = mailDocument({
+            opening: renderHtml(texts.download_notice_body, values, TEXT_STYLE),
+            card: {
+              accent: "success",
+              title: t("mail.downloadedTitle"),
+              files: [n.fileName],
+              details: t("mail.downloadedDetails", { time: values.downloaded_at, date: values.expires }),
+            },
+          });
+          return { html, subject: render(texts.download_notice_subject, values) };
         });
-        await sendMailAsApp(appToken, owner, n.notifyTo, render(texts.download_notice_subject, values), html);
+        await sendMailAsApp(appToken, owner, n.notifyTo, subject, html);
         notices.delete(token);
         log.info({ user: n.ownerUpn, file: n.fileName }, "Download confirmation sent");
       }

@@ -163,14 +163,17 @@ describe("i18n", () => {
     );
     expect(readFileSync(path.join(dir, "taskpane.de.html"), "utf8")).toBe(readFileSync(path.join(dir, "taskpane.html"), "utf8"));
 
-    // Manifest: English as default, the other languages as Overrides.
+    // Manifest: English as default, the other languages as Overrides – for their locale and their regional variants
+    // (_meta.regions), so Outlook in de-AT or de-CH shows German too.
     const manifest = readFileSync(path.join(dir, "manifest.xml"), "utf8");
     expect(manifest).toContain("<DefaultLocale>en-GB</DefaultLocale>");
+    const overrides = (prefix: string, value: string) =>
+      ["de-DE", "de-AT", "de-CH", "de-LU", "de-LI"].map((locale) => `<${prefix}Override Locale="${locale}" Value="${value}"/>`).join("");
     expect(manifest).toContain(
-      `<Description DefaultValue="${english.manifest.description}"><Override Locale="de-DE" Value="${german.manifest.description}"/></Description>`,
+      `<Description DefaultValue="${english.manifest.description}">${overrides("", german.manifest.description)}</Description>`,
     );
     expect(manifest).toContain(
-      `<bt:String id="Group.Label" DefaultValue="${english.manifest.group}"><bt:Override Locale="de-DE" Value="${german.manifest.group}"/></bt:String>`,
+      `<bt:String id="Group.Label" DefaultValue="${english.manifest.group}">${overrides("bt:", german.manifest.group)}</bt:String>`,
     );
     expect(manifest).not.toContain("%%");
 
