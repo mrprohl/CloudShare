@@ -44,7 +44,7 @@ ask SHARE_EXPIRE_DAYS       "Link valid, default (days)"                  "14"
 ask SHARE_MAX_EXPIRE_DAYS   "Link valid, maximum (days)"                  "90"
 echo "Signature of the password mails – placeholders from the M365 profile: {displayName} {givenName} {surname} {jobTitle}"
 echo '  {department} {company} {email} {phone} {mobile} {office}; \n = new line. Enter = none, e.g.'
-echo '  {displayName} · {jobTitle}\n{company} · Tel. {phone} · {email}'
+echo '  {displayName} · {department}\n{company} · Tel. {phone} · {email}'
 ask MAIL_FOOTER             "Signature template (empty = none)"           ""
 echo; echo "-- Microsoft Entra ID (app registration \"CloudShare\") --"
 ask ENTRA_TENANT_ID     "Directory (tenant) ID"     ""
