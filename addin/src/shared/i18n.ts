@@ -110,7 +110,25 @@ export function forceLanguage(lang: string): void {
   if (bundle.languages[lang]) forced = lang;
 }
 
-const current = (): Language => bundle.languages[language()] || bundle.languages[bundle.fallback];
+/** Set while inLanguage runs: texts and dates for the recipients in their language, the pane stays in its own. */
+let scoped: string | undefined;
+
+/**
+ * Runs `fn` with t() and locale() in `lang` – the link card in the language chosen for the recipients ("Sprache für
+ * die Empfänger"). An unknown language leaves the pane's. Synchronous only.
+ */
+export function inLanguage<T>(lang: string | undefined, fn: () => T): T {
+  const previous = scoped;
+  scoped = lang && bundle.languages[lang] ? lang : undefined;
+  try {
+    return fn();
+  } finally {
+    scoped = previous;
+  }
+}
+
+const current = (): Language =>
+  bundle.languages[scoped || language()] || bundle.languages[bundle.fallback];
 
 /** BCP 47 locale for dates and numbers ("de-DE", "en-GB"). */
 export const locale = () => current().locale;

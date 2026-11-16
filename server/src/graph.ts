@@ -197,3 +197,22 @@ export async function findSentMessage(
   }
   return null;
 }
+
+/**
+ * The EWS ID Outlook needs to open a mail (Office.js displayMessageForm), for the immutable Graph ID stored when the
+ * mail was found in "Sent Items" ("Verlauf": click on the subject). Translated now, so it is the mail's current ID even
+ * after it was moved. Null if Exchange does not know it (any more). Needs only User.Read.
+ */
+export async function ewsIdFor(graphToken: string, immutableId: string): Promise<string | null> {
+  const res = await fetch("https://graph.microsoft.com/v1.0/me/translateExchangeIds", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${graphToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ inputIds: [immutableId], sourceIdType: "restImmutableEntryId", targetIdType: "ewsId" }),
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new HttpError(502, `Graph translateExchangeIds failed (HTTP ${res.status}): ${text.slice(0, 300)}`);
+  }
+  const json = (await res.json()) as { value?: Array<{ targetId?: string }> };
+  return json.value?.[0]?.targetId || null;
+}

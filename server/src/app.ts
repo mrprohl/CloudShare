@@ -9,7 +9,7 @@ import { existsSync } from "node:fs";
 import { appGraphToken, authenticate, HttpError, onBehalfOf, type User } from "./auth.js";
 import { config, SEND_DAYS_LIMIT } from "./config.js";
 import { getCredentials, removeCredentials, saveCredentials } from "./credentials.js";
-import { fetchProfile, GRAPH_PROFILE_SCOPES, GRAPH_SCOPES, sendMail, sendMailAsApp, type MailRecipients } from "./graph.js";
+import { ewsIdFor, fetchProfile, GRAPH_PROFILE_SCOPES, GRAPH_SCOPES, sendMail, sendMailAsApp, type MailRecipients } from "./graph.js";
 import {
   addFileToJob,
   addNoticeShare,
@@ -63,7 +63,7 @@ import { accessIdOf, isMessageToken, messageFor, messagesOf, recordMessage, sent
 import { isCloudShareShare, isRequestShare, revokeMessage, revokeShare, tokenOf } from "./shares.js";
 import { defaultTemplates, render, smsFiles, templatesFor } from "./templates.js";
 import { clampInt, isEmailAddress } from "./limits.js";
-import { formatDate, locale, t, withRequestLanguage } from "./i18n.js";
+import { formatDate, inRecipientLanguage, knownLanguage, locale, t, tIn, withRequestLanguage } from "./i18n.js";
 import { passwordProblem } from "./password.js";
 import { signatureHtml } from "./signature.js";
 import { availableSettings, defaultSettings, parseSettings, resetSettings, saveSettings, settingsFor } from "./settings.js";
@@ -113,6 +113,8 @@ interface ShareRequest {
    */
   passwordTo?: unknown;
   passwordSms?: unknown;
+  /** "Sprache für die Empfänger": language of the password mail and SMS of this link's step (a code of the add-in). */
+  language?: unknown;
 }
 
 /** The way the password of a new link goes out (see ShareRequest), checked like PATCH /api/jobs/:id does. */
@@ -178,6 +180,8 @@ async function attachToJob(
   share?: StepShare,
   /** "Kennwort senden an" of this link (deliveryFrom); joins the ways of its step. */
   delivery?: Delivery,
+  /** Language for the recipients (password mail, SMS) of a new step; a step keeps the one of its first link. */
+  language?: string,
 ) {
   const step = typeof requestedStep === "string" && /^[A-Za-z0-9-]{1,40}$/.test(requestedStep) ? requestedStep : undefined;
   const id = typeof requestedJobId === "string" ? requestedJobId : undefined;
@@ -207,6 +211,7 @@ async function attachToJob(
       sendKeepUntil: link.keepUntil,
       shares: share ? [share] : undefined,
       deliveries,
+      language,
     });
     return id;
   }
@@ -222,6 +227,7 @@ async function attachToJob(
       sendKeepUntil: link.keepUntil,
       shares: share ? [share] : undefined,
       deliveries,
+      language,
     });
   }
   return createJob(user.oid, user.upn, itemName, send.url, link.maxAccess, send.id);
@@ -402,6 +408,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     sendMaxExpireDays: config.sendMaxExpireDays,
     // Success messages in the pane disappear after this many seconds (0: they stay).
     successMessageSeconds: config.successMessageSeconds,
+    // "Nextcloud öffnen" in the account menu.
+    nextcloudUrl: config.nextcloudUrl,
   }));
 
   /**
@@ -632,7 +640,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const share = shareInfo(shareUrl, upload.fileName, expireDate);
       const jobId = noPassword
         ? await attachNoticeJob(user, req.body?.jobId, share)
-        : await attachToJob(user, req.body?.jobId, upload.fileName, password, passwordLink, req.body?.step, share, delivery);
+        : await attachToJob(user, req.body?.jobId, upload.fileName, password, passwordLink, req.body?.step, share, delivery, knownLanguage(req.body?.language));
       req.log.info({ user: user.upn, file: upload.fileName, noPassword }, "Share created");
       return { shareUrl, expireDate, jobId, noPassword, fileName: upload.fileName, size: upload.size };
     },
@@ -641,7 +649,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
   // --- Upload links ("Dateien anfordern") ----------------------------------------
 
   /** Item name of an upload link in the password mail (German, shown to recipients). */
-  const uploadLinkItem = () => t("server.requestItem");
+  /** Name of an upload link in the password mail – in the recipients' language. */
+  const uploadLinkItem = (lang?: string) => tIn(lang, "server.requestItem");
 
   app.post<{ Body: ShareRequest & { jobId?: string } }>("/api/requests", { config: { rateLimit: strictLimit } }, async (req) => {
     const user = await authenticate(req);
@@ -654,8 +663,9 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     await nc.ensureFolder(uid, folder);
     // Create-only share ("file drop"): recipients can upload but cannot see or download anything.
     const shareUrl = await nc.createPublicShare(folder, password, expireDate, 4, t("server.requestLabel"));
-    const jobId = await attachToJob(user, req.body?.jobId, uploadLinkItem(), password, passwordLink, req.body?.step,
-      shareInfo(shareUrl, uploadLinkItem(), expireDate, []), delivery); // a new folder: nothing received yet
+    const language = knownLanguage(req.body?.language);
+    const jobId = await attachToJob(user, req.body?.jobId, uploadLinkItem(language), password, passwordLink, req.body?.step,
+      shareInfo(shareUrl, uploadLinkItem(), expireDate, []), delivery, language); // a new folder: nothing received yet
     req.log.info({ user: user.upn, folder: folder.join("/") }, "Upload link created");
     return { shareUrl, expireDate, jobId };
   });
@@ -677,7 +687,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     const days = clampInt(req.body?.messageDays, config.sendExpireDays, 1, config.sendMaxExpireDays);
     const expiresAt = new Date(Date.now() + days * 86_400_000);
     const expireDate = expiresAt.toISOString().slice(0, 10);
-    const item = t("server.messageItem");
+    // Named in the password mail – in the recipients' language.
+    const item = tIn(knownLanguage(req.body?.language), "server.messageItem");
     const send = await createMessageSend(item, text, password, expiresAt);
     // The password is needed exactly as long as the message can be read.
     const link = { ...passwordLink, days: Math.min(passwordLink.days, days), keepUntil: expiresAt.getTime() };
@@ -690,7 +701,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
           message: true,
         }
       : undefined;
-    const jobId = await attachToJob(user, req.body?.jobId, item, password, link, req.body?.step, share, delivery);
+    const jobId = await attachToJob(user, req.body?.jobId, item, password, link, req.body?.step, share, delivery, knownLanguage(req.body?.language));
     req.log.info({ user: user.upn, days, length: text.length }, "Confidential message created");
     return { shareUrl: send.url, expireDate, jobId };
   });
@@ -792,6 +803,32 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     return { ok: true, file, deleteAfterDays: config.cleanupAfterDays };
   });
 
+  /**
+   * "Verlauf": the mail an entry went out with, as the EWS ID Outlook opens (click on the subject). The immutable Graph
+   * ID kept when the mail was sent is translated now – Outlook cannot open the immutable form, and the current ID
+   * follows a mail that was moved. 404 if no mail is known (sent before this version, shared mailbox) or it is gone.
+   */
+  app.get<{ Params: { id: string } }>("/api/shares/:id/mail", async (req) => {
+    const user = await authenticate(req);
+    let token: string;
+    if (isMessageToken(req.params.id)) {
+      token = req.params.id;
+    } else {
+      const share = (await nextcloudFor(user).listPublicShares()).find((s) => s.id === req.params.id);
+      if (!share || !isCloudShareShare(share)) throw new HttpError(404, t("server.shareNotFound"));
+      token = tokenOf(share.url);
+    }
+    const mailId = sentMailFor(token, user.oid)?.mailId;
+    if (!mailId) throw new HttpError(404, t("server.mailUnknown"));
+    const { token: graphToken } = await onBehalfOf(user, GRAPH_PROFILE_SCOPES);
+    const ewsId = await ewsIdFor(graphToken, mailId).catch((err) => {
+      req.log.warn({ err, user: user.upn }, "Mail ID not translated");
+      return null;
+    });
+    if (!ewsId) throw new HttpError(404, t("server.mailUnknown"));
+    return { ewsId };
+  });
+
   /** The user's CloudShare link (or message) with this ID and the entry of its password (404 if it has none any more). */
   async function ownPasswordRef(user: User, id: string): Promise<PasswordRef> {
     let token: string;
@@ -835,7 +872,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const user = await authenticate(req);
       const ref = await ownPasswordRef(user, req.params.id);
       const target = typeof req.body?.to === "string" ? req.body.to : "";
-      const templates = templatesFor({ upn: ref.ownerUpn, department: ref.department });
+      const templates = inRecipientLanguage(ref.language, () => templatesFor({ upn: ref.ownerUpn, department: ref.department }));
       const channel = req.body?.channel;
 
       if (channel === "sms") {
@@ -843,7 +880,10 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         const number = smsNumber(target);
         if (!takeSmsQuota(user.oid)) throw new HttpError(429, t("server.smsDailyLimit", { max: config.smsMaxPerDay }));
         const password = await readSendPassword(ref.sendId);
-        const messageId = await sendSms(number, render(templates.sms_template, { password, sender_name: ref.senderName ?? "", files: smsFiles(ref.fileNames ?? []) }));
+        // In the language the recipients got the password in the first time.
+        const text = inRecipientLanguage(ref.language, () =>
+          render(templates.sms_template, { password, sender_name: ref.senderName ?? "", files: smsFiles(ref.fileNames ?? []) }));
+        const messageId = await sendSms(number, text);
         await recordDelivery(ref.tokens, { owner: user.oid, channel: "sms", to: maskPhone(number), at: Date.now(), messageId, status: "submitted" });
         await updatePasswordRef(ref.sendId, { sms: number });
         req.log.info({ user: user.upn, to: maskPhone(number), messageId }, "Password sent again by SMS");
@@ -870,16 +910,23 @@ export async function buildApp(options: { logger?: boolean } = {}) {
 
       const password = await readSendPassword(ref.sendId);
       const send = await createPasswordSend(`CloudShare: ${ref.fileNames[0]}`, password, ref.maxAccessCount, config.sendExpireDays, ref.keepUntil);
-      const files = t("mail.files", { count: ref.fileNames.length, name: ref.fileNames[0] });
-      const customIntro = templates.mail_password_intro !== defaultTemplates().mail_password_intro ? templates.mail_password_intro : undefined;
-      const subject = render(templates.mail_password_subject, { files, subject: ref.subject || ref.fileNames[0], sender_name: ref.senderName ?? "" });
+      // The password mail in the language the recipients got it in the first time.
+      const { subject, customIntro } = inRecipientLanguage(ref.language, () => ({
+        subject: render(templates.mail_password_subject, {
+          files: t("mail.files", { count: ref.fileNames.length, name: ref.fileNames[0] }),
+          subject: ref.subject || ref.fileNames[0],
+          sender_name: ref.senderName ?? "",
+        }),
+        customIntro: templates.mail_password_intro !== defaultTemplates().mail_password_intro ? templates.mail_password_intro : undefined,
+      }));
       // The signature as it is now (settings, profile) – the user sends this mail now.
       const profile = await onBehalfOf(user, GRAPH_PROFILE_SCOPES)
         .then(({ token }) => fetchProfile(token))
         .catch(() => ({ email: user.upn, displayName: ref.senderName ?? "" }));
-      const html = passwordMailHtml({ fileNames: ref.fileNames, sendUrl: send.url, maxAccessCount: ref.maxAccessCount, subject: ref.subject,
-        expireDays: config.sendExpireDays, introTemplate: customIntro, senderName: ref.senderName, expiresOn: formatDate(send.expiresAt),
-        signature: signatureHtml(settingsFor(user.oid).signature, profile) });
+      const html = inRecipientLanguage(ref.language, () =>
+        passwordMailHtml({ fileNames: ref.fileNames, sendUrl: send.url, maxAccessCount: ref.maxAccessCount, subject: ref.subject,
+          expireDays: config.sendExpireDays, introTemplate: customIntro, senderName: ref.senderName, expiresOn: formatDate(send.expiresAt),
+          signature: signatureHtml(settingsFor(user.oid).signature, profile) }));
       const { token } = await onBehalfOf(user, GRAPH_SCOPES);
       for (const recipients of mails) await sendMail(token, recipients, subject, html, ref.from);
 
@@ -925,7 +972,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const info = shareInfo(shareUrl, request ? uploadLinkItem() : fileName, expireDate, knownFiles);
       const jobId = noPassword
         ? await attachNoticeJob(user, req.body?.jobId, info)
-        : await attachToJob(user, req.body?.jobId, request ? uploadLinkItem() : fileName, password, passwordLink, req.body?.step, info, delivery);
+        : await attachToJob(user, req.body?.jobId, request ? uploadLinkItem(knownLanguage(req.body?.language)) : fileName, password, passwordLink, req.body?.step, info, delivery, knownLanguage(req.body?.language));
       req.log.info({ user: user.upn, path: share.path, noPassword }, "Share linked again");
       return { kind: request ? "request" : "file", shareUrl, expireDate, jobId, noPassword, fileName, size: share.size };
     },

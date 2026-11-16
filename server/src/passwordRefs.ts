@@ -36,6 +36,8 @@ export interface PasswordRef {
   maxAccessCount: number;
   senderName?: string;
   department?: string;
+  /** Language the recipients got the password in – sending it again uses it too. */
+  language?: string;
 }
 
 const refs = new PersistentMap<PasswordRef>("password-refs");

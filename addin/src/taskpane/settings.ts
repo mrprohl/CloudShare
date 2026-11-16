@@ -1,5 +1,5 @@
 /**
- * Personal settings ("Einstellungen" in the account menu): notices, the ways "Kennwort senden an" offers and the one it preselects,
+ * Personal settings ("Einstellungen" in the account menu): notices, the ways "Kennwort senden an" offers and the one it preselects, the language preselected for the recipients,
  * the language of the add-in and an own text signature for the password mails. Stored on the server per user
  * (server/src/settings.ts, /api/settings); the language is also kept in roamingSettings (SETTINGS_CACHE_KEY), so the
  * pane and the event handlers start in it without a request. What the organisation decides (notices switched off,
@@ -25,6 +25,7 @@ export function userSettings(): UserSettings {
       channels: CHANNELS,
       defaultChannel: "recipients",
       language: "auto",
+      recipientLanguage: language(),
       signature: null,
     }
   );
@@ -80,6 +81,7 @@ export function initSettings(options: Options) {
   const noticesGroup = $<HTMLFieldSetElement>("settings-notices-group");
   const notices = $<HTMLDivElement>("settings-notices");
   const languageSelect = $<HTMLSelectElement>("settings-language");
+  const recipientLanguageSelect = $<HTMLSelectElement>("settings-recipient-language");
   const signatureFormat = $<HTMLSelectElement>("settings-signature-format");
   const signatureText = $<HTMLTextAreaElement>("settings-signature-text");
   const signatureHint = $<HTMLParagraphElement>("settings-signature-hint");
@@ -182,6 +184,13 @@ export function initSettings(options: Options) {
         .map((l) => new Option(l.name, l.code)),
     );
     languageSelect.value = settings.language;
+    // "Sprache für die Empfänger": the languages the server offers, by their own name.
+    recipientLanguageSelect.replaceChildren(
+      ...languageChoices()
+        .filter((l) => available.languages.includes(l.code))
+        .map((l) => new Option(l.name, l.code)),
+    );
+    recipientLanguageSelect.value = settings.recipientLanguage;
 
     const signature = settings.signature;
     signatureFormat.value = signature?.format === "text" ? "text" : "none";
@@ -233,6 +242,7 @@ export function initSettings(options: Options) {
       channels,
       defaultChannel: defaultChannel.value as Channel,
       language: languageSelect.value,
+      recipientLanguage: recipientLanguageSelect.value,
       signature,
     };
     for (const input of notices.querySelectorAll<HTMLInputElement>("input")) {

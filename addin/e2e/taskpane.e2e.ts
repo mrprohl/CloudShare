@@ -59,6 +59,7 @@ interface ApiCall { method: string; path: string; body: Buffer | null; language?
 const CONFIG = {
   // Success messages stay in the tests (one test checks that they run down) – screenshots and checks see them.
   successMessageSeconds: 0,
+  nextcloudUrl: "https://cloud.example.com",
   thresholdMb: 1,
   attachmentPolicy: "enforce",
   defaultExpireDays: 14,
@@ -87,6 +88,7 @@ const DEFAULT_SETTINGS = {
   channels: ["recipients", "mail", "sms"] as string[],
   defaultChannel: "recipients",
   language: "auto",
+  recipientLanguage: "de",
   signature: null as null | Record<string, unknown>,
 };
 
@@ -175,6 +177,8 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     }
     if (route_ === "GET /api/shares") return json(scenario.shares ?? []);
     if (/^DELETE \/api\/shares\/.+$/.test(route_)) return json({ ok: true });
+    // "Verlauf": the sent mail of an entry, as the EWS ID Outlook opens.
+    if (/^GET \/api\/shares\/[^/]+\/mail$/.test(route_)) return json({ ewsId: `ews-${route_.split("/")[3]}` });
     if (/^PATCH \/api\/jobs\/[^/]+$/.test(route_)) return json({ maxAccess: JSON.parse(call.body!.toString()).maxAccess });
     if (/^GET \/api\/shares\/[^/]+\/password$/.test(route_)) {
       return json({ password: "KateGeteFi45", sms: "+491701234567", otherTo: [],
@@ -522,6 +526,28 @@ test("preselects large attachments and proposes a random password", async ({ pag
   await expectAccessible(page);
   await expectNoHorizontalScroll(page);
   await fullShot(page, "send-light");
+});
+
+test("Sprache für die Empfänger: the card and the password mail in the chosen language, the pane stays German", async ({ page }) => {
+  const calls = await openTaskpane(page, {
+    attachments: [attachment("a1", "Präsentation.pptx", 2.5 * MiB)],
+    settings: { recipientLanguage: "de" },
+  });
+  await expect(page.locator("#password")).not.toHaveValue("");
+  const select = page.locator("#recipient-language");
+  await expect(select).toHaveValue("de"); // from the settings
+  await expect(select.locator("option")).toHaveText(["Deutsch", "English"]);
+  await select.selectOption("en");
+  await page.click("#submit");
+
+  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt."); // the pane in its own language
+  const card = (await officeLog(page)).inserted[0].data as string;
+  expect(card).toContain("A file has been shared with you");
+  expect(card).toContain(">Download<");
+  expect(card).not.toContain("Herunterladen");
+  // The server writes the password mail and SMS of this step in it; the mail keeps the choice.
+  expect(JSON.parse(calls.find((c) => c.path.endsWith("/complete"))!.body!.toString())).toMatchObject({ language: "en" });
+  expect(JSON.parse((await officeLog(page)).session["cloudshare-state"] ?? "{}")).toMatchObject({ recipientLanguage: "en" });
 });
 
 test("uploads a large attachment in chunks, removes it and inserts the card", async ({ page }) => {
@@ -1188,9 +1214,10 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(menu).toBeVisible();
-  await expect(page.locator("#account-menu button")).toHaveText(["Einstellungen", "Hilfe", "Verbindung trennen"]);
-  await expect(page.locator("#account-menu button svg")).toHaveCount(3);
-  await expect(page.locator("#settings-open")).toBeFocused();
+  await expect(page.locator("#account-menu button")).toHaveText(["Nextcloud öffnen", "Einstellungen", "Hilfe", "Verbindung trennen"]);
+  await expect(page.locator("#account-menu button svg")).toHaveCount(4);
+  await expect(page.locator("#nextcloud-open")).toBeFocused(); // the first entry
+  await expect(page.locator("#nextcloud-open")).toHaveAttribute("title", "https://cloud.example.com");
   expect((await menu.boundingBox())!.y + (await menu.boundingBox())!.height).toBeLessThanOrEqual(toggleBox!.y);
   await expectAccessible(page);
   await page.keyboard.press("Escape");
@@ -1371,21 +1398,24 @@ test("Verlauf: the subject is the title and opens the mail; confidential message
   await page.click("#tab-shares");
   const rows = page.locator("#shares .share");
   await expect(rows.nth(0).locator(".share-title")).toHaveText("Unterlagen Neubau");
-  await expect(rows.nth(0).locator(".share-item")).toHaveText("Präsentation.pptx"); // the file below the subject
+  // Below the subject what went out: the label "Datei" and the file name.
+  await expect(rows.nth(0).locator(".share-item .badge")).toHaveText("Datei");
+  await expect(rows.nth(0).locator(".share-item")).toHaveAttribute("title", "Präsentation.pptx");
   await expect(rows.nth(1).locator(".share-title")).toHaveText("(Kein Betreff)");
   await expect(rows.nth(1).locator("button.share-title")).toHaveCount(0);
   await expect(rows.nth(3).locator(".share-title")).toHaveCount(0);
   await expect(rows.nth(3).locator(".share-name")).toHaveText("Upload-Link");
 
-  // A click on the subject opens the sent mail in Outlook (EWS ID from the Graph ID).
+  // A click on the subject opens the sent mail in Outlook (the server gives its current EWS ID).
   await rows.nth(0).locator("button.share-title").click();
-  expect((await officeLog(page)).openedMails).toEqual(["ews:v2.0:AAMk-files"]);
+  expect((await officeLog(page)).openedMails).toEqual(["ews-11"]); // translated by the server
 
   // The message: envelope, "Vertrauliche Nachricht" below the subject, the password – but no copy, no insert, no
   // download state (CloudShare keeps no key, Vaultwarden reports no opening).
   const msg = rows.nth(2);
   await expect(msg.locator(".share-title")).toHaveText("Zugangsdaten");
-  await expect(msg.locator(".share-item")).toHaveText("Vertrauliche Nachricht");
+  await expect(msg.locator(".share-item")).toHaveText("Vertrauliche Nachricht"); // only the label, in colour
+  await expect(msg.locator(".share-item .badge")).toHaveClass(/kind-message/);
   await expect(msg.locator(".show-password")).toBeVisible();
   await expect(msg.locator(".copy")).toBeHidden();
   await expect(msg.locator(".insert")).toBeHidden();
@@ -1538,6 +1568,14 @@ test("Hilfe: \"Hilfe\" in the account menu opens the guide in place of the tab, 
   await page.click("#tab-send");
   await expect(page.locator("#panel-help")).toBeHidden();
   await expect(page.locator("#panel-send")).toBeVisible();
+});
+
+test("Nextcloud öffnen opens the user's Nextcloud in the browser", async ({ page }) => {
+  await openTaskpane(page);
+  await page.locator("#account-toggle").click();
+  await page.locator("#nextcloud-open").click();
+  await expect(page.locator("#account-menu")).toBeHidden();
+  expect((await officeLog(page)).openedUrls).toEqual(["https://cloud.example.com"]);
 });
 
 test("Verbindung trennen takes a second click, like Zurückziehen", async ({ page }) => {
