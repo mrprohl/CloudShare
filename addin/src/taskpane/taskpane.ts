@@ -1519,6 +1519,7 @@ const settingsView = initSettings({
   token: getToken,
   setStatus,
   errorMessage,
+  close: () => closeSettings(),
   onChanged: () => {
     if (readMode) return;
     // New ways for "Kennwort senden an": a mail without links yet switches to the preselected way if its own is no
@@ -1532,18 +1533,19 @@ const settingsView = initSettings({
     });
   },
 });
-// "Einstellungen" in the account menu (bottom left) opens them in place of the current tab; "×" closes them, the focus
-// goes back to the account.
+// "Einstellungen" in the account menu (bottom left) opens them in place of the current tab; "×" – or saving – closes
+// them, the focus goes back to the account.
 settingsOpen.addEventListener("click", () => {
   showAccountMenu(false);
   showOverlay("settings");
   void settingsView.open();
   settingsClose.focus();
 });
-settingsClose.addEventListener("click", () => {
+function closeSettings() {
   showOverlay(null);
   accountToggle.focus();
-});
+}
+settingsClose.addEventListener("click", closeSettings);
 refreshSharesButton.addEventListener("click", () => {
   refreshSharesButton.disabled = true;
   refreshSharesButton.setAttribute("aria-busy", "true");

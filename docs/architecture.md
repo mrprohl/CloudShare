@@ -357,7 +357,8 @@ when the links expire. Steps sent before this version have no entry – their pa
 ### 2.11 Personal settings
 
 "Einstellungen" in the account menu (`#settings-open`, bottom left) opens the settings in place of the current tab, like the guide (`settings.ts` in the
-add-in, `server/src/settings.ts`, store `settings`):
+add-in, `server/src/settings.ts`, store `settings`); "Speichern" closes them like the "×" (`closeSettings`, focus back
+on the account), "Zurücksetzen" keeps them open with the defaults in sight:
 
 - **Ways for the password** (`channels`, `defaultChannel`): `applyChannelChoices` hides the other options of "Kennwort
   senden an" (and of "Erneut senden an") but keeps the way a mail already uses; a new mail starts with

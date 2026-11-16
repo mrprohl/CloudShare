@@ -65,6 +65,8 @@ interface Options {
   errorMessage: (err: unknown) => string;
   /** The settings changed (not the language – the page reloads for that). */
   onChanged: () => void;
+  /** Closes the settings as the "×" does – after "Speichern" (not after "Zurücksetzen": the defaults stay in sight). */
+  close: () => void;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -240,6 +242,7 @@ export function initSettings(options: Options) {
     try {
       const response = await api<SettingsResponse>("/api/settings", { method: "PUT", body: JSON.stringify(body) }, await options.token());
       await apply(response, t("settings.saved"));
+      options.close();
     } catch (err) {
       options.setStatus(t("settings.saveFailed", { error: options.errorMessage(err) }), "error");
     } finally {

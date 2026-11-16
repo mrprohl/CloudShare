@@ -377,8 +377,10 @@ test("settings: the gear opens them in place of the tab; saved ways apply to the
     channels: ["mail", "sms"], defaultChannel: "sms", downloadNotice: false, uploadNotice: true, smsNotice: true, language: "auto", signature: null,
   });
 
-  await page.click("#settings-close");
+  // Saving closes the settings like the "×": back on the tab, focus on the account.
+  await expect(page.locator("#panel-settings")).toBeHidden();
   await expect(page.locator("#panel-send")).toBeVisible();
+  await expect(page.locator("#account-toggle")).toBeFocused();
   // No links in this mail yet: it switches to the preselected way, the ways left out are not offered.
   await expect(page.locator("#password-channel")).toHaveValue("sms");
   await expect(page.locator('#password-channel option[value="recipients"]')).toHaveJSProperty("hidden", true);
@@ -439,8 +441,8 @@ test("settings: an own signature is plain text with paragraphs – stored as typ
   const saved = JSON.parse(calls.find((c) => c.method === "PUT")!.body!.toString());
   expect(saved.signature).toEqual({ format: "text", content: "Mit freundlichen Grüßen\n\n{displayName}\nTel. {phone}" });
 
-  // Opened again: the text as typed.
-  await page.click("#settings-close");
+  // Opened again (saving closed them): the text as typed.
+  await expect(page.locator("#panel-settings")).toBeHidden();
   await openSettings(page);
   await expect(page.locator("#settings-signature-format")).toHaveValue("text");
   await expect(text).toHaveValue("Mit freundlichen Grüßen\n\n{displayName}\nTel. {phone}");
