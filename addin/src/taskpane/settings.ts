@@ -142,7 +142,7 @@ export function initSettings(options: Options) {
       return item;
     }),
   );
-  placeholdersToggle.addEventListener("click", () => showPlaceholders(placeholders.hidden));
+  placeholdersToggle.addEventListener("click", () => showPlaceholders(placeholders.hidden === true));
 
   const showSignatureFormat = () => {
     const format = signatureFormat.value;
