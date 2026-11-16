@@ -44,6 +44,8 @@ interface Scenario {
   lang?: "en";
   /** Display language of the Outlook client (office-mock.js; default: German, below /en/ English). */
   displayLanguage?: string;
+  /** Personal settings stored on the server (GET /api/settings), on top of DEFAULT_SETTINGS. */
+  settings?: Partial<typeof DEFAULT_SETTINGS>;
   /** Opened from a mail being read (taskpane.html?view=read) with this HTML body. */
   readBody?: string;
 }
@@ -76,10 +78,22 @@ const CONFIG = {
   sendMaxExpireDays: 30,
 };
 
+/** Personal settings as the server starts every user (DEFAULT_* unset). */
+const DEFAULT_SETTINGS = {
+  downloadNotice: true,
+  uploadNotice: true,
+  smsNotice: true,
+  channels: ["recipients", "mail", "sms"] as string[],
+  defaultChannel: "recipients",
+  language: "auto",
+  signature: null as { format: "text" | "html"; content: string } | null,
+};
+
 /** Opens the taskpane with the given mail and backend state; returns the list of API calls made by the pane. */
 async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCall[]> {
   const calls: ApiCall[] = [];
   let connected = scenario.connected ?? true;
+  let userSettings = { ...DEFAULT_SETTINGS, ...scenario.settings };
   const uploads = new Map<string, { fileName: string; size: number }>();
 
   await page.addInitScript((cfg) => {
@@ -140,6 +154,19 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     }
     if (route_ === "POST /api/messages") {
       return json({ shareUrl: "https://vault.example.com/#/send/msg/key123", expireDate: "2026-12-01", jobId: "job-1" });
+    }
+    if (/^(GET|PUT|DELETE) \/api\/settings$/.test(route_)) {
+      // Like server/src/settings.ts: SMS only with seven.io, the notices the server has switched on.
+      const sms = scenario.config !== "down" && scenario.config?.smsEnabled === true;
+      const available = { downloadNotice: true, uploadNotice: true, smsNotice: sms, channels: sms ? ["recipients", "mail", "sms"] : ["recipients", "mail"],
+        languages: ["de", "en"] };
+      const within = (s: typeof DEFAULT_SETTINGS) => {
+        const channels = s.channels.filter((c) => available.channels.includes(c));
+        return { ...s, smsNotice: s.smsNotice && sms, channels, defaultChannel: channels.includes(s.defaultChannel) ? s.defaultChannel : channels[0] };
+      };
+      if (call.method === "PUT") userSettings = { ...userSettings, ...JSON.parse(call.body!.toString()) };
+      if (call.method === "DELETE") userSettings = { ...DEFAULT_SETTINGS };
+      return json({ settings: within(userSettings), defaults: within(DEFAULT_SETTINGS), available });
     }
     if (route_ === "GET /api/shares") return json(scenario.shares ?? []);
     if (/^DELETE \/api\/shares\/.+$/.test(route_)) return json({ ok: true });
@@ -296,6 +323,116 @@ test("language: a client language without texts falls back to English", async ({
   expect(calls.every((c) => c.language === "en")).toBe(true);
 });
 
+// --- Personal settings (gear in the account line) -------------------------------------------------------------------
+
+test("settings: the gear opens them in place of the tab; saved ways apply to the password at once", async ({ page }) => {
+  const calls = await openTaskpane(page, { attachments: [attachment("a1", "Plan.pdf", 2 * MiB)], config: { smsEnabled: true } });
+  await expect(page.locator("#send-view")).toBeVisible();
+  await page.locator("#panel-send .settings-toggle").click();
+  await expect(page.locator("#panel-settings")).toBeVisible();
+  await expect(page.locator("#panel-send")).toBeHidden();
+  await expect(page.locator("#settings-form")).toBeVisible();
+  // All ways offered, notices on, language as in Outlook, the organisation's signature.
+  await expect(page.locator('#settings-channels input[type="checkbox"]')).toHaveCount(3);
+  await expect(page.locator("#settings-notices input")).toHaveCount(3);
+  await expect(page.locator("#settings-language")).toHaveValue("auto");
+  await expect(page.locator("#settings-signature-format")).toHaveValue("none");
+  await expectAccessible(page);
+  await shot(page, "settings");
+
+  // Only "Andere E-Mail-Adresse" and SMS, SMS preselected; no download confirmation.
+  // The real checkbox is invisible under its box (as in the attachment list): click the row like a user.
+  const row = (input: string) => page.locator("label.checkbox").filter({ has: page.locator(input) });
+  await row('input[value="recipients"]').click();
+  await expect(page.locator('#settings-channels input[value="recipients"]')).not.toBeChecked();
+  await page.locator("#settings-default-channel").selectOption("sms");
+  await row('input[name="downloadNotice"]').click();
+  await expect(page.locator('#settings-notices input[name="downloadNotice"]')).not.toBeChecked();
+  await page.click("#settings-save");
+  await expect(page.locator("#status")).toHaveText("Ihre Einstellungen wurden gespeichert.");
+  const put = calls.find((c) => c.method === "PUT" && c.path === "/api/settings");
+  expect(JSON.parse(put!.body!.toString())).toMatchObject({
+    channels: ["mail", "sms"], defaultChannel: "sms", downloadNotice: false, uploadNotice: true, smsNotice: true, language: "auto", signature: null,
+  });
+
+  await page.click("#settings-close");
+  await expect(page.locator("#panel-send")).toBeVisible();
+  // No links in this mail yet: it switches to the preselected way, the ways left out are not offered.
+  await expect(page.locator("#password-channel")).toHaveValue("sms");
+  await expect(page.locator('#password-channel option[value="recipients"]')).toHaveJSProperty("hidden", true);
+  await expect(page.locator('#password-channel option[value="mail"]')).toHaveJSProperty("hidden", false);
+});
+
+test("settings: a new mail starts with the preselected way and offers only the chosen ones", async ({ page }) => {
+  await openTaskpane(page, { config: { smsEnabled: true }, settings: { channels: ["recipients", "sms"], defaultChannel: "sms" } });
+  await expect(page.locator("#password-channel")).toHaveValue("sms");
+  await expect(page.locator("#password-sms")).toBeVisible();
+  await expect(page.locator('#password-channel option[value="mail"]')).toHaveJSProperty("hidden", true);
+  await expect(page.locator('#password-channel option[value="recipients"]')).toHaveJSProperty("hidden", false);
+});
+
+test("settings: a pasted Outlook signature keeps its formatting, loses everything risky and goes into the card", async ({ page }) => {
+  const calls = await openTaskpane(page, { attachments: [attachment("a1", "Plan.pdf", 2 * MiB)] });
+  await page.locator("#panel-send .settings-toggle").click();
+  await page.locator("#settings-signature-format").selectOption("html");
+  const editor = page.locator("#settings-signature-html");
+  await expect(editor).toBeVisible();
+  await editor.click();
+  // What a paste of an Outlook signature leaves in the editor (the browser inserts it, then fires "insertFromPaste") –
+  // with everything the allow-list must remove.
+  await editor.evaluate((element) => {
+    element.innerHTML =
+      '<style>.x{color:red}</style><p class="MsoNormal" style="color:#1f497d;font-weight:bold" onclick="alert(1)">Max Mustermann</p>' +
+      '<p>Tel. <a href="tel:+491234">01234</a> · <a href="javascript:alert(2)">klick</a></p>' +
+      '<img src="cid:image001.png"><img src="https://example.com/logo.png" alt="Logo"><o:p></o:p>';
+    element.dispatchEvent(new InputEvent("input", { inputType: "insertFromPaste", bubbles: true }));
+  });
+  const html = await editor.innerHTML();
+  expect(html).toContain("Max Mustermann");
+  expect(html).toContain("font-weight:bold");
+  expect(html).toContain('href="tel:+491234"');
+  expect(html).toContain('src="https://example.com/logo.png"');
+  expect(html).not.toMatch(/onclick|javascript:|<script|<style|cid:|class=/);
+
+  await page.click("#settings-save");
+  await expect(page.locator("#status")).toHaveText("Ihre Einstellungen wurden gespeichert.");
+  const saved = JSON.parse(calls.find((c) => c.method === "PUT")!.body!.toString());
+  expect(saved.signature.format).toBe("html");
+  expect(saved.signature.content).not.toMatch(/onclick|javascript:|<script/);
+
+  // The next link carries the signature in its card.
+  await page.click("#settings-close");
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
+  const inserted = (await officeLog(page)).inserted[0].data as string;
+  expect(inserted).toContain("Max Mustermann");
+  expect(inserted).toContain("https://example.com/logo.png");
+  expect(inserted).not.toContain("alert(");
+});
+
+test("settings: a text signature with profile placeholders replaces the organisation's footer", async ({ page }) => {
+  await openTaskpane(page, {
+    attachments: [attachment("a1", "Plan.pdf", 2 * MiB)],
+    settings: { signature: { format: "text", content: "{displayName}\nTeam Bau · Tel. {phone}" } },
+  });
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
+  const inserted = (await officeLog(page)).inserted[0].data as string;
+  expect(inserted).toContain("Max Mustermann<br>Team Bau"); // no phone in the profile: "Tel. {phone}" is dropped
+  expect(inserted).not.toContain("Projektleitung"); // MAIL_FOOTER ("{displayName} · {jobTitle}") does not apply
+});
+
+test("settings: a language chosen in the settings beats Outlook's", async ({ page }) => {
+  const calls = await openTaskpane(page, { settings: { language: "en" } });
+  // Loaded once, cached in roamingSettings, the pane starts again in English.
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(page.locator("#tab-send")).toHaveText("Send");
+  await expect.poll(() => calls.filter((c) => c.path === "/api/config").length).toBeGreaterThan(1);
+  await page.locator("#panel-send .settings-toggle").click();
+  await expect(page.locator("#settings-language")).toHaveValue("en");
+  await expect(page.locator("#settings-language option")).toHaveText(["Default (as in Outlook)", "Deutsch", "English"]);
+});
+
 test("language: a regional variant uses its language", async ({ page }) => {
   const calls = await openTaskpane(page, { displayLanguage: "de-AT" });
   await expect(page.locator("#send-view")).toBeVisible();
@@ -341,6 +478,7 @@ test("preselects large attachments and proposes a random password", async ({ pag
 
 test("uploads a large attachment in chunks, removes it and inserts the card", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Präsentation.pptx", 2.5 * MiB)] });
+  await expect(page.locator("#password")).not.toHaveValue(""); // the pane has started (settings loaded)
   const password = await page.locator("#password").inputValue();
   await page.click("#submit");
 
@@ -811,6 +949,7 @@ test("Nextcloud enforces link passwords: no 'Ohne Kennwort' option", async ({ pa
 
 test("Dateien von Empfängern erhalten inserts an upload link with the same password", async ({ page }) => {
   const calls = await openTaskpane(page);
+  await expect(page.locator("#password")).not.toHaveValue(""); // the pane has started (settings loaded)
   const password = await page.locator("#password").inputValue();
   await chooseKind(page, "request");
   await expect(page.locator("#request-section")).toBeVisible();
@@ -836,6 +975,7 @@ test("Nachricht: inserts a card with the link, never the text, and shares the pa
   await expect(page.locator("#mode-none-row")).toBeHidden(); // a confidential message always has a password
   await expect(page.locator("#validity-summary")).toHaveText("Nachricht 5 Tage · Kennwort-Link 5 Tage, 3-mal abrufbar");
 
+  await expect(page.locator("#password")).not.toHaveValue(""); // the pane has started (settings loaded)
   const password = await page.locator("#password").inputValue();
   await page.fill("#message", "Zugang zum Portal: anna / Sommer2026");
   await expect(page.locator("#message-count")).toHaveText("36 von 1000 Zeichen");
@@ -1082,6 +1222,7 @@ test("Meine Freigaben: Kennwort shows the password and sends it again the same w
 
 test("Meine Freigaben: Als Link einfügen creates a new link with this mail's password", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: SHARES });
+  await expect(page.locator("#password")).not.toHaveValue(""); // the pane has started (settings loaded)
   const password = await page.locator("#password").inputValue();
   await page.click("#tab-shares");
   await page.locator("#shares .share").nth(1).locator(".insert").click();
@@ -1186,14 +1327,19 @@ test("Hilfe: the \"?\" at the top right opens the guide in place of the tab, rea
   const help = page.locator("#panel-help");
   await expect(help).not.toContainText("help."); // every text exists in the language file
   const sections = help.locator("details");
-  await expect(sections).toHaveCount(7);
+  await expect(sections).toHaveCount(8);
   // The most common task is open, the rest closed until needed.
   await expect(sections.nth(1).locator("summary")).toHaveText("Große Dateien senden");
   await expect(sections.nth(1)).toHaveAttribute("open", "");
-  await expect(sections.nth(6)).not.toHaveAttribute("open", "");
-  await sections.nth(6).locator("summary").click();
-  await expect(sections.nth(6)).toHaveAttribute("open", "");
-  await expect(sections.nth(6)).toContainText("Ich habe den Link an die falsche Person geschickt.");
+  await expect(sections.nth(7)).not.toHaveAttribute("open", "");
+  await sections.nth(7).locator("summary").click();
+  await expect(sections.nth(7)).toHaveAttribute("open", "");
+  await expect(sections.nth(7)).toContainText("Ich habe den Link an die falsche Person geschickt.");
+  // "Einstellungen" shows the gear it talks about.
+  const settings = sections.filter({ has: page.locator("summary", { hasText: "Einstellungen" }) });
+  await settings.locator("summary").click();
+  await expect(settings.locator('[data-icon="settings"] svg')).toHaveCount(1);
+  await expect(settings).toContainText("Zurücksetzen");
   // "Meine Freigaben" explains every icon with the icon itself – also "Aktualisieren" in the tab bar.
   const shares = sections.filter({ has: page.locator("summary", { hasText: "Meine Freigaben" }) });
   await shares.locator("summary").click();

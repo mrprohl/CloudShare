@@ -271,6 +271,10 @@ deployed again.
 | `SMS_BLOCKED_NUMBERS` / `SMS_ALLOWED_NUMBERS` | `^\+49(800\|900\|180)` / empty | Regular expressions on the number (`+491701234567`): matching numbers are refused / only matching numbers are accepted. Mobile and landline numbers are allowed; the default blocks 0800, 0900 and 0180 numbers |
 | `DOWNLOAD_NOTICE` | off | `true`: mail to the sender on the first download (needs the Entra application permission `Mail.Send`, see [microsoft-365.md → 5](docs/microsoft-365.md#5-optional-application-permission-for-the-download-confirmation)) |
 | `UPLOAD_NOTICE` | off | `true`: mail to the sender when files arrive through an upload link ("Anfordern"), at most one per link every 10 minutes, until the link expires (same application permission `Mail.Send`) |
+| `DEFAULT_PASSWORD_CHANNELS` | `recipients,mail,sms` | Personal settings, starting value: ways "Send the password to" offers (`recipients`, `mail`, `sms`; SMS only with seven.io). Each user can change it under the gear, see [Personal settings](#personal-settings) |
+| `DEFAULT_PASSWORD_CHANNEL` | `recipients` | Personal settings, starting value: the way preselected for a new message |
+| `DEFAULT_DOWNLOAD_NOTICE` / `DEFAULT_UPLOAD_NOTICE` / `DEFAULT_SMS_NOTICE` | `true` | Personal settings, starting value of the notices – only where `DOWNLOAD_NOTICE` / `UPLOAD_NOTICE` / `SMS_NOTICE` are on |
+| `DEFAULT_LANGUAGE` | `auto` | Personal settings, starting value of the add-in language: `auto` (as in Outlook) or a language code |
 | `SMS_NOTICE` | like `DOWNLOAD_NOTICE` | `true`: note to the sender when seven.io reports a password SMS as not delivered later (same application permission `Mail.Send`; unset it follows `DOWNLOAD_NOTICE`, which switched it before). A note about an SMS seven.io refuses right away needs no switch |
 | `CLEANUP_AFTER_DAYS` | `0` | Uploaded files go to the Nextcloud trash this many days after their link expired or was revoked; `off` = never. Received files are never deleted |
 | `DATA_RETENTION_DAYS` | `365` | Entries in `/data/cloudshare.db` not changed for this many days are deleted (daily, then the file is shrunk); `off` = never. A safety net – entries normally leave on their own (jobs after 7 days, links' data when they expire, SMS states after 120 days). Nextcloud connections and the cleanup list are never affected. At least `SHARE_MAX_EXPIRE_DAYS` |
@@ -360,6 +364,26 @@ chmod 755 /opt/cloudshare/env/config && chmod 644 /opt/cloudshare/env/config/tem
 Then update the stack. Mistakes (e.g. `{password}` in a mail text, an SMS without `{password}` or too long for one
 SMS) are reported in the log at start; the affected text falls back to the built-in one.
 The built-in texts are those of the configured language (section `templates` of its language file).
+
+## Personal settings
+
+The gear at the bottom of the pane (next to the Nextcloud account) opens each user's own settings. They are stored
+on the server per Microsoft account (encrypted like everything in `/data/cloudshare.db`) and apply on every computer:
+
+| Setting | Choice | Starting value |
+|---|---|---|
+| Send the password to | which ways the pane offers (recipients of the message, another address, SMS) and which one a new message starts with | `DEFAULT_PASSWORD_CHANNELS`, `DEFAULT_PASSWORD_CHANNEL` |
+| Notifications | download confirmation, files received, SMS not delivered – each on or off | `DEFAULT_DOWNLOAD_NOTICE`, `DEFAULT_UPLOAD_NOTICE`, `DEFAULT_SMS_NOTICE` |
+| Language | as in Outlook, or a fixed language of the add-in | `DEFAULT_LANGUAGE` |
+| Signature below the link | the organisation's (`MAIL_FOOTER`), an own text (profile placeholders allowed) or an own formatted one pasted from Outlook | `MAIL_FOOTER` |
+
+Only what users changed is stored, so a new starting value in `env/cloudshare.env` reaches everyone who left that
+setting alone; "Reset" brings back the starting values. What the organisation decides stays out of reach: a notice
+switched off on the server is not offered, SMS only with seven.io, and the SMS rules (`SMS_ALLOWED_COUNTRIES`,
+`SMS_ALLOWED_NUMBERS`, `SMS_BLOCKED_NUMBERS`) apply whatever a user chooses. A formatted signature is cleaned in the
+pane before it is stored or inserted: formatting, links (web, mail, phone) and pictures from `https` addresses stay;
+scripts, event handlers, styles that load anything and Outlook's embedded pictures are removed. Mails and SMS that
+CloudShare sends itself keep `LANGUAGE`.
 
 ## Languages
 

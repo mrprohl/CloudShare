@@ -8,8 +8,16 @@
 
 interface Language {
   locale: string;
+  /** Name of the language in itself ("Deutsch", "English") – for the language choice in the settings. */
+  name?: string;
   messages: Record<string, string>;
 }
+
+/**
+ * roamingSettings key of the user's settings as last loaded (taskpane, settings) – read here for the language, so the
+ * page and the event handlers have it at once, before any request.
+ */
+export const SETTINGS_CACHE_KEY = "cloudshare-settings";
 
 interface Bundle {
   /** Used when the client's language is not available ("en"). */
@@ -74,8 +82,28 @@ function clientLanguage(): string | undefined {
   return typeof navigator !== "undefined" ? navigator.language : undefined;
 }
 
-/** The language the add-in shows ("de", "en", …). */
-export const language = (): string => forced || pickLanguage(clientLanguage());
+/** Language chosen in the settings (not "auto") and available, or undefined. */
+function preferredLanguage(): string | undefined {
+  try {
+    const cached = Office.context.roamingSettings.get(SETTINGS_CACHE_KEY) as { language?: unknown } | undefined;
+    const lang = cached && typeof cached.language === "string" ? cached.language : "";
+    return lang && lang !== "auto" && bundle.languages[lang] ? lang : undefined;
+  } catch {
+    return undefined; // no Office.js (yet) or no roamingSettings
+  }
+}
+
+/** The language the add-in should show: the one chosen in the settings, else the client's. */
+export const desiredLanguage = (): string => preferredLanguage() || pickLanguage(clientLanguage());
+
+/** The language the add-in shows ("de", "en", …): fixed for a taskpane page (forceLanguage), else desiredLanguage. */
+export const language = (): string => forced || desiredLanguage();
+
+/** The languages for a choice: code and own name, sorted by name. */
+export const languageChoices = (): Array<{ code: string; name: string }> =>
+  availableLanguages()
+    .map((code) => ({ code, name: bundle.languages[code].name || code }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
 /** Keeps the add-in in `lang` whatever the client says (a taskpane page that stays in its language). */
 export function forceLanguage(lang: string): void {

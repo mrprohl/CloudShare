@@ -91,6 +91,21 @@ describe("download confirmation", () => {
     expect(pendingNotices().some(([t]) => t === "tokC")).toBe(false);
     expect(sendMailAsApp).not.toHaveBeenCalled();
   });
+
+  it("stops when the sender switched it off in the settings", async () => {
+    const { resetSettings, saveSettings } = await import("../src/settings.js");
+    await registerNotices([["tokOff", notice("Plan.pdf")]]);
+    nc.listPublicShares.mockResolvedValue([share("tokOff", 13)]);
+    nc.publicDownloads.mockResolvedValue({ count: 1, last: "2026-11-14T11:30:00+00:00" });
+    saveSettings("oid-anna", { downloadNotice: false });
+    try {
+      await runNotices(quietLog(), registeredAt + 2 * 3_600_000);
+      expect(sendMailAsApp).not.toHaveBeenCalled();
+      expect(pendingNotices().some(([t]) => t === "tokOff")).toBe(false);
+    } finally {
+      resetSettings("oid-anna");
+    }
+  });
 });
 
 describe("upload notification (UPLOAD_NOTICE)", () => {

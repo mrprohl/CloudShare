@@ -241,7 +241,9 @@ export function localizePublic(dir: string, languages: Record<string, LocaleFile
   const fallback = languages[FALLBACK_LANGUAGE] ? FALLBACK_LANGUAGE : base;
   const bundle = JSON.stringify({
     fallback,
-    languages: Object.fromEntries(names.map((lang) => [lang, { locale: languages[lang]._meta.locale, messages: languages[lang].addin }])),
+    languages: Object.fromEntries(
+      names.map((lang) => [lang, { locale: languages[lang]._meta.locale, name: languages[lang]._meta.name, messages: languages[lang].addin }]),
+    ),
   });
   const jsLiteral = asciiJs(JSON.stringify(bundle));
   let changed = 0;

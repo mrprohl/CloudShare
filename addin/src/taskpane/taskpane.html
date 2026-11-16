@@ -63,7 +63,11 @@
           </div>
           <!-- Account line as in "Senden": Nextcloud user, free space, disconnect (filled by showConnection). -->
           <footer class="footer">
-            <p class="caption account"><span class="account-name"></span> · <a href="#" class="disconnect-link">%%t:addin.disconnect.link%%</a></p>
+            <p class="caption account">
+              <button type="button" class="btn btn-icon btn-subtle settings-toggle" title="%%t:addin.settings.button%%"
+                aria-label="%%t:addin.settings.button%%" aria-expanded="false" aria-controls="panel-settings"></button>
+              <span class="account-name"></span> · <a href="#" class="disconnect-link">%%t:addin.disconnect.link%%</a>
+            </p>
           </footer>
         </div>
 
@@ -73,7 +77,11 @@
             <p class="caption" id="no-shares" hidden>%%t:addin.shares.none%%</p>
           </div>
           <footer class="footer">
-            <p class="caption account"><span class="account-name"></span> · <a href="#" class="disconnect-link">%%t:addin.disconnect.link%%</a></p>
+            <p class="caption account">
+              <button type="button" class="btn btn-icon btn-subtle settings-toggle" title="%%t:addin.settings.button%%"
+                aria-label="%%t:addin.settings.button%%" aria-expanded="false" aria-controls="panel-settings"></button>
+              <span class="account-name"></span> · <a href="#" class="disconnect-link">%%t:addin.disconnect.link%%</a>
+            </p>
           </footer>
         </div>
 
@@ -241,10 +249,72 @@
           <div class="progress" id="progress" hidden><div class="progress-bar" id="progress-bar"></div></div>
           <button type="button" id="submit" class="btn btn-primary btn-block">%%t:addin.submit.button%%</button>
           <p class="caption account">
+            <!-- Personal settings: the gear in every account line (icon filled in by taskpane.ts). -->
+            <button type="button" class="btn btn-icon btn-subtle settings-toggle" title="%%t:addin.settings.button%%"
+              aria-label="%%t:addin.settings.button%%" aria-expanded="false" aria-controls="panel-settings"></button>
             <span id="account" class="account-name"></span> · <a href="#" id="disconnect" class="disconnect-link">%%t:addin.disconnect.link%%</a>
           </p>
         </footer>
         </div>
+
+        <!-- Personal settings (gear in the account line): in place of the current tab like the guide (settings.ts). -->
+        <section id="panel-settings" class="panel" aria-labelledby="settings-heading" hidden>
+          <div class="content help settings">
+            <div class="help-header">
+              <h2 class="subtitle" id="settings-heading">%%t:addin.settings.heading%%</h2>
+              <button type="button" id="settings-close" class="btn btn-icon btn-subtle" title="%%t:addin.settings.close%%" aria-label="%%t:addin.settings.close%%">
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M5.5 5.5l9 9m0-9-9 9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+            <p class="help-intro">%%t:addin.settings.intro%%</p>
+            <p class="caption" id="settings-loading">%%t:addin.settings.loading%%</p>
+            <form id="settings-form" novalidate hidden>
+              <fieldset class="settings-group">
+                <legend class="section-title">%%t:addin.settings.channels.heading%%</legend>
+                <p class="hint settings-text">%%t:addin.settings.channels.hint%%</p>
+                <div id="settings-channels"></div>
+                <div class="field settings-field">
+                  <label for="settings-default-channel" class="label">%%t:addin.settings.channels.default%%</label>
+                  <div class="select-wrap"><select id="settings-default-channel" class="input select"></select></div>
+                </div>
+              </fieldset>
+              <fieldset class="settings-group" id="settings-notices-group">
+                <legend class="section-title">%%t:addin.settings.notices.heading%%</legend>
+                <div id="settings-notices"></div>
+              </fieldset>
+              <fieldset class="settings-group">
+                <legend class="section-title">%%t:addin.settings.language.heading%%</legend>
+                <div class="select-wrap">
+                  <select id="settings-language" class="input select" aria-label="%%t:addin.settings.language.heading%%"
+                    aria-describedby="settings-language-hint"></select>
+                </div>
+                <p class="hint" id="settings-language-hint">%%t:addin.settings.language.hint%%</p>
+              </fieldset>
+              <fieldset class="settings-group">
+                <legend class="section-title">%%t:addin.settings.signature.heading%%</legend>
+                <div class="select-wrap">
+                  <select id="settings-signature-format" class="input select" aria-label="%%t:addin.settings.signature.heading%%"
+                    aria-describedby="settings-signature-hint">
+                    <option value="none">%%t:addin.settings.signature.none%%</option>
+                    <option value="text">%%t:addin.settings.signature.text%%</option>
+                    <option value="html">%%t:addin.settings.signature.html%%</option>
+                  </select>
+                </div>
+                <textarea id="settings-signature-text" class="input textarea signature-input" rows="4" spellcheck="false"
+                  aria-label="%%t:addin.settings.signature.text%%" aria-describedby="settings-signature-hint" hidden></textarea>
+                <div id="settings-signature-html" class="input signature-input signature-editor" contenteditable="true" role="textbox"
+                  aria-multiline="true" aria-label="%%t:addin.settings.signature.html%%" aria-describedby="settings-signature-hint" hidden></div>
+                <p class="hint" id="settings-signature-hint"></p>
+              </fieldset>
+              <div class="settings-actions">
+                <button type="submit" id="settings-save" class="btn btn-primary">%%t:addin.settings.save%%</button>
+                <button type="button" id="settings-reset" class="btn">%%t:addin.settings.reset%%</button>
+              </div>
+            </form>
+          </div>
+        </section>
 
         <!-- User guide for everyday users: short sections to open as needed, texts in the language files ("help."). -->
         <section id="panel-help" class="panel" aria-labelledby="help-heading" hidden>
@@ -316,6 +386,20 @@
               </ul>
               <p>%%t:addin.help.shares.account%%</p>
               <p>%%t:addin.help.shares.notices%%</p>
+            </details>
+
+            <details class="help-section">
+              <summary>%%t:addin.help.settings.title%%</summary>
+              <ul class="help-icons">
+                <li><span class="help-icon" data-icon="settings"></span>%%t:addin.help.settings.open%%</li>
+              </ul>
+              <ul>
+                <li>%%t:addin.help.settings.channels%%</li>
+                <li>%%t:addin.help.settings.notices%%</li>
+                <li>%%t:addin.help.settings.language%%</li>
+                <li>%%t:addin.help.settings.signature%%</li>
+              </ul>
+              <p>%%t:addin.help.settings.fixed%%</p>
             </details>
 
             <details class="help-section">

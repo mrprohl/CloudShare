@@ -957,3 +957,63 @@ describe("showing and sending the password again", () => {
     expect(html).not.toContain("KateGeteFi45");
   });
 });
+
+describe("personal settings (/api/settings)", () => {
+  const get = (user: string) => app.inject({ method: "GET", url: "/api/settings", headers: as(user) });
+  const put = (user: string, payload: unknown) => app.inject({ method: "PUT", url: "/api/settings", headers: as(user), payload: payload as object });
+
+  it("starts with the defaults of the environment, within what the server offers", async () => {
+    const res = await get("sina");
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      settings: {
+        downloadNotice: true, uploadNotice: true, smsNotice: true, channels: ["recipients", "mail", "sms"], defaultChannel: "recipients",
+        language: "auto", signature: null,
+      },
+      defaults: expect.objectContaining({ channels: ["recipients", "mail", "sms"], language: "auto" }),
+      available: { downloadNotice: true, uploadNotice: true, smsNotice: true, channels: ["recipients", "mail", "sms"], languages: ["de", "en"] },
+    });
+  });
+
+  it("keeps each user's own choices and only those – a reset brings back the defaults", async () => {
+    const saved = await put("tom", {
+      channels: ["mail", "sms"], defaultChannel: "sms", downloadNotice: false, language: "en",
+      signature: { format: "html", content: "<p><b>Tom</b></p>" },
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json().settings).toMatchObject({
+      channels: ["mail", "sms"], defaultChannel: "sms", downloadNotice: false, uploadNotice: true, language: "en",
+      signature: { format: "html", content: "<p><b>Tom</b></p>" },
+    });
+    expect((await get("tom")).json().settings.defaultChannel).toBe("sms");
+    expect((await get("sina")).json().settings.defaultChannel).toBe("recipients"); // other users untouched
+
+    // An empty signature is none: the organisation's applies again.
+    expect((await put("tom", { signature: { format: "text", content: "  " } })).json().settings.signature).toBeNull();
+
+    const reset = await app.inject({ method: "DELETE", url: "/api/settings", headers: as("tom") });
+    expect(reset.json().settings).toMatchObject({ channels: ["recipients", "mail", "sms"], downloadNotice: true, language: "auto" });
+  });
+
+  it("refuses invalid settings and needs a sign-in", async () => {
+    for (const payload of [
+      { channels: [] },
+      { channels: ["fax"] },
+      { defaultChannel: "fax" },
+      { language: "xx" },
+      { downloadNotice: "yes" },
+      { signature: { format: "pdf", content: "x" } },
+      { signature: { format: "text", content: "x".repeat(20_001) } },
+    ]) {
+      const res = await put("tom", payload);
+      expect(res.statusCode, JSON.stringify(payload).slice(0, 60)).toBe(400);
+      expect(res.json().code).toBe("SETTINGS_INVALID");
+    }
+    expect((await app.inject({ method: "GET", url: "/api/settings" })).statusCode).toBe(401);
+  });
+
+  it("keeps a preselected way among the offered ones", async () => {
+    const res = await put("ida", { channels: ["recipients"], defaultChannel: "sms" });
+    expect(res.json().settings).toMatchObject({ channels: ["recipients"], defaultChannel: "recipients" });
+  });
+});

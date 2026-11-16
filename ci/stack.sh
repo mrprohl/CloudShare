@@ -130,7 +130,7 @@ smoke() {
   step "Start stack ($image:$tag + Caddy)"
   compose up -d --quiet-pull
   if wait_healthy; then ok "cloudshare healthy"; else fail "cloudshare not healthy"; return; fi
-  docker logs cloudshare 2>&1 | grep -q 'Vaultwarden vault unlocked' && ok "entrypoint ran, vault unlocked (mock)" \
+  docker logs cloudshare 2>&1 | grep 'Vaultwarden vault unlocked' >/dev/null && ok "entrypoint ran, vault unlocked (mock)" \
     || fail "no 'Vaultwarden vault unlocked' in the log"
 
   step "Caddy: TLS, redirect, headers"
@@ -160,7 +160,7 @@ smoke() {
   local pane
   pane=$(curl -sk https://localhost/taskpane.html)
   if grep -q '<html lang="de">' <<<"$pane" && grep -q 'Als Link einfügen' <<<"$pane" \
-    && curl -sk https://localhost/commands.js | grep -q 'alert.button'; then
+    && curl -sk https://localhost/commands.js | grep 'alert.button' >/dev/null; then
     ok "texts of LANGUAGE=de in the add-in files"
   else fail "language texts missing in the add-in files"; fi
   # The add-in follows the client's language: one page per language, the manifest in English with Overrides.
@@ -239,7 +239,7 @@ upgrade() {
   set_image "$image" "$tag"
   compose up -d --quiet-pull
   if wait_healthy; then ok "new version starts on the existing data"; else fail "new version not healthy"; return; fi
-  docker logs cloudshare 2>&1 | grep -q 'could not be read' && fail "startup warns about unreadable data" \
+  docker logs cloudshare 2>&1 | grep 'could not be read' >/dev/null && fail "startup warns about unreadable data" \
     || ok "no warnings about unreadable data at startup"
   stat_mode=$(docker run --rm -v cloudshare_data:/data alpine:3 stat -c '%a %u' /data/cloudshare.db)
   [ "$stat_mode" = "600 1000" ] && ok "database file is 600, owned by 1000" || fail "database file: $stat_mode"

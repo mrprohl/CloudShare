@@ -91,6 +91,16 @@ umask 077
            SEND_MAX_ACCESS_COUNT SEND_MAX_ACCESS_LIMIT SEND_EXPIRE_DAYS; do
     echo "$var=$(env_value "${!var}")"
   done
+  echo
+  echo "# Defaults of the personal settings – every user can change them for themselves (gear in the add-in):"
+  echo "# ways to send the password the pane offers (recipients, mail, sms) and the one preselected, the notices"
+  echo "# (only where DOWNLOAD_NOTICE / UPLOAD_NOTICE / SMS_NOTICE are on) and the add-in language (auto = as in Outlook)."
+  echo "DEFAULT_PASSWORD_CHANNELS='recipients,mail,sms'"
+  echo "DEFAULT_PASSWORD_CHANNEL='recipients'"
+  echo "DEFAULT_DOWNLOAD_NOTICE='true'"
+  echo "DEFAULT_UPLOAD_NOTICE='true'"
+  echo "DEFAULT_SMS_NOTICE='true'"
+  echo "DEFAULT_LANGUAGE='auto'"
 } > env/cloudshare.env
 chmod 700 env; chmod 600 env/*.env
 # Optional files for the container (/config, read-only): templates.json and locales/<language>.json

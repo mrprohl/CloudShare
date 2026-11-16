@@ -21,7 +21,9 @@ import { checkPassword, generatePassword } from "../shared/password";
 import { locale, t } from "../shared/i18n";
 import { errorText } from "../shared/sso";
 import { EMPTY_PROFILE, fillFooter, hasPlaceholders, type Profile } from "./footer";
-import { filesCard, filesText, messageCard, messageText, requestCard, requestText } from "./mailCard";
+import { filesCard, filesText, messageCard, messageText, requestCard, requestText, type Footer } from "./mailCard";
+import { initSettings, loadSettings, userSettings } from "./settings";
+import { sanitizeSignature, signatureText } from "./signature";
 
 // All visible texts come from locales/<language>.json (t(), see shared/i18n.ts) and follow Outlook's terminology
 // ("Nachricht"/"message", "Kennwort"/"password").
@@ -80,6 +82,10 @@ const helpClose = $<HTMLButtonElement>("help-close");
 const panelSend = $<HTMLDivElement>("panel-send");
 const panelShares = $<HTMLDivElement>("panel-shares");
 const panelHelp = $<HTMLElement>("panel-help");
+const panelSettings = $<HTMLElement>("panel-settings");
+const settingsClose = $<HTMLButtonElement>("settings-close");
+/** The gear in every account line. */
+const settingsToggles = Array.from(document.querySelectorAll<HTMLButtonElement>(".settings-toggle"));
 const mailShares = $<HTMLDivElement>("mail-shares");
 const mailNone = $<HTMLParagraphElement>("mail-none");
 const sharesList = $<HTMLDivElement>("shares");
@@ -98,8 +104,8 @@ const statusBar = $<HTMLDivElement>("status");
 const readMode = new URLSearchParams(location.search).get("view") === "read";
 
 let serverConfig: ServerConfig;
-/** MAIL_FOOTER with the placeholders filled from the sender's profile (see footer.ts). */
-let mailFooter = "";
+/** Footer of the card: the own signature (settings) or MAIL_FOOTER, placeholders filled from the profile (footer.ts). */
+let mailFooter: Footer = "";
 let footerReady: Promise<void> = Promise.resolve();
 /** Files picked from the computer, not yet uploaded. */
 let pickedFiles: File[] = [];
@@ -676,6 +682,16 @@ function showChannel(channel: Channel) {
   renderValidity();
 }
 
+/** "Kennwort senden an" offers the ways chosen in the settings – and always the one this mail already uses. */
+function applyChannelChoices(keep: Channel) {
+  const offered = new Set<string>(userSettings().channels);
+  for (const option of Array.from(channelSelect.options)) {
+    const show = offered.has(option.value) || option.value === keep;
+    option.hidden = !show;
+    option.disabled = !show;
+  }
+}
+
 /** The valid target of the chosen channel ({} = recipients), or null while the address / number is not valid. */
 function channelTarget(): { passwordTo?: string; passwordSms?: string } | null {
   const channel = selectedChannel();
@@ -791,11 +807,18 @@ const formatDate = (isoDate: string) => new Date(isoDate).toLocaleDateString(loc
 const AFTER_CARD = "<p style=\"margin:0;\"><br></p>";
 
 /**
- * Fills MAIL_FOOTER from the sender's Microsoft 365 profile. If the profile cannot be read, name and address
+ * The footer of the card: an own HTML signature (settings) as it is, else the own text signature or MAIL_FOOTER with
+ * its placeholders filled from the sender's Microsoft 365 profile. If the profile cannot be read, name and address
  * known to Outlook are used, so the footer never shows raw placeholders.
  */
 async function resolveFooter() {
-  const template = serverConfig.mailFooter;
+  const own = userSettings().signature;
+  if (own?.format === "html") {
+    const html = sanitizeSignature(own.content);
+    mailFooter = html ? { html, text: signatureText(html) } : "";
+    return;
+  }
+  const template = own?.format === "text" ? own.content : serverConfig.mailFooter;
   if (!hasPlaceholders(template)) {
     mailFooter = template;
     return;
@@ -1410,16 +1433,23 @@ function selectTab(tab: Tab, load = true) {
   if (tab !== "send" && load) loadShares().catch((err) => setStatus(errorMessage(err), "error"));
 }
 
-/** The user guide ("?" at the top right) in place of the current tab; closed, that tab shows again. */
-function showHelp(open: boolean) {
-  helpToggle.setAttribute("aria-expanded", String(open));
-  panelHelp.hidden = !open;
-  panelSend.hidden = open || currentTab !== "send";
-  panelMail.hidden = open || currentTab !== "mail";
-  panelShares.hidden = open || currentTab !== "shares";
+/** What covers the current tab: the user guide ("?" at the top right), the settings (gear) or nothing. */
+type Overlay = "help" | "settings" | null;
+
+/** Shows the guide or the settings in place of the current tab; closed, that tab shows again. */
+function showOverlay(overlay: Overlay) {
+  helpToggle.setAttribute("aria-expanded", String(overlay === "help"));
+  for (const toggle of settingsToggles) toggle.setAttribute("aria-expanded", String(overlay === "settings"));
+  panelHelp.hidden = overlay !== "help";
+  panelSettings.hidden = overlay !== "settings";
+  panelSend.hidden = overlay !== null || currentTab !== "send";
+  panelMail.hidden = overlay !== null || currentTab !== "mail";
+  panelShares.hidden = overlay !== null || currentTab !== "shares";
   // "Aktualisieren" only where there is a link list to reload.
-  refreshSharesButton.hidden = open || currentTab === "send";
+  refreshSharesButton.hidden = overlay !== null || currentTab === "send";
 }
+
+const showHelp = (open: boolean) => showOverlay(open ? "help" : null);
 
 tabSend.addEventListener("click", () => selectTab("send"));
 tabMail.addEventListener("click", () => selectTab("mail"));
@@ -1432,6 +1462,42 @@ helpToggle.addEventListener("click", () => {
 helpClose.addEventListener("click", () => {
   showHelp(false);
   helpToggle.focus();
+});
+
+const settingsView = initSettings({
+  token: getToken,
+  setStatus,
+  errorMessage,
+  onChanged: () => {
+    if (readMode) return;
+    // A new signature applies to what is inserted next.
+    footerReady = resolveFooter().catch(() => undefined);
+    // New ways for "Kennwort senden an": a mail without links yet switches to the preselected way if its own is no
+    // longer offered; a mail with links keeps its way (the password job already uses it).
+    void readDraftState().then((state) => {
+      const { channels, defaultChannel } = userSettings();
+      const current = selectedChannel();
+      const next = state.jobId || channels.includes(current) ? current : defaultChannel;
+      applyChannelChoices(next);
+      if (next !== current) showChannel(next);
+    });
+  },
+});
+let settingsOpener: HTMLButtonElement | null = null;
+for (const toggle of settingsToggles) {
+  toggle.addEventListener("click", () => {
+    const open = panelSettings.hidden === true;
+    showOverlay(open ? "settings" : null);
+    if (open) {
+      settingsOpener = toggle;
+      void settingsView.open();
+      settingsClose.focus();
+    }
+  });
+}
+settingsClose.addEventListener("click", () => {
+  showOverlay(null);
+  (settingsOpener && !settingsOpener.closest("[hidden]") ? settingsOpener : settingsToggles[0])?.focus();
 });
 refreshSharesButton.addEventListener("click", () => {
   refreshSharesButton.disabled = true;
@@ -1576,12 +1642,18 @@ const ICONS = {
   revoke: icon('<circle cx="10" cy="10" r="6.5"/><path d="M5.4 5.4l9.2 9.2"/>'),
   /** Same drawing as the refresh button in the tab bar (taskpane.html). */
   refresh: icon('<path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11"/>'),
+  /** Gear of the settings: a ring with eight teeth around a hub. */
+  settings: icon(
+    '<circle cx="10" cy="10" r="4.6"/><circle cx="10" cy="10" r="1.8"/>' +
+      '<path d="M10 2.6v2.8M10 14.6v2.8M2.6 10h2.8M14.6 10h2.8M4.8 4.8l2 2M13.2 13.2l2 2M4.8 15.2l2-2M13.2 6.8l2-2"/>',
+  ),
 } as const;
 
 /** The help explains the actions with their icons: `<span data-icon="copy">` gets the icon. */
 document.querySelectorAll<HTMLElement>("[data-icon]").forEach((slot) => {
   slot.innerHTML = ICONS[slot.dataset.icon as keyof typeof ICONS] ?? "";
 });
+for (const toggle of settingsToggles) toggle.innerHTML = ICONS.settings;
 
 interface SentPassword {
   password: string;
@@ -1651,12 +1723,14 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
   });
 
   const channel = panel.querySelector<HTMLSelectElement>(`#${id}-channel`)!;
+  // Preselected: the way the password went the first time – offered even if the settings leave it out now.
+  const first: ResendChannel =
+    share.password?.channel === "sms" && serverConfig.smsEnabled ? "sms" : sent.otherTo.length > 0 ? "mail" : "recipients";
+  const offered = userSettings().channels as string[];
   const options: Array<[ResendChannel, string]> = [["recipients", t("channel.recipients")], ["mail", t("channel.mail")]];
   if (serverConfig.smsEnabled) options.push(["sms", t("channel.sms")]);
-  for (const [value, text] of options) channel.add(new Option(text, value));
-  // Preselected: the way the password went the first time.
-  channel.value =
-    share.password?.channel === "sms" && serverConfig.smsEnabled ? "sms" : sent.otherTo.length > 0 ? "mail" : "recipients";
+  for (const [value, text] of options) if (offered.includes(value) || value === first) channel.add(new Option(text, value));
+  channel.value = first;
 
   const target = panel.querySelector<HTMLInputElement>(`#${id}-to`)!;
   const hint = panel.querySelector<HTMLParagraphElement>(`#${id}-hint`)!;
@@ -1999,6 +2073,18 @@ async function startReadView() {
   }
 }
 
+/** Reloads the page unless it was reloaded for the language in this window already; true if it reloads. */
+function reloadOnce(): boolean {
+  const key = "cloudshare-language-reload";
+  try {
+    if (sessionStorage.getItem(key)) return false;
+    sessionStorage.setItem(key, "1");
+  } catch {
+    return false; // no session storage: better stay in the old language than risk a loop
+  }
+  location.reload();
+  return true;
+}
 
 Office.onReady(async () => {
   applyOfficeTheme();
@@ -2020,6 +2106,15 @@ Office.onReady(async () => {
   } catch {
     setStatus(t("unreachable", { url: API_BASE }), "error");
     return;
+  }
+  // Personal settings (ways to send the password, signature, language). Without them the usual ones apply.
+  try {
+    if (await loadSettings(await getToken())) {
+      // The language was chosen on another computer: start again in it – once, so a failed save cannot loop.
+      if (reloadOnce()) return;
+    }
+  } catch {
+    // e.g. sign-in not possible yet – the connection check below reports that
   }
   if (readMode) return startReadView();
   footerReady = resolveFooter().catch(() => undefined); // in the background – needed when a link is inserted
@@ -2049,7 +2144,18 @@ Office.onReady(async () => {
   renderMessageCount();
   passwordToInput.value = state.passwordTo ?? "";
   passwordSmsInput.value = state.passwordSms ?? "";
-  showChannel(state.passwordSms && serverConfig.smsEnabled ? "sms" : state.passwordTo ? "mail" : "recipients");
+  // The way this mail already uses; a new mail starts with the way preselected in the settings.
+  const preferred = userSettings().defaultChannel;
+  const channel: Channel =
+    state.passwordSms && serverConfig.smsEnabled
+      ? "sms"
+      : state.passwordTo
+        ? "mail"
+        : state.jobId || (preferred === "sms" && !serverConfig.smsEnabled)
+          ? "recipients"
+          : preferred;
+  applyChannelChoices(channel);
+  showChannel(channel);
   renderKind();
   // Outlook has no "body changed" event: check when the pane gets focus and every few seconds while locked.
   await releaseIfLinksDeleted();

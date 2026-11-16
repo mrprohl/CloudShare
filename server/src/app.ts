@@ -63,6 +63,7 @@ import { defaultTemplates, render, smsFiles, templatesFor } from "./templates.js
 import { clampInt, isEmailAddress } from "./limits.js";
 import { formatDate, locale, t, withRequestLanguage } from "./i18n.js";
 import { passwordProblem } from "./password.js";
+import { availableSettings, defaultSettings, parseSettings, resetSettings, saveSettings, settingsFor } from "./settings.js";
 import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } from "./store.js";
 import {
   createMessageSend,
@@ -203,7 +204,7 @@ async function attachToJob(
  * waits for the sent mail (subject, recipients). Otherwise no job at all (null).
  */
 async function attachNoticeJob(user: User, requestedJobId: unknown, share: StepShare): Promise<string | null> {
-  if (!config.downloadNotice) return null;
+  if (!settingsFor(user.oid).downloadNotice) return null; // switched off on the server or by the user
   const id = typeof requestedJobId === "string" ? requestedJobId : undefined;
   const existing = id ? getJob(id) : undefined;
   if (id && existing && existing.owner === user.oid && !existing.dispatched && existing.noPassword) {
@@ -242,6 +243,7 @@ async function noteUndeliveredSms(refs: PasswordRef[], log: Pick<FastifyBaseLogg
   try {
     const token = await appGraphToken();
     for (const ref of refs) {
+      if (!settingsFor(ref.owner).smsNotice) continue; // the user switched it off (settings)
       const files = t("mail.files", { count: ref.fileNames.length, name: ref.fileNames[0] });
       const html = smsProblemMailHtml({ fileNames: ref.fileNames, subject: ref.subject, to: ref.sms ? maskPhone(ref.sms) : "" });
       await sendMailAsApp(token, ref.owner, ref.from ?? ref.ownerUpn, t("mail.smsUndeliveredSubject", { subject: ref.subject || files }), html);
@@ -430,6 +432,27 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     const user = await authenticate(req);
     const { token } = await onBehalfOf(user, GRAPH_PROFILE_SCOPES);
     return fetchProfile(token);
+  });
+
+  // --- Personal settings (⚙ in the add-in, settings.ts) ------------------------
+
+  /** The settings that apply, the defaults of the environment ("Zurücksetzen") and what the server offers at all. */
+  const settingsResponse = (oid: string) => ({ settings: settingsFor(oid), defaults: defaultSettings(), available: availableSettings() });
+
+  app.get("/api/settings", async (req) => settingsResponse((await authenticate(req)).oid));
+
+  app.put("/api/settings", async (req) => {
+    const user = await authenticate(req);
+    saveSettings(user.oid, parseSettings(req.body));
+    req.log.info({ user: user.upn }, "Settings saved");
+    return settingsResponse(user.oid);
+  });
+
+  app.delete("/api/settings", async (req) => {
+    const user = await authenticate(req);
+    resetSettings(user.oid);
+    req.log.info({ user: user.upn }, "Settings reset");
+    return settingsResponse(user.oid);
   });
 
   // --- Nextcloud connection (Login Flow v2) -------------------------------------

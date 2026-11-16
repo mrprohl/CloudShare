@@ -36,6 +36,29 @@ export interface ServerConfig {
   sendMaxExpireDays?: number;
 }
 
+export type Channel = "recipients" | "mail" | "sms";
+
+/** Personal settings (⚙, server/src/settings.ts). */
+export interface UserSettings {
+  downloadNotice: boolean;
+  uploadNotice: boolean;
+  smsNotice: boolean;
+  /** Ways "Kennwort senden an" offers, and the one preselected for a new mail. */
+  channels: Channel[];
+  defaultChannel: Channel;
+  /** "auto" (as in Outlook) or a language code. */
+  language: string;
+  /** Own signature of the link card; null = the organisation's (MAIL_FOOTER). */
+  signature: { format: "text" | "html"; content: string } | null;
+}
+
+/** GET/PUT/DELETE /api/settings: what applies, the organisation's defaults and what the server offers at all. */
+export interface SettingsResponse {
+  settings: UserSettings;
+  defaults: UserSettings;
+  available: { downloadNotice: boolean; uploadNotice: boolean; smsNotice: boolean; channels: Channel[]; languages: string[] };
+}
+
 /** Office SSO: "a previous getAccessToken call is still in progress". */
 const SSO_IN_PROGRESS = 13008;
 

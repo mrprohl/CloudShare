@@ -47,7 +47,21 @@
       officeTheme: cfg.theme ? { bodyBackgroundColor: cfg.theme } : undefined,
       requirements: { isSetSupported: (name) => name === "OpenBrowserWindowApi" },
       ui: { openBrowserWindow: (url) => log.openedUrls.push(url) },
-      roamingSettings: { get: () => undefined, set() {}, saveAsync(cb) { if (cb) cb(ok()); } },
+      // Kept in sessionStorage like Outlook keeps them in the mailbox: they survive a reload of the pane (language).
+      roamingSettings: {
+        get(key) {
+          try {
+            const value = sessionStorage.getItem(`roaming:${key}`);
+            return value ? JSON.parse(value) : undefined;
+          } catch (e) {
+            return undefined;
+          }
+        },
+        set(key, value) {
+          try { sessionStorage.setItem(`roaming:${key}`, JSON.stringify(value)); } catch (e) { /* ignore */ }
+        },
+        saveAsync(cb) { if (cb) cb(ok()); },
+      },
       mailbox: {
         userProfile: { displayName: "Max Mustermann", emailAddress: "max.mustermann@example.com" },
         // Mailbox events (e.g. ItemChanged of a pinned pane) – the test can fire them via window.__officeHandlers.

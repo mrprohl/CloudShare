@@ -21,6 +21,7 @@ import { NextcloudClient, NOT_CONNECTED } from "./nextcloud.js";
 import { PersistentMap } from "./db.js";
 import { mailDocument, paragraph, TEXT_STYLE } from "./mailLayout.js";
 import { renderHtml, render, templatesFor } from "./templates.js";
+import { settingsFor } from "./settings.js";
 
 export interface Notice {
   /** Entra oid (Nextcloud credentials) and mail address of the sender (recipient of the confirmation). */
@@ -42,6 +43,11 @@ export interface Notice {
 
 /** Is this kind of notice switched on (DOWNLOAD_NOTICE / UPLOAD_NOTICE)? */
 const enabled = (n: Pick<Notice, "kind">) => (n.kind === "upload" ? config.uploadNotice : config.downloadNotice);
+/** Does the sender still want it (personal settings, settings.ts)? */
+const wantedBySender = (n: Pick<Notice, "kind" | "owner">) => {
+  const settings = settingsFor(n.owner);
+  return n.kind === "upload" ? settings.uploadNotice : settings.downloadNotice;
+};
 /** At most this many file names in an upload notification; the rest as "and N more". */
 const MAX_NAMES = 10;
 
@@ -75,8 +81,9 @@ const formatTime = (iso: string) => {
 export async function runNotices(log: Pick<FastifyBaseLogger, "info" | "warn">, now = Date.now()) {
   if (notices.size === 0) return;
   for (const [token, n] of notices) {
-    // Link expired (without a download), or the kind was switched off since it was registered.
-    if (Date.parse(`${n.expireDate}T00:00:00Z`) + 2 * DAY < now || !enabled(n)) {
+    // Link expired (without a download), or the kind was switched off since it was registered – on the server or by
+    // the sender in the settings.
+    if (Date.parse(`${n.expireDate}T00:00:00Z`) + 2 * DAY < now || !enabled(n) || !wantedBySender(n)) {
       notices.delete(token);
     }
   }
