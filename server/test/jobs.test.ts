@@ -311,6 +311,26 @@ describe("password by SMS, deliveries and download notices", () => {
     expect(sendSms).toHaveBeenCalledOnce();
   });
 
+  it("writes the password mail and SMS of a step in the language chosen for the recipients – notes stay in LANGUAGE", async () => {
+    const id = await createSeparateJob("oid", "max@example.test", {
+      step: "s1", fileNames: ["a.pdf"], sendUrl: "https://vault/#/send/a", sendId: "send-a", maxAccessCount: 3,
+      shares: [share("tok-lang-1", "a.pdf")], language: "en",
+      deliveries: [{ channel: "recipients" }, { channel: "sms", to: "+491701234567" }],
+    });
+    await arm(id);
+    sentOnlyFor(id);
+
+    await checkJobs(quietLog());
+
+    const [, , subject, html] = sendMail.mock.calls[0];
+    expect(subject).toBe("Password for “a.pdf”: Unterlagen"); // English, although LANGUAGE is de in the tests
+    expect(html).toContain("Show password");
+    expect(html).not.toContain("Kennwort anzeigen");
+    expect(sendSms.mock.calls[0][1]).toMatch(/^Password for "a\.pdf"/);
+    // Sending it again later uses the same language.
+    expect(passwordRefFor("tok-lang-1", "oid")?.language).toBe("en");
+  });
+
   it("does not send a way twice when a later one failed", async () => {
     const id = await createSeparateJob("oid", "max@example.test", {
       step: "s1", fileNames: ["a.pdf"], sendUrl: "https://vault/#/send/a", sendId: "send-a", maxAccessCount: 3,

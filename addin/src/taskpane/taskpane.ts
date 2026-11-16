@@ -18,7 +18,7 @@ import {
   type ServerConfig,
 } from "../shared/office";
 import { checkPassword, generatePassword } from "../shared/password";
-import { locale, t } from "../shared/i18n";
+import { inLanguage, languageChoices, locale, t } from "../shared/i18n";
 import { errorText } from "../shared/sso";
 import { filesCard, filesText, messageCard, messageText, requestCard, requestText } from "./mailCard";
 import { initSettings, loadSettings, userSettings } from "./settings";
@@ -39,6 +39,7 @@ const accountMenu = $<HTMLDivElement>("account-menu");
 const accountStorage = $<HTMLParagraphElement>("account-storage");
 const disconnectButton = $<HTMLButtonElement>("disconnect");
 const disconnectText = $<HTMLSpanElement>("disconnect-text");
+const nextcloudOpen = $<HTMLButtonElement>("nextcloud-open");
 const attachmentList = $<HTMLDivElement>("attachments");
 const pickedList = $<HTMLDivElement>("picked");
 const noAttachments = $<HTMLParagraphElement>("no-attachments");
@@ -59,6 +60,8 @@ const passwordDaysField = $<HTMLDivElement>("password-days-field");
 const passwordDaysInput = $<HTMLInputElement>("password-days");
 const messageDaysInput = $<HTMLInputElement>("message-days");
 const passwordToField = $<HTMLDivElement>("password-to-field");
+const recipientLanguageField = $<HTMLDivElement>("recipient-language-field");
+const recipientLanguageSelect = $<HTMLSelectElement>("recipient-language");
 const channelSelect = $<HTMLSelectElement>("password-channel");
 const channelSmsOption = $<HTMLOptionElement>("channel-sms-option");
 const passwordSmsInput = $<HTMLInputElement>("password-sms");
@@ -233,6 +236,9 @@ function showConnection(status: ConnectionStatus) {
   const storage = storageText(status);
   accountStorage.textContent = storage;
   accountStorage.hidden = !storage;
+  // "Nextcloud öffnen": the address of the Nextcloud CloudShare uses (from /api/config).
+  nextcloudOpen.hidden = !serverConfig?.nextcloudUrl;
+  nextcloudOpen.title = serverConfig?.nextcloudUrl ?? "";
   showAccountMenu(false);
   applyPasswordPolicy(status.passwordEnforced === true);
   // Reading a mail: the list is all there is – load it as soon as the connection is there (also right after connecting).
@@ -260,6 +266,20 @@ function openLogin(url: string, popup: Window | null) {
     popup.location.href = url;
   }
 }
+
+// "Nextcloud öffnen" in the account menu: the Nextcloud in the default browser – its own session there, or a sign-in
+// (single sign-on). The app password of the connection never leaves the server.
+nextcloudOpen.addEventListener("click", () => {
+  const url = serverConfig?.nextcloudUrl;
+  if (!url) return;
+  showAccountMenu(false);
+  const ui = Office.context.ui as unknown as { openBrowserWindow?: (url: string) => void };
+  if (ui.openBrowserWindow && Office.context.requirements.isSetSupported("OpenBrowserWindowApi", "1.1")) {
+    ui.openBrowserWindow(url);
+  } else {
+    window.open(url, "_blank", "noopener");
+  }
+});
 
 let connectAttempt = 0;
 
@@ -342,7 +362,7 @@ function armDisconnect(armed: boolean) {
 accountToggle.addEventListener("click", () => {
   const open = accountMenu.hidden === true;
   showAccountMenu(open);
-  if (open) settingsOpen.focus(); // the first entry
+  if (open) accountMenu.querySelector<HTMLButtonElement>("button:not([hidden])")?.focus(); // the first entry
 });
 // Closes with Escape (focus back on the account) or a click anywhere else.
 accountMenu.addEventListener("keydown", (event) => {
@@ -634,7 +654,7 @@ async function upload(blob: Blob, fileName: string, step: string): Promise<Uploa
  */
 async function shareSettingsBody(step: string) {
   const expireDays = Number(expireInput.value);
-  if (withoutPassword()) return { noPassword: true, expireDays, jobId: (await readDraftState()).jobId };
+  if (withoutPassword()) return { noPassword: true, expireDays, jobId: (await readDraftState()).jobId, language: recipientLanguage() };
   // An address or number typed just before the click (its "change" event may not have run yet) must reach the job.
   const wanted = channelTarget();
   const current = await readDraftState();
@@ -653,8 +673,29 @@ async function shareSettingsBody(step: string) {
     // "Kennwort senden an" of this link (per insertion): links of one step with different ways get the password on
     // every way – e.g. one password mail to the recipients and one SMS.
     ...(wanted?.passwordSms ? { passwordSms: wanted.passwordSms } : { passwordTo: wanted?.passwordTo ?? "" }),
+    // Language of this step's password mail and SMS ("Sprache für die Empfänger").
+    language: recipientLanguage(),
   };
 }
+
+/**
+ * "Sprache für die Empfänger": the languages CloudShare has (by their own name), `selected` preselected – this mail's
+ * choice or the one from the settings. Hidden while there is only one language.
+ */
+function renderRecipientLanguages(selected: string) {
+  const choices = languageChoices();
+  recipientLanguageSelect.replaceChildren(...choices.map((l) => new Option(l.name, l.code)));
+  recipientLanguageSelect.value = choices.some((l) => l.code === selected) ? selected : (choices[0]?.code ?? "");
+  recipientLanguageField.hidden = choices.length < 2;
+}
+
+/** The language the recipients get the link card, password mail and SMS in. */
+const recipientLanguage = () => recipientLanguageSelect.value || undefined;
+
+// A choice for this mail is kept with the draft: the pane opened again shows it, and new links follow it.
+recipientLanguageSelect.addEventListener("change", () => {
+  void updateDraftState({ recipientLanguage: recipientLanguageSelect.value });
+});
 
 /** New ID for one click on "Als Link einfügen" / "Link zum Hochladen einfügen" / "Verlauf → Als Link einfügen". */
 const newStep = () => Math.random().toString(36).slice(2, 12);
@@ -926,13 +967,13 @@ async function insertIntoBody(html: string, text: string, marker: string) {
 /** Inserts the shared files as a card with download buttons (see mailCard.ts). */
 async function insertLinks(results: UploadResult[]) {
   const files = results.map((r) => ({ name: r.fileName, size: r.size, url: r.shareUrl }));
-  const expire = formatDate(results[0].expireDate);
   const withPassword = !isWithoutPassword(results[0]);
-  await insertIntoBody(
-    filesCard(files, expire, formatSize, withPassword),
-    filesText(files, expire, formatSize, withPassword),
-    shareToken(results[0].shareUrl),
-  );
+  // The card in the language chosen for the recipients (dates and sizes too).
+  const [html, text] = inLanguage(recipientLanguage(), () => {
+    const expire = formatDate(results[0].expireDate);
+    return [filesCard(files, expire, formatSize, withPassword), filesText(files, expire, formatSize, withPassword)];
+  });
+  await insertIntoBody(html, text, shareToken(results[0].shareUrl));
 }
 
 // --- Password: random (recommended), own or none -----------------------------------
@@ -1443,12 +1484,11 @@ async function insertRequest() {
       );
       // Same password and password mail as the files of this mail.
       await rememberShareChoice(result.jobId);
-      const expire = formatDate(result.expireDate);
-      await insertIntoBody(
-        requestCard(result.shareUrl, expire),
-        requestText(result.shareUrl, expire),
-        shareToken(result.shareUrl),
-      );
+      const [html, text] = inLanguage(recipientLanguage(), () => {
+        const expire = formatDate(result.expireDate);
+        return [requestCard(result.shareUrl, expire), requestText(result.shareUrl, expire)];
+      });
+      await insertIntoBody(html, text, shareToken(result.shareUrl));
       setStatus(t("request.inserted"), "success");
     } catch (err) {
       if (err instanceof ApiError && err.code === NOT_CONNECTED) showConnection({ connected: false });
@@ -1496,12 +1536,11 @@ async function insertMessage() {
       );
       // Same password and password mail as the files of this mail (one step).
       await rememberShareChoice(result.jobId);
-      const expire = formatDate(result.expireDate);
-      await insertIntoBody(
-        messageCard(result.shareUrl, expire),
-        messageText(result.shareUrl, expire),
-        shareToken(result.shareUrl),
-      );
+      const [cardHtml, cardText] = inLanguage(recipientLanguage(), () => {
+        const expire = formatDate(result.expireDate);
+        return [messageCard(result.shareUrl, expire), messageText(result.shareUrl, expire)];
+      });
+      await insertIntoBody(cardHtml, cardText, shareToken(result.shareUrl));
       messageInput.value = "";
       renderMessageCount();
       setStatus(t("message.inserted"), "success");
@@ -1575,6 +1614,8 @@ const settingsView = initSettings({
       const next = state.jobId || channels.includes(current) ? current : defaultChannel;
       applyChannelChoices(next);
       if (next !== current) showChannel(next);
+      // A new default language for the recipients applies unless this mail has its own choice.
+      if (!state.recipientLanguage) renderRecipientLanguages(userSettings().recipientLanguage);
     });
   },
 });
@@ -1666,17 +1707,21 @@ const MESSAGE_ICON =
   '<path d="M13.6 13v-1.2a1.4 1.4 0 0 1 2.8 0V13" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
 
 /**
- * Opens the sent mail of an entry ("Verlauf": click on its subject). The server keeps the Graph (REST) ID; Outlook's
- * form wants the EWS ID. Fails quietly into a message if the mail is gone or Outlook cannot open it.
+ * Opens the sent mail of an entry ("Verlauf": click on its subject). The server translates the stored mail ID into the
+ * EWS ID Outlook opens (GET /api/shares/:id/mail – also after the mail was moved); displayMessageFormAsync reports a
+ * failure (Mailbox 1.9), older clients get displayMessageForm.
  */
-function openSentMail(mailId: string) {
+async function openSentMail(share: ShareItem) {
   try {
+    const { ewsId } = await api<{ ewsId: string }>(`/api/shares/${encodeURIComponent(share.id)}/mail`, {}, await getToken());
     const mailbox = Office.context.mailbox;
-    const ewsId =
-      typeof mailbox.convertToEwsId === "function" ? mailbox.convertToEwsId(mailId, Office.MailboxEnums.RestVersion.v2_0) : mailId;
-    mailbox.displayMessageForm(ewsId);
-  } catch {
-    setStatus(t("shares.openMailFailed"), "error");
+    if (typeof mailbox.displayMessageFormAsync === "function") {
+      await officeAsync<void>((cb) => mailbox.displayMessageFormAsync(ewsId, cb));
+    } else {
+      mailbox.displayMessageForm(ewsId);
+    }
+  } catch (err) {
+    setStatus(err instanceof ApiError ? errorMessage(err) : t("shares.openMailFailed"), "error");
   }
 }
 
@@ -1964,10 +2009,17 @@ function shareRow(share: ShareItem): HTMLElement {
       const button = title as HTMLButtonElement;
       button.type = "button";
       button.title = t("shares.openMail");
-      button.addEventListener("click", () => openSentMail(share.mailId!));
+      button.addEventListener("click", () => void openSentMail(share));
     }
     name.replaceWith(title);
     name.classList.add("share-item");
+    // What went out, as a label like "Groß" at the attachments: "Datei" before the file name, "Dateianforderung" and
+    // "Vertrauliche Nachricht" (in colour, so it stands out) on their own.
+    const kind = document.createElement("span");
+    kind.className = `badge kind-${share.kind}`;
+    kind.textContent = t(`shares.kind.${share.kind}`);
+    if (share.kind === "file") name.prepend(kind);
+    else name.replaceChildren(kind);
     row.querySelector(".share-head")!.after(name);
   }
 
@@ -2116,22 +2168,15 @@ async function linkAgain(share: ShareItem, button: HTMLButtonElement) {
       await getToken(),
     );
     await rememberShareChoice(result.jobId, isWithoutPassword(result));
-    const expire = formatDate(result.expireDate);
     const withPassword = !isWithoutPassword(result);
-    if (result.kind === "request") {
-      await insertIntoBody(
-        requestCard(result.shareUrl, expire),
-        requestText(result.shareUrl, expire),
-        shareToken(result.shareUrl),
-      );
-    } else {
+    // The card in the language chosen for the recipients of this mail.
+    const [html, text] = inLanguage(recipientLanguage(), () => {
+      const expire = formatDate(result.expireDate);
+      if (result.kind === "request") return [requestCard(result.shareUrl, expire), requestText(result.shareUrl, expire)];
       const files = [{ name: result.fileName, size: result.size, url: result.shareUrl }];
-      await insertIntoBody(
-        filesCard(files, expire, formatSize, withPassword),
-        filesText(files, expire, formatSize, withPassword),
-        shareToken(result.shareUrl),
-      );
-    }
+      return [filesCard(files, expire, formatSize, withPassword), filesText(files, expire, formatSize, withPassword)];
+    });
+    await insertIntoBody(html, text, shareToken(result.shareUrl));
     setStatus(
       sentences(
         t("shares.linked", { name: share.name }),
@@ -2304,6 +2349,8 @@ Office.onReady(async () => {
           : preferred;
   applyChannelChoices(channel);
   showChannel(channel);
+  // "Sprache für die Empfänger": this mail's choice, else the one from the settings.
+  renderRecipientLanguages(state.recipientLanguage ?? userSettings().recipientLanguage);
   renderKind();
   // Outlook has no "body changed" event: check when the pane gets focus and every few seconds while locked.
   await releaseIfLinksDeleted();

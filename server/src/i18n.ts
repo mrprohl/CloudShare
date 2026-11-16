@@ -149,17 +149,53 @@ export function withRequestLanguage(tag: unknown, fn: () => void): void {
   requestLanguage.run(given ? pickLanguage(tag) : language, fn);
 }
 
-/** Texts of a section for the current context: "server" in the request's language, all others in LANGUAGE. */
+/**
+ * Language of what the recipients get – the password mail and SMS of a step, in the language chosen when the link was
+ * inserted ("Sprache für die Empfänger"). Notes to the sender stay in LANGUAGE.
+ */
+const recipientLanguage = new AsyncLocalStorage<string>();
+
+/** A language the server has texts for, or undefined ("" / unknown / not a string). */
+export const knownLanguage = (lang: unknown): string | undefined =>
+  typeof lang === "string" && all[lang] ? lang : undefined;
+
+/**
+ * Runs `fn` with the texts for recipients – sections "mail" and "templates", dates and numbers – in `lang` (if the
+ * server has it; otherwise LANGUAGE). Only around what the recipients read, never around notes to the sender.
+ */
+export function inRecipientLanguage<T>(lang: string | undefined, fn: () => T): T {
+  const known = knownLanguage(lang);
+  return known ? recipientLanguage.run(known, fn) : fn();
+}
+
+/** Text of `key` in `lang` (LANGUAGE if unknown) – e.g. the label of a message in the recipients' language. */
+export const tIn = (lang: string | undefined, key: string, vars?: Record<string, string | number>) => {
+  const file = all[knownLanguage(lang) ?? language] ?? active;
+  const dot = key.indexOf(".");
+  return format((file as unknown as Record<string, Section>)[key.slice(0, dot)] ?? {}, key.slice(dot + 1), vars);
+};
+
+/**
+ * Texts of a section for the current context: "server" in the request's language, "mail" and "templates" in the
+ * recipients' language inside inRecipientLanguage, all others in LANGUAGE.
+ */
 function sectionTexts(section: (typeof SECTIONS)[number]): Section {
   if (section === "server") {
     const lang = requestLanguage.getStore();
     if (lang && all[lang]) return all[lang].server;
   }
+  if (section === "mail" || section === "templates") {
+    const lang = recipientLanguage.getStore();
+    if (lang && all[lang]) return all[lang][section];
+  }
   return active[section] ?? {};
 }
 
-/** BCP 47 locale of the active language for dates and numbers ("de-DE", "en-GB"). */
-export const locale = () => active._meta.locale;
+/** BCP 47 locale for dates and numbers ("de-DE", "en-GB") – the recipients' inside inRecipientLanguage. */
+export const locale = () => {
+  const lang = recipientLanguage.getStore();
+  return (lang && all[lang]?._meta.locale) || active._meta.locale;
+};
 
 /** Date in the language's format and the configured time zone ("19.11.2026"). */
 export const formatDate = (ms: number) => new Date(ms).toLocaleDateString(locale(), { timeZone: config.timeZone });
@@ -182,8 +218,8 @@ export function t(key: string, vars?: Record<string, string | number>): string {
   return format(sectionTexts(section), key.slice(dot + 1), vars);
 }
 
-/** All texts of a section (e.g. the built-in templates). */
-export const texts = (section: (typeof SECTIONS)[number]): Section => active[section];
+/** All texts of a section (e.g. the built-in templates) – in the recipients' language inside inRecipientLanguage. */
+export const texts = (section: (typeof SECTIONS)[number]): Section => sectionTexts(section);
 
 const escapeMarkup = (s: string) =>
   s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);

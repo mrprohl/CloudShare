@@ -34,6 +34,8 @@ export interface ServerConfig {
   sendMaxExpireDays?: number;
   /** Success messages disappear after this many seconds (0: they stay); default 5. */
   successMessageSeconds?: number;
+  /** NEXTCLOUD_URL – "Nextcloud öffnen" in the account menu. */
+  nextcloudUrl?: string;
 }
 
 export type Channel = "recipients" | "mail" | "sms";
@@ -48,6 +50,8 @@ export interface UserSettings {
   defaultChannel: Channel;
   /** "auto" (as in Outlook) or a language code. */
   language: string;
+  /** Preselected language for the recipients (link card, password mail, SMS) – changeable per mail. */
+  recipientLanguage: string;
   /** Own signature of the password mails (plain text, empty line = new paragraph); null = the organisation's (MAIL_FOOTER). */
   signature: { format: "text"; content: string } | null;
 }
@@ -249,6 +253,8 @@ const STATE_KEY = "cloudshare-state";
 
 export interface DraftState {
   jobId?: string;
+  /** "Sprache für die Empfänger" chosen for this mail (else the one from the settings). */
+  recipientLanguage?: string;
   password?: string;
   /** How often the password link can be opened – changeable until sending (PATCH /api/jobs/:id). */
   maxAccess?: number;

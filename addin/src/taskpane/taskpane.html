@@ -175,6 +175,15 @@
             <p class="hint" id="password-to-hint" hidden></p>
           </div>
 
+          <!-- Language of what the recipients get: the link card, the password mail and the SMS (preselected from the
+               settings, taskpane.ts renderRecipientLanguages). Hidden while only one language is available. -->
+          <div class="field" id="recipient-language-field">
+            <label for="recipient-language" class="label">%%t:addin.recipientLanguage.label%%</label>
+            <div class="select-wrap">
+              <select id="recipient-language" class="input select"></select>
+            </div>
+          </div>
+
           <!-- Lifetimes and accesses: rarely changed, so collapsed behind a one-line summary (renderValidity). -->
           <div class="validity">
             <button type="button" id="validity-toggle" class="disclosure disclosure-block" aria-expanded="false" aria-controls="validity-section">
@@ -267,6 +276,12 @@
                     aria-describedby="settings-language-hint"></select>
                 </div>
                 <p class="hint" id="settings-language-hint">%%t:addin.settings.language.hint%%</p>
+                <!-- Preselected "Sprache für die Empfänger" in the "Senden" tab. -->
+                <label for="settings-recipient-language" class="label settings-sublabel">%%t:addin.settings.recipientLanguage.label%%</label>
+                <div class="select-wrap">
+                  <select id="settings-recipient-language" class="input select" aria-describedby="settings-recipient-language-hint"></select>
+                </div>
+                <p class="hint" id="settings-recipient-language-hint">%%t:addin.settings.recipientLanguage.hint%%</p>
               </fieldset>
               <fieldset class="settings-group">
                 <legend class="section-title">%%t:addin.settings.signature.heading%%</legend>
@@ -431,6 +446,15 @@
             </button>
             <!-- Like the menus of Outlook and OneDrive: icon and text per entry. -->
             <div id="account-menu" class="account-menu" hidden>
+              <!-- The user's Nextcloud in the browser (NEXTCLOUD_URL; the browser's own session or single sign-on). -->
+              <button type="button" id="nextcloud-open" class="account-menu-item" hidden>
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M8.5 11.5a3 3 0 0 0 4.2 0l2.6-2.6a3 3 0 0 0-4.2-4.2l-1 1"/>
+                  <path d="M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l1-1"/>
+                </svg>
+                <span>%%t:addin.nextcloud.open%%</span>
+              </button>
               <!-- Personal settings: shown in place of the current tab like the guide (settings.ts). -->
               <button type="button" id="settings-open" class="account-menu-item" aria-controls="panel-settings">
                 <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">

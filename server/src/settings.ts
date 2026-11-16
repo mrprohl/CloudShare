@@ -30,6 +30,8 @@ export interface UserSettings {
   defaultChannel: Channel;
   /** "auto" (as in Outlook) or a language of the add-in. */
   language: string;
+  /** Language preselected for what the recipients get (link card, password mail, SMS); changeable per mail. */
+  recipientLanguage: string;
   /** Own signature of the password mails; null = the organisation's (MAIL_FOOTER, filled from the profile). */
   signature: Signature | null;
 }
@@ -50,6 +52,10 @@ export function availableSettings() {
   };
 }
 
+/** LANGUAGE if the add-in offers it, else English, else the first language. */
+const fallbackRecipientLanguage = (languages: string[]) =>
+  languages.includes(config.language) ? config.language : languages.includes("en") ? "en" : languages[0];
+
 /** Keeps a channel list within what is available; never empty. */
 function channelsWithin(list: unknown, available: Channel[]): Channel[] {
   const wanted = Array.isArray(list) ? available.filter((c) => list.includes(c)) : [];
@@ -67,6 +73,7 @@ function effective(values: UserSettings): UserSettings {
     channels,
     defaultChannel: channels.includes(values.defaultChannel) ? values.defaultChannel : channels[0],
     language: values.language === "auto" || available.languages.includes(values.language) ? values.language : "auto",
+    recipientLanguage: available.languages.includes(values.recipientLanguage) ? values.recipientLanguage : fallbackRecipientLanguage(available.languages),
     // Only text signatures count – a formatted one saved by an earlier version counts as none.
     signature: values.signature?.format === "text" && typeof values.signature.content === "string" ? values.signature : null,
   };
@@ -82,6 +89,7 @@ export function defaultSettings(): UserSettings {
     channels: d.channels.filter((c): c is Channel => (CHANNELS as readonly string[]).includes(c)),
     defaultChannel: (CHANNELS as readonly string[]).includes(d.defaultChannel) ? (d.defaultChannel as Channel) : "recipients",
     language: d.language,
+    recipientLanguage: config.language,
     signature: null,
   });
 }
@@ -119,6 +127,11 @@ export function parseSettings(body: unknown): Partial<UserSettings> {
     const language = input.language;
     if (typeof language !== "string" || (language !== "auto" && !addinLanguages().includes(language))) throw invalid("language");
     result.language = language;
+  }
+  if ("recipientLanguage" in input) {
+    const lang = input.recipientLanguage;
+    if (typeof lang !== "string" || !addinLanguages().includes(lang)) throw invalid("recipientLanguage");
+    result.recipientLanguage = lang;
   }
   if ("signature" in input) {
     const signature = input.signature;

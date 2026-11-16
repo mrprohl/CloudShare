@@ -26,7 +26,6 @@
     MailboxEnums: {
       AttachmentType: { File: "file", Item: "item", Cloud: "cloud" },
       AttachmentContentFormat: { Base64: "base64", Url: "url", Eml: "eml", ICalendar: "iCalendar" },
-      RestVersion: { v1_0: "v1.0", v2_0: "v2.0", Beta: "beta" },
     },
     onReady(callback) {
       const info = { host: "Outlook", platform: "OfficeOnline" };
@@ -67,8 +66,8 @@
       },
       mailbox: {
         userProfile: { displayName: "Max Mustermann", emailAddress: "max.mustermann@example.com" },
-        convertToEwsId: (id, version) => `ews:${version}:${id}`,
         displayMessageForm: (id) => log.openedMails.push(id),
+        displayMessageFormAsync(id, cb) { log.openedMails.push(id); if (cb) cb(ok()); },
         // Mailbox events (e.g. ItemChanged of a pinned pane) – the test can fire them via window.__officeHandlers.
         addHandlerAsync(type, handler, cb) { (window.__officeHandlers = window.__officeHandlers || {})[type] = handler; if (cb) cb(ok()); },
         item: {

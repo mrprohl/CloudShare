@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { fetchProfile, findSentMessage, JOB_PROPERTY, sendMail } from "../src/graph.js";
+import { ewsIdFor, fetchProfile, findSentMessage, JOB_PROPERTY, sendMail } from "../src/graph.js";
 import { json, mockFetch } from "./helpers.js";
 
 const CUSTOM_PROPS_ID =
@@ -112,5 +112,22 @@ describe("fetchProfile", () => {
       mobile: "",
       office: "Berlin",
     });
+  });
+});
+
+describe("ewsIdFor", () => {
+  it("translates the stored immutable ID into the EWS ID Outlook opens", async () => {
+    const { call } = mockFetch(json({ value: [{ sourceId: "AAkALg-immutable", targetId: "AAMkAD-ews" }] }));
+    expect(await ewsIdFor("token", "AAkALg-immutable")).toBe("AAMkAD-ews");
+    const { url, init } = call(0);
+    expect(url).toBe("https://graph.microsoft.com/v1.0/me/translateExchangeIds");
+    expect(JSON.parse(init.body as string)).toEqual({
+      inputIds: ["AAkALg-immutable"], sourceIdType: "restImmutableEntryId", targetIdType: "ewsId",
+    });
+  });
+
+  it("returns null when Exchange does not know the mail (any more)", async () => {
+    mockFetch(json({ value: [{ sourceId: "x", errorDetails: { code: "ErrorItemNotFound" } }] }));
+    expect(await ewsIdFor("token", "x")).toBeNull();
   });
 });

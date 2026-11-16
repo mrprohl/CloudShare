@@ -121,14 +121,15 @@ Confidential messages and upload links always have a password, so "No password" 
 
 **"History"** lists everything you sent with CloudShare that is still valid – links and confidential messages,
 newest first. Each entry is titled with the **subject of its mail** – a click opens that mail in Outlook (only mails
-of your own mailbox) –, below it the file, "File request" or "Confidential message", then one short line each for
+of your own mailbox) –, below it a label for what went out – "File" with the file name, "File request" or "Confidential message" (in colour)
+–, then one short line each for
 the period ("10.11. – 24.11.2026"), the password (with / without, or how it went out: "Password by text message to …
 – delivered") and the downloads (or received files; Vaultwarden does not report whether a message was opened). A
 confidential message has no "Copy" or "Insert" – CloudShare does not keep its key – but "Password" and "Revoke"
 (deletes it at once). Before the mail was sent the subject is not known yet: the entry is titled with the file. It
 loads when you open the tab and again when you come back to
 the pane; **Refresh** (⟳ in the tab bar) reloads it at any time. Expired links are not listed. At the bottom, as in
-"Send": the account menu ("Settings", "Help", "Disconnect" – the latter takes a second click) and the free space. A link is created when it is inserted;
+"Send": the account menu ("Open Nextcloud" – your Nextcloud in the browser –, "Settings", "Help", "Disconnect" – the latter takes a second click) and the free space. A link is created when it is inserted;
 until its mail has been sent it says **"Not sent"**. If the mail is never sent (draft discarded), CloudShare revokes
 the link after 7 days – unless it was already downloaded (opened by yourself, or the mail went out from an Outlook
 without CloudShare): then it says **"Password not sent yet."** and stays until you revoke it.
@@ -196,7 +197,7 @@ Outlook add-in ──HTTPS──► Caddy (Let's Encrypt) ──► CloudShare c
   granted once; CloudShare stores it encrypted.
 - The password mail is sent **as the sender** via Microsoft Graph, only after the mail appears in "Sent
   Items" – also for shared mailboxes.
-- All texts come from a language file (`locales/de.json`, `locales/en.json`, …): the add-in follows the Outlook language (English if there is no file for it), mails and SMS use `LANGUAGE`.
+- All texts come from a language file (`locales/de.json`, `locales/en.json`, …): the add-in follows the Outlook language (English if there is no file for it); what the recipients get – link card, password mail, SMS – comes in the language chosen under "Language for the recipients" (preselected in the settings); notes to the sender use `LANGUAGE`.
 - One Docker container plus Caddy, no database. Details, data flows and design decisions:
   **[docs/architecture.md](docs/architecture.md)**.
 
@@ -385,6 +386,7 @@ on the server per Microsoft account (encrypted like everything in `/data/cloudsh
 | Send the password to | which ways the pane offers (recipients of the message, another address, SMS) and which one a new message starts with | `DEFAULT_PASSWORD_CHANNELS`, `DEFAULT_PASSWORD_CHANNEL` |
 | Notifications | download confirmation, files received, SMS not delivered – each on or off | `DEFAULT_DOWNLOAD_NOTICE`, `DEFAULT_UPLOAD_NOTICE`, `DEFAULT_SMS_NOTICE` |
 | Language | as in Outlook, or a fixed language of the add-in | `DEFAULT_LANGUAGE` |
+| Language for the recipients | preselected language of the link card, the password mail and the SMS – changeable for each message under "Send the password to" | `LANGUAGE` |
 | Signature of the password mail | at the end of the automatic mail with the password, so recipients see who it comes from: the organisation's (`MAIL_FOOTER`) or an own one – plain text, an empty line starts a paragraph, profile placeholders allowed. The link card in the message carries no signature | `MAIL_FOOTER` |
 
 Only what users changed is stored, so a new starting value in `env/cloudshare.env` reaches everyone who left that
@@ -405,8 +407,10 @@ manifest – comes from one language file per language in [`locales/`](locales) 
 come in the display language of the Outlook client; if CloudShare has no file for it, in English. A regional variant
 uses its language (`de-AT`, `de-CH` → `de`). Every language in `locales/` and in `env/config/locales/` is offered.
 
-**`LANGUAGE`** in `env/cloudshare.env` (`en` by default) is the language of everything CloudShare sends itself – the
-password mail and SMS to recipients, the download and upload confirmations and the SMS notes to the sender:
+**`LANGUAGE`** in `env/cloudshare.env` (`en` by default) is the language of everything CloudShare sends itself and the
+preselected "Language for the recipients" (each user can choose another one in the settings and for each message –
+link card, password mail and SMS then come in it). Notes to the sender always use `LANGUAGE`: the
+download and upload confirmations and the notes about text messages:
 
 ```bash
 LANGUAGE=de
@@ -517,7 +521,7 @@ swallows the screenshot):
 $edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 $repo = (Get-Location).Path; $url = "file:///" + ($repo -replace '\\','/') + "/docs/mockups"
 $opts = "--headless=new", "--hide-scrollbars", "--user-data-dir=$env:TEMP\cloudshare-edge"
-foreach ($shot in @(("outlook-compose", "compose-send", "1440,1100"), ("mail-received", "mail-received", "760,706"),
+foreach ($shot in @(("outlook-compose", "compose-send", "1440,1180"), ("mail-received", "mail-received", "760,706"),
                     ("password-mail", "password-mail", "760,676"), ("sender-notices", "sender-notices", "760,942"))) {
   Start-Process -Wait $edge ($opts + "--window-size=$($shot[2])", "--screenshot=$repo\docs\images\$($shot[0]).png", "$url/$($shot[1]).html")
 }

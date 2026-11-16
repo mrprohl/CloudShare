@@ -259,8 +259,16 @@ Two kinds of language:
   (`de-AT` → `de`), else English (`pickLanguage`, the same rule in `addin/src/shared/i18n.ts` and
   `server/src/i18n.ts`). That covers the taskpane, info bar, Smart Alerts, the link card and the error messages the
   server returns to the add-in.
-- **`LANGUAGE`** (default `en`) is the language of everything the server sends on its own – password mail and SMS,
-  download/upload confirmation, SMS notes – and the first guess of the taskpane page.
+- **`LANGUAGE`** (default `en`) is the language of everything the server sends on its own – download/upload
+  confirmation, SMS notes to the sender – the first guess of the taskpane page and the preselected language for the
+  recipients.
+- **"Language for the recipients"** (`#recipient-language` under "Send the password to", preselected from the personal
+  setting `recipientLanguage`, kept per draft in `DraftState.recipientLanguage`): the link card is rendered in it
+  (`inLanguage` in `addin/src/shared/i18n.ts`), and every link request carries it as `language`. The server keeps it
+  per step (`SeparatePart.language`, the first link of a step decides) and writes the step's password mail and SMS in
+  it (`inRecipientLanguage` in `i18n.ts`: sections `mail` and `templates`, dates); sending the password again uses the
+  same language (`PasswordRef.language`). The names in the password mail ("Confidential message", upload link) follow
+  it too (`tIn`). Notes to the sender stay in `LANGUAGE`.
 
 Each language is `locales/<language>.json`. `i18n.ts` merges, per text:
 
@@ -365,8 +373,9 @@ Send (`revokeMessage`); the watcher deletes the message of a mail never sent wit
 "Insert again" (no key) and no download state (Vaultwarden does not report openings). When the watcher finds the sent
 mail it stores per link the subject and the mail's Graph ID (store `sent-mails`, `recordSentMail`; requested with
 `Prefer: IdType="ImmutableId"` so it survives moving the mail; only for the user's own mailbox, not a shared one).
-"History" titles each entry with that subject and opens the mail on a click (`openSentMail`: `convertToEwsId` →
-`displayMessageForm`); until the mail is sent the entry is titled with its file, as before.
+"History" titles each entry with that subject and opens the mail on a click (`openSentMail`: `GET /api/shares/:id/mail`
+translates the immutable ID into the current EWS ID with Graph `translateExchangeIds` – Outlook cannot open the
+immutable form – then `displayMessageFormAsync`, which reports a failure); until the mail is sent the entry is titled with its file, as before.
 
 ### 2.11 Personal settings
 
@@ -447,6 +456,7 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `POST /api/messages` | Confidential message: text → password-protected Vaultwarden Send, joins the mail's password job |
 | `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "History": list (all valid links and confidential messages – `msg-<Send ID>`, `kind: "message"`, deleted in Vaultwarden on revoke –, each with `subject` and `mailId` of its sent mail, newest first, max. 100; loaded with the tab, when the pane regains focus and by the refresh button in the tab bar), revoke, insert again; also the read mode (2.9) |
 | `GET /api/shares/:id/password`, `POST /api/shares/:id/password/send` | The password of a sent link (owner only, until the link expires) and sending it again by SMS or password mail (2.10) |
+| `GET /api/shares/:id/mail` | "History": the sent mail of an entry as the EWS ID Outlook opens (`displayMessageFormAsync`) – the immutable Graph ID kept at sending, translated now with `translateExchangeIds` (User.Read), so it follows a moved mail; 404 if none is known or it is gone |
 | `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send), `passwordTo` or `passwordSms` until the password went out |
 | `POST /api/jobs/:id/arm` | Arm the password mail (send handler); also reads the sender's name and department for the templates |
 | `GET/POST /webhooks/seven?token=…` | seven.io delivery reports (no login, secret `SEVEN_WEBHOOK_SECRET`) |
@@ -577,6 +587,9 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   language). Accessibility is tested with axe (WCAG 2 A/AA) in CI.
 - Layout and labels must survive longer translations: buttons and labels wrap or are short, the full text is in
   `title`/`aria-label`.
+- **Open Nextcloud** ("Nextcloud öffnen", first entry of the account menu, `#nextcloud-open`): opens `NEXTCLOUD_URL`
+  (sent in `/api/config` as `nextcloudUrl`) in the default browser (`openBrowserWindow`, in the browser a new tab) – the
+  browser's own Nextcloud session or a sign-in there; the app password of the connection never leaves the server.
 - **Help** ("Hilfe" in the account menu of the bottom bar, `#help-toggle`; `#panel-help` in `taskpane.html`, shown in place of the
   current tab, closed by "×" or a tab): a user guide for everyday users – short `<details>`
   sections (getting started, sending files, password and channel, confidential message, receiving files, "History",

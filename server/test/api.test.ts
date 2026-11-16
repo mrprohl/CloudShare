@@ -45,6 +45,7 @@ vi.mock("../src/graph.js", async (importOriginal) => ({
   })),
   sendMail: vi.fn(async () => undefined),
   sendMailAsApp: vi.fn(async () => undefined),
+  ewsIdFor: vi.fn(async (_token: string, id: string) => (id === "AAMk-gone" ? null : `ews-${id}`)),
 }));
 // seven.io is not contacted: the SMS of "Kennwort erneut senden" goes to this double.
 vi.mock("../src/sms.js", async (importOriginal) => ({
@@ -147,6 +148,7 @@ describe("authentication", () => {
     ["POST", "/api/messages"],
     ["GET", "/api/shares"],
     ["DELETE", "/api/shares/1"],
+    ["GET", "/api/shares/1/mail"],
     ["POST", "/api/jobs/x/arm"],
   ] as const)("rejects %s %s without a valid token", async (method, url) => {
     const res = await app.inject({ method, url, headers: { authorization: "Bearer fremd" } });
@@ -500,6 +502,23 @@ describe("confidential messages", () => {
     expect(revoked.json()).toMatchObject({ ok: true, message: true });
     expect(deleteSend).toHaveBeenCalledWith("send-7");
     expect((await list("anna")).some((s) => s.id === "msg-send-7")).toBe(false);
+  });
+
+  it("opens the sent mail of an entry: its current EWS ID, only for its owner", async () => {
+    const { recordSentMail } = await import("../src/history.js");
+    const keepUntil = Date.now() + DAY;
+    recordSentMail(["msg-m1"], { owner: "oid-anna", subject: "Zugangsdaten", mailId: "AAMk-1", keepUntil });
+    recordSentMail(["msg-m2"], { owner: "oid-anna", subject: "Alt", mailId: "AAMk-gone", keepUntil });
+    recordSentMail(["msg-m3"], { owner: "oid-anna", subject: "Freigegebenes Postfach", keepUntil }); // no ID
+    const mail = (id: string, who = "anna") => app.inject({ method: "GET", url: `/api/shares/${id}/mail`, headers: as(who) });
+
+    const res = await mail("msg-m1");
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ewsId: "ews-AAMk-1" }); // translated now, so it follows a moved mail
+    expect((await mail("msg-m1", "bernd")).statusCode).toBe(404); // someone else's
+    expect((await mail("msg-m2")).statusCode).toBe(404); // deleted in the mailbox
+    expect((await mail("msg-m3")).statusCode).toBe(404); // sent from a shared mailbox
+    expect((await mail("msg-none")).statusCode).toBe(404); // sent before this version
   });
 
   it("tells the add-in the limits", async () => {
@@ -1029,7 +1048,7 @@ describe("personal settings (/api/settings)", () => {
     expect(res.json()).toEqual({
       settings: {
         downloadNotice: true, uploadNotice: true, smsNotice: true, channels: ["recipients", "mail", "sms"], defaultChannel: "recipients",
-        language: "auto", signature: null,
+        language: "auto", recipientLanguage: "de", signature: null, // recipients: LANGUAGE (de in the tests)
       },
       defaults: expect.objectContaining({ channels: ["recipients", "mail", "sms"], language: "auto" }),
       available: { downloadNotice: true, uploadNotice: true, smsNotice: true, channels: ["recipients", "mail", "sms"], languages: ["de", "en"] },

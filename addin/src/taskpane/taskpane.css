@@ -36,6 +36,10 @@
   --success-bg: #f1faf1;
   --success-stroke: #9fd89f;
   --success-fg: #0e700e;
+  /* Confidential message (label in "Verlauf"): Fluent "grape". */
+  --grape-bg: #f6f0fa;
+  --grape-stroke: #d7c1ec;
+  --grape-fg: #6b2a99;
   --shadow: 0 0 2px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.14);
 }
 
@@ -69,6 +73,9 @@
   --success-bg: #052505;
   --success-stroke: #107c10;
   --success-fg: #54b054;
+  --grape-bg: #2b1a38;
+  --grape-stroke: #5c2e80;
+  --grape-fg: #c9a6eb;
 }
 
 /* Before Office reports its theme, follow the system setting. */
@@ -218,6 +225,8 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* --- Inputs -------------------------------------------------------------------- */
 .field { margin-bottom: 16px; }
 .label { display: block; margin-bottom: 4px; color: var(--fg1); }
+/* A second field in a settings group ("Sprache für die Empfänger" below the add-in language). */
+.settings-sublabel { margin-top: 12px; }
 .input-group { display: flex; align-items: center; gap: 4px; }
 .input {
   flex: 1;
@@ -456,7 +465,11 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 button.share-title { cursor: pointer; }
 button.share-title:hover { color: var(--brand-fg); text-decoration: underline; text-underline-offset: 2px; }
 button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 2px; }
-.share-name.share-item { font-weight: 400; font-size: 13px; line-height: 18px; color: var(--fg2); }
+.share-name.share-item { align-items: center; margin: 2px 0; font-weight: 400; font-size: 13px; line-height: 18px; color: var(--fg2); }
+/* What went out: "Datei" quiet, "Dateianforderung" brand blue (like "Groß"), "Vertrauliche Nachricht" grape. */
+.share-item .badge { height: 18px; margin-right: 6px; line-height: 16px; white-space: nowrap; }
+.share-item .badge.kind-file { border-color: var(--stroke2); background: var(--bg3); color: var(--fg2); }
+.share-item .badge.kind-message { border-color: var(--grape-stroke); background: var(--grape-bg); color: var(--grape-fg); font-weight: 600; }
 .share-meta { font-size: 12px; line-height: 16px; color: var(--fg3); }
 .share-password.failed { color: var(--danger-fg); }
 .share-unsent { color: var(--fg2); font-weight: 600; }
