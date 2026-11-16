@@ -56,8 +56,10 @@ export async function revokeShare(
 
 /**
  * The links of a mail that was never sent – its password job expired without "Send" ever being pressed: they are
- * revoked and the step's Sends deleted, so no link that never left the draft stays reachable. Throws if Nextcloud
- * cannot be reached (the watcher tries again later); a user who is no longer connected is skipped.
+ * revoked and the step's Sends deleted, so no link that never left the draft stays reachable. A link that was already
+ * downloaded stays (it reached someone – the mail may have gone out from an Outlook without CloudShare, or the link
+ * was copied); the owner decides about it in "Meine Freigaben". Throws if Nextcloud cannot be reached (the watcher
+ * tries again later); a user who is no longer connected is skipped.
  */
 export async function revokeUnsentLinks(unsent: UnsentLinks, log: Log): Promise<void> {
   const creds = getCredentials(unsent.owner);
@@ -67,7 +69,13 @@ export async function revokeUnsentLinks(unsent: UnsentLinks, log: Log): Promise<
     let shares = await nc.listPublicShares();
     const tokens = new Set(unsent.tokens);
     let revoked = 0;
+    let kept = 0;
     for (const share of shares.filter((s) => tokens.has(tokenOf(s.url)) && isCloudShareShare(s))) {
+      const downloads = isRequestShare(share) ? null : await nc.publicDownloads(share.fileId).catch(() => null);
+      if (downloads?.count) {
+        kept++;
+        continue;
+      }
       await revokeShare(nc, unsent.owner, share, shares, log);
       shares = shares.filter((s) => s.id !== share.id);
       revoked++;
@@ -75,7 +83,7 @@ export async function revokeUnsentLinks(unsent: UnsentLinks, log: Log): Promise<
     for (const sendId of unsent.sendIds) {
       await deleteSend(sendId).catch((err) => log.warn({ err, user: unsent.ownerUpn }, "Send of a mail never sent not deleted"));
     }
-    log.info({ user: unsent.ownerUpn, links: revoked }, "Links of a mail that was never sent revoked");
+    log.info({ user: unsent.ownerUpn, links: revoked, keptDownloaded: kept }, "Links of a mail that was never sent revoked");
   } catch (err) {
     if (err instanceof HttpError && err.code === NOT_CONNECTED) return;
     throw err;

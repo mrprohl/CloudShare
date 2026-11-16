@@ -159,6 +159,9 @@ download confirmation.
    discarded) has its links revoked and its Sends deleted (`revokeUnsentLinks` in `shares.ts`, retried hourly while
    Nextcloud is unreachable). Jobs that were armed once are left alone – the mail may have gone out without the
    watcher seeing it – and so are links without password, which may have been sent from a client without CloudShare.
+   A link that was already downloaded (Nextcloud activity) is never revoked automatically either: it reached someone
+   (opened by the sender, sent from Outlook without CloudShare, copied). "My shares" then shows it without a revoke
+   date as "Password not sent yet." (`shares.unsentDownloaded`), next to its downloads.
 
 If the add-in cannot run at all, SoftBlock lets the mail through – otherwise a CloudShare outage would stop all mail.
 The handlers cache the last configuration in `roamingSettings`, so the attachment policy also applies while the

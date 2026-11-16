@@ -1898,9 +1898,12 @@ function shareRow(share: ShareItem): HTMLElement {
   row.querySelector<HTMLElement>(".state-text")!.textContent = state.text;
   if (share.unsent) {
     const line = row.querySelector<HTMLElement>(".share-unsent")!;
-    line.textContent = share.revokeAt
-      ? t("shares.unsentRevoke", { date: new Date(share.revokeAt).toLocaleDateString(locale()) })
-      : t("shares.unsent");
+    // Downloaded already: it reached someone (e.g. sent from an Outlook without CloudShare) – only the password is missing.
+    line.textContent = share.downloads?.count
+      ? t("shares.unsentDownloaded")
+      : share.revokeAt
+        ? t("shares.unsentRevoke", { date: new Date(share.revokeAt).toLocaleDateString(locale()) })
+        : t("shares.unsent");
     line.hidden = false;
   }
 
