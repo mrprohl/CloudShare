@@ -330,7 +330,7 @@ collects the tokens of Nextcloud links (`/s/<token>`); the shares of `GET /api/s
 to this mail. That works for every mail with CloudShare links – sent ones, forwarded ones, also links "Ohne Kennwort"
 that never had a job – and needs no new permission (the item is only read). Only the user's own shares can match;
 links of other people or other sites in the mail are ignored. Confidential messages are not listed (Vaultwarden
-Sends, not Nextcloud shares). While the pane is pinned, `ItemChanged` reloads the list for the selected mail. Copy
+Sends, not Nextcloud shares). While the pane is pinned, `ItemChanged` clears the message bar and reloads the list for the selected mail. Copy
 and Revoke work as in the compose pane; Insert is hidden.
 
 ### 2.10 Showing and sending the password again

@@ -2104,6 +2104,7 @@ async function startReadView() {
   selectTab("mail", false); // loaded as soon as the connection is known (showConnection)
   try {
     Office.context.mailbox.addHandlerAsync(Office.EventType.ItemChanged, () => {
+      setStatus(""); // a message about the previous mail (e.g. a revoked link) does not belong to this one
       selectTab("mail"); // another mail: its links
     });
   } catch {
