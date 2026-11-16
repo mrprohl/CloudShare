@@ -9,6 +9,8 @@ import { desiredLanguage, language, languageChoices, SETTINGS_CACHE_KEY, t } fro
 import { api, type Channel, type SettingsResponse, type UserSettings } from "../shared/office";
 
 const CHANNELS: Channel[] = ["recipients", "mail", "sms"];
+/** Profile fields a signature may use (server/src/graph.ts, Profile; filled by server/src/signature.ts). */
+const PLACEHOLDERS = ["displayName", "givenName", "surname", "jobTitle", "department", "company", "email", "phone", "mobile", "office"];
 const channelLabel = (c: Channel) => t(c === "recipients" ? "channel.recipients" : c === "mail" ? "channel.mail" : "channel.sms");
 
 let current: SettingsResponse | null = null;
@@ -112,9 +114,41 @@ export function initSettings(options: Options) {
     defaultChannel.disabled = offered.length === 0;
   };
 
+  // Placeholders of the profile behind the "i": a click inserts one where the cursor is.
+  const placeholdersToggle = $<HTMLButtonElement>("settings-placeholders-toggle");
+  const placeholders = $<HTMLDivElement>("settings-placeholders");
+  const placeholderList = $<HTMLUListElement>("settings-placeholder-list");
+  const showPlaceholders = (open: boolean) => {
+    placeholders.hidden = !open;
+    placeholdersToggle.setAttribute("aria-expanded", String(open));
+  };
+  placeholderList.replaceChildren(
+    ...PLACEHOLDERS.map((name) => {
+      const item = document.createElement("li");
+      const insert = document.createElement("button");
+      insert.type = "button";
+      insert.className = "placeholder";
+      insert.textContent = `{${name}}`;
+      insert.setAttribute("aria-label", t("settings.placeholders.insert", { placeholder: `{${name}}`, label: t(`settings.placeholders.${name}`) }));
+      insert.addEventListener("click", () => {
+        const start = signatureText.selectionStart ?? signatureText.value.length;
+        const end = signatureText.selectionEnd ?? start;
+        signatureText.setRangeText(`{${name}}`, start, end, "end");
+        signatureText.focus();
+      });
+      const label = document.createElement("span");
+      label.textContent = t(`settings.placeholders.${name}`);
+      item.append(insert, label);
+      return item;
+    }),
+  );
+  placeholdersToggle.addEventListener("click", () => showPlaceholders(placeholders.hidden));
+
   const showSignatureFormat = () => {
     const format = signatureFormat.value;
     signatureText.hidden = format !== "text";
+    placeholdersToggle.hidden = format !== "text";
+    if (format !== "text") showPlaceholders(false);
     signatureHint.textContent = t(format === "text" ? "settings.signature.hint.text" : "settings.signature.hint.none");
   };
 
