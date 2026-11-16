@@ -115,7 +115,7 @@ export async function createPasswordSend(
     expirationDate: new Date(expiresAt).toISOString(),
     password: null,
     disabled: false,
-    hideEmail: true,
+    hideEmail: !config.sendShowCreator, // SEND_SHOW_CREATOR
   };
 
   const data = await withUnlock(() => bw<{ accessUrl?: string; id?: string }>("POST", "/object/send", send));
@@ -149,7 +149,7 @@ export async function createMessageSend(
     expirationDate: deletionDate,
     password,
     disabled: false,
-    hideEmail: true,
+    hideEmail: !config.sendShowCreator, // SEND_SHOW_CREATOR
   };
   const data = await withUnlock(() => bw<{ accessUrl?: string; id?: string }>("POST", "/object/send", send));
   if (!data?.accessUrl) throw new HttpError(502, t("server.vaultNoUrl"));

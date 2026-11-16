@@ -27,7 +27,8 @@ export interface CleanupEntry {
 const DAY = 86_400_000;
 const INTERVAL = 60 * 60_000;
 /** Upload folders with their expiry, in the database (db.ts, store "cleanup"). */
-const entries = new PersistentMap<CleanupEntry>("cleanup");
+// No retention: an entry is removed when its folder is due (CLEANUP_AFTER_DAYS) – deleting it earlier would keep the file.
+const entries = new PersistentMap<CleanupEntry>("cleanup", { retention: false });
 const keyOf = (owner: string, folder: string[]) => `${owner}:${folder.join("/")}`;
 
 /** Only upload folders directly below NEXTCLOUD_FOLDER – never anything else in the user's Nextcloud. */
@@ -37,7 +38,8 @@ export const isUploadFolder = (folder: string[]) =>
 /** Registers (or extends) the expiry of a link to an uploaded file; `target` is the file's path segments. */
 export async function registerForCleanup(owner: string, target: string[], expireDate: string): Promise<void> {
   const folder = target.slice(0, 2);
-  if (!isUploadFolder(folder)) return;
+  // CLEANUP_AFTER_DAYS=off: nothing is ever deleted, so nothing needs to be remembered.
+  if (config.cleanupAfterDays === null || !isUploadFolder(folder)) return;
   const key = keyOf(owner, folder);
   const existing = entries.get(key);
   if (existing && existing.expireDate >= expireDate) return;
