@@ -320,6 +320,15 @@ test("not connected: shows the connect view and connects via the Nextcloud login
   expect(calls.some((c) => c.path === "/api/nextcloud/connect/c1/poll")).toBe(true);
 });
 
+test("connecting works with the message timer on (an empty message has no ring)", async ({ page }) => {
+  // The timer is off in the other tests; clearing the bar (setStatus("")) once looked for a ring that was not there.
+  await openTaskpane(page, { connected: false, config: { successMessageSeconds: 5 } });
+  await page.click("#connect");
+  await expect(page.locator("#send-view")).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator("#status")).toContainText("Die Verbindung zu Nextcloud wurde hergestellt.");
+  await expect(page.locator("#status")).not.toContainText("fehlgeschlagen");
+});
+
 test("opening the pane: settings and connection status share one sign-in (no 13008)", async ({ page }) => {
   // Settings and Nextcloud status both need a token right at startup.
   const calls = await openTaskpane(page);

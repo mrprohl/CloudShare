@@ -185,7 +185,8 @@ function setStatus(text: string, kind: StatusKind = "info", action?: StatusActio
   const shown = ++statusShown;
   statusBar.hidden = !text;
   statusBar.className = `messagebar ${kind}`;
-  const seconds = kind !== "progress" && !action ? messageSeconds() : 0;
+  // No timer for an empty message (setStatus("") only clears the bar), progress and a message with a button.
+  const seconds = text && kind !== "progress" && !action ? messageSeconds() : 0;
   statusBar.innerHTML = text
     ? `<svg class="icon" viewBox="0 0 16 16" aria-hidden="true">${seconds > 0 ? statusTimer(kind) : STATUS_CIRCLE + STATUS_GLYPHS[kind]}</svg><span></span>`
     : "";
