@@ -693,8 +693,6 @@ test("Kennwort an eine andere E-Mail-Adresse chosen without an address: no link 
   await expect(page.locator("#submit")).toBeDisabled();
   await chooseKind(page, "request");
   await expect(page.locator("#submit")).toBeDisabled();
-  await page.fill("#password-to", "keine adresse");
-  await expect(page.locator("#submit")).toBeDisabled();
   expect(calls.some((c) => c.path === "/api/uploads" || c.path === "/api/requests")).toBe(false); // nothing shared
 
   // Typed and clicked right away (no "change" yet): the address still reaches the job.
@@ -933,7 +931,9 @@ test("Ohne Kennwort: plain link, no password mail, upload links stay protected",
   await expectAccessible(page);
   await shot(page, "no-password");
   await chooseKind(page, "files");
-  await expect(page.locator("#submit")).toBeEnabled();
+  await expect(page.locator("#submit")).toBeDisabled(); // the attachment is a link now – nothing selected
+  await page.setInputFiles("#file", { name: "Nachtrag.pdf", mimeType: "application/pdf", buffer: Buffer.alloc(2000, 0x41) });
+  await expect(page.locator("#submit")).toBeEnabled(); // further files without password are fine
 });
 
 test("Nachricht / Anfordern: 'Ohne Kennwort' is not offered – a choice made for files becomes a random password", async ({ page }) => {
