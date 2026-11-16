@@ -13,8 +13,9 @@ password (a Vaultwarden Send that can only be opened a limited number of times),
 
 ![A compose window in new Outlook: the CloudShare button in the ribbon, a download card with three files in the mail, and the CloudShare pane on the right](docs/images/outlook-compose.png)
 
-*All pictures use example data (Max Mustermann, example.com) and show the English interface (`LANGUAGE=en`). The
-default is German (`LANGUAGE=de`), and further languages can be added – see [Languages](#languages). Labels are quoted
+*All pictures use example data (Max Mustermann, example.com) and show the English interface (Outlook in English).
+The add-in follows the Outlook language (German and English included, English otherwise), and further languages can
+be added – see [Languages](#languages). Labels are quoted
 as in the English interface; the German ones are in [`locales/de.json`](locales/de.json) – e.g. "Insert file as link"
 is "Datei als Link einfügen", "My shares" is "Meine Freigaben".*
 
@@ -186,7 +187,7 @@ Outlook add-in ──HTTPS──► Caddy (Let's Encrypt) ──► CloudShare c
   granted once; CloudShare stores it encrypted.
 - The password mail is sent **as the sender** via Microsoft Graph, only after the mail appears in "Sent
   Items" – also for shared mailboxes.
-- All texts come from a language file (`locales/de.json`, `locales/en.json`, …), chosen with `LANGUAGE`.
+- All texts come from a language file (`locales/de.json`, `locales/en.json`, …): the add-in follows the Outlook language (English if there is no file for it), mails and SMS use `LANGUAGE`.
 - One Docker container plus Caddy, no database. Details, data flows and design decisions:
   **[docs/architecture.md](docs/architecture.md)**.
 
@@ -252,7 +253,7 @@ deployed again.
 | Setting | Default | Meaning |
 |---|---|---|
 | `PUBLIC_BASE_URL` | – | Public address of CloudShare, e.g. `https://cloudshare.example.com` |
-| `LANGUAGE` | `de` | Language of the taskpane, Outlook messages, link cards, password mail, SMS and download confirmation: `de`, `en` or an own one, see [Languages](#languages) |
+| `LANGUAGE` | `de` | Language of the mails and SMS CloudShare sends (password mail and SMS, download/upload confirmation, SMS notes): `de`, `en` or an own one. The add-in itself follows the Outlook language, see [Languages](#languages) |
 | `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` | – | Entra ID app registration |
 | `NEXTCLOUD_URL` | – | Public address of Nextcloud |
 | `NEXTCLOUD_FOLDER` | `CloudShare` | Folder for uploaded files in each user's Nextcloud |
@@ -364,16 +365,21 @@ The built-in texts are those of the configured language (section `templates` of 
 
 Everything users and recipients see – taskpane, info bar and send check in Outlook, the link card in the mail, the
 password mail, the SMS, the download confirmation, error messages and the add-in's name and description in the
-manifest – comes from one language file per language in [`locales/`](locales). `LANGUAGE` in `env/cloudshare.env`
-picks it (`de` by default, `en` included):
+manifest – comes from one language file per language in [`locales/`](locales) (`de` and `en` included).
+
+**The add-in follows the user's Outlook:** taskpane, info bar, send check, link card, error messages and the ribbon
+come in the display language of the Outlook client; if CloudShare has no file for it, in English. A regional variant
+uses its language (`de-AT`, `de-CH` → `de`). Every language in `locales/` and in `env/config/locales/` is offered.
+
+**`LANGUAGE`** in `env/cloudshare.env` (`de` by default) is the language of everything CloudShare sends itself – the
+password mail and SMS to recipients, the download and upload confirmations and the SMS notes to the sender:
 
 ```bash
 LANGUAGE=en
 ```
 
 Update the stack; CloudShare puts the texts into the add-in files when it starts. Outlook caches the add-in: clear the
-cache in classic Outlook (see *Operation*), reload Outlook on the web. One language applies to all users of an
-installation; recipients get the password mail and the SMS in the same language. Not affected by `LANGUAGE`:
+cache in classic Outlook (see *Operation*), reload Outlook on the web. Not affected by the language:
 
 - **Nextcloud folder names** – `NEXTCLOUD_REQUEST_FOLDER` stays as set (default `CloudShare-File-Requests`), so
   "My shares" keeps finding older links. To have it in German, set it in `setup.sh` / `env/cloudshare.env` before
@@ -385,13 +391,13 @@ installation; recipients get the password mail and the SMS in the same language.
 
 **Adding a language** – copy [`locales/en.json`](locales/en.json) to `<code>.json` (e.g. `fr.json`) and translate the
 values, keeping the keys and the `{placeholders}`. Keys ending in `_one` / `_other` are the singular and plural form.
-`_meta.locale` (e.g. `fr-FR`) sets the date and number format and the manifest's `DefaultLocale`. Use Outlook's own
+`_meta.locale` (e.g. `fr-FR`) sets the date and number format and the `Locale` of the language's Overrides in the manifest. Use Outlook's own
 terms of that language, keep the SMS text (`templates.sms_template`) in the GSM alphabet (no accents beyond it, or the
 SMS shrinks to 70 characters) with `{password}` on a line of its own (`…:\n{password}` – phones may hyphenate a
 password where they wrap the line). Texts that are missing fall back to English. Two ways to use it:
 
 - **Without a new image:** put the file into `/opt/cloudshare/env/config/locales/` (mounted read-only as
-  `/config/locales`, directory `755`, file `644`), set `LANGUAGE=fr`, update the stack.
+  `/config/locales`, directory `755`, file `644`) and update the stack – Outlook clients in that language get it; set `LANGUAGE=fr` if the mails and SMS should be in it too.
 - **In the repository:** add it to `locales/` – the tests check that it has every text and placeholder of English and
   stays within Outlook's limits (e.g. the Smart Alert button `alert.button` at most 20 characters, the SMS text in
   the GSM alphabet with `{password}`); the image built from it contains the language.
@@ -463,7 +469,7 @@ Every push and pull request runs the pipeline in `.github/workflows/image.yml`:
 |---|---|
 | test | type check and unit tests of both packages, **language files** (same texts and placeholders in every language, every key used exists, Outlook's length limits), `npm audit`, manifest validation per language, ShellCheck, deployment files (`setup.sh` with dummy answers, `docker compose config`, `caddy validate`) |
 | ui | the real taskpane in Chromium with Office.js and the API mocked – upload, cards, passwords, "My shares", dark theme, 320 px width and **accessibility** (axe, WCAG 2 A/AA); screenshots as artifact `ui-test-report`, including the English pane pictures of this README |
-| build | image build, Trivy scan, **smoke test** of the real stack with Caddy (TLS, headers, add-in files with the texts of `LANGUAGE`, read button and help, limits, login required on the API, hardening; the Vaultwarden mock refuses Sends beyond 31 days), **upgrade test** (connections, password jobs, delivery status, download confirmations, cleanup list and password entries written by the published image must stay readable), **load test** (k6: 10 users × 2 × 45 MiB) |
+| build | image build, Trivy scan, **smoke test** of the real stack with Caddy (TLS, headers, add-in files with the texts of every language, English manifest with Overrides, read button and help, limits, login required on the API, hardening; the Vaultwarden mock refuses Sends beyond 31 days), **upgrade test** (connections, password jobs, delivery status, download confirmations, cleanup list and password entries written by the published image must stay readable), **load test** (k6: 10 users × 2 × 45 MiB) |
 | push | only if everything passed: `ghcr.io/mrprohl/cloudshare` (`latest`, `sha-<commit>`, version tags); pull requests publish nothing |
 
 The repository also uses Dependabot, CodeQL and secret scanning with push protection (*Security* tab).

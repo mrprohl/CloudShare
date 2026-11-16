@@ -61,7 +61,7 @@ import {
 import { isCloudShareShare, isRequestShare, revokeShare, tokenOf } from "./shares.js";
 import { defaultTemplates, render, templatesFor } from "./templates.js";
 import { clampInt, isEmailAddress } from "./limits.js";
-import { formatDate, locale, t } from "./i18n.js";
+import { formatDate, locale, t, withRequestLanguage } from "./i18n.js";
 import { passwordProblem } from "./password.js";
 import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } from "./store.js";
 import {
@@ -299,6 +299,10 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     bodyLimit: 1024 * 1024,
     trustProxy: ["loopback", "linklocal", "uniquelocal"],
   });
+
+  // Error messages in the language of the add-in (header from addin/src/shared/office.ts, api) – before the rate
+  // limit, whose message is one of them.
+  app.addHook("onRequest", (req, _reply, done) => withRequestLanguage(req.headers["x-cloudshare-language"], done));
 
   await app.register(rateLimit, {
     max: config.rateLimitPerMinute,

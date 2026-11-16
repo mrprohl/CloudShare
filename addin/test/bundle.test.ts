@@ -30,7 +30,7 @@ describe("commands.js for the JavaScript-only runtime", () => {
     expect(code).not.toMatch(pattern);
   });
 
-  it("keeps the marker the server replaces with the texts of the configured language", () => {
+  it("keeps the marker the server replaces with the texts of the languages", () => {
     expect(code).toContain('"%%CLOUDSHARE_I18N%%"');
   });
 
@@ -41,7 +41,7 @@ describe("commands.js for the JavaScript-only runtime", () => {
 });
 
 describe("language injection into the minified bundles", () => {
-  it.each(["src/commands/commands.ts", "src/taskpane/taskpane.ts"])("%s keeps a replaceable marker", async (entry) => {
+  it.each(["src/commands/commands.ts", "src/taskpane/main.ts"])("%s keeps a replaceable marker", async (entry) => {
     const { outputFiles: [bundle] } = await build({
       entryPoints: [entry],
       bundle: true,
@@ -50,8 +50,8 @@ describe("language injection into the minified bundles", () => {
       minify: true,
       write: false,
     });
-    const { loadLocale, localize } = await import("../scripts/localize.mjs");
-    const localized: string = localize(bundle.text, ".js", loadLocale("en"), "en");
+    const { localize } = await import("../scripts/localize.mjs");
+    const localized: string = localize(bundle.text, ".js");
     expect(localized).not.toContain("%%CLOUDSHARE_I18N%%");
     expect(localized).toContain("Open CloudShare");
     expect(() => new Function(localized)).not.toThrow(); // still valid JavaScript

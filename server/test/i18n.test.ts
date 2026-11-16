@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { runInNewContext } from "node:vm";
 import { describe, expect, it } from "vitest";
-import { builtinLocalesDir, format, loadLocale, localizePublic, SECTIONS, t, type LocaleFile } from "../src/i18n.js";
+import { builtinLocalesDir, format, loadLocale, localizePublic, pickLanguage, SECTIONS, t, withRequestLanguage, type LocaleFile } from "../src/i18n.js";
 import { gsmLength, isGsm, TEMPLATE_FIELDS } from "../src/templates.js";
 
 const repo = path.resolve(import.meta.dirname, "../..");
@@ -136,27 +136,74 @@ describe("i18n", () => {
     expect(() => loadLocale("../etc/passwd")).toThrow(/not a language code/);
   });
 
-  it("fills the add-in files at startup", () => {
+  it("fills the add-in files at startup with every language", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "cloudshare-public-"));
     mkdirSync(path.join(dir, "assets"));
     writeFileSync(path.join(dir, "taskpane.html"), '<html lang="%%LANG%%"><button title="%%t:addin.tabs.shares%%">%%t:addin.submit.button%%</button></html>');
-    writeFileSync(path.join(dir, "manifest.xml"), '<DefaultLocale>%%LOCALE%%</DefaultLocale><Description DefaultValue="%%t:manifest.description%%"/>');
+    writeFileSync(
+      path.join(dir, "manifest.xml"),
+      '<DefaultLocale>%%LOCALE%%</DefaultLocale><Description DefaultValue="%%t:manifest.description%%"/>' +
+        '<bt:ShortStrings><bt:String id="Group.Label" DefaultValue="%%t:manifest.group%%"/></bt:ShortStrings>',
+    );
     // Minified bundle: the marker is a plain string literal.
     writeFileSync(path.join(dir, "commands.js"), 'var bundle="%%CLOUDSHARE_I18N%%";result=JSON.parse(bundle);');
     const english = loadLocale("en");
     english.addin["submit.button"] = 'Insert <"link"> & go';
-    expect(localizePublic(dir, english, "en")).toBe(3);
+    const german = loadLocale("de");
+    expect(localizePublic(dir, { de: german, en: english }, "de")).toBe(3);
 
-    const html = readFileSync(path.join(dir, "taskpane.html"), "utf8");
-    expect(html).toBe('<html lang="en"><button title="My shares">Insert &lt;&quot;link&quot;&gt; &amp; go</button></html>');
-    expect(readFileSync(path.join(dir, "manifest.xml"), "utf8")).toContain("<DefaultLocale>en-GB</DefaultLocale>");
+    // The page in LANGUAGE (de) and one copy per language for clients in another language.
+    expect(readFileSync(path.join(dir, "taskpane.html"), "utf8")).toBe(
+      `<html lang="de"><button title="Meine Freigaben">${german.addin["submit.button"]}</button></html>`,
+    );
+    expect(readFileSync(path.join(dir, "taskpane.en.html"), "utf8")).toBe(
+      '<html lang="en"><button title="My shares">Insert &lt;&quot;link&quot;&gt; &amp; go</button></html>',
+    );
+    expect(readFileSync(path.join(dir, "taskpane.de.html"), "utf8")).toBe(readFileSync(path.join(dir, "taskpane.html"), "utf8"));
+
+    // Manifest: English as default, the other languages as Overrides.
+    const manifest = readFileSync(path.join(dir, "manifest.xml"), "utf8");
+    expect(manifest).toContain("<DefaultLocale>en-GB</DefaultLocale>");
+    expect(manifest).toContain(
+      `<Description DefaultValue="${english.manifest.description}"><Override Locale="de-DE" Value="${german.manifest.description}"/></Description>`,
+    );
+    expect(manifest).toContain(
+      `<bt:String id="Group.Label" DefaultValue="${english.manifest.group}"><bt:Override Locale="de-DE" Value="${german.manifest.group}"/></bt:String>`,
+    );
+    expect(manifest).not.toContain("%%");
+
     const js = readFileSync(path.join(dir, "commands.js"), "utf8");
     expect(js).not.toContain("%%");
     expect(js).toMatch(/^[\x00-\x7f]*$/); // ASCII only
-    const context: { result?: { lang: string; locale: string; messages: Record<string, string> } } = {};
+    type Bundle = { fallback: string; languages: Record<string, { locale: string; messages: Record<string, string> }> };
+    const context: { result?: Bundle } = {};
     runInNewContext(js, context);
-    expect(context.result?.lang).toBe("en");
-    expect(context.result?.messages["alert.button"]).toBe("Open CloudShare");
-    expect(context.result?.messages["files.remove"]).toBe("Remove “{name}”");
+    expect(context.result?.fallback).toBe("en");
+    expect(Object.keys(context.result?.languages ?? {})).toEqual(["de", "en"]);
+    expect(context.result?.languages.en.messages["alert.button"]).toBe("Open CloudShare");
+    expect(context.result?.languages.en.messages["files.remove"]).toBe("Remove “{name}”");
+    expect(context.result?.languages.de.locale).toBe("de-DE");
+    expect(context.result?.languages.de.messages["tabs.send"]).toBe("Senden");
+  });
+
+  it("picks the client's language, else English", () => {
+    expect(pickLanguage("de-DE", ["de", "en"])).toBe("de");
+    expect(pickLanguage("de-AT", ["de", "en"])).toBe("de");
+    expect(pickLanguage("EN-us", ["de", "en"])).toBe("en");
+    expect(pickLanguage("pt-BR", ["de", "en", "pt-br"])).toBe("pt-br");
+    expect(pickLanguage("fr-FR", ["de", "en"])).toBe("en");
+    expect(pickLanguage(undefined, ["de", "en"])).toBe("en");
+    expect(pickLanguage(["de"], ["de", "en"])).toBe("en"); // a repeated header is not a language
+  });
+
+  it("gives server messages in the request's language, mails in LANGUAGE", () => {
+    const seen: string[] = [];
+    withRequestLanguage("en-US", () => {
+      seen.push(t("server.notConnected"), t("mail.access", { count: 1 }));
+    });
+    withRequestLanguage("fr", () => seen.push(t("server.notConnected")));
+    withRequestLanguage(undefined, () => seen.push(t("server.notConnected"))); // add-in without the header
+    expect(seen).toEqual([en.server.notConnected, "nur einmal abrufbar", en.server.notConnected, "Nextcloud ist noch nicht verbunden."]);
+    expect(t("server.notConnected")).toBe("Nextcloud ist noch nicht verbunden."); // outside a request: LANGUAGE
   });
 });

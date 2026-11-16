@@ -8,7 +8,7 @@ rmSync("dist", { recursive: true, force: true });
 mkdirSync("dist", { recursive: true });
 
 const common = { outdir: "dist", bundle: true, format: "iife", minify: true, sourcemap: false };
-await build({ ...common, entryPoints: { taskpane: "src/taskpane/taskpane.ts" }, target: "es2017" });
+await build({ ...common, entryPoints: { taskpane: "src/taskpane/main.ts" }, target: "es2017" });
 // The event handlers run in classic Outlook's JavaScript-only runtime (no DOM, older engine): conservative syntax,
 // async/await is compiled to generators. test/bundle.test.ts checks the result.
 await build({ ...common, entryPoints: { commands: "src/commands/commands.ts" }, target: "es2016" });

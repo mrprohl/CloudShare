@@ -168,8 +168,9 @@ Notes:
     client secret, `CloudShare Server`);
   - do **not** change or delete it while the add-in is deployed. Removing the add-in and deploying it again creates
     a new one; the old one can then be deleted.
-- The manifest's name, description and ribbon tooltip come from the configured language (`LANGUAGE`). Microsoft
-  365 reads the manifest with a delay – the pane itself and its texts change immediately after a stack update.
+- The manifest's description and ribbon texts are English with an `Override` per further language, so the ribbon
+  follows the Outlook language. Microsoft 365 reads the manifest with a delay – the pane itself and its texts change
+  immediately after a stack update.
 - The send check (Smart Alert) is part of the manifest; nothing else has to be enabled per user. Users cannot remove
   a centrally deployed add-in that is set to *fixed*.
 - **New manifest version** (e.g. 1.1 added the button for mails being read): Microsoft 365 picks up the changed

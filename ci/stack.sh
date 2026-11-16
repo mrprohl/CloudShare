@@ -154,7 +154,7 @@ smoke() {
     || fail "manifest.xml without https://localhost/taskpane.html"
   grep -q '00000000-0000-0000-0000-000000000002' <<<"$manifest" && ok "manifest.xml contains the Entra client ID" \
     || fail "Entra client ID missing in manifest.xml"
-  if curl -sk https://localhost/manifest.xml https://localhost/taskpane.html https://localhost/commands.js | grep -q '%%'; then
+  if curl -sk https://localhost/manifest.xml https://localhost/taskpane.html https://localhost/taskpane.en.html https://localhost/commands.js | grep -q '%%'; then
     fail "unreplaced %%placeholders%% in the add-in files"
   else ok "all placeholders replaced"; fi
   local pane
@@ -163,6 +163,11 @@ smoke() {
     && curl -sk https://localhost/commands.js | grep -q 'alert.button'; then
     ok "texts of LANGUAGE=de in the add-in files"
   else fail "language texts missing in the add-in files"; fi
+  # The add-in follows the client's language: one page per language, the manifest in English with Overrides.
+  grep -q '<html lang="en">' <<<"$(curl -sk https://localhost/taskpane.en.html)" \
+    && ok "taskpane.en.html for English clients" || fail "taskpane.en.html missing"
+  grep -q '<DefaultLocale>en-GB</DefaultLocale>' <<<"$manifest" && grep -q '<bt:Override Locale="de-DE"' <<<"$manifest" \
+    && ok "manifest.xml in English with German Overrides" || fail "language Overrides missing in manifest.xml"
   grep -q 'MessageReadCommandSurface' <<<"$manifest" && grep -q 'https://localhost/taskpane.html?view=read' <<<"$manifest" \
     && ok "manifest.xml has the button for mails being read" || fail "read button missing in manifest.xml"
   grep -q 'id="help-toggle"' <<<"$pane" && grep -q 'Häufige Fragen' <<<"$pane" \

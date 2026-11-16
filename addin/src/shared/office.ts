@@ -1,4 +1,4 @@
-import { t } from "./i18n";
+import { language, t } from "./i18n";
 import { toSsoError } from "./sso";
 
 /** Replaced with the real base URL at container start (see docker/entrypoint.sh). */
@@ -150,6 +150,7 @@ export class ApiError extends Error {
 
 export async function api<T>(path: string, init: RequestInit = {}, token?: string): Promise<T> {
   const headers: Record<string, string> = { ...(init.headers as Record<string, string> | undefined) };
+  headers["X-CloudShare-Language"] = language(); // error messages in the add-in's language (server/src/i18n.ts)
   if (token) headers.Authorization = `Bearer ${token}`;
   if (init.body && typeof init.body === "string") headers["Content-Type"] = "application/json";
   const res = await fetch(API_BASE + path, { ...init, headers });
