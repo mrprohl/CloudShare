@@ -38,6 +38,7 @@ const accountToggle = $<HTMLButtonElement>("account-toggle");
 const accountMenu = $<HTMLDivElement>("account-menu");
 const accountStorage = $<HTMLParagraphElement>("account-storage");
 const disconnectButton = $<HTMLButtonElement>("disconnect");
+const disconnectText = $<HTMLSpanElement>("disconnect-text");
 const attachmentList = $<HTMLDivElement>("attachments");
 const pickedList = $<HTMLDivElement>("picked");
 const noAttachments = $<HTMLParagraphElement>("no-attachments");
@@ -204,7 +205,7 @@ function showConnection(status: ConnectionStatus) {
   connectView.hidden = status.connected;
   sendView.hidden = !status.connected;
   connectHint.hidden = true;
-  // The bottom bar shows the Nextcloud account; its menu the storage and "Verbindung trennen".
+  // The bottom bar shows the Nextcloud account (menu: settings, help, disconnect) and its storage on the right.
   accountText.textContent = status.loginName ?? "";
   const storage = storageText(status);
   accountStorage.textContent = storage;
@@ -298,10 +299,22 @@ async function disconnect(e: Event) {
 }
 // --- Account menu (bottom bar, like the profile menu in Outlook) ----------------------
 
-/** Opens or closes the account menu above the bar: storage of the account and "Verbindung trennen". */
+/** Opens or closes the account menu above the bar: "Einstellungen", "Hilfe", "Verbindung trennen". */
 function showAccountMenu(open: boolean) {
   accountMenu.hidden = !open;
   accountToggle.setAttribute("aria-expanded", String(open));
+  if (!open) armDisconnect(false);
+}
+
+/**
+ * "Verbindung trennen" takes two clicks, like "Zurückziehen": the first one turns it into "Wirklich trennen?" (red)
+ * for 4 s, the second one disconnects. Closing the menu disarms it.
+ */
+let disconnectArmedUntil = 0;
+function armDisconnect(armed: boolean) {
+  disconnectArmedUntil = armed ? Date.now() + 4000 : 0;
+  disconnectText.textContent = t(armed ? "disconnect.confirm" : "disconnect.link");
+  disconnectButton.classList.toggle("confirm", armed);
 }
 accountToggle.addEventListener("click", () => {
   const open = accountMenu.hidden === true;
@@ -320,6 +333,13 @@ document.addEventListener("click", (event) => {
   }
 });
 disconnectButton.addEventListener("click", (event) => {
+  if (Date.now() > disconnectArmedUntil) {
+    armDisconnect(true);
+    setTimeout(() => {
+      if (disconnectArmedUntil && Date.now() >= disconnectArmedUntil) armDisconnect(false);
+    }, 4100);
+    return;
+  }
   showAccountMenu(false);
   void disconnect(event);
 });
@@ -1485,7 +1505,7 @@ function selectTab(tab: Tab, load = true) {
   if (tab !== "send" && load) loadShares().catch((err) => setStatus(errorMessage(err), "error"));
 }
 
-/** What covers the current tab: the user guide ("?" at the top right), the settings (gear) or nothing. */
+/** What covers the current tab: the user guide or the settings (both in the account menu), or nothing. */
 type Overlay = "help" | "settings" | null;
 
 /** Shows the guide or the settings in place of the current tab; closed, that tab shows again. */
@@ -1505,14 +1525,16 @@ const showHelp = (open: boolean) => showOverlay(open ? "help" : null);
 tabSend.addEventListener("click", () => selectTab("send"));
 tabMail.addEventListener("click", () => selectTab("mail"));
 tabShares.addEventListener("click", () => selectTab("shares"));
+// "Hilfe" in the account menu opens the guide in place of the current tab; "×" closes it, the focus goes back to the
+// account.
 helpToggle.addEventListener("click", () => {
-  const open = panelHelp.hidden === true;
-  showHelp(open);
-  if (open) helpClose.focus(); // screen readers start in the guide
+  showAccountMenu(false);
+  showHelp(true);
+  helpClose.focus(); // screen readers start in the guide
 });
 helpClose.addEventListener("click", () => {
   showHelp(false);
-  helpToggle.focus();
+  accountToggle.focus();
 });
 
 const settingsView = initSettings({

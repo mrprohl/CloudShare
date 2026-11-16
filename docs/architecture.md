@@ -564,8 +564,8 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   language). Accessibility is tested with axe (WCAG 2 A/AA) in CI.
 - Layout and labels must survive longer translations: buttons and labels wrap or are short, the full text is in
   `title`/`aria-label`.
-- **Help** ("?" at the right of the bottom bar, `#help-toggle`; `#panel-help` in `taskpane.html`, shown in place of the
-  current tab, closed by "×", the "?" or a tab): a user guide for everyday users – short `<details>`
+- **Help** ("Hilfe" in the account menu of the bottom bar, `#help-toggle`; `#panel-help` in `taskpane.html`, shown in place of the
+  current tab, closed by "×" or a tab): a user guide for everyday users – short `<details>`
   sections (getting started, sending files, password and channel, confidential message, receiving files, "My shares",
   FAQ), the most common one open. Texts in the language files (`help.*`); admins put their own support contact into
   `help.support` (`/config/locales`). Plain words, the button names of the pane, no technical terms.

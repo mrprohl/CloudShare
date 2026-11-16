@@ -124,8 +124,8 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 }
 /*
  * Bottom bar under every tab, the guide and the settings – one quiet line: the account as a menu button on the left
- * (like Outlook's profile menu: storage and "Verbindung trennen" open above it), help and settings on the right. Fixed
- * height, so the button above can stack on it; a long account name is shortened instead of wrapping.
+ * (like the menus of Outlook and OneDrive: "Einstellungen", "Hilfe", "Verbindung trennen" with icons open above it),
+ * the storage on the right. Fixed height, so the button above can stack on it; a long account name is shortened.
  */
 :root { --bar-height: 44px; }
 .account-bar {
@@ -159,18 +159,17 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
   padding: 4px; background: var(--bg1); border: 1px solid var(--stroke2); border-radius: 6px;
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.14), 0 0 2px rgba(0, 0, 0, 0.12);
 }
-.account-storage { margin: 0; padding: 6px 8px 4px; color: var(--fg2); }
 .account-menu-item {
-  display: block; width: 100%; padding: 6px 8px; border: 0; border-radius: 4px; background: transparent;
-  color: var(--fg1); font: 400 14px/20px var(--font); text-align: left; cursor: pointer;
+  display: flex; align-items: center; gap: 12px; width: 100%; padding: 6px 12px 6px 8px; border: 0; border-radius: 4px;
+  background: transparent; color: var(--fg1); font: 400 14px/20px var(--font); text-align: left; cursor: pointer;
 }
+.account-menu-item .icon { width: 20px; height: 20px; flex: none; color: var(--fg1); }
 .account-menu-item:hover { background: var(--bg1-hover); }
 .account-menu-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-.account-actions { display: flex; flex: none; gap: 2px; }
-.account-actions .btn-subtle { margin: 0; color: var(--fg2); }
-.account-actions .btn-subtle .icon { color: var(--fg2); }
-.account-actions .btn-subtle:hover .icon, .account-actions [aria-expanded="true"] .icon { color: var(--brand-fg); }
-.account-actions [aria-expanded="true"] { background: var(--bg1-pressed); }
+/* "Verbindung trennen" after the first click: "Wirklich trennen?" in red until the second click (or 4 s). */
+.account-menu-item.confirm, .account-menu-item.confirm .icon { color: var(--danger-fg); }
+/* Storage of the account, quiet on the right of the bar. */
+.account-storage { flex: none; margin: 0; padding: 0 4px; color: var(--fg2); white-space: nowrap; }
 
 .empty-state { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 24px; text-align: center; }
 .empty-icon { width: 48px; height: 48px; color: var(--brand-fg); }
