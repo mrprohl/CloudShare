@@ -42,10 +42,10 @@ ask ATTACHMENT_THRESHOLD_MB "CloudShare from attachment size (MB)"        "5"
 ask ATTACHMENT_POLICY       "Large attachments: enforce or suggest"       "suggest"
 ask SHARE_EXPIRE_DAYS       "Link valid, default (days)"                  "14"
 ask SHARE_MAX_EXPIRE_DAYS   "Link valid, maximum (days)"                  "90"
-echo "Mail card footer – placeholders from the M365 profile: {displayName} {givenName} {surname} {jobTitle}"
-echo '  {department} {company} {email} {phone} {mobile} {office}; \n = new line. Enter = no footer, e.g.'
+echo "Signature of the password mails – placeholders from the M365 profile: {displayName} {givenName} {surname} {jobTitle}"
+echo '  {department} {company} {email} {phone} {mobile} {office}; \n = new line. Enter = none, e.g.'
 echo '  {displayName} · {jobTitle}\n{company} · Tel. {phone} · {email}'
-ask MAIL_FOOTER             "Footer template (empty = none)"              ""
+ask MAIL_FOOTER             "Signature template (empty = none)"           ""
 echo; echo "-- Microsoft Entra ID (app registration \"CloudShare\") --"
 ask ENTRA_TENANT_ID     "Directory (tenant) ID"     ""
 ask ENTRA_CLIENT_ID     "Application (client) ID"   ""

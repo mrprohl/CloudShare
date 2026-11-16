@@ -63,6 +63,7 @@ import { defaultTemplates, render, smsFiles, templatesFor } from "./templates.js
 import { clampInt, isEmailAddress } from "./limits.js";
 import { formatDate, locale, t, withRequestLanguage } from "./i18n.js";
 import { passwordProblem } from "./password.js";
+import { signatureHtml } from "./signature.js";
 import { availableSettings, defaultSettings, parseSettings, resetSettings, saveSettings, settingsFor } from "./settings.js";
 import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } from "./store.js";
 import {
@@ -360,7 +361,6 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     chunkSize: config.chunkSizeBytes,
     sendMaxAccessCount: config.sendMaxAccessCount,
     sendMaxAccessLimit: config.sendMaxAccessLimit,
-    mailFooter: config.mailFooter,
     trace: config.clientTrace,
     smsEnabled: smsEnabled(),
     smsDefaultCountry: config.smsDefaultCountry,
@@ -788,8 +788,13 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const files = t("mail.files", { count: ref.fileNames.length, name: ref.fileNames[0] });
       const customIntro = templates.mail_password_intro !== defaultTemplates().mail_password_intro ? templates.mail_password_intro : undefined;
       const subject = render(templates.mail_password_subject, { files, subject: ref.subject || ref.fileNames[0], sender_name: ref.senderName ?? "" });
+      // The signature as it is now (settings, profile) – the user sends this mail now.
+      const profile = await onBehalfOf(user, GRAPH_PROFILE_SCOPES)
+        .then(({ token }) => fetchProfile(token))
+        .catch(() => ({ email: user.upn, displayName: ref.senderName ?? "" }));
       const html = passwordMailHtml({ fileNames: ref.fileNames, sendUrl: send.url, maxAccessCount: ref.maxAccessCount, subject: ref.subject,
-        expireDays: config.sendExpireDays, introTemplate: customIntro, senderName: ref.senderName, expiresOn: formatDate(send.expiresAt) });
+        expireDays: config.sendExpireDays, introTemplate: customIntro, senderName: ref.senderName, expiresOn: formatDate(send.expiresAt),
+        signature: signatureHtml(settingsFor(user.oid).signature, profile) });
       const { token } = await onBehalfOf(user, GRAPH_SCOPES);
       for (const recipients of mails) await sendMail(token, recipients, subject, html, ref.from);
 
@@ -917,12 +922,16 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       await setJobPasswordTo(req.params.id, passwordTo.trim());
     }
 
-    // Name and department of the sender for the templates (SMS text, password mail, download confirmation). Optional:
-    // without them the default template is used.
+    // Name and department of the sender for the templates (SMS text, password mail, download confirmation) and the
+    // signature of the password mail (own one from the settings or MAIL_FOOTER, filled from the profile). Without the
+    // profile: the default template and the signature with what is known (placeholders of the profile dropped).
     await onBehalfOf(user, GRAPH_PROFILE_SCOPES)
       .then(({ token }) => fetchProfile(token))
-      .then((profile) => setJobSender(req.params.id, profile.displayName, profile.department))
-      .catch((err) => req.log.warn({ err, user: user.upn }, "Profile for templates not readable"));
+      .then((profile) => setJobSender(req.params.id, profile.displayName, profile.department, signatureHtml(settingsFor(user.oid).signature, profile)))
+      .catch(async (err) => {
+        req.log.warn({ err, user: user.upn }, "Profile for templates not readable");
+        await setJobSender(req.params.id, "", "", signatureHtml(settingsFor(user.oid).signature, { email: user.upn })).catch(() => undefined);
+      });
 
     const { token, expiresAt } = await onBehalfOf(user, GRAPH_SCOPES);
     await armJob(req.params.id, { graphToken: token, tokenExpiresAt: expiresAt, armedAt: Date.now(), mailbox });

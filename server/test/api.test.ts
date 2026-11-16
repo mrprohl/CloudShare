@@ -709,6 +709,18 @@ describe("password by SMS (seven.io)", () => {
     expect(getJob(id)).toMatchObject({ passwordSms: "+491707654321", senderName: "Anna Muster", department: "Vertrieb" });
   });
 
+  it("fixes the sender's signature for the password mail when arming (own one, filled from the profile)", async () => {
+    const { resetSettings, saveSettings } = await import("../src/settings.js");
+    saveSettings("oid-anna", { signature: { format: "text", content: "{displayName} · {department}\n<Team>" } });
+    try {
+      const id = await createJob("oid-anna", "anna@example.test", "a.pdf", "https://vault/#/send/x", 3, "send-10");
+      await app.inject({ method: "POST", url: `/api/jobs/${id}/arm`, headers: as("anna"), payload: {} });
+      expect(getJob(id)?.signature).toBe("Anna Muster · Vertrieb<br>&lt;Team&gt;");
+    } finally {
+      resetSettings("oid-anna");
+    }
+  });
+
   it("accepts delivery reports only with the secret and updates the status idempotently", async () => {
     const { recordDelivery: record, deliveryFor: delivery } = await import("../src/deliveries.js");
     await record(["tok-dlr"], { owner: "oid-anna", channel: "sms", to: "+49 170 •••• 67", at: Date.now(), messageId: "771", status: "submitted" });
@@ -978,12 +990,12 @@ describe("personal settings (/api/settings)", () => {
   it("keeps each user's own choices and only those – a reset brings back the defaults", async () => {
     const saved = await put("tom", {
       channels: ["mail", "sms"], defaultChannel: "sms", downloadNotice: false, language: "en",
-      signature: { format: "html", content: "<p><b>Tom</b></p>" },
+      signature: { format: "html", nodes: [{ tag: "p", attrs: { onclick: "x()" }, children: [{ tag: "b", children: ["Tom"] }] }, { tag: "script", children: [] }] },
     });
     expect(saved.statusCode).toBe(200);
     expect(saved.json().settings).toMatchObject({
       channels: ["mail", "sms"], defaultChannel: "sms", downloadNotice: false, uploadNotice: true, language: "en",
-      signature: { format: "html", content: "<p><b>Tom</b></p>" },
+      signature: { format: "html", nodes: [{ tag: "p", children: [{ tag: "b", children: ["Tom"] }] }] }, // cleaned on the server too
     });
     expect((await get("tom")).json().settings.defaultChannel).toBe("sms");
     expect((await get("sina")).json().settings.defaultChannel).toBe("recipients"); // other users untouched
@@ -1003,6 +1015,7 @@ describe("personal settings (/api/settings)", () => {
       { language: "xx" },
       { downloadNotice: "yes" },
       { signature: { format: "pdf", content: "x" } },
+      { signature: { format: "html", content: "<p>markup</p>" } },
       { signature: { format: "text", content: "x".repeat(20_001) } },
     ]) {
       const res = await put("tom", payload);

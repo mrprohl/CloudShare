@@ -51,7 +51,7 @@ Container "cloudshare" (Node 24, read-only)
 
 | Part | Files | Notes |
 |---|---|---|
-| Taskpane | `taskpane.ts/.html/.css`, `mailCard.ts`, `footer.ts` | Plain TypeScript, bundled as IIFE (esbuild, ES2017) |
+| Taskpane | `taskpane.ts/.html/.css`, `mailCard.ts`, `settings.ts`, `signature.ts` | Plain TypeScript, bundled as IIFE (esbuild, ES2017) |
 | Event handlers | `commands.ts` → `commands.js` | ES2016 bundle for classic Outlook's JavaScript-only runtime |
 | Shared add-in code | `shared/office.ts`, `shared/password.ts`, `shared/sso.ts`, `shared/i18n.ts` | Office.js helpers, draft state, SSO token cache, password rules, `t()` for the texts |
 | Languages | `locales/<language>.json`, `server/src/i18n.ts` | Texts of every language; loading, fallback, `t()`, injection into the add-in files ([2.8](#28-languages)) |
@@ -360,11 +360,16 @@ add-in, `server/src/settings.ts`, store `settings`):
 - **Language** (`auto` or a language): kept in `roamingSettings` too, so `i18n.ts` (`preferredLanguage`) has it in
   the taskpane and in the event handlers before any request; loaded from another computer, the pane reloads once
   (`reloadOnce`), saved in the pane it reloads at once. Mails and SMS stay in `LANGUAGE`.
-- **Signature** (`signature: { format, content }` or null = `MAIL_FOOTER`): text is filled like `MAIL_FOOTER`
-  (`fillFooter`), HTML is pasted into an editable box. `signature.ts` cleans it with the browser's parser on paste, on
-  save and before insertion – an allow-list of elements, attributes and CSS properties; links only `http(s):`,
-  `mailto:`, `tel:`; pictures only `https:`; no scripts, event handlers, `url()`, comments or Office XML elements. The
-  card shows it as it is, text mails get its text version (`signatureText`). At most 20,000 characters.
+- **Signature of the password mails** (`{ format: "text", content }`, `{ format: "html", nodes }` or null =
+  `MAIL_FOOTER`), so recipients see who the password comes from; the link card in the message carries none. Text is
+  filled from the profile like `MAIL_FOOTER` always was (`fillTemplate`). A formatted one is pasted into an editable
+  box: the browser inserts it, then `addin/src/taskpane/signature.ts` cleans the box's nodes in place (`cleanInPlace`
+  – no clipboard markup is ever parsed) and stores them as a node tree (`signatureNodes`). `server/src/signature.ts`
+  cleans the tree again (`cleanSignatureNodes`) and builds the HTML itself, escaping every text and attribute
+  (`renderSignatureNodes`) – the same allow-list of elements, attributes and CSS properties; links only `http(s):`,
+  `mailto:`, `tel:`; pictures only `https:`; no scripts, event handlers, `url()` or Office XML elements. When the job
+  is armed, `signatureHtml` fixes it with the profile of that moment (`PasswordJob.signature`); "send again" builds it
+  anew. At most 20,000 characters.
 
 `settingsFor(oid)` merges `config.userDefaults` (`DEFAULT_*`), the stored fields and what the server offers
 (`availableSettings`: notices switched on, SMS with seven.io, the add-in languages) – so a user can never turn on what
@@ -408,9 +413,9 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | Route | Purpose |
 |---|---|
 | `GET /.well-known/microsoft-officeaddins-allowed.json` | Allows SSO/network for `commands.js` in classic Outlook ([5](#5-outlook-runtimes-and-pitfalls)) |
-| `GET /api/config` | Public settings for the add-in (threshold, policy, limits, footer, `trace`, `smsEnabled`, message limits) |
+| `GET /api/config` | Public settings for the add-in (threshold, policy, limits, `trace`, `smsEnabled`, message limits) |
 | `GET/POST /api/trace` | Diagnostics of the send handler, only with `CLIENT_TRACE=true` (no login) |
-| `GET /api/profile` | Sender's Microsoft 365 profile for `MAIL_FOOTER` |
+| `GET /api/profile` | Sender's Microsoft 365 profile (the server reads it itself for templates and signature) |
 | `GET/PUT/DELETE /api/settings` | Personal settings (2.11): `{ settings, defaults, available }`; `PUT` changes single fields, `DELETE` resets |
 | `GET /api/nextcloud/status` | Connected?, storage (free/used/total), `passwordEnforced` |
 | `POST /api/nextcloud/connect`, `…/connect/:id/poll`, `DELETE /api/nextcloud/connection` | Login Flow v2, disconnect |
@@ -564,7 +569,8 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   `smsProblemMailHtml`) and `notices.ts` (download confirmation: the template text above a card with file, time and
   validity). Tables and inline styles only, so they render in classic Outlook, Outlook on the web, Gmail and on phones.
   The colours are duplicated in `mailCard.ts` and `mailLayout.ts`; keep them in sync. Plain-text mails get a text
-  version of the link card. `MAIL_FOOTER` (optional) is a template filled from the sender's profile (`footer.ts`).
+  version of the link card. The password mail ends with the sender's signature (2.11; `MAIL_FOOTER` filled from the
+  profile unless the user set an own one); the link card carries none.
 - Icons (`addin/assets/icon-*.png`): the rings of the Nextcloud logo, taken unchanged from
   its SVG path, with an upload arrow in the hole of the middle ring. Rendered by `addin/scripts/render-icons.ps1`
   (Windows PowerShell, System.Drawing; drawn at 8x and scaled down). Icon URLs in the

@@ -278,7 +278,7 @@ deployed again.
 | `SMS_NOTICE` | like `DOWNLOAD_NOTICE` | `true`: note to the sender when seven.io reports a password SMS as not delivered later (same application permission `Mail.Send`; unset it follows `DOWNLOAD_NOTICE`, which switched it before). A note about an SMS seven.io refuses right away needs no switch |
 | `CLEANUP_AFTER_DAYS` | `0` | Uploaded files go to the Nextcloud trash this many days after their link expired or was revoked; `off` = never. Received files are never deleted |
 | `DATA_RETENTION_DAYS` | `365` | Entries in `/data/cloudshare.db` not changed for this many days are deleted (daily, then the file is shrunk); `off` = never. A safety net – entries normally leave on their own (jobs after 7 days, links' data when they expire, SMS states after 120 days). Nextcloud connections and the cleanup list are never affected. At least `SHARE_MAX_EXPIRE_DAYS` |
-| `MAIL_FOOTER` | empty | Optional footer of the card, filled from the sender's Microsoft 365 profile, e.g. `'{displayName} · {jobTitle}\n{company} · Tel. {phone} · {email}'`; placeholders and rules in `cloudshare.env.example`. Empty = no footer (`setup.sh`: Enter) |
+| `MAIL_FOOTER` | empty | Signature of the password mails for users without an own one (settings), filled from the sender's Microsoft 365 profile, e.g. `'{displayName} · {jobTitle}\n{company} · Tel. {phone} · {email}'` – recipients see who the password comes from; placeholders and rules in `cloudshare.env.example`. Empty = no signature (`setup.sh`: Enter). The link card in the message carries none |
 | `VAULTWARDEN_URL`, `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD` | – | Vaultwarden service account |
 | `RATE_LIMIT_PER_MINUTE` | `600` | Requests per minute and user |
 | `CLIENT_TRACE` | off | Diagnostics, see [Troubleshooting](#troubleshooting) |
@@ -375,15 +375,16 @@ on the server per Microsoft account (encrypted like everything in `/data/cloudsh
 | Send the password to | which ways the pane offers (recipients of the message, another address, SMS) and which one a new message starts with | `DEFAULT_PASSWORD_CHANNELS`, `DEFAULT_PASSWORD_CHANNEL` |
 | Notifications | download confirmation, files received, SMS not delivered – each on or off | `DEFAULT_DOWNLOAD_NOTICE`, `DEFAULT_UPLOAD_NOTICE`, `DEFAULT_SMS_NOTICE` |
 | Language | as in Outlook, or a fixed language of the add-in | `DEFAULT_LANGUAGE` |
-| Signature below the link | the organisation's (`MAIL_FOOTER`), an own text (profile placeholders allowed) or an own formatted one pasted from Outlook | `MAIL_FOOTER` |
+| Signature of the password mail | at the end of the automatic mail with the password, so recipients see who it comes from: the organisation's (`MAIL_FOOTER`), an own text (profile placeholders allowed) or an own formatted one pasted from Outlook. The link card in the message carries no signature | `MAIL_FOOTER` |
 
 Only what users changed is stored, so a new starting value in `env/cloudshare.env` reaches everyone who left that
 setting alone; "Reset" brings back the starting values. What the organisation decides stays out of reach: a notice
 switched off on the server is not offered, SMS only with seven.io, and the SMS rules (`SMS_ALLOWED_COUNTRIES`,
 `SMS_ALLOWED_NUMBERS`, `SMS_BLOCKED_NUMBERS`) apply whatever a user chooses. A formatted signature is cleaned in the
-pane before it is stored or inserted: formatting, links (web, mail, phone) and pictures from `https` addresses stay;
-scripts, event handlers, styles that load anything and Outlook's embedded pictures are removed. Mails and SMS that
-CloudShare sends itself keep `LANGUAGE`.
+pane right after pasting and stored as a tree of elements, not as markup; the server checks it again and builds the
+mail's HTML itself: formatting, links (web, mail, phone) and pictures from `https` addresses stay; scripts, event
+handlers, styles that load anything and Outlook's embedded pictures are removed. The signature is fixed when the mail
+is sent (profile data of that moment). Mails and SMS that CloudShare sends itself keep `LANGUAGE`.
 
 ## Languages
 

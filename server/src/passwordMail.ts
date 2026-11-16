@@ -28,6 +28,8 @@ export interface PasswordMailContent {
    */
   introTemplate?: string;
   senderName?: string;
+  /** The sender's signature (HTML from signature.ts, already safe) – below the card, so recipients see who sent it. */
+  signature?: string;
 }
 
 export function passwordMailHtml(mail: PasswordMailContent): string {
@@ -47,10 +49,11 @@ export function passwordMailHtml(mail: PasswordMailContent): string {
       details: [accessText(mail.maxAccessCount), expiry, t("mail.enterPassword")].join(" · "),
     },
     // The plain link as well – some mail clients block buttons or show them without colours.
-    after: smallPrint(
-      `${escapeHtml(t("mail.buttonFallback"))} <a href="${escapeHtml(mail.sendUrl)}" style="color:#0f6cbd;">` +
-        `${escapeHtml(mail.sendUrl)}</a>`,
-    ),
+    after:
+      smallPrint(
+        `${escapeHtml(t("mail.buttonFallback"))} <a href="${escapeHtml(mail.sendUrl)}" style="color:#0f6cbd;">` +
+          `${escapeHtml(mail.sendUrl)}</a>`,
+      ) + (mail.signature ? `<div style="${TEXT_STYLE}margin:16px 0 0;">${mail.signature}</div>` : ""),
   });
 }
 

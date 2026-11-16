@@ -20,10 +20,8 @@ import {
 import { checkPassword, generatePassword } from "../shared/password";
 import { locale, t } from "../shared/i18n";
 import { errorText } from "../shared/sso";
-import { EMPTY_PROFILE, fillFooter, hasPlaceholders, type Profile } from "./footer";
-import { filesCard, filesText, messageCard, messageText, requestCard, requestText, type Footer } from "./mailCard";
+import { filesCard, filesText, messageCard, messageText, requestCard, requestText } from "./mailCard";
 import { initSettings, loadSettings, userSettings } from "./settings";
-import { sanitizeSignature, signatureText } from "./signature";
 
 // All visible texts come from locales/<language>.json (t(), see shared/i18n.ts) and follow Outlook's terminology
 // ("Nachricht"/"message", "Kennwort"/"password").
@@ -104,9 +102,6 @@ const statusBar = $<HTMLDivElement>("status");
 const readMode = new URLSearchParams(location.search).get("view") === "read";
 
 let serverConfig: ServerConfig;
-/** Footer of the card: the own signature (settings) or MAIL_FOOTER, placeholders filled from the profile (footer.ts). */
-let mailFooter: Footer = "";
-let footerReady: Promise<void> = Promise.resolve();
 /** Files picked from the computer, not yet uploaded. */
 let pickedFiles: File[] = [];
 /** Uploads or insertions in progress – the check for deleted links waits meanwhile. */
@@ -806,33 +801,6 @@ const formatDate = (isoDate: string) => new Date(isoDate).toLocaleDateString(loc
 /** Empty paragraph after an inserted card, so the cursor ends up below it (see insertIntoBody). */
 const AFTER_CARD = "<p style=\"margin:0;\"><br></p>";
 
-/**
- * The footer of the card: an own HTML signature (settings) as it is, else the own text signature or MAIL_FOOTER with
- * its placeholders filled from the sender's Microsoft 365 profile. If the profile cannot be read, name and address
- * known to Outlook are used, so the footer never shows raw placeholders.
- */
-async function resolveFooter() {
-  const own = userSettings().signature;
-  if (own?.format === "html") {
-    const html = sanitizeSignature(own.content);
-    mailFooter = html ? { html, text: signatureText(html) } : "";
-    return;
-  }
-  const template = own?.format === "text" ? own.content : serverConfig.mailFooter;
-  if (!hasPlaceholders(template)) {
-    mailFooter = template;
-    return;
-  }
-  let profile: Profile;
-  try {
-    profile = await api<Profile>("/api/profile", {}, await getToken());
-  } catch {
-    const user = Office.context.mailbox.userProfile;
-    profile = { ...EMPTY_PROFILE, displayName: user.displayName, email: user.emailAddress };
-  }
-  mailFooter = fillFooter(template, profile);
-}
-
 /** Token of a share link (last path segment) – survives escaping or rewriting of the host in the body. */
 const shareToken = (url: string) => url.replace(/\/+$/, "").split("/").pop() || url;
 
@@ -886,10 +854,9 @@ async function insertLinks(results: UploadResult[]) {
   const files = results.map((r) => ({ name: r.fileName, size: r.size, url: r.shareUrl }));
   const expire = formatDate(results[0].expireDate);
   const withPassword = !isWithoutPassword(results[0]);
-  await footerReady;
   await insertIntoBody(
-    filesCard(files, expire, mailFooter, formatSize, withPassword),
-    filesText(files, expire, mailFooter, formatSize, withPassword),
+    filesCard(files, expire, formatSize, withPassword),
+    filesText(files, expire, formatSize, withPassword),
     shareToken(results[0].shareUrl),
   );
 }
@@ -1347,10 +1314,9 @@ async function insertRequest() {
       // Same password and password mail as the files of this mail.
       await rememberShareChoice(result.jobId);
       const expire = formatDate(result.expireDate);
-      await footerReady;
       await insertIntoBody(
-        requestCard(result.shareUrl, expire, mailFooter),
-        requestText(result.shareUrl, expire, mailFooter),
+        requestCard(result.shareUrl, expire),
+        requestText(result.shareUrl, expire),
         shareToken(result.shareUrl),
       );
       setStatus(t("request.inserted"), "success");
@@ -1401,10 +1367,9 @@ async function insertMessage() {
       // Same password and password mail as the files of this mail (one step).
       await rememberShareChoice(result.jobId);
       const expire = formatDate(result.expireDate);
-      await footerReady;
       await insertIntoBody(
-        messageCard(result.shareUrl, expire, mailFooter),
-        messageText(result.shareUrl, expire, mailFooter),
+        messageCard(result.shareUrl, expire),
+        messageText(result.shareUrl, expire),
         shareToken(result.shareUrl),
       );
       messageInput.value = "";
@@ -1470,8 +1435,6 @@ const settingsView = initSettings({
   errorMessage,
   onChanged: () => {
     if (readMode) return;
-    // A new signature applies to what is inserted next.
-    footerReady = resolveFooter().catch(() => undefined);
     // New ways for "Kennwort senden an": a mail without links yet switches to the preselected way if its own is no
     // longer offered; a mail with links keeps its way (the password job already uses it).
     void readDraftState().then((state) => {
@@ -1975,18 +1938,17 @@ async function linkAgain(share: ShareItem, button: HTMLButtonElement) {
     await rememberShareChoice(result.jobId, isWithoutPassword(result));
     const expire = formatDate(result.expireDate);
     const withPassword = !isWithoutPassword(result);
-    await footerReady;
     if (result.kind === "request") {
       await insertIntoBody(
-        requestCard(result.shareUrl, expire, mailFooter),
-        requestText(result.shareUrl, expire, mailFooter),
+        requestCard(result.shareUrl, expire),
+        requestText(result.shareUrl, expire),
         shareToken(result.shareUrl),
       );
     } else {
       const files = [{ name: result.fileName, size: result.size, url: result.shareUrl }];
       await insertIntoBody(
-        filesCard(files, expire, mailFooter, formatSize, withPassword),
-        filesText(files, expire, mailFooter, formatSize, withPassword),
+        filesCard(files, expire, formatSize, withPassword),
+        filesText(files, expire, formatSize, withPassword),
         shareToken(result.shareUrl),
       );
     }
@@ -2117,7 +2079,6 @@ Office.onReady(async () => {
     // e.g. sign-in not possible yet – the connection check below reports that
   }
   if (readMode) return startReadView();
-  footerReady = resolveFooter().catch(() => undefined); // in the background – needed when a link is inserted
 
   const state = await readDraftState();
   expireInput.value = String(serverConfig.defaultExpireDays);

@@ -89,6 +89,8 @@ export interface PasswordJob {
   /** Sender's display name and department (from the profile when arming) – templates and their selection. */
   senderName?: string;
   department?: string;
+  /** Sender's signature for the password mail (HTML from signature.ts, fixed when arming). */
+  signature?: string;
   /** How often the password link can be opened (jobs created before this field existed: unknown). */
   maxAccessCount?: number;
   /**
@@ -274,11 +276,12 @@ export async function setJobPasswordTo(id: string, passwordTo: string | undefine
   jobs.save(id);
 }
 
-/** Sender's name and department, read from the profile when arming (templates). */
-export async function setJobSender(id: string, senderName: string, department: string): Promise<void> {
+/** Sender's name and department, read from the profile when arming (templates), and the signature of the password mail. */
+export async function setJobSender(id: string, senderName: string, department: string, signature = ""): Promise<void> {
   const job = jobs.get(id)!;
   job.senderName = senderName || undefined;
   job.department = department || undefined;
+  job.signature = signature || undefined;
   jobs.save(id);
 }
 
@@ -437,7 +440,7 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
             subject: render(t.mail_password_subject, { files: label, subject: message.subject || files[0], sender_name: job.senderName ?? "" }),
             html: passwordMailHtml({ fileNames: files, sendUrl: part.sendUrl, maxAccessCount: part.maxAccessCount,
               subject: message.subject, expireDays: config.sendExpireDays, introTemplate: customIntro, senderName: job.senderName,
-              expiresOn: part.sendExpiresAt ? formatDate(part.sendExpiresAt) : undefined }),
+              expiresOn: part.sendExpiresAt ? formatDate(part.sendExpiresAt) : undefined, signature: job.signature }),
           });
           const tokens = (part.shares ?? []).map((s) => s.token);
 
@@ -474,7 +477,7 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
       } else {
         await sendMail(armed.graphToken, recipients, translate("mail.subjectLegacy", { subject: sent.subject || job.fileNames[0] }),
           passwordMailHtml({ fileNames: job.fileNames, sendUrl: job.sendUrl, maxAccessCount: job.maxAccessCount,
-            subject: sent.subject, expireDays: config.sendExpireDays }), sender);
+            subject: sent.subject, expireDays: config.sendExpireDays, signature: job.signature }), sender);
       }
       job.dispatched = true;
       job.armed = undefined;
