@@ -259,6 +259,11 @@ export interface DraftState {
   /** Mail with one password per "Als Link einfügen" step (every step has its own password and password mail). */
   separate?: boolean;
   /**
+   * The last step with a password: "Gleiches Kennwort wie zuvor" (preselected after it) puts the next link into this
+   * step – same password, same password mail or SMS. Only in the draft's session data, like `password` always was.
+   */
+  lastStep?: { id: string; password: string };
+  /**
    * Share tokens of the links CloudShare inserted (last URL segment). If none of them is left in the body, the user
    * deleted the links: password, job and tag are released. Drafts from before this field are never released.
    */

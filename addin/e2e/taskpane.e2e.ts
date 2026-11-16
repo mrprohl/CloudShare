@@ -327,7 +327,7 @@ test("language: a client language without texts falls back to English", async ({
 test("settings: the gear opens them in place of the tab; saved ways apply to the password at once", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Plan.pdf", 2 * MiB)], config: { smsEnabled: true } });
   await expect(page.locator("#send-view")).toBeVisible();
-  await page.locator("#panel-send .settings-toggle").click();
+  await page.locator("#settings-toggle").click();
   await expect(page.locator("#panel-settings")).toBeVisible();
   await expect(page.locator("#panel-send")).toBeHidden();
   await expect(page.locator("#settings-form")).toBeVisible();
@@ -372,7 +372,7 @@ test("settings: a new mail starts with the preselected way and offers only the c
 
 test("settings: an own signature is plain text with paragraphs – stored as typed, not in the link card", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Plan.pdf", 2 * MiB)] });
-  await page.locator("#panel-send .settings-toggle").click();
+  await page.locator("#settings-toggle").click();
   await expect(page.locator("#settings-signature-format option")).toHaveText(["Vorgabe der Organisation", "Eigene Signatur"]);
   await page.locator("#settings-signature-format").selectOption("text");
   const text = page.locator("#settings-signature-text");
@@ -402,7 +402,7 @@ test("settings: an own signature is plain text with paragraphs – stored as typ
 
   // Opened again: the text as typed.
   await page.click("#settings-close");
-  await page.locator("#panel-send .settings-toggle").click();
+  await page.locator("#settings-toggle").click();
   await expect(page.locator("#settings-signature-format")).toHaveValue("text");
   await expect(text).toHaveValue("Mit freundlichen Grüßen\n\n{displayName}\nTel. {phone}");
 
@@ -420,7 +420,7 @@ test("settings: a language chosen in the settings beats Outlook's", async ({ pag
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.locator("#tab-send")).toHaveText("Send");
   await expect.poll(() => calls.filter((c) => c.path === "/api/config").length).toBeGreaterThan(1);
-  await page.locator("#panel-send .settings-toggle").click();
+  await page.locator("#settings-toggle").click();
   await expect(page.locator("#settings-language")).toHaveValue("en");
   await expect(page.locator("#settings-language option")).toHaveText(["Default (as in Outlook)", "Deutsch", "English"]);
 });
@@ -494,9 +494,15 @@ test("uploads a large attachment in chunks, removes it and inserts the card", as
   expect(log.customProps.cloudshareJob).toBe("job-1"); // links the draft to the password mail
   expect(JSON.parse(log.session["cloudshare-state"])).toMatchObject({ jobId: "job-1", separate: true });
 
-  // The next "Als Link einfügen" gets its own password and password mail; only "Ohne Kennwort" is fixed now.
+  // The next link joins this one by default (same password, one password mail); "Zufällig" starts a new one. Only
+  // "Ohne Kennwort" is fixed now.
+  await expect(page.locator("#mode-same")).toBeChecked();
+  await expect(page.locator("#password")).toHaveValue(password);
+  await expect(page.locator("#password-hint")).toContainText("dasselbe Kennwort wie der letzte");
+  expect(JSON.parse((await officeLog(page)).session["cloudshare-state"]).lastStep.password).toBe(password);
   await expect(page.locator("#mode-random")).toBeEnabled();
   await expect(page.locator("#mode-none")).toBeDisabled();
+  await page.locator("label.radio").filter({ has: page.locator("#mode-random") }).click();
   await expect(page.locator("#password")).not.toHaveValue(password);
   await expect(page.locator("#password-hint")).toContainText("Der nächste Link erhält ein neues Kennwort");
   await shot(page, "after-upload");
@@ -554,25 +560,42 @@ test("Link gültig für / Kennwort abrufbar: capped at the maximum with a note, 
   await expect(page.locator("#validity-summary")).toHaveText("Link 10 Tage · Kennwort-Link 5 Tage, einmal abrufbar");
 });
 
-test("every 'Als Link einfügen' gets its own password; files of one click share it", async ({ page }) => {
+test("further links share the password by default; 'Zufällig' gives the next one its own", async ({ page }) => {
   const calls = await openTaskpane(page, {
     attachments: [attachment("a1", "Angebot.pdf", 1.5 * MiB), attachment("a2", "Plan.zip", 1.5 * MiB)],
   });
   await expect(page.locator("#submit")).toHaveText("2 Dateien als Link einfügen");
+  await expect(page.locator("#mode-same-row")).toBeHidden(); // nothing to share yet
   await page.click("#submit"); // click 1: both files together
   await expect(page.locator("#status")).toContainText("2 Links wurden eingefügt.");
 
+  // Click 2: a confidential message with "Gleiches Kennwort wie zuvor" (preselected) – same step, one password mail.
+  await expect(page.locator("#mode-same")).toBeChecked();
+  await page.locator("label").filter({ has: page.locator("#kind-message") }).click();
+  await page.fill("#message", "Zugangsdaten folgen");
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("eingefügt");
+
+  // Click 3: another file with a new random password – its own step and password mail.
+  await page.locator("label").filter({ has: page.locator("#kind-files") }).click();
+  await page.locator("label.radio").filter({ has: page.locator("#mode-random") }).click();
   await page.setInputFiles("#file", { name: "Nachtrag.pdf", mimeType: "application/pdf", buffer: Buffer.alloc(2000, 0x41) });
-  await page.click("#submit"); // click 2: another file
+  await page.click("#submit");
   await expect.poll(() => calls.filter((c) => c.path.endsWith("/complete")).length).toBe(3);
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
 
-  const bodies = calls.filter((c) => c.path.endsWith("/complete")).map((c) => JSON.parse(c.body!.toString()));
-  expect(bodies[0].step).toBe(bodies[1].step); // same click → same password and password mail
-  expect(bodies[0].password).toBe(bodies[1].password);
-  expect(bodies[2].step).not.toBe(bodies[0].step); // next click → new password, own password mail
-  expect(bodies[2].password).not.toBe(bodies[0].password);
-  expect(bodies[2].jobId).toBe("job-1"); // still one mail
+  const files = calls.filter((c) => c.path.endsWith("/complete")).map((c) => JSON.parse(c.body!.toString()));
+  const message = JSON.parse(calls.find((c) => c.path === "/api/messages")!.body!.toString());
+  expect(files[0].step).toBe(files[1].step); // same click → same password and password mail
+  expect(files[0].password).toBe(files[1].password);
+  expect(message.step).toBe(files[0].step); // "Gleiches Kennwort wie zuvor" → same step
+  expect(message.password).toBe(files[0].password);
+  expect(files[2].step).not.toBe(files[0].step); // "Zufällig" → new password, own password mail
+  expect(files[2].password).not.toBe(files[0].password);
+  expect(files[2].jobId).toBe("job-1"); // still one mail
+  // After it, "Gleiches Kennwort wie zuvor" means the new password.
+  await expect(page.locator("#mode-same")).toBeChecked();
+  await expect(page.locator("#password")).toHaveValue(files[2].password);
   await expectAccessible(page);
 });
 
@@ -613,9 +636,8 @@ test("Kennwort per SMS: number required, normalized to E.164 and stored on the j
   await expect(page.locator("#password-sms")).toHaveAttribute("placeholder", "0170 1234567 oder +49 170 1234567");
   await expect(page.locator("#password-to-hint")).toContainText("in einer SMS an diese Nummer");
 
-  await page.click("#submit");
-  await expect(page.locator("#status")).toContainText("Bitte die Rufnummer angeben");
-  await expect(page.locator("#password-sms")).toBeFocused();
+  // No number yet: the button stays greyed out, as in Outlook.
+  await expect(page.locator("#submit")).toBeDisabled();
 
   await page.fill("#password-sms", "12");
   await page.press("#password-sms", "Tab");
@@ -647,8 +669,7 @@ test("Kennwort per SMS: numbers of other countries and service numbers are refus
   await expect(page.locator("#status")).toContainText("nur an Rufnummern aus Deutschland, Österreich und Schweiz");
   await expect(page.locator("#password-sms")).toHaveAttribute("aria-invalid", "true");
 
-  await page.click("#submit"); // no link with a number the password could never reach
-  await expect(page.locator("#status")).toContainText("nur an Rufnummern aus Deutschland, Österreich und Schweiz");
+  await expect(page.locator("#submit")).toBeDisabled(); // no link with a number the password could never reach
   expect(calls.filter((c) => c.method === "PATCH")).toEqual([]);
 
   await page.fill("#password-sms", "0800 123 45 67"); // service number (SMS_BLOCKED_NUMBERS)
@@ -661,19 +682,17 @@ test("Kennwort per SMS: numbers of other countries and service numbers are refus
   await expect(page.locator("#password-sms")).toHaveValue("+436641234567");
   await expect(page.locator("#password-sms")).not.toHaveAttribute("aria-invalid", "true");
   await expect(page.locator("#status")).toContainText("per SMS an +436641234567");
+  await expect(page.locator("#submit")).toBeEnabled();
 });
 
 test("Kennwort an eine andere E-Mail-Adresse chosen without an address: no link until it is there", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)] });
   await page.selectOption("#password-channel", "mail");
 
-  await page.click("#submit");
-  await expect(page.locator("#status")).toContainText("Bitte die E-Mail-Adresse angeben, an die das Kennwort gehen soll");
-  await expect(page.locator("#password-to")).toBeFocused();
-  await expect(page.locator("#password-to")).toHaveAttribute("aria-invalid", "true");
+  // No address yet: greyed out for every kind, nothing is shared.
+  await expect(page.locator("#submit")).toBeDisabled();
   await chooseKind(page, "request");
-  await page.click("#submit");
-  await expect(page.locator("#status")).toContainText("Bitte die E-Mail-Adresse angeben");
+  await expect(page.locator("#submit")).toBeDisabled();
   expect(calls.some((c) => c.path === "/api/uploads" || c.path === "/api/requests")).toBe(false); // nothing shared
 
   // Typed and clicked right away (no "change" yet): the address still reaches the job.
@@ -862,8 +881,7 @@ test("own password: live rule check, weak passwords are not accepted", async ({ 
 
   await password.fill("abc");
   await expect(page.locator('#password-rules li[data-rule="length"]')).toHaveClass(/fail/);
-  await page.click("#submit");
-  await expect(page.locator("#status")).toContainText("Das Kennwort erfüllt noch nicht alle Anforderungen.");
+  await expect(page.locator("#submit")).toBeDisabled(); // greyed out until the rules are met
   expect(calls.some((c) => c.path === "/api/uploads")).toBe(false);
 
   await password.fill(STRONG);
@@ -913,7 +931,9 @@ test("Ohne Kennwort: plain link, no password mail, upload links stay protected",
   await expectAccessible(page);
   await shot(page, "no-password");
   await chooseKind(page, "files");
-  await expect(page.locator("#submit")).toBeEnabled();
+  await expect(page.locator("#submit")).toBeDisabled(); // the attachment is a link now – nothing selected
+  await page.setInputFiles("#file", { name: "Nachtrag.pdf", mimeType: "application/pdf", buffer: Buffer.alloc(2000, 0x41) });
+  await expect(page.locator("#submit")).toBeEnabled(); // further files without password are fine
 });
 
 test("Nachricht / Anfordern: 'Ohne Kennwort' is not offered – a choice made for files becomes a random password", async ({ page }) => {
@@ -995,10 +1015,10 @@ test("Nachricht: inserts a card with the link, never the text, and shares the pa
   expect((await officeLog(page)).removed).toEqual([]); // the attachment was not touched
   await expectAccessible(page);
 
-  // Empty text: says so instead of inserting anything.
-  await page.click("#submit");
-  await expect(page.locator("#status")).toContainText("Bitte zuerst die vertrauliche Nachricht eingeben.");
-  await expect(page.locator("#message")).toBeFocused();
+  // Empty text: the button is greyed out until there is a message.
+  await expect(page.locator("#submit")).toBeDisabled();
+  await page.fill("#message", "Noch eine");
+  await expect(page.locator("#submit")).toBeEnabled();
   expect(calls.filter((c) => c.path === "/api/messages")).toHaveLength(1);
 });
 
@@ -1097,9 +1117,18 @@ test("Meine Freigaben: shows the state of each link and revokes after confirmati
   await refresh.click();
   await expect.poll(loads).toBe(before + 1);
   await expect(refresh).toBeEnabled();
-  // The account line as in "Senden".
-  await expect(page.locator("#panel-shares .account-name")).toHaveText("max [12,5 GB von 50 GB frei]");
-  await expect(page.locator("#panel-shares .disconnect-link")).toHaveText("Verbindung trennen");
+  // One bottom bar for every tab: account, "Verbindung trennen" on a line of its own, help and settings on the right.
+  const name = page.locator(".account-bar .account-name");
+  const disconnect = page.locator(".account-bar .disconnect-link");
+  await expect(name).toHaveText("max [12,5 GB von 50 GB frei]");
+  await expect(disconnect).toHaveText("Verbindung trennen");
+  const [nameBox, linkBox, helpBox, gearBox] = await Promise.all(
+    [name, disconnect, page.locator("#help-toggle"), page.locator("#settings-toggle")].map((l) => l.boundingBox()),
+  );
+  expect(linkBox!.y).toBeGreaterThanOrEqual(nameBox!.y + nameBox!.height - 1); // below the name, always
+  expect(helpBox!.x).toBeGreaterThan(linkBox!.x + linkBox!.width);
+  expect(gearBox!.x).toBeGreaterThan(helpBox!.x);
+  await expect(page.locator(".account-bar")).toHaveCount(1);
   await page.click("#tab-send");
   await expect(refresh).toBeHidden();
   await page.click("#tab-shares");
@@ -1251,8 +1280,8 @@ test("reading a mail: tabs 'Nachricht' and 'Meine Freigaben', nothing to insert"
   await expect(page.locator("#mail-none")).toBeHidden();
   // Reading a mail too: "Aktualisieren" in the tab bar, the account line at the bottom.
   await expect(page.locator("#refresh-shares")).toBeVisible();
-  await expect(page.locator("#panel-mail .account-name")).toHaveText("max [12,5 GB von 50 GB frei]");
-  await expect(page.locator("#panel-mail .disconnect-link")).toBeVisible();
+  await expect(page.locator(".account-bar .account-name")).toHaveText("max [12,5 GB von 50 GB frei]");
+  await expect(page.locator(".account-bar .disconnect-link")).toBeVisible();
   await expect(page.locator(".share .insert").first()).toBeHidden(); // a mail being read cannot take a link
   await expect(page.locator("#panel-mail")).not.toContainText("Weitere Freigaben");
   await expectAccessible(page);
@@ -1304,10 +1333,10 @@ test("Meine Freigaben: upload links are not inserted again without password", as
 
 // --- Help -----------------------------------------------------------------------------------------------------------
 
-test("Hilfe: the \"?\" at the top right opens the guide in place of the tab, readable at 320 px", async ({ page }) => {
+test("Hilfe: the \"?\" at the bottom right opens the guide in place of the tab, readable at 320 px", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   await openTaskpane(page);
-  await expectNoHorizontalScroll(page); // tabs and "?" fit
+  await expectNoHorizontalScroll(page); // tabs and the bottom bar fit
   const toggle = page.locator("#help-toggle");
   await expect(toggle).toHaveAttribute("aria-label", "Hilfe");
   await toggle.click();
@@ -1338,7 +1367,7 @@ test("Hilfe: the \"?\" at the top right opens the guide in place of the tab, rea
   for (const icon of ["copy", "password", "insert", "revoke", "refresh"]) {
     await expect(shares.locator(`[data-icon="${icon}"] svg`)).toHaveCount(1);
   }
-  await expect(shares).toContainText("Aktualisieren – oben neben dem „?“");
+  await expect(shares).toContainText("Aktualisieren – oben rechts neben den Reitern");
   await expect(shares).toContainText("Verbindung auch trennen");
   await expect(help).toContainText("Personenbezogene oder vertrauliche Daten versenden Sie bitte immer mit Kennwort.");
   await expectAccessible(page);
