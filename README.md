@@ -509,7 +509,7 @@ swallows the screenshot):
 $edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 $repo = (Get-Location).Path; $url = "file:///" + ($repo -replace '\\','/') + "/docs/mockups"
 $opts = "--headless=new", "--hide-scrollbars", "--user-data-dir=$env:TEMP\cloudshare-edge"
-foreach ($shot in @(("outlook-compose", "compose-send", "1440,1010"), ("mail-received", "mail-received", "760,706"),
+foreach ($shot in @(("outlook-compose", "compose-send", "1440,1100"), ("mail-received", "mail-received", "760,706"),
                     ("password-mail", "password-mail", "760,676"), ("sender-notices", "sender-notices", "760,942"))) {
   Start-Process -Wait $edge ($opts + "--window-size=$($shot[2])", "--screenshot=$repo\docs\images\$($shot[0]).png", "$url/$($shot[1]).html")
 }
