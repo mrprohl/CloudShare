@@ -64,7 +64,7 @@
     "help.shares.insert": "Insert – inserts the file as a new link into the message you are writing (only while writing a message).",
     "help.shares.revoke": "Revoke – blocks the link at once, for example if it went to the wrong person. Click a second time to confirm (“Sure?”).",
     "help.shares.refresh": "Refresh – at the top right next to the tabs: reloads the list. This happens by itself when you open the tab and when you come back to the pane.",
-    "help.shares.account": "At the bottom left you see your Nextcloud account. A click on it shows the free space and opens “Settings”; you can also disconnect there. The “?” at the bottom right opens this help.",
+    "help.shares.account": "At the bottom left you see your Nextcloud account. A click on it shows the free space and opens “Settings”; you can also disconnect there. The “?” at the bottom right opens this guide.",
     "help.shares.notices": "Depending on the setup you also get an email as soon as a file has been downloaded for the first time or new files have arrived through an upload link. Whether you get these notifications is up to you in the settings.",
     "help.settings.title": "Settings",
     "help.settings.open": "Click your account at the bottom left and then “Settings” to open your personal settings. They apply to you on every computer.",

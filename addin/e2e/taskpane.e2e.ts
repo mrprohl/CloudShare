@@ -264,6 +264,11 @@ async function readmeShot(page: Page, name: string) {
   const height = await page.evaluate(() => document.documentElement.scrollHeight);
   await page.setViewportSize({ width: size.width, height });
   await page.waitForTimeout(100); // layout after the resize
+  // A generated password differs on every run: the picture shows a fixed example, so it can be compared.
+  await page.evaluate(() => {
+    const field = document.querySelector<HTMLInputElement>("#password");
+    if (field && field.readOnly && field.value) field.value = "VusMoveSira64";
+  });
   const picture = await page.screenshot({ animations: "disabled", caret: "hide" });
   test.info().attach(`readme-${name}`, { body: picture, contentType: "image/png" });
   mkdirSync(README_PICTURES, { recursive: true });
