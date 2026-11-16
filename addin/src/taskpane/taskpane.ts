@@ -145,11 +145,13 @@ function applyOfficeTheme() {
 
 // --- Status bar and progress ---------------------------------------------------
 
-type StatusKind = "info" | "success" | "error";
+/** "progress": grey like "info", but stays until the next message (uploading, creating …) – no timer. */
+type StatusKind = "info" | "progress" | "success" | "error";
 
 /** The sign inside the circle of each kind of message. */
 const STATUS_GLYPHS: Record<StatusKind, string> = {
   info: '<path d="M8 7v4M8 4.8v.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
+  progress: '<path d="M8 7v4M8 4.8v.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
   success: '<path d="m5.3 8.2 1.8 1.8 3.6-3.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>',
   error: '<path d="M8 4.5v4.2M8 11v.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
 };
@@ -166,8 +168,9 @@ const statusTimer = (kind: StatusKind) =>
   STATUS_GLYPHS[kind];
 
 /**
- * Seconds a success or error message stays (server setting, 5 until the configuration is loaded); 0: it stays.
- * Progress ("info") and a message with a button ("Erneut versuchen") stay until the next one.
+ * Seconds a message stays (server setting, 5 until the configuration is loaded); 0: it stays.
+ * Progress ("progress") and a message with a button ("Erneut versuchen") stay until the next one; grey notes ("info")
+ * run down like the others.
  */
 const messageSeconds = () => serverConfig?.successMessageSeconds ?? 5;
 
@@ -182,7 +185,7 @@ function setStatus(text: string, kind: StatusKind = "info", action?: StatusActio
   const shown = ++statusShown;
   statusBar.hidden = !text;
   statusBar.className = `messagebar ${kind}`;
-  const seconds = kind !== "info" && !action ? messageSeconds() : 0;
+  const seconds = kind !== "progress" && !action ? messageSeconds() : 0;
   statusBar.innerHTML = text
     ? `<svg class="icon" viewBox="0 0 16 16" aria-hidden="true">${seconds > 0 ? statusTimer(kind) : STATUS_CIRCLE + STATUS_GLYPHS[kind]}</svg><span></span>`
     : "";
@@ -651,7 +654,7 @@ async function upload(blob: Blob, fileName: string, step: string): Promise<Uploa
       );
       const percent = Math.round((index / start.totalChunks) * 100);
       setProgress(percent);
-      setStatus(t("files.uploading", { name: fileName, percent }));
+      setStatus(t("files.uploading", { name: fileName, percent }), "progress");
     }
   } catch (err) {
     await api(`/api/uploads/${start.uploadId}`, { method: "DELETE" }, await getToken()).catch(() => undefined);
@@ -1482,7 +1485,7 @@ async function insertFiles() {
       for (const box of selectedAttachments) {
         const name = box.dataset.name ?? t("files.attachment");
         setProgress(0);
-        setStatus(t("files.preparing", { name }));
+        setStatus(t("files.preparing", { name }), "progress");
         const blob = await readAttachment(box.value);
         results.push(await upload(blob, name, step));
         // Remove from the mail only after a successful upload.
@@ -1536,7 +1539,7 @@ async function insertRequest() {
   }
   await runInsert(async () => {
     try {
-      setStatus(t("request.creating"));
+      setStatus(t("request.creating"), "progress");
       const result = await api<{ shareUrl: string; expireDate: string; jobId: string }>(
         "/api/requests",
         { method: "POST", body: JSON.stringify(await shareSettingsBody(stepForClick())) },
@@ -1585,7 +1588,7 @@ async function insertMessage() {
 
   await runInsert(async () => {
     try {
-      setStatus(t("message.creating"));
+      setStatus(t("message.creating"), "progress");
       const result = await api<{ shareUrl: string; expireDate: string; jobId: string }>(
         "/api/messages",
         {
@@ -2007,7 +2010,7 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
       return;
     }
     send.disabled = true;
-    setStatus(t("resend.sending"));
+    setStatus(t("resend.sending"), "progress");
     try {
       const result = await api<{ channel: ResendChannel; to: string }>(
         `/api/shares/${encodeURIComponent(share.id)}/password/send`,
@@ -2239,7 +2242,7 @@ async function linkAgain(share: ShareItem, button: HTMLButtonElement) {
   button.disabled = true;
   busy++;
   try {
-    setStatus(t("shares.linking", { name: share.name }));
+    setStatus(t("shares.linking", { name: share.name }), "progress");
     const result = await api<LinkAgainResult>(
       `/api/shares/${encodeURIComponent(share.id)}/link`,
       { method: "POST", body: JSON.stringify(await shareSettingsBody(stepForClick())) },

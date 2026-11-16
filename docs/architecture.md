@@ -602,8 +602,8 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   sections (getting started, sending files, password and channel, confidential message, receiving files, "History",
   FAQ), the most common one open. Texts in the language files (`help.*`); admins put their own support contact into
   `help.support` (`/config/locales`). Plain words, the button names of the pane, no technical terms.
-- **Messages** (`#status`, `setStatus`): progress and a failed start (with "Erneut versuchen") stay until the next message; success and error messages disappear
-  after `SUCCESS_MESSAGE_SECONDS` (default 5, `0` = they stay, served in `/api/config`) – the ring around the tick or the "!" runs
+- **Messages** (`#status`, `setStatus`): progress (kind `progress`) and a failed start (with "Erneut versuchen") stay until the next message; all other messages – success, error, grey notes – disappear
+  after `SUCCESS_MESSAGE_SECONDS` (default 5, `0` = they stay, served in `/api/config`) – the ring around the tick, "!" or "i" runs
   down clockwise like an OTP timer (CSS animation `status-timer`, the message goes on `animationend`) and stops while
   the pointer or the focus is on the message. A failed start (sign-in, server unreachable) offers "Erneut versuchen" in the
   message (`retryAction`): CloudShare loads anew, as if the pane was opened again.
@@ -637,8 +637,12 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
 5. **Bitwarden CLI and Vaultwarden versions must match** (`BW_CLI_VERSION` in the `Dockerfile`).
 6. **Trademark:** the icon uses the Nextcloud mark – fine for internal use; check Nextcloud's trademark guidelines
    before distributing CloudShare to third parties.
-7. **One mail language per installation:** the add-in follows each user's Outlook language, but the password mail,
-   the SMS and the confirmations use `LANGUAGE` for everyone; `templates.json` is not per language. The ribbon label
+7. **Languages:** the add-in follows each user's Outlook language, and what the recipients get – link card, password
+   mail, SMS – the "Language for the recipients" chosen per mail (2.8). The notes to the sender (download and upload
+   confirmation, SMS notes) still use `LANGUAGE` for everyone, and `templates.json` is not per language: its own texts
+   apply in every language (only the built-in defaults follow the recipients' language). The ribbon label
    comes from a manifest `Override` for the language's `_meta.locale` (e.g. `de-DE`) – how Outlook treats other
    regional variants there (e.g. `de-AT`) is up to Outlook; the pane itself maps them to their language.
-8. **Possible later:** OIDC token exchange (e.g. Keycloak) instead of app passwords would remove the connect step.
+8. **Possible later:** OIDC token exchange (e.g. Keycloak) instead of app passwords would remove the connect step –
+   not built on purpose: Keycloak supports exchanging an external (Entra) token only in its legacy preview feature, and
+   the background tasks would still need a stored offline token, so it would add risk without a security gain.

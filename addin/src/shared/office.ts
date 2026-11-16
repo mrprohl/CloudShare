@@ -32,7 +32,7 @@ export interface ServerConfig {
   /** Password link and confidential message (Vaultwarden Sends): default and maximum lifetime in days. */
   sendExpireDays?: number;
   sendMaxExpireDays?: number;
-  /** Success and error messages disappear after this many seconds (0: they stay); default 5. */
+  /** Messages disappear after this many seconds (0: they stay; progress always stays); default 5. */
   successMessageSeconds?: number;
   /** NEXTCLOUD_URL – "Nextcloud öffnen" in the account menu. */
   nextcloudUrl?: string;

@@ -415,7 +415,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     messageMaxLength: MESSAGE_MAX_LENGTH,
     sendExpireDays: config.sendExpireDays,
     sendMaxExpireDays: config.sendMaxExpireDays,
-    // Success and error messages in the pane disappear after this many seconds (0: they stay).
+    // Messages in the pane disappear after this many seconds (0: they stay; progress always stays).
     successMessageSeconds: config.successMessageSeconds,
     // "Nextcloud öffnen" in the account menu.
     nextcloudUrl: config.nextcloudUrl,
