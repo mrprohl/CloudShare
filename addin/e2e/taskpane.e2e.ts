@@ -536,6 +536,26 @@ test("preselects large attachments and proposes a random password", async ({ pag
   await fullShot(page, "send-light");
 });
 
+test("a subject typed after inserting the link reaches \"Verlauf\" before sending", async ({ page }) => {
+  const calls = await openTaskpane(page, { attachments: [attachment("a1", "Präsentation.pptx", 2.5 * MiB)] });
+  await page.evaluate(() => {
+    (window as unknown as { __officeConfig: { subject: string } }).__officeConfig.subject = ""; // no subject yet
+  });
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
+  expect(JSON.parse(calls.find((c) => c.path.endsWith("/complete"))!.body!.toString())).toMatchObject({ subject: "" });
+
+  // Typed afterwards: the next check (every few seconds) tells the server; unchanged it asks nothing.
+  await page.evaluate(() => {
+    (window as unknown as { __officeConfig: { subject: string } }).__officeConfig.subject = "Unterlagen Neubau";
+  });
+  const patches = () => calls.filter((c) => c.method === "PATCH" && c.path.startsWith("/api/jobs/"));
+  await expect.poll(() => patches().length, { timeout: 10_000 }).toBe(1);
+  expect(JSON.parse(patches()[0].body!.toString())).toEqual({ subject: "Unterlagen Neubau" });
+  await page.waitForTimeout(4500);
+  expect(patches()).toHaveLength(1);
+});
+
 test("Sprache für die Empfänger: the card and the password mail in the chosen language, the pane stays German", async ({ page }) => {
   const calls = await openTaskpane(page, {
     attachments: [attachment("a1", "Präsentation.pptx", 2.5 * MiB)],
@@ -559,7 +579,7 @@ test("Sprache für die Empfänger: the card and the password mail in the chosen 
   expect(card).toContain(">Download<");
   expect(card).not.toContain("Herunterladen");
   // The server writes the password mail and SMS of this step in it; the mail keeps the choice.
-  expect(JSON.parse(calls.find((c) => c.path.endsWith("/complete"))!.body!.toString())).toMatchObject({ language: "en" });
+  expect(JSON.parse(calls.find((c) => c.path.endsWith("/complete"))!.body!.toString())).toMatchObject({ language: "en", subject: "Unterlagen Neubau" }); // the draft's subject for "Verlauf"
   expect(JSON.parse((await officeLog(page)).session["cloudshare-state"] ?? "{}")).toMatchObject({ recipientLanguage: "en" });
 });
 
@@ -1275,6 +1295,29 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   await expect(page.locator("#status")).toContainText("„Angebot.pdf“ ist nicht mehr abrufbar.");
 });
 
+test("an error message runs down too; one with \"Erneut versuchen\" stays", async ({ page }) => {
+  await openTaskpane(page, {
+    attachments: [attachment("a1", "Bericht.pdf", 1.5 * MiB)],
+    uploadError: { status: 507, error: "Nicht genügend Speicherplatz in Ihrer Nextcloud.", code: "NEXTCLOUD_QUOTA_EXCEEDED" },
+    config: { successMessageSeconds: 1 },
+  });
+  await page.click("#submit");
+  const status = page.locator("#status");
+  await expect(status).toHaveClass(/error/);
+  await expect(status.locator(".status-timer")).toHaveCount(1); // the red ring around the "!"
+  await page.mouse.move(5, 700);
+  await expect(status).toBeHidden({ timeout: 3000 });
+});
+
+test("a failed start keeps its message with \"Erneut versuchen\", whatever the timer", async ({ page }) => {
+  await openTaskpane(page, { tokenError: { code: 13007, name: "Error", message: "x" }, config: { successMessageSeconds: 1 } });
+  const status = page.locator("#status");
+  await expect(status.locator("button.status-action")).toBeVisible();
+  await expect(status.locator(".status-timer")).toHaveCount(0);
+  await page.waitForTimeout(1500);
+  await expect(status).toBeVisible();
+});
+
 test("a success message runs down and goes; the pointer on it stops the ring", async ({ page }) => {
   await openTaskpane(page, { shares: SHARES, config: { successMessageSeconds: 1 } });
   await page.click("#tab-shares");
@@ -1402,7 +1445,8 @@ test("Verlauf: the subject is the title and opens the mail; confidential message
     password: { channel: "mail", to: "erika@example.com", status: null, at: Date.parse("2026-11-12T08:00:00Z"), deliveredAt: null } };
   const calls = await openTaskpane(page, {
     shares: [
-      { ...SHARES[0], subject: "Unterlagen Neubau", mailId: "AAMk-files" },
+      { ...SHARES[0], subject: "Unterlagen Neubau", mailId: "AAMk-files", sentAt: Date.parse("2026-11-16T09:04:00Z"),
+        sentTo: { to: ["erika@example.com", "max@example.com"], cc: ["chef@example.com"] } },
       { ...SHARES[1], subject: "", mailId: null }, // no subject, mail in a shared mailbox: not openable
       message,
       SHARES[2], // not sent yet: no subject known – titled with its name as before
@@ -1411,13 +1455,19 @@ test("Verlauf: the subject is the title and opens the mail; confidential message
   await page.click("#tab-shares");
   const rows = page.locator("#shares .share");
   await expect(rows.nth(0).locator(".share-title")).toHaveText("Unterlagen Neubau");
+  // Hovering the subject: when and to whom it went, then how to open it.
+  await expect(rows.nth(0).locator(".share-title")).toHaveAttribute(
+    "title",
+    "Gesendet am 16.11.2026, 10:04 Uhr an erika@example.com, max@example.com\nCc: chef@example.com\nNachricht öffnen",
+  );
   // Below the subject what went out: the label "Datei" and the file name.
   await expect(rows.nth(0).locator(".share-item .badge")).toHaveText("Datei");
-  await expect(rows.nth(0).locator(".share-item")).toHaveAttribute("title", "Präsentation.pptx");
+  await expect(rows.nth(0).locator(".share-item .share-name")).toHaveAttribute("title", "Präsentation.pptx");
   await expect(rows.nth(1).locator(".share-title")).toHaveText("(Kein Betreff)");
   await expect(rows.nth(1).locator("button.share-title")).toHaveCount(0);
-  await expect(rows.nth(3).locator(".share-title")).toHaveCount(0);
-  await expect(rows.nth(3).locator(".share-name")).toHaveText("Upload-Link");
+  // An entry from before subjects were kept: the same layout, "(Betreff unbekannt)" as its title.
+  await expect(rows.nth(3).locator(".share-title")).toHaveText("(Betreff unbekannt)");
+  await expect(rows.nth(3).locator(".share-item")).toHaveText("Dateianforderung");
 
   // A click on the subject opens the sent mail in Outlook (the server gives its current EWS ID).
   await rows.nth(0).locator("button.share-title").click();
@@ -1467,7 +1517,7 @@ test("reading a mail: tabs 'Nachricht' and 'Verlauf', nothing to insert", async 
   await expect(inMail).toHaveCount(2);
   await expect(inMail.nth(0).locator(".share-name")).toHaveText("Präsentation.pptx");
   await expect(inMail.nth(0).locator(".share-password")).toContainText("zugestellt am 10.11.2026, 11:00 Uhr");
-  await expect(inMail.nth(1).locator(".share-name")).toHaveText("Upload-Link");
+  await expect(inMail.nth(1).locator(".share-item")).toHaveText("Dateianforderung");
   await expect(page.locator("#mail-none")).toBeHidden();
   // Reading a mail too: "Aktualisieren" in the tab bar, the account at the bottom.
   await expect(page.locator("#refresh-shares")).toBeVisible();
@@ -1481,7 +1531,7 @@ test("reading a mail: tabs 'Nachricht' and 'Verlauf', nothing to insert", async 
   // "Verlauf": every valid link, those of this mail included (Alt.zip has expired).
   await page.click("#tab-shares");
   await expect(page.locator("#panel-mail")).toBeHidden();
-  await expect(page.locator("#shares .share .share-name")).toHaveText(["Präsentation.pptx", "Angebot.pdf", "Upload-Link"]);
+  await expect(page.locator("#shares .share .share-item")).toHaveText(["DateiPräsentation.pptx", "DateiAngebot.pdf", "Dateianforderung"]);
   await expectAccessible(page);
 
   // Revoked in one list, gone from both.
@@ -1650,7 +1700,7 @@ test("reading a mail at 320 px: the tab names stay on one line", async ({ page }
   await shot(page, "read-320px");
 });
 
-test("Verlauf at 320 px: a long name is shortened in the middle, the icons stay in its line", async ({ page }) => {
+test("Verlauf at 320 px: a long name is shortened in the middle, the icons stay in the title line", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   const long = "cloudshare-icon-varianten-mit-sehr-langem-namen und Leerzeichen-final.png";
   await openTaskpane(page, { shares: [{ ...SHARES[0], name: long, passwordAvailable: true }, SHARES[1]] });
@@ -1662,8 +1712,8 @@ test("Verlauf at 320 px: a long name is shortened in the middle, the icons stay 
   await expect(name.locator(".name-end")).toHaveText("inal.png"); // the extension stays visible
   const start = name.locator(".name-start");
   expect(await start.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true); // the "…" is in the start
-  // Icons in the line of the name, not wrapped below it.
-  const nameBox = (await name.boundingBox())!;
+  // Icons in the line of the title, not wrapped below it.
+  const nameBox = (await row.locator(".share-title").boundingBox())!;
   for (const icon of ["copy", "show-password", "insert", "revoke"]) {
     const box = (await row.locator(`.${icon}`).boundingBox())!;
     expect(Math.abs(box.y + box.height / 2 - (nameBox.y + nameBox.height / 2))).toBeLessThan(6);

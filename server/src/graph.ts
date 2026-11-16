@@ -79,6 +79,8 @@ export interface SentMessage {
   recipients: MailRecipients;
   /** Graph ID of the sent mail (immutable: it survives moving the mail) – the pane opens the mail with it. */
   id?: string;
+  /** When it was sent (ISO) – shown in "Verlauf" with the recipients. */
+  sentAt?: string;
 }
 
 type GraphRecipient = { emailAddress?: { address?: string } };
@@ -168,6 +170,7 @@ export async function findSentMessage(
   const json = (await res.json()) as {
     value?: Array<{
       id?: string;
+      sentDateTime?: string;
       subject?: string;
       from?: GraphRecipient;
       toRecipients?: GraphRecipient[];
@@ -186,6 +189,7 @@ export async function findSentMessage(
     }
     return {
       id: message.id,
+      sentAt: message.sentDateTime,
       subject: message.subject ?? "",
       from: message.from?.emailAddress?.address ?? null,
       recipients: {

@@ -397,7 +397,9 @@ describe("password by SMS, deliveries and download notices", () => {
     });
     expect(passwordRefFor("tok-mail-2", "someone-else")).toBeNull();
     // "Verlauf": every link knows its mail ' subject, and the ID to open it.
-    expect(sentMailFor("tok-mail-3", "oid")).toMatchObject({ subject: "Unterlagen", mailId: "AAMk-sent" });
+    expect(sentMailFor("tok-mail-3", "oid")).toMatchObject({
+      subject: "Unterlagen", mailId: "AAMk-sent", to: ["erika@example.test"], cc: ["chef@example.test"], // tooltip: to whom, never Bcc
+    });
     expect(sentMailFor("tok-mail-3", "someone-else")).toBeUndefined();
   });
 

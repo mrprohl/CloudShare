@@ -78,6 +78,8 @@
             const attachment = attachments.find((a) => a.id === id);
             cb(attachment ? ok({ format: "base64", content: attachment.content }) : failed("unknown attachment"));
           },
+          // Subject of the draft ("Verlauf" shows it until the mail is sent).
+          subject: { getAsync(cb) { cb(ok(cfg.subject === undefined ? "Unterlagen Neubau" : cfg.subject)); } },
           removeAttachmentAsync(id, cb) {
             const index = attachments.findIndex((a) => a.id === id);
             if (index >= 0) attachments.splice(index, 1);

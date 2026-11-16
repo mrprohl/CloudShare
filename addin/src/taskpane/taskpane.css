@@ -463,9 +463,12 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
   text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 button.share-title { cursor: pointer; }
+/* Entries from before subjects were kept: "(Betreff unbekannt)", quieter. */
+.share-title.unknown { color: var(--fg2); font-weight: 400; font-style: italic; }
 button.share-title:hover { color: var(--brand-fg); text-decoration: underline; text-underline-offset: 2px; }
 button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 2px; }
-.share-name.share-item { align-items: center; margin: 2px 0; font-weight: 400; font-size: 13px; line-height: 18px; color: var(--fg2); }
+.share-item { display: flex; align-items: center; min-width: 0; margin: 2px 0; font-size: 13px; line-height: 18px; color: var(--fg2); }
+.share-item .share-name { font-weight: 400; }
 /* What went out: "Datei" quiet, "Dateianforderung" brand blue (like "Groß"), "Vertrauliche Nachricht" grape. */
 .share-item .badge { height: 18px; margin-right: 6px; line-height: 16px; white-space: nowrap; }
 .share-item .badge.kind-file { border-color: var(--stroke2); background: var(--bg3); color: var(--fg2); }

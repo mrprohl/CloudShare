@@ -121,13 +121,16 @@ Confidential messages and upload links always have a password, so "No password" 
 <img src="docs/images/taskpane-shares.png" alt="Tab History: three links with period, password and download status and the icons Copy, Password, Insert, Revoke next to the name; at the first link Password is open with the password and Send again to" width="300" align="right">
 
 **"History"** lists everything you sent with CloudShare that is still valid – links and confidential messages,
-newest first. Each entry is titled with the **subject of its mail** – a click opens that mail in Outlook (only mails
+newest first. Each entry is titled with the **subject of its mail** – hovering it shows when and to whom it went (To, Cc),
+a click opens that mail in Outlook (only mails
 of your own mailbox) –, below it a label for what went out – "File" with the file name, "File request" or "Confidential message" (in colour)
 –, then one short line each for
 the period ("10.11. – 24.11.2026"), the password (with / without, or how it went out: "Password by text message to …
 – delivered") and the downloads (or received files; Vaultwarden does not report whether a message was opened). A
 confidential message has no "Copy" or "Insert" – CloudShare does not keep its key – but "Password" and "Revoke"
-(deletes it at once). Before the mail was sent the subject is not known yet: the entry is titled with the file. It
+(deletes it at once). Until the mail is sent the entry shows the subject of the draft – also one typed after inserting the link,
+while the pane is open ("(No subject yet)" until then); entries from before subjects were kept say "(Subject
+unknown)". It
 loads when you open the tab and again when you come back to
 the pane; **Refresh** (⟳ in the tab bar) reloads it at any time. Expired links are not listed. At the bottom, as in
 "Send": the account menu ("Open Nextcloud" – your Nextcloud in the browser –, "Settings", "Help", "Disconnect" – the latter takes a second click) and the free space. A link is created when it is inserted;
@@ -292,7 +295,7 @@ deployed again.
 | `MAIL_FOOTER` | empty | Signature of the password mails for users without an own one (settings), filled from the sender's Microsoft 365 profile, e.g. `'{displayName} · {department}\n{company} · Tel. {phone} · {email}'` – recipients see who the password comes from; placeholders and rules in `cloudshare.env.example`. Empty = no signature (`setup.sh`: Enter). The link card in the message carries none |
 | `VAULTWARDEN_URL`, `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD` | – | Vaultwarden service account |
 | `RATE_LIMIT_PER_MINUTE` | `600` | Requests per minute and user |
-| `SUCCESS_MESSAGE_SECONDS` | `5` | Success messages in the pane ("The link has been inserted", "… is no longer available") disappear after this many seconds – a ring around the tick runs down and stops while the pointer is on the message. `0` = they stay. Errors always stay |
+| `SUCCESS_MESSAGE_SECONDS` | `5` | Success and error messages in the pane ("The link has been inserted", "The sent message has been deleted") disappear after this many seconds – a ring around the tick or the "!" runs down and stops while the pointer is on the message. `0` = they stay. Progress and a failed start (with "Try again") always stay |
 | `CLIENT_TRACE` | off | Diagnostics, see [Troubleshooting](#troubleshooting) |
 
 `env/versions.env` holds `CLOUDSHARE_HOST`, `CLOUDSHARE_VERSION` (`latest`) and `CADDY_VERSION`.

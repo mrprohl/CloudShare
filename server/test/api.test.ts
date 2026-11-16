@@ -660,7 +660,7 @@ describe("my shares", () => {
   it("marks links whose mail was not sent (yet) and tells when CloudShare revokes them", async () => {
     nc.listPublicShares.mockResolvedValue(shares);
     nc.createPublicShare.mockResolvedValue("https://cloud.example.test/s/unsent1");
-    const res = await link("1", { password: STRONG, expireDays: 7, step: "step-unsent" });
+    const res = await link("1", { password: STRONG, expireDays: 7, step: "step-unsent", subject: "Entwurf Neubau" });
     const linked = { ...shares[0], id: "21", url: "https://cloud.example.test/s/unsent1", sharedAt: Date.now() };
     nc.listPublicShares.mockResolvedValue([...shares, linked]);
     nc.publicDownloads.mockResolvedValue({ count: 0, last: null });
@@ -673,7 +673,10 @@ describe("my shares", () => {
       }>;
 
     const before = await list();
-    expect(before.find((s) => s.id === "21")).toMatchObject({ unsent: true });
+    expect(before.find((s) => s.id === "21")).toMatchObject({ unsent: true, subject: "Entwurf Neubau", mailId: null }); // the draft's subject until it is sent
+    // The subject typed later (the pane sends it while the draft is open) replaces it – also if the draft is discarded.
+    await app.inject({ method: "PATCH", url: `/api/jobs/${res.json().jobId}`, headers: as("anna"), payload: { subject: "Unterlagen Neubau" } });
+    expect((await list()).find((s) => s.id === "21")).toMatchObject({ subject: "Unterlagen Neubau" });
     expect(before.find((s) => s.id === "21")!.revokeAt).toBeGreaterThan(Date.now() + 6 * DAY); // job expiry: 7 days
     expect(before.find((s) => s.id === "1")).toMatchObject({ unsent: false, revokeAt: null });
 

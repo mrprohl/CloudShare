@@ -465,7 +465,16 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
       const rememberMail = (shares: StepShare[], keepUntil: number) =>
         recordSentMail(
           shares.map((s) => s.token),
-          { owner: job.owner, subject: message.subject, mailId: ownCopy ? message.id : undefined, keepUntil },
+          {
+            owner: job.owner,
+            subject: message.subject,
+            mailId: ownCopy ? message.id : undefined,
+            keepUntil,
+            // For the tooltip of the subject: when and to whom (To and Cc as in the mail; Bcc stays hidden).
+            sentAt: message.sentAt ? Date.parse(message.sentAt) : Date.now(),
+            to: message.recipients.to,
+            cc: message.recipients.cc,
+          },
         );
 
       if (job.noPassword) {
