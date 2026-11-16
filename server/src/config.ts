@@ -89,7 +89,7 @@ export const config = {
   nextcloudFolder: process.env.NEXTCLOUD_FOLDER ?? "CloudShare",
   /**
    * Folder for upload links ("Dateien anfordern"); every request gets its own subfolder. Independent of LANGUAGE on
-   * purpose: "Meine Freigaben" recognises CloudShare's links by this folder.
+   * purpose: "Verlauf" recognises CloudShare's links by this folder.
    */
   requestFolder: process.env.NEXTCLOUD_REQUEST_FOLDER ?? "CloudShare-File-Requests",
   /** Optional line at the bottom of the card inserted into the mail, e.g. the company name. */
@@ -227,7 +227,7 @@ if (allowedCodes.length > 0 && !allowedCodes.includes(config.smsDefaultCountry))
   );
 }
 
-// Entries of links that are still valid must not be deleted: "Meine Freigaben" needs them until the links expire.
+// Entries of links that are still valid must not be deleted: "Verlauf" needs them until the links expire.
 if (config.dataRetentionDays !== null && config.dataRetentionDays < config.maxExpireDays) {
   throw new Error(
     `DATA_RETENTION_DAYS (${config.dataRetentionDays}) must be at least SHARE_MAX_EXPIRE_DAYS (${config.maxExpireDays}) – ` +

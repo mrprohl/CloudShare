@@ -5,7 +5,7 @@
  * link's expiry date are registered here (encrypted in the database, db.ts store "cleanup") – Nextcloud's own
  * housekeeping removes expired shares, so their expiry date cannot be read back later. An hourly pass deletes due
  * folders with the owner's app password; they go to the owner's Nextcloud trash. A folder that still has a valid
- * link (e.g. "Meine Freigaben → Einfügen" with a later date, or a link created in Nextcloud) is not deleted.
+ * link (e.g. "Verlauf → Einfügen" with a later date, or a link created in Nextcloud) is not deleted.
  * Received files (NEXTCLOUD_REQUEST_FOLDER) are never registered and therefore never deleted.
  */
 import type { FastifyBaseLogger } from "fastify";

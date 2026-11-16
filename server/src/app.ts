@@ -59,7 +59,8 @@ import {
   smsNumber,
   smsNumberProblem,
 } from "./sms.js";
-import { isCloudShareShare, isRequestShare, revokeShare, tokenOf } from "./shares.js";
+import { accessIdOf, isMessageToken, messageFor, messagesOf, recordMessage, sentMailFor } from "./history.js";
+import { isCloudShareShare, isRequestShare, revokeMessage, revokeShare, tokenOf } from "./shares.js";
 import { defaultTemplates, render, smsFiles, templatesFor } from "./templates.js";
 import { clampInt, isEmailAddress } from "./limits.js";
 import { formatDate, locale, t, withRequestLanguage } from "./i18n.js";
@@ -173,7 +174,7 @@ async function attachToJob(
   password: string,
   link: PasswordLink,
   requestedStep: unknown,
-  /** The link just created (token, file name, expiry) – for "Meine Freigaben" and download confirmations. */
+  /** The link just created (token, file name, expiry) – for "Verlauf" and download confirmations. */
   share?: StepShare,
   /** "Kennwort senden an" of this link (deliveryFrom); joins the ways of its step. */
   delivery?: Delivery,
@@ -242,12 +243,12 @@ async function attachNoticeJob(user: User, requestedJobId: unknown, share: StepS
 }
 
 /**
- * How the password of a link went out, for "Meine Freigaben" (null before sending or for older links).
+ * How the password of a link went out, for "Verlauf" (null before sending or for older links).
  * `refused`: seven.io did not take the SMS at all (no message ID: key, credit, daily limit) – as opposed to an SMS
  * reported later as not delivered. Either way nothing went out another way; the sender sends the password again.
  */
-function passwordDelivery(url: string, owner: string) {
-  const d = deliveryFor(tokenOf(url), owner);
+function passwordDelivery(token: string, owner: string) {
+  const d = deliveryFor(token, owner);
   return d
     ? {
         channel: d.channel,
@@ -263,7 +264,7 @@ function passwordDelivery(url: string, owner: string) {
 /**
  * seven.io reported an SMS as not delivered: tell the sender – without password or link – so they send it again in
  * CloudShare. No user token exists at that point; only CloudShare's own app token can send, which needs the application
- * permission Mail.Send (SMS_NOTICE=true). Without it "Meine Freigaben" shows "nicht zugestellt".
+ * permission Mail.Send (SMS_NOTICE=true). Without it "Verlauf" shows "nicht zugestellt".
  */
 async function noteUndeliveredSms(refs: PasswordRef[], log: Pick<FastifyBaseLogger, "warn">) {
   if (!config.smsNotice || refs.length === 0) return;
@@ -678,18 +679,27 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     const send = await createMessageSend(item, text, password, expiresAt);
     // The password is needed exactly as long as the message can be read.
     const link = { ...passwordLink, days: Math.min(passwordLink.days, days), keepUntil: expiresAt.getTime() };
-    const jobId = await attachToJob(user, req.body?.jobId, item, password, link, req.body?.step, undefined, delivery);
+    // "Verlauf" lists it like a link (history.ts) – without key or text – so its password can be shown and sent again.
+    const share: StepShare | undefined = send.id
+      ? {
+          token: recordMessage({ owner: user.oid, sendId: send.id, accessId: accessIdOf(send.url), createdAt: Date.now(), expiresAt: expiresAt.getTime() }),
+          name: item,
+          expireDate,
+          message: true,
+        }
+      : undefined;
+    const jobId = await attachToJob(user, req.body?.jobId, item, password, link, req.body?.step, share, delivery);
     req.log.info({ user: user.upn, days, length: text.length }, "Confidential message created");
     return { shareUrl: send.url, expireDate, jobId };
   });
 
-  // --- My shares ("Meine Freigaben") ------------------------------------------------
+  // --- History ("Verlauf") ------------------------------------------------
 
   /** Upper bound per request: every file link costs one activity lookup in Nextcloud. */
   const SHARES_MAX = 100;
 
   /**
-   * "Meine Freigaben": all valid CloudShare links (newest first) with download/upload status. Expired links are left
+   * "Verlauf": all valid CloudShare links (newest first) with download/upload status. Expired links are left
    * out – Nextcloud removes them only in its daily housekeeping.
    */
   app.get("/api/shares", async (req) => {
@@ -702,8 +712,13 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       .sort((a, b) => b.sharedAt - a.sharedAt)
       .slice(0, SHARES_MAX);
     const unsent = unsentShares(user.oid);
+    /** The mail a link went out with: its subject (title in "Verlauf") and ID (the pane opens it). */
+    const mailOf = (token: string) => {
+      const mail = sentMailFor(token, user.oid);
+      return { subject: mail ? mail.subject : null, mailId: mail?.mailId ?? null };
+    };
 
-    return Promise.all(
+    const links = await Promise.all(
       shares.map(async (s) => {
         const request = isRequestShare(s);
         const segments = s.path.split("/").filter(Boolean);
@@ -718,7 +733,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
           expiration: s.expiration,
           protected: s.hasPassword,
           // How the password went out (after sending): channel, masked recipient, SMS delivery status.
-          password: passwordDelivery(s.url, user.oid),
+          password: passwordDelivery(token, user.oid),
           // Its password can still be shown and sent again ("Kennwort" in the list).
           passwordAvailable: passwordRefFor(token, user.oid) !== null,
           // The mail with this link has not been seen sent yet (password not sent) – e.g. a discarded draft – and
@@ -728,14 +743,44 @@ export async function buildApp(options: { logger?: boolean } = {}) {
           revokeAt: downloads?.count ? null : (unsent.get(token) ?? null),
           downloads,
           received: request ? await nc.countFiles(uid, segments).catch(() => null) : null,
+          ...mailOf(token),
         };
       }),
     );
+    // Confidential messages (Vaultwarden Sends, history.ts): no link to copy (CloudShare does not keep the key), no
+    // download count (Vaultwarden does not report it) – but the password and "Zurückziehen". `accessId` finds them in
+    // a mail being read.
+    const messages = messagesOf(user.oid).map((m) => ({
+      id: m.token,
+      kind: "message",
+      name: t("server.messageItem"),
+      url: null,
+      accessId: m.accessId,
+      sharedAt: m.createdAt,
+      expiration: new Date(m.expiresAt).toISOString().slice(0, 10),
+      protected: true,
+      password: passwordDelivery(m.token, user.oid),
+      passwordAvailable: passwordRefFor(m.token, user.oid) !== null,
+      unsent: unsent.has(m.token),
+      revokeAt: unsent.get(m.token) ?? null,
+      downloads: null,
+      received: null,
+      ...mailOf(m.token),
+    }));
+    return [...links, ...messages].sort((a, b) => b.sharedAt - a.sharedAt).slice(0, SHARES_MAX);
   });
 
-  /** Ends a share ("Zurückziehen"); the file itself stays in the user's Nextcloud. */
+  /**
+   * Ends a share ("Zurückziehen"); the file itself stays in the user's Nextcloud. A confidential message ("msg-…") is
+   * deleted in Vaultwarden – its link stops working at once.
+   */
   app.delete<{ Params: { id: string } }>("/api/shares/:id", async (req) => {
     const user = await authenticate(req);
+    if (isMessageToken(req.params.id)) {
+      if (!(await revokeMessage(user.oid, req.params.id, req.log))) throw new HttpError(404, t("server.shareNotFound"));
+      req.log.info({ user: user.upn }, "Confidential message revoked");
+      return { ok: true, message: true };
+    }
     const nc = nextcloudFor(user);
     const shares = await nc.listPublicShares();
     const share = shares.find((s) => s.id === req.params.id);
@@ -745,17 +790,24 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     return { ok: true, file, deleteAfterDays: config.cleanupAfterDays };
   });
 
-  /** The user's CloudShare link with this ID and the entry of its password (404 if it has none any more). */
+  /** The user's CloudShare link (or message) with this ID and the entry of its password (404 if it has none any more). */
   async function ownPasswordRef(user: User, id: string): Promise<PasswordRef> {
-    const share = (await nextcloudFor(user).listPublicShares()).find((s) => s.id === id);
-    if (!share || !isCloudShareShare(share)) throw new HttpError(404, t("server.shareNotFound"));
-    const ref = passwordRefFor(tokenOf(share.url), user.oid);
+    let token: string;
+    if (isMessageToken(id)) {
+      if (!messageFor(id, user.oid)) throw new HttpError(404, t("server.shareNotFound"));
+      token = id;
+    } else {
+      const share = (await nextcloudFor(user).listPublicShares()).find((s) => s.id === id);
+      if (!share || !isCloudShareShare(share)) throw new HttpError(404, t("server.shareNotFound"));
+      token = tokenOf(share.url);
+    }
+    const ref = passwordRefFor(token, user.oid);
     if (!ref) throw new HttpError(404, t("server.passwordUnavailable"));
     return ref;
   }
 
   /**
-   * "Kennwort" in "Meine Freigaben": the password of a sent link, read from its Send – only for its sender and only
+   * "Kennwort" in "Verlauf": the password of a sent link, read from its Send – only for its sender and only
    * until the link expires – plus where it went the first time, for sending it again the same way.
    */
   app.get<{ Params: { id: string } }>("/api/shares/:id/password", { config: { rateLimit: strictLimit } }, async (req) => {
@@ -829,7 +881,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const { token } = await onBehalfOf(user, GRAPH_SCOPES);
       for (const recipients of mails) await sendMail(token, recipients, subject, html, ref.from);
 
-      // Shown in "Meine Freigaben" like the first time: To and Cc (Bcc stays hidden), or the other addresses.
+      // Shown in "Verlauf" like the first time: To and Cc (Bcc stays hidden), or the other addresses.
       const shown = (channel === "recipients" ? [...mails[0].to, ...mails[0].cc] : others).join(", ");
       await recordDelivery(ref.tokens, { owner: user.oid, channel: "mail", to: shown, at: Date.now() });
       await updatePasswordRef(ref.sendId, { otherTo: channel === "mail" ? others : undefined, resentSend: send.id });

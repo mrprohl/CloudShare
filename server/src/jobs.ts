@@ -15,6 +15,7 @@ import { randomUUID } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
 import { config } from "./config.js";
 import { findSentMessage, sendMail } from "./graph.js";
+import { recordSentMail } from "./history.js";
 import { formatDate, t as translate } from "./i18n.js";
 import { recordDelivery } from "./deliveries.js";
 import { registerNotices, type Notice } from "./notices.js";
@@ -59,7 +60,7 @@ export interface SeparatePart {
   deliveries?: Delivery[];
   /** Ways already sent (deliveryKey) – a retry after an error does not send them twice. */
   sentWays?: string[];
-  /** The links of the step (share token, file name, last valid day) – for "Meine Freigaben" and download notices. */
+  /** The links of the step (share token, file name, last valid day) – for "Verlauf" and download notices. */
   shares?: StepShare[];
 }
 
@@ -84,6 +85,8 @@ export interface StepShare {
   request?: true;
   /** Files already in the upload folder when the link was created – not reported as received. */
   knownFiles?: string[];
+  /** A confidential message (Vaultwarden Send, token "msg-…", history.ts) – not in Nextcloud, no download confirmation. */
+  message?: true;
 }
 
 /** End of the last day the links are valid (ms) – for steps created before `sendKeepUntil` existed. */
@@ -165,7 +168,7 @@ const jobTokens = (job: PasswordJob, pendingOnly = false) =>
 
 /**
  * Links of the owner whose mail CloudShare has not seen sent yet (password not sent): token → when they are revoked if
- * the mail is still not sent (ms), or null if they are not revoked automatically. For "Meine Freigaben".
+ * the mail is still not sent (ms), or null if they are not revoked automatically. For "Verlauf".
  * Links "Ohne Kennwort" are not tracked: they may well have gone out from a client without CloudShare.
  */
 export function unsentShares(owner: string): Map<string, number | null> {
@@ -417,6 +420,8 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
       // Exchange Online saves the copy in the sender's own "Sent Items" by default; depending on mailbox and client
       // settings it may (also or only) land in the shared mailbox's "Sent Items".
       let sent = await findSentMessage(armed.graphToken, id, since);
+      // The pane can open only mails of the user's own mailbox ("Verlauf").
+      const ownCopy = Boolean(sent);
       if (!sent && armed.mailbox) {
         sent = await findSentMessage(armed.graphToken, id, since, armed.mailbox).catch((err) => {
           log.warn({ err, user: job.ownerUpn, mailbox: armed.mailbox }, "Shared mailbox not readable");
@@ -435,7 +440,7 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
        */
       const watchDownloads = (shares: StepShare[]) =>
         registerNotices(
-          shares.map((s): [string, Notice] => [
+          shares.filter((s) => !s.message).map((s): [string, Notice] => [
             s.token,
             {
               owner: job.owner,
@@ -451,9 +456,16 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
             },
           ]),
         ).catch((err) => log.warn({ err, user: job.ownerUpn }, "Download confirmation could not be registered"));
+      /** "Verlauf": subject of the sent mail per link, and its ID to open it (own mailbox only). */
+      const rememberMail = (shares: StepShare[], keepUntil: number) =>
+        recordSentMail(
+          shares.map((s) => s.token),
+          { owner: job.owner, subject: message.subject, mailId: ownCopy ? message.id : undefined, keepUntil },
+        );
 
       if (job.noPassword) {
         // Links without password: nothing to send, only the download confirmation.
+        rememberMail(job.noticeShares ?? [], linksExpireAt(job.noticeShares ?? []));
         await watchDownloads(job.noticeShares ?? []);
       } else if (job.separate?.length) {
         // One password per step: one password mail (or SMS) per step, naming its files. Parts already sent stay
@@ -474,7 +486,7 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
           const ways = partDeliveries(job, part);
 
           // Every way of the step once: password mail to the recipients or another address, SMS to a number. SMS last –
-          // "Meine Freigaben" shows the last delivery, and an SMS has a status to follow. A way already sent (before an
+          // "Verlauf" shows the last delivery, and an SMS has a status to follow. A way already sent (before an
           // error in a later one) is not sent again.
           for (const way of [...ways].sort((a, b) => Number(a.channel === "sms") - Number(b.channel === "sms"))) {
             const key = deliveryKey(way);
@@ -492,6 +504,7 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
           }
           part.dispatched = true;
           jobs.save(id);
+          rememberMail(part.shares ?? [], part.sendKeepUntil ?? linksExpireAt(part.shares ?? []));
           await watchDownloads(part.shares ?? []);
           // The Send stays until the links expire: the sender can see the password and send it again.
           if (part.sendId && tokens.length > 0) {

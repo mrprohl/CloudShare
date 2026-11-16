@@ -435,6 +435,10 @@ describe("password by SMS: the link of the Send is never sent", () => {
 describe("confidential messages", () => {
   const send = (payload: Record<string, unknown>) =>
     app.inject({ method: "POST", url: "/api/messages", headers: as("anna"), payload });
+  // The messages created here would show in anna's "Verlauf" in later tests: revoke them.
+  afterAll(async () => {
+    await app.inject({ method: "DELETE", url: "/api/shares/msg-send-msg", headers: as("anna") });
+  });
 
   it("stores the text only in a password-protected Send and attaches it to the mail's job", async () => {
     createMessageSend.mockClear();
@@ -474,6 +478,28 @@ describe("confidential messages", () => {
     const res = await send(payload);
     expect(res.statusCode).toBe(400);
     expect(createMessageSend).not.toHaveBeenCalled();
+  });
+
+  it("lists the message in \"Verlauf\" without its key, and only its owner revokes it", async () => {
+    createMessageSend.mockResolvedValueOnce({ url: "https://vault.example.test/#/send/acc-7/secretkey", id: "send-7" });
+    expect((await send({ text: "geheim", password: STRONG, step: "msg7" })).statusCode).toBe(200);
+    nc.userInfo.mockResolvedValue({ id: "anna", free: null });
+    nc.listPublicShares.mockResolvedValue([]);
+    const list = async (who: string) =>
+      (await app.inject({ method: "GET", url: "/api/shares", headers: as(who) })).json() as Array<Record<string, unknown>>;
+
+    const entry = (await list("anna")).find((s) => s.id === "msg-send-7")!;
+    expect(entry).toMatchObject({ kind: "message", name: "Vertrauliche Nachricht", url: null, accessId: "acc-7", unsent: true, subject: null });
+    expect(JSON.stringify(entry)).not.toContain("secretkey"); // CloudShare never keeps the key
+    expect((await list("bernd")).some((s) => s.id === "msg-send-7")).toBe(false);
+
+    const deleteSend = vi.mocked(vaultwarden.deleteSend);
+    deleteSend.mockClear();
+    expect((await app.inject({ method: "DELETE", url: "/api/shares/msg-send-7", headers: as("bernd") })).statusCode).toBe(404);
+    const revoked = await app.inject({ method: "DELETE", url: "/api/shares/msg-send-7", headers: as("anna") });
+    expect(revoked.json()).toMatchObject({ ok: true, message: true });
+    expect(deleteSend).toHaveBeenCalledWith("send-7");
+    expect((await list("anna")).some((s) => s.id === "msg-send-7")).toBe(false);
   });
 
   it("tells the add-in the limits", async () => {

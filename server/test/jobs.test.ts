@@ -25,6 +25,7 @@ const sms = await import("../src/sms.js");
 const { deliveryFor } = await import("../src/deliveries.js");
 const { passwordRefFor } = await import("../src/passwordRefs.js");
 const { pendingNotices } = await import("../src/notices.js");
+const { sentMailFor } = await import("../src/history.js");
 const sendSms = vi.mocked(sms.sendSms);
 const deleteSend = vi.mocked(vaultwarden.deleteSend);
 
@@ -356,7 +357,7 @@ describe("password by SMS, deliveries and download notices", () => {
     await addFileToPart(id, "s1", "Upload-Link für Ihre Dateien",
       { ...share("tok-mail-3", "Upload-Link für Ihre Dateien"), request: true, knownFiles: ["vorher.pdf"] });
     await arm(id);
-    sentOnlyFor(id);
+    sentOnlyFor(id, { ...sentMessage, id: "AAMk-sent" });
 
     await checkJobs(quietLog());
 
@@ -375,6 +376,23 @@ describe("password by SMS, deliveries and download notices", () => {
       recipients: { to: ["erika@example.test"], cc: ["chef@example.test"], bcc: [] }, maxAccessCount: 3,
     });
     expect(passwordRefFor("tok-mail-2", "someone-else")).toBeNull();
+    // "Verlauf": every link knows its mail ' subject, and the ID to open it.
+    expect(sentMailFor("tok-mail-3", "oid")).toMatchObject({ subject: "Unterlagen", mailId: "AAMk-sent" });
+    expect(sentMailFor("tok-mail-3", "someone-else")).toBeUndefined();
+  });
+
+  it("keeps no mail ID for a mail found in a shared mailbox – the pane can only open the user's own mails", async () => {
+    const id = await createSeparateJob("oid", "max@example.test", {
+      step: "s1", fileNames: ["a.pdf"], sendUrl: "https://vault/#/send/a", sendId: "send-a", maxAccessCount: 3,
+      shares: [share("tok-shared-1", "a.pdf")],
+    });
+    await arm(id, { mailbox: "info@example.test" });
+    sentOnlyFor(id, { ...sentMessage, id: "AAMk-info", from: "info@example.test" }, "info@example.test");
+
+    await checkJobs(quietLog());
+
+    expect(sentMailFor("tok-shared-1", "oid")).toMatchObject({ subject: "Unterlagen" });
+    expect(sentMailFor("tok-shared-1", "oid")?.mailId).toBeUndefined();
   });
 
   it("sends the password mail with the distribution of the sent mail – To, Cc and Bcc as they were", async () => {

@@ -21,9 +21,10 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe("findSentMessage", () => {
   it("finds the mail tagged with the job ID and returns its real sender and recipients", async () => {
-    const { call } = mockFetch(json({ value: [sentItem(null), sentItem("job-2"), sentItem("job-1")] }));
+    const { call } = mockFetch(json({ value: [sentItem(null), sentItem("job-2"), sentItem("job-1", { id: "AAkALg-immutable" })] }));
     const sent = await findSentMessage("token", "job-1", Date.UTC(2026, 10, 13));
     expect(sent).toEqual({
+      id: "AAkALg-immutable",
       subject: "Unterlagen",
       from: "info@example.test",
       recipients: { to: ["erika@example.test"], cc: [], bcc: ["archiv@example.test"] },
@@ -34,6 +35,8 @@ describe("findSentMessage", () => {
     expect(decodeURIComponent(url)).toContain("sentDateTime ge 2026-11-13T00:00:00.000Z");
     expect(decodeURIComponent(url)).toContain(`id eq '${CUSTOM_PROPS_ID}'`);
     expect((init.headers as Record<string, string>).Authorization).toBe("Bearer token");
+    // Immutable ID: opening the mail from "Verlauf" still works after it was moved.
+    expect((init.headers as Record<string, string>).Prefer).toBe(`IdType="ImmutableId"`);
   });
 
   it("returns null when the mail has not been sent yet", async () => {

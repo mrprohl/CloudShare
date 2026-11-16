@@ -1,5 +1,5 @@
 /**
- * How the password of each link went out – shown in "Meine Freigaben" ("Kennwort per SMS an +49 170 •••• 78 –
+ * How the password of each link went out – shown in "Verlauf" ("Kennwort per SMS an +49 170 •••• 78 –
  * zugestellt") and updated by seven.io's delivery reports. Keyed by the share token (last segment of the link URL).
  * Stored in the database (db.ts, store "deliveries"); entries are dropped after DELIVERY_TTL.
  */

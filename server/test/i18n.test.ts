@@ -156,10 +156,10 @@ describe("i18n", () => {
 
     // The page in LANGUAGE (de) and one copy per language for clients in another language.
     expect(readFileSync(path.join(dir, "taskpane.html"), "utf8")).toBe(
-      `<html lang="de"><button title="Meine Freigaben">${german.addin["submit.button"]}</button></html>`,
+      `<html lang="de"><button title="Verlauf">${german.addin["submit.button"]}</button></html>`,
     );
     expect(readFileSync(path.join(dir, "taskpane.en.html"), "utf8")).toBe(
-      '<html lang="en"><button title="My shares">Insert &lt;&quot;link&quot;&gt; &amp; go</button></html>',
+      '<html lang="en"><button title="History">Insert &lt;&quot;link&quot;&gt; &amp; go</button></html>',
     );
     expect(readFileSync(path.join(dir, "taskpane.de.html"), "utf8")).toBe(readFileSync(path.join(dir, "taskpane.html"), "utf8"));
 

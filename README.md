@@ -17,7 +17,7 @@ password (a Vaultwarden Send that can only be opened a limited number of times),
 The add-in follows the Outlook language (German and English included, English otherwise), and further languages can
 be added – see [Languages](#languages). Labels are quoted
 as in the English interface; the German ones are in [`locales/de.json`](locales/de.json) – e.g. "Insert file as link"
-is "Datei als Link einfügen", "My shares" is "Meine Freigaben".*
+is "Datei als Link einfügen", "History" is "Verlauf".*
 
 ## Contents
 
@@ -56,7 +56,7 @@ password (to the recipients), **green** – downloaded, **red** – a problem.
   new file names, a button to the folder in Nextcloud; checked every 10 minutes, so several uploads come as one mail.
 - **Text message not sent / not delivered** (only with SMS; "not delivered", reported later by seven.io, only with
   `SMS_NOTICE=true`): the SMS with the password failed. The note contains neither the password nor a link to it –
-  the password goes out no other way; send it again with **"Password"** (key icon) in "My shares".
+  the password goes out no other way; send it again with **"Password"** (key icon) in "History".
 
 <br clear="right">
 
@@ -92,7 +92,7 @@ three.
    at most 30). With SMS the two password-link settings disappear: the password is in the SMS itself and works as
    long as the link does.
 5. Click **"Insert file as link"**. The attachment is replaced by a download card in the mail.
-6. Send the mail. CloudShare sends the password mail (or SMS) on its own. "My shares" later shows how the
+6. Send the mail. CloudShare sends the password mail (or SMS) on its own. "History" later shows how the
    password went out, for SMS with the delivery status. With the download confirmation switched on, you get a mail
    when a recipient downloads a file for the first time – also for links without password.
 
@@ -117,11 +117,16 @@ Confidential messages and upload links always have a password, so "No password" 
 
 <br clear="right">
 
-<img src="docs/images/taskpane-shares.png" alt="Tab My shares: three links with period, password and download status and the icons Copy, Password, Insert, Revoke next to the name; at the first link Password is open with the password and Send again to" width="300" align="right">
+<img src="docs/images/taskpane-shares.png" alt="Tab History: three links with period, password and download status and the icons Copy, Password, Insert, Revoke next to the name; at the first link Password is open with the password and Send again to" width="300" align="right">
 
-**"My shares"** lists all your valid CloudShare links, newest first – one short line each for the period
-("10.11. – 24.11.2026"), the password (with / without, or how it went out: "Password by text message to … –
-delivered") and the downloads (or received files). It loads when you open the tab and again when you come back to
+**"History"** lists everything you sent with CloudShare that is still valid – links and confidential messages,
+newest first. Each entry is titled with the **subject of its mail** – a click opens that mail in Outlook (only mails
+of your own mailbox) –, below it the file, "File request" or "Confidential message", then one short line each for
+the period ("10.11. – 24.11.2026"), the password (with / without, or how it went out: "Password by text message to …
+– delivered") and the downloads (or received files; Vaultwarden does not report whether a message was opened). A
+confidential message has no "Copy" or "Insert" – CloudShare does not keep its key – but "Password" and "Revoke"
+(deletes it at once). Before the mail was sent the subject is not known yet: the entry is titled with the file. It
+loads when you open the tab and again when you come back to
 the pane; **Refresh** (⟳ in the tab bar) reloads it at any time. Expired links are not listed. At the bottom, as in
 "Send": the account menu ("Settings", "Help", "Disconnect" – the latter takes a second click) and the free space. A link is created when it is inserted;
 until its mail has been sent it says **"Not sent"**. If the mail is never sent (draft discarded), CloudShare revokes
@@ -143,22 +148,22 @@ Expired files are cleaned up automatically as well (see `CLEANUP_AFTER_DAYS`).
 
 <br clear="right">
 
-<img src="docs/images/taskpane-read.png" alt="Pane opened from a sent mail: tabs Message and My shares; under Message the two links of that mail with download and password status" width="300" align="right">
+<img src="docs/images/taskpane-read.png" alt="Pane opened from a sent mail: tabs Message and History; under Message the two links of that mail with download and password status" width="300" align="right">
 
 **Status of a sent mail:** the **CloudShare** button is also there while you **read** a mail – e.g. in *Sent Items*.
 The pane then has the tabs **"Message"** (opened first, in place of "Send": the links of that mail – downloads,
-how the password went out, validity) and **"My shares"** (all valid links, as when writing). **Pin** the pane (pin
+how the password went out, validity) and **"History"** (all valid links, as when writing). **Pin** the pane (pin
 icon in its header) and it follows the mail you select. Copy, Password and Revoke work as usual; nothing is inserted
 there. Confidential messages are not listed (they are not stored in Nextcloud).
 
 <br clear="right">
 
-<img src="docs/images/taskpane-help.png" alt="Help, opened with the question mark at the bottom right: a short introduction and sections to open – Getting started, Sending large files (open), Password and how it is sent, Confidential message, Receiving files from others, My shares, Frequently asked questions" width="300" align="right">
+<img src="docs/images/taskpane-help.png" alt="Help, opened from the account menu at the bottom left: a short introduction and sections to open – Getting started, Sending large files (open), Password and how it is sent, Confidential message, Receiving files from others, History, Frequently asked questions" width="300" align="right">
 
 **Help for users:** the **question mark** at the bottom right of the pane opens a short guide ("Hilfe") written for
 everyday users without IT knowledge – e.g. clerks in an administration: the first connection, sending large files
 step by step, choosing the password and how it is sent (with a clear note that personal or confidential data always go
-with a password), the confidential message, receiving files, "My shares" and frequently asked questions ("The
+with a password), the confidential message, receiving files, "History" and frequently asked questions ("The
 recipients did not get a password", "I sent the link to the wrong person" …). Short sections to open as needed; the
 most common one is open. It opens in place of the current tab; "×", the question mark or a tab closes it again. It is
 also there when the pane was opened from a sent mail. Its last sentence points to the IT support – put your own
@@ -334,22 +339,22 @@ is sent after the mail, through [seven.io](https://www.seven.io); without `SEVEN
    `server.…`) in the language files – adjust them via `env/config/locales` if your own rules need other words.
 3. **Delivery reports** (optional, recommended): in the seven.io dashboard (*Developer → Webhooks*) add
    `https://cloudshare.example.com/webhooks/seven?token=<SEVEN_WEBHOOK_SECRET>` for the event `dlr`. Without it the
-   SMS still goes out, but "My shares" only shows "submitted" instead of "delivered on …" / "not delivered".
+   SMS still goes out, but "History" only shows "submitted" instead of "delivered on …" / "not delivered".
 4. **Check:** `curl -s https://cloudshare.example.com/api/config` contains `"smsEnabled":true`; after reloading the
    pane, "Send the password to" offers **Phone number (SMS)**. Send a test mail with your own number –
    `docker logs cloudshare 2>&1 | grep -i sms` shows the SMS and, with the webhook, `SMS delivery report`.
 
 **If an SMS fails, the password goes out no other way** – CloudShare never sends it on its own by mail. The sender
 gets a short note **without** password or link ("Text message not sent – …" / "Text message not delivered – …") and
-sends it again in CloudShare: **Password** at the link in "My shares" or in the sent mail – by SMS (e.g. to a
+sends it again in CloudShare: **Password** at the link in "History" or in the sent mail – by SMS (e.g. to a
 corrected number) or as a password mail. Two kinds of failure:
 
-- **seven.io refuses the SMS** (wrong key, no credit, daily limit reached): note right away; "My shares" shows
+- **seven.io refuses the SMS** (wrong key, no credit, daily limit reached): note right away; "History" shows
   "not sent", the log the reason (`Password SMS failed`).
 - **seven.io accepts it, but reports later that it could not be delivered** (e.g. wrong number, phone off for days –
-  only with the delivery reports of step 3): "My shares" shows "not delivered". The note needs CloudShare's own
+  only with the delivery reports of step 3): "History" shows "not delivered". The note needs CloudShare's own
   app permission (`SMS_NOTICE=true`, application permission `Mail.Send` as for the download confirmation), because
-  no user is signed in at that moment; without it only "My shares" shows it.
+  no user is signed in at that moment; without it only "History" shows it.
 
 ### Text templates (optional)
 
@@ -410,7 +415,7 @@ Update the stack; CloudShare puts the texts into the add-in files when it starts
 cache in classic Outlook (see *Operation*), reload Outlook on the web. Not affected by the language:
 
 - **Nextcloud folder names** – `NEXTCLOUD_REQUEST_FOLDER` stays as set (default `CloudShare-File-Requests`), so
-  "My shares" keeps finding older links. To have it in German, set it in `setup.sh` / `env/cloudshare.env` before
+  "History" keeps finding older links. To have it in German, set it in `setup.sh` / `env/cloudshare.env` before
   the first use, e.g. `CloudShare-Dateianforderungen`.
 - **`templates.json`** holds one set of texts – translate it as well, or remove it to use the built-in texts of the
   language.
@@ -496,7 +501,7 @@ Every push and pull request runs the pipeline in `.github/workflows/image.yml`:
 | Stage | What is checked |
 |---|---|
 | test | type check and unit tests of both packages, **documentation** (settings, API routes, pictures, help – `docs.test.ts`), **language files** (same texts and placeholders in every language, every key used exists, Outlook's length limits), `npm audit`, manifest validation per language, ShellCheck, deployment files (`setup.sh` with dummy answers, `docker compose config`, `caddy validate`) |
-| ui | the real taskpane in Chromium with Office.js and the API mocked – upload, cards, passwords, "My shares", dark theme, 320 px width and **accessibility** (axe, WCAG 2 A/AA); screenshots as artifact `ui-test-report`; the English pane pictures of this README **compared with `docs/images`** (fresh ones as artifact `readme-pictures`) |
+| ui | the real taskpane in Chromium with Office.js and the API mocked – upload, cards, passwords, "History", dark theme, 320 px width and **accessibility** (axe, WCAG 2 A/AA); screenshots as artifact `ui-test-report`; the English pane pictures of this README **compared with `docs/images`** (fresh ones as artifact `readme-pictures`) |
 | build | image build, Trivy scan, **smoke test** of the real stack with Caddy (TLS, headers, add-in files with the texts of every language, English manifest with Overrides, read button and help, limits, login required on the API, hardening; the Vaultwarden mock refuses Sends beyond 31 days), **upgrade test** (connections, password jobs, delivery status, download confirmations, cleanup list and password entries written by the published image must stay readable), **load test** (k6: 10 users × 2 × 45 MiB) |
 | push | only if everything passed: `ghcr.io/mrprohl/cloudshare` (`latest`, `sha-<commit>`, version tags); pull requests publish nothing |
 
