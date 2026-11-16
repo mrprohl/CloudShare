@@ -9,7 +9,7 @@ updates:
     groups:
       server-minor-patch:
         update-types: [minor, patch]
-    # @types/node follows the Node.js major of the runtime image (node:22-alpine), not the newest Node.js
+    # @types/node follows the Node.js major of the runtime image (node:24-alpine), not the newest Node.js
     ignore:
       - dependency-name: "@types/node"
         update-types: [version-update:semver-major]
@@ -29,7 +29,7 @@ updates:
       actions:
         patterns: ["*"]
 
-  # node:22-alpine in the Dockerfile – patch/minor only; a new Node.js major is a deliberate change.
+  # node:24-alpine in the Dockerfile – patch/minor only; a new Node.js major is a deliberate change.
   # The Bitwarden CLI (BW_CLI_VERSION) is not tracked: it must match the Vaultwarden version.
   - package-ecosystem: docker
     directory: /

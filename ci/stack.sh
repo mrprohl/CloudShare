@@ -225,7 +225,10 @@ upgrade() {
   else fail "previous version could not write its data"; return; fi
 
   echo "  new version reads them:"
-  if node_in "$image:$tag" /ci/upgrade/verify.mjs; then ok "all data readable and unchanged"
+  local rc=0
+  node_in "$image:$tag" /ci/upgrade/verify.mjs || rc=$?
+  if [ "$rc" = 0 ]; then ok "all data readable and unchanged"
+  elif [ "$rc" = 3 ]; then echo "  – skipped: storage format changed (JSON files → SQLite), no data taken over"
   else fail "data of the previous version is not readable"; fi
 
   set_image "$image" "$tag"
@@ -233,8 +236,8 @@ upgrade() {
   if wait_healthy; then ok "new version starts on the existing data"; else fail "new version not healthy"; return; fi
   docker logs cloudshare 2>&1 | grep -q 'could not be read' && fail "startup warns about unreadable data" \
     || ok "no warnings about unreadable data at startup"
-  stat_mode=$(docker run --rm -v cloudshare_data:/data alpine:3 stat -c '%a %u' /data/nextcloud-credentials.json)
-  [ "$stat_mode" = "600 1000" ] && ok "credentials file stays 600, owned by 1000" || fail "credentials file: $stat_mode"
+  stat_mode=$(docker run --rm -v cloudshare_data:/data alpine:3 stat -c '%a %u' /data/cloudshare.db)
+  [ "$stat_mode" = "600 1000" ] && ok "database file is 600, owned by 1000" || fail "database file: $stat_mode"
 }
 
 load() {

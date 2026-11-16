@@ -11,8 +11,6 @@
  *
  * Privacy: no IP addresses or recipient data from Nextcloud are kept; entries are dropped when the link expired.
  */
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import type { FastifyBaseLogger } from "fastify";
 import { appGraphToken, HttpError } from "./auth.js";
 import { config } from "./config.js";
@@ -20,7 +18,7 @@ import { getCredentials, removeCredentials } from "./credentials.js";
 import { locale, t } from "./i18n.js";
 import { sendMailAsApp } from "./graph.js";
 import { NextcloudClient, NOT_CONNECTED } from "./nextcloud.js";
-import { createAtomicWriter, seal, unseal, type Sealed } from "./storage.js";
+import { PersistentMap } from "./db.js";
 import { mailDocument, paragraph, TEXT_STYLE } from "./mailLayout.js";
 import { renderHtml, render, templatesFor } from "./templates.js";
 
@@ -49,28 +47,14 @@ const MAX_NAMES = 10;
 
 const INTERVAL = 10 * 60_000;
 const DAY = 86_400_000;
-const AAD = "download-notices";
-const file = path.join(config.dataDir, "download-notices.json");
-const write = createAtomicWriter(file);
-const notices = new Map<string, Notice>();
-
-try {
-  const sealed = JSON.parse(readFileSync(file, "utf8")) as Sealed;
-  for (const [token, n] of Object.entries(JSON.parse(unseal(sealed, AAD)) as Record<string, Notice>)) notices.set(token, n);
-} catch (err) {
-  if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-    console.warn(`download-notices.json could not be read and is ignored: ${(err as Error).message}`);
-  }
-}
-
-const persist = () => write(JSON.stringify(seal(JSON.stringify(Object.fromEntries(notices)), AAD)));
+/** Watched links in the database (db.ts, store "notices"). */
+const notices = new PersistentMap<Notice>("notices");
 
 /** Watches the given links (token → notice): file links for their first download, upload links for received files. */
 export async function registerNotices(entries: Array<[string, Notice]>): Promise<void> {
   const wanted = entries.filter(([, notice]) => enabled(notice));
   if (wanted.length === 0) return;
   for (const [token, notice] of wanted) notices.set(token, notice);
-  await persist();
 }
 
 /** Tests only. */
@@ -84,12 +68,10 @@ const formatTime = (iso: string) =>
 /** One pass (exported for tests; normally driven by startNotices). */
 export async function runNotices(log: Pick<FastifyBaseLogger, "info" | "warn">, now = Date.now()) {
   if (notices.size === 0) return;
-  let changed = false;
   for (const [token, n] of notices) {
     // Link expired (without a download), or the kind was switched off since it was registered.
     if (Date.parse(`${n.expireDate}T00:00:00Z`) + 2 * DAY < now || !enabled(n)) {
       notices.delete(token);
-      changed = true;
     }
   }
   const byOwner = new Map<string, Array<[string, Notice]>>();
@@ -100,7 +82,6 @@ export async function runNotices(log: Pick<FastifyBaseLogger, "info" | "warn">, 
     const creds = getCredentials(owner);
     if (!creds) {
       for (const [token] of items) notices.delete(token);
-      changed = true;
       continue;
     }
     const nc = new NextcloudClient(creds, () => removeCredentials(owner));
@@ -137,7 +118,7 @@ export async function runNotices(log: Pick<FastifyBaseLogger, "info" | "warn">, 
           const subject = t("mail.uploadedSubject", { count: received.length, subject: n.subject || t("mail.noSubject") });
           await sendMailAsApp(appToken, owner, n.notifyTo, subject, html);
           n.knownFiles = [...known, ...received];
-          changed = true;
+          notices.save(token);
           log.info({ user: n.ownerUpn, files: received.length }, "Upload notification sent");
           continue;
         }
@@ -166,19 +147,16 @@ export async function runNotices(log: Pick<FastifyBaseLogger, "info" | "warn">, 
         });
         await sendMailAsApp(appToken, owner, n.notifyTo, render(texts.download_notice_subject, values), html);
         notices.delete(token);
-        changed = true;
         log.info({ user: n.ownerUpn, file: n.fileName }, "Download confirmation sent");
       }
     } catch (err) {
       if (err instanceof HttpError && err.code === NOT_CONNECTED) {
         for (const [token] of items) notices.delete(token);
-        changed = true;
       } else {
         log.warn({ err, user: items[0][1].ownerUpn }, "Download confirmation / upload notification check failed, retrying later");
       }
     }
   }
-  if (changed) await persist();
 }
 
 export function startNotices(log: FastifyBaseLogger) {

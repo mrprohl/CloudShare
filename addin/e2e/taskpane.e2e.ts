@@ -1161,6 +1161,14 @@ test("Hilfe: the \"?\" at the top right opens the guide in place of the tab, rea
   await sections.nth(6).locator("summary").click();
   await expect(sections.nth(6)).toHaveAttribute("open", "");
   await expect(sections.nth(6)).toContainText("Ich habe den Link an die falsche Person geschickt.");
+  // "Meine Freigaben" explains every icon with the icon itself – also "Aktualisieren" in the tab bar.
+  const shares = sections.filter({ has: page.locator("summary", { hasText: "Meine Freigaben" }) });
+  await shares.locator("summary").click();
+  for (const icon of ["copy", "password", "insert", "revoke", "refresh"]) {
+    await expect(shares.locator(`[data-icon="${icon}"] svg`)).toHaveCount(1);
+  }
+  await expect(shares).toContainText("Aktualisieren – oben neben dem „?“");
+  await expect(shares).toContainText("Verbindung auch trennen");
   await expect(help).toContainText("Personenbezogene oder vertrauliche Daten versenden Sie bitte immer mit Kennwort.");
   await expectAccessible(page);
   await expectNoHorizontalScroll(page);

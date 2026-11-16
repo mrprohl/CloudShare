@@ -1570,6 +1570,8 @@ const ICONS = {
       '<path d="M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l1-1"/>',
   ),
   revoke: icon('<circle cx="10" cy="10" r="6.5"/><path d="M5.4 5.4l9.2 9.2"/>'),
+  /** Same drawing as the refresh button in the tab bar (taskpane.html). */
+  refresh: icon('<path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11"/>'),
 } as const;
 
 /** The help explains the actions with their icons: `<span data-icon="copy">` gets the icon. */

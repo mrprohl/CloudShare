@@ -278,16 +278,6 @@ deployed again.
 
 `env/versions.env` holds `CLOUDSHARE_HOST`, `CLOUDSHARE_VERSION` (`latest`) and `CADDY_VERSION`.
 
-**Changed defaults:** an existing `env/cloudshare.env` keeps the values `setup.sh` wrote back then – set the new ones
-by hand if you want them:
-
-| Setting | Before | Now |
-|---|---|---|
-| `ATTACHMENT_THRESHOLD_MB` | `1` | `5` |
-| `ATTACHMENT_POLICY` | `enforce` | `suggest` |
-| `MAIL_FOOTER` | `'{displayName} · {jobTitle}\n{company} · Tel. {phone} · {email}'` | empty |
-| `NEXTCLOUD_REQUEST_FOLDER` | `Outlook-Dateianforderungen` | `CloudShare-File-Requests` – rename the folder in Nextcloud as well, otherwise "My shares" no longer finds older upload links |
-
 ### Password by SMS (optional)
 
 The password can go out as an SMS instead of a password mail ("Send the password to" → **Phone number (SMS)**). It

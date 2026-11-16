@@ -2,20 +2,18 @@
  * Deletes uploaded files after their link expired (CLEANUP_AFTER_DAYS, default 0 = right after expiry, "off" = never).
  *
  * Every upload has its own folder NEXTCLOUD_FOLDER/<date>_<id>. When a link to it is created, the folder and the
- * link's expiry date are registered here (encrypted in /data/cleanup.json, like the password jobs) – Nextcloud's own
+ * link's expiry date are registered here (encrypted in the database, db.ts store "cleanup") – Nextcloud's own
  * housekeeping removes expired shares, so their expiry date cannot be read back later. An hourly pass deletes due
  * folders with the owner's app password; they go to the owner's Nextcloud trash. A folder that still has a valid
  * link (e.g. "Meine Freigaben → Einfügen" with a later date, or a link created in Nextcloud) is not deleted.
  * Received files (NEXTCLOUD_REQUEST_FOLDER) are never registered and therefore never deleted.
  */
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import type { FastifyBaseLogger } from "fastify";
 import { HttpError } from "./auth.js";
 import { config } from "./config.js";
 import { getCredentials, removeCredentials } from "./credentials.js";
 import { NextcloudClient, NOT_CONNECTED } from "./nextcloud.js";
-import { createAtomicWriter, seal, unseal, type Sealed } from "./storage.js";
+import { PersistentMap } from "./db.js";
 
 export interface CleanupEntry {
   /** Entra oid of the owner (whose Nextcloud credentials delete the folder). */
@@ -28,24 +26,8 @@ export interface CleanupEntry {
 
 const DAY = 86_400_000;
 const INTERVAL = 60 * 60_000;
-const AAD = "cleanup";
-
-const file = path.join(config.dataDir, "cleanup.json");
-const write = createAtomicWriter(file);
-const entries = new Map<string, CleanupEntry>();
-
-try {
-  const sealed = JSON.parse(readFileSync(file, "utf8")) as Sealed;
-  for (const [key, entry] of Object.entries(JSON.parse(unseal(sealed, AAD)) as Record<string, CleanupEntry>)) {
-    entries.set(key, entry);
-  }
-} catch (err) {
-  if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-    console.warn(`cleanup.json could not be read and is ignored: ${(err as Error).message}`);
-  }
-}
-
-const persist = () => write(JSON.stringify(seal(JSON.stringify(Object.fromEntries(entries)), AAD)));
+/** Upload folders with their expiry, in the database (db.ts, store "cleanup"). */
+const entries = new PersistentMap<CleanupEntry>("cleanup");
 const keyOf = (owner: string, folder: string[]) => `${owner}:${folder.join("/")}`;
 
 /** Only upload folders directly below NEXTCLOUD_FOLDER – never anything else in the user's Nextcloud. */
@@ -60,7 +42,6 @@ export async function registerForCleanup(owner: string, target: string[], expire
   const existing = entries.get(key);
   if (existing && existing.expireDate >= expireDate) return;
   entries.set(key, { owner, folder, expireDate });
-  await persist();
 }
 
 /**
@@ -81,13 +62,12 @@ export async function expireOnRevoke(
   const key = keyOf(owner, folder);
   if (afterDays === 0) {
     await deleteNow(folder);
-    if (entries.delete(key)) await persist();
+    entries.delete(key);
     return "deleted";
   }
   // Expired "yesterday", so that it becomes due in exactly `afterDays` days (see dueAt).
   const expireDate = new Date(now - DAY).toISOString().slice(0, 10);
   entries.set(key, { owner, folder, expireDate });
-  await persist();
   return "scheduled";
 }
 
@@ -105,13 +85,11 @@ export async function runCleanup(log: Pick<FastifyBaseLogger, "info" | "warn">, 
   const byOwner = new Map<string, Array<[string, CleanupEntry]>>();
   for (const item of due) byOwner.set(item[1].owner, [...(byOwner.get(item[1].owner) ?? []), item]);
 
-  let changed = false;
   for (const [owner, items] of byOwner) {
     const creds = getCredentials(owner);
     if (!creds) {
       // Not connected any more – nothing can be deleted for this user; forget the entries.
       for (const [key] of items) entries.delete(key);
-      changed = true;
       continue;
     }
     const nc = new NextcloudClient(creds, () => removeCredentials(owner));
@@ -129,24 +107,20 @@ export async function runCleanup(log: Pick<FastifyBaseLogger, "info" | "warn">, 
           const dates = active.map((s) => s.expiration);
           if (dates.includes(null)) entries.delete(key);
           else entries.set(key, { ...entry, expireDate: (dates as string[]).sort().at(-1)! });
-          changed = true;
           continue;
         }
         await nc.deletePath(uid, entry.folder);
         entries.delete(key);
-        changed = true;
         log.info({ owner, folder: entry.folder.join("/"), expired: entry.expireDate }, "Expired upload deleted");
       }
     } catch (err) {
       if (err instanceof HttpError && err.code === NOT_CONNECTED) {
         for (const [key] of items) entries.delete(key);
-        changed = true;
       } else {
         log.warn({ err, owner }, "Cleanup of expired uploads failed, retrying later");
       }
     }
   }
-  if (changed) await persist();
 }
 
 /** Hourly pass; the first one a few minutes after start. */
