@@ -1,11 +1,19 @@
 /**
  * getToken(): Office allows only one getAccessToken call at a time (error 13008 otherwise). Concurrent callers must
- * share one request, valid tokens are reused, and a 13008 from another runtime is retried.
+ * share one request, valid tokens are reused (also over a reload of the pane), a 13008 from another runtime and a
+ * 13013 (too many sign-ins) are retried.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { installOfficeMock } from "./officeMock";
 
 installOfficeMock();
+// The pane's sessionStorage (Node has none): the token survives a reload of the pane in it.
+const storage = new Map<string, string>();
+(globalThis as unknown as { sessionStorage: Pick<Storage, "getItem" | "setItem" | "removeItem"> }).sessionStorage = {
+  getItem: (key) => storage.get(key) ?? null,
+  setItem: (key, value) => void storage.set(key, value),
+  removeItem: (key) => void storage.delete(key),
+};
 const { getToken, resetTokenCache } = await import("../src/shared/office");
 const getAccessToken = (globalThis as unknown as { Office: { auth: { getAccessToken: ReturnType<typeof vi.fn> } } })
   .Office.auth.getAccessToken;
@@ -58,5 +66,20 @@ describe("getToken", () => {
     getAccessToken.mockRejectedValue({ code: 13007, name: "Error", message: "x" });
     await expect(getToken()).rejects.toThrow(/\(Code 13007\)/);
     expect(getAccessToken).toHaveBeenCalledTimes(1);
+  }, 10_000);
+
+  it("keeps the token over a reload of the pane – clicking through mails does not ask Office every time", async () => {
+    getAccessToken.mockResolvedValue(jwt(3600));
+    await getToken();
+    resetTokenCache(true); // the page loads anew, sessionStorage stays
+    await getToken();
+    expect(getAccessToken).toHaveBeenCalledTimes(1);
+  });
+
+  it("waits and asks again when Outlook says too many sign-ins in a short time (13013)", async () => {
+    const token = jwt(3600);
+    getAccessToken.mockRejectedValueOnce({ code: 13013, name: "Error", message: "too many" }).mockResolvedValueOnce(token);
+    await expect(getToken()).resolves.toBe(token);
+    expect(getAccessToken).toHaveBeenCalledTimes(2);
   }, 10_000);
 });

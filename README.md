@@ -86,8 +86,9 @@ three.
      confidential message or upload link any more (the pane says so).
 3. **"Send the password to"**: the recipients of the mail (default), **another e-mail address** (e.g. a colleague),
    or a **phone number (SMS)** if SMS is set up – the password arrives as plain text, sent after the mail.
-4. **"Validity"** is collapsed and shows its values in one line, e.g. "Link 14 days · Password link 5 days, opens 3
-   times". Open it to change **"Link valid for"** (days the download link works – with a password at most 30, see below), **"Password can be opened"** (how
+4. **"Validity and language"** is collapsed and shows its values in one line, e.g. "Link 14 days · Password link 5
+   days, opens 3 times · English". Open it to change **"Language for the recipients"** (link card, password mail and SMS
+   in that language; preselected in the settings), **"Link valid for"** (days the download link works – with a password at most 30, see below), **"Password can be opened"** (how
    often the password link opens) and **"Password link valid for"** (days the password can be fetched – default 5,
    at most 30). With SMS the two password-link settings disappear: the password is in the SMS itself and works as
    long as the link does.
@@ -107,7 +108,7 @@ before sending, no password mail goes out and the password options are free agai
 **Confidential message** (**Message**): type a message instead of choosing a file – e.g. access data – and click
 **"Insert confidential message"**. The message does not go into the mail: it is stored encrypted in Vaultwarden as a Send
 protected with the chosen password, and the mail gets a card with **"Open message"**. The password reaches the
-recipients like for files. At most 1000 characters; under "Validity", **"Message valid for"** sets how long it can be
+recipients like for files. At most 1000 characters; under "Validity and language", **"Message valid for"** sets how long it can be
 read (default 5 days, at most 30 – Vaultwarden's limit), then it is deleted.
 
 **Receiving files** (**Request**): **"Insert upload link"** inserts a link through which the recipients can upload
@@ -521,7 +522,7 @@ swallows the screenshot):
 $edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 $repo = (Get-Location).Path; $url = "file:///" + ($repo -replace '\\','/') + "/docs/mockups"
 $opts = "--headless=new", "--hide-scrollbars", "--user-data-dir=$env:TEMP\cloudshare-edge"
-foreach ($shot in @(("outlook-compose", "compose-send", "1440,1180"), ("mail-received", "mail-received", "760,706"),
+foreach ($shot in @(("outlook-compose", "compose-send", "1440,1100"), ("mail-received", "mail-received", "760,706"),
                     ("password-mail", "password-mail", "760,676"), ("sender-notices", "sender-notices", "760,942"))) {
   Start-Process -Wait $edge ($opts + "--window-size=$($shot[2])", "--screenshot=$repo\docs\images\$($shot[0]).png", "$url/$($shot[1]).html")
 }

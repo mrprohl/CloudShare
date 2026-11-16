@@ -166,8 +166,14 @@ const STATUS_TIMER =
 /** Seconds a success message stays (server setting, 5 until the configuration is loaded); 0: it stays. */
 const successSeconds = () => serverConfig?.successMessageSeconds ?? 5;
 
+/** A button in the message, e.g. "Erneut versuchen" after a failed start. */
+type StatusAction = { label: string; run: () => void };
+
+/** "Erneut versuchen": CloudShare starts afresh, as if the pane was opened again (sign-in, server, settings). */
+const retryAction = (): StatusAction => ({ label: t("retry"), run: () => location.reload() });
+
 let statusShown = 0;
-function setStatus(text: string, kind: StatusKind = "info") {
+function setStatus(text: string, kind: StatusKind = "info", action?: StatusAction) {
   const shown = ++statusShown;
   statusBar.hidden = !text;
   statusBar.className = `messagebar ${kind}`;
@@ -176,6 +182,14 @@ function setStatus(text: string, kind: StatusKind = "info") {
     ? `<svg class="icon" viewBox="0 0 16 16" aria-hidden="true">${seconds > 0 ? STATUS_TIMER : STATUS_ICONS[kind]}</svg><span></span>`
     : "";
   if (text) statusBar.querySelector("span")!.textContent = text;
+  if (text && action) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "link-button status-action";
+    button.textContent = action.label;
+    button.addEventListener("click", action.run);
+    statusBar.querySelector("span")!.append(" ", button);
+  }
   if (seconds > 0) {
     const ring = statusBar.querySelector<SVGCircleElement>(".status-timer")!;
     ring.style.animationDuration = `${seconds}s`;
@@ -687,6 +701,7 @@ function renderRecipientLanguages(selected: string) {
   recipientLanguageSelect.replaceChildren(...choices.map((l) => new Option(l.name, l.code)));
   recipientLanguageSelect.value = choices.some((l) => l.code === selected) ? selected : (choices[0]?.code ?? "");
   recipientLanguageField.hidden = choices.length < 2;
+  renderValidity(); // the summary names the language
 }
 
 /** The language the recipients get the link card, password mail and SMS in. */
@@ -694,6 +709,7 @@ const recipientLanguage = () => recipientLanguageSelect.value || undefined;
 
 // A choice for this mail is kept with the draft: the pane opened again shows it, and new links follow it.
 recipientLanguageSelect.addEventListener("change", () => {
+  renderValidity();
   void updateDraftState({ recipientLanguage: recipientLanguageSelect.value });
 });
 
@@ -1349,6 +1365,10 @@ function renderValidity() {
     // The recipients' access to the password ends at the latest with the link (the server caps it the same way).
     const days = Math.min(sendDays(passwordDaysInput).value, lifetime);
     parts.push(t("validity.password", { count: days, times: timesText(maxAccessValue()) }));
+  }
+  // "Sprache für die Empfänger" (in this section): its name, while there is a choice.
+  if (!recipientLanguageField.hidden && recipientLanguageSelect.selectedOptions[0]) {
+    parts.push(recipientLanguageSelect.selectedOptions[0].text);
   }
   validitySummary.textContent = parts.join(" · ");
 }
@@ -2261,7 +2281,7 @@ async function startReadView() {
   try {
     await refreshConnection(); // loads the shares once connected (showConnection)
   } catch (err) {
-    setStatus(t("signInFailed", { error: errorMessage(err) }), "error");
+    setStatus(t("signInFailed", { error: errorMessage(err) }), "error", retryAction());
   }
 }
 
@@ -2296,7 +2316,7 @@ Office.onReady(async () => {
       // Caching is best effort.
     }
   } catch {
-    setStatus(t("unreachable", { url: API_BASE }), "error");
+    setStatus(t("unreachable", { url: API_BASE }), "error", retryAction());
     return;
   }
   // Personal settings (ways to send the password, signature, language). Without them the usual ones apply.
@@ -2365,6 +2385,6 @@ Office.onReady(async () => {
   try {
     await refreshConnection();
   } catch (err) {
-    setStatus(t("signInFailed", { error: errorMessage(err) }), "error");
+    setStatus(t("signInFailed", { error: errorMessage(err) }), "error", retryAction());
   }
 });

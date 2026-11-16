@@ -65,9 +65,36 @@ export interface SettingsResponse {
 
 /** Office SSO: "a previous getAccessToken call is still in progress". */
 const SSO_IN_PROGRESS = 13008;
+/** Office SSO: "too many calls in a short time" – Outlook throttles getAccessToken per add-in. */
+const SSO_THROTTLED = 13013;
 
-let cachedToken: { token: string; expiresAt: number } | null = null;
+type CachedToken = { token: string; expiresAt: number };
+let cachedToken: CachedToken | null = null;
 let pendingToken: Promise<string> | null = null;
+
+/**
+ * The token also survives a reload of the pane (classic Outlook loads it anew for every mail selected while it is not
+ * pinned; a language change reloads it): kept in sessionStorage – this Outlook window only, gone when it closes – so
+ * clicking through mails does not ask Office every time and run into its limit (13013). Best effort: the JavaScript-
+ * only runtime of classic Outlook has no storage.
+ */
+const TOKEN_KEY = "cloudshare-sso";
+function storedToken(): CachedToken | null {
+  try {
+    const stored = JSON.parse(sessionStorage.getItem(TOKEN_KEY) || "null") as CachedToken | null;
+    return stored && typeof stored.token === "string" && typeof stored.expiresAt === "number" ? stored : null;
+  } catch {
+    return null;
+  }
+}
+function storeToken(value: CachedToken | null) {
+  try {
+    if (value) sessionStorage.setItem(TOKEN_KEY, JSON.stringify(value));
+    else sessionStorage.removeItem(TOKEN_KEY);
+  } catch {
+    // no sessionStorage here
+  }
+}
 
 /** Expiry of a JWT in ms; unreadable tokens are reused for five minutes at most. */
 function tokenExpiry(token: string): number {
@@ -121,12 +148,18 @@ async function requestToken(): Promise<string> {
         // Graph fails (HttpError 403 with the Entra message, see onBehalfOf in server/src/auth.ts).
       });
       cachedToken = { token, expiresAt: tokenExpiry(token) };
+      storeToken(cachedToken);
       return token;
     } catch (err) {
       // Another runtime of this add-in (taskpane / send handler) may be asking at the same moment.
       const code = err && typeof err === "object" ? Number((err as { code?: unknown }).code) : NaN;
       if (code === SSO_IN_PROGRESS && attempt < 4) {
         await delay(400 * attempt);
+        continue;
+      }
+      // Too many requests in a short time: Outlook lets the add-in ask again after a few seconds.
+      if (code === SSO_THROTTLED && attempt < 3) {
+        await delay(3000 * attempt);
         continue;
       }
       throw toSsoError(err);
@@ -141,6 +174,7 @@ async function requestToken(): Promise<string> {
  * readable message and the code (see sso.ts).
  */
 export function getToken(): Promise<string> {
+  if (!cachedToken) cachedToken = storedToken(); // from before a reload of the pane
   if (cachedToken && cachedToken.expiresAt - 2 * 60_000 > Date.now()) return Promise.resolve(cachedToken.token);
   // No Promise.finally / Headers: the JavaScript-only runtime of classic Outlook is not a full browser.
   if (!pendingToken) {
@@ -158,10 +192,11 @@ export function getToken(): Promise<string> {
   return pendingToken;
 }
 
-/** Tests only: forget the cached token. */
-export function resetTokenCache(): void {
+/** Tests only: forget the cached token – `keepStored`: as a reload of the pane does (sessionStorage stays). */
+export function resetTokenCache(keepStored = false): void {
   cachedToken = null;
   pendingToken = null;
+  if (!keepStored) storeToken(null);
 }
 
 export const NOT_CONNECTED = "NEXTCLOUD_NOT_CONNECTED";
@@ -182,6 +217,11 @@ export async function api<T>(path: string, init: RequestInit = {}, token?: strin
   if (init.body && typeof init.body === "string") headers["Content-Type"] = "application/json";
   const res = await fetch(API_BASE + path, { ...init, headers });
   const json = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
+  // The server refused the sign-in (not Nextcloud): the kept token is no good – the next call asks Office again.
+  if (res.status === 401 && token && json.code !== NOT_CONNECTED && cachedToken?.token === token) {
+    cachedToken = null;
+    storeToken(null);
+  }
   if (!res.ok) throw new ApiError(json.error || `HTTP ${res.status}`, json.code);
   return json as T;
 }

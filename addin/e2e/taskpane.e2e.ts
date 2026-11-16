@@ -335,12 +335,19 @@ test("Microsoft sign-in fails: readable message with the Office code", async ({ 
   await expect(status).toContainText("kein Anmeldetoken für CloudShare");
   await expect(status).toContainText("(Code 13007)");
   await expect(status).not.toContainText("[object Object]");
+  // "Erneut versuchen" starts CloudShare afresh (the page loads again and asks Office once more).
+  const retry = status.locator("button.status-action");
+  await expect(retry).toHaveText("Erneut versuchen");
+  await expectAccessible(page);
+  await Promise.all([page.waitForEvent("load"), retry.click()]);
+  await expect(page.locator("#status")).toContainText("(Code 13007)");
   await shot(page, "sso-error");
 });
 
 test("server unreachable: says so instead of showing an empty pane", async ({ page }) => {
   await openTaskpane(page, { config: "down" });
   await expect(page.locator("#status")).toContainText("CloudShare ist derzeit nicht erreichbar");
+  await expect(page.locator("#status button.status-action")).toHaveText("Erneut versuchen");
 });
 
 // --- Language of the Outlook client --------------------------------------------------------------------------------
@@ -521,7 +528,7 @@ test("preselects large attachments and proposes a random password", async ({ pag
   await expect(page.locator("#submit")).toHaveText("2 Dateien als Link einfügen");
   await rows.nth(1).locator(".file-name").click();
   await expect(page.locator("#validity-section")).toBeHidden();
-  await expect(page.locator("#validity-summary")).toHaveText("Link 14 Tage · Kennwort-Link 5 Tage, 3-mal abrufbar");
+  await expect(page.locator("#validity-summary")).toHaveText("Link 14 Tage · Kennwort-Link 5 Tage, 3-mal abrufbar · Deutsch");
   await expect(page.locator('#password-channel option[value="sms"]')).toHaveCount(1);
 
   await expectAccessible(page);
@@ -535,10 +542,15 @@ test("Sprache für die Empfänger: the card and the password mail in the chosen 
     settings: { recipientLanguage: "de" },
   });
   await expect(page.locator("#password")).not.toHaveValue("");
+  // In "Gültigkeit und Sprache": the summary names it, the field is behind the toggle.
+  await expect(page.locator("#validity-summary")).toContainText("· Deutsch");
+  await page.click("#validity-toggle");
   const select = page.locator("#recipient-language");
   await expect(select).toHaveValue("de"); // from the settings
   await expect(select.locator("option")).toHaveText(["Deutsch", "English"]);
   await select.selectOption("en");
+  await page.click("#validity-toggle");
+  await expect(page.locator("#validity-summary")).toContainText("· English");
   await page.click("#submit");
 
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt."); // the pane in its own language
@@ -640,7 +652,7 @@ test("Link gültig für / Kennwort abrufbar: capped at the maximum with a note, 
 
   // Closed again: the summary shows the new values.
   await page.click("#validity-toggle");
-  await expect(page.locator("#validity-summary")).toHaveText("Link 10 Tage · Kennwort-Link 5 Tage, einmal abrufbar");
+  await expect(page.locator("#validity-summary")).toHaveText("Link 10 Tage · Kennwort-Link 5 Tage, einmal abrufbar · Deutsch");
 });
 
 test("further links share the password by default; 'Zufällig' gives the next one its own", async ({ page }) => {
@@ -1001,7 +1013,7 @@ test("Ohne Kennwort: plain link, no password mail, upload links stay protected",
   // The whole mail stays without password; an upload link would need one – said before any click.
   await expect(page.locator("#mode-random")).toBeDisabled();
   await expect(page.locator("#mode-none")).toBeChecked();
-  await expect(page.locator("#validity-summary")).toHaveText("Link 14 Tage");
+  await expect(page.locator("#validity-summary")).toHaveText("Link 14 Tage · Deutsch");
   await chooseKind(page, "request");
   await expect(page.locator("#password-hint")).toContainText("Links zum Hochladen brauchen ein Kennwort");
   await expect(page.locator("#submit")).toBeDisabled();
@@ -1066,7 +1078,7 @@ test("Nachricht: inserts a card with the link, never the text, and shares the pa
   await expect(page.locator("#files-section")).toBeHidden(); // one thing at a time
   await expect(page.locator("#submit")).toHaveText("Vertrauliche Nachricht einfügen"); // the only button
   await expect(page.locator("#mode-none-row")).toBeHidden(); // a confidential message always has a password
-  await expect(page.locator("#validity-summary")).toHaveText("Nachricht 5 Tage · Kennwort-Link 5 Tage, 3-mal abrufbar");
+  await expect(page.locator("#validity-summary")).toHaveText("Nachricht 5 Tage · Kennwort-Link 5 Tage, 3-mal abrufbar · Deutsch");
 
   await expect(page.locator("#password")).not.toHaveValue(""); // the pane has started (settings loaded)
   const password = await page.locator("#password").inputValue();
@@ -1683,7 +1695,7 @@ test.describe("README pictures (English)", () => {
   test("Send: files", async ({ page }) => {
     await openTaskpane(page, { lang: "en", attachments: ATTACHMENTS, config: README_CONFIG });
     await expect(page.locator("#submit")).toHaveText("Insert file as link");
-    await expect(page.locator("#validity-summary")).toHaveText("Link 14 days · Password link 5 days, opens 3 times");
+    await expect(page.locator("#validity-summary")).toHaveText("Link 14 days · Password link 5 days, opens 3 times · English");
     await expect(page.locator("#account")).toHaveText("max.mustermann");
     await expectAccessible(page);
     await readmeShot(page, "send");
