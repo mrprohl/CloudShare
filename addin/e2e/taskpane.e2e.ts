@@ -341,9 +341,13 @@ test("settings: the gear opens them in place of the tab; saved ways apply to the
   await shot(page, "settings");
 
   // Only "Andere E-Mail-Adresse" and SMS, SMS preselected; no download confirmation.
-  await page.locator('#settings-channels input[value="recipients"]').uncheck();
+  // The real checkbox is invisible under its box (as in the attachment list): click the row like a user.
+  const row = (input: string) => page.locator("label.checkbox").filter({ has: page.locator(input) });
+  await row('input[value="recipients"]').click();
+  await expect(page.locator('#settings-channels input[value="recipients"]')).not.toBeChecked();
   await page.locator("#settings-default-channel").selectOption("sms");
-  await page.locator('#settings-notices input[name="downloadNotice"]').uncheck();
+  await row('input[name="downloadNotice"]').click();
+  await expect(page.locator('#settings-notices input[name="downloadNotice"]')).not.toBeChecked();
   await page.click("#settings-save");
   await expect(page.locator("#status")).toHaveText("Ihre Einstellungen wurden gespeichert.");
   const put = calls.find((c) => c.method === "PUT" && c.path === "/api/settings");
@@ -374,16 +378,14 @@ test("settings: a pasted Outlook signature keeps its formatting, loses everythin
   const editor = page.locator("#settings-signature-html");
   await expect(editor).toBeVisible();
   await editor.click();
-  // Outlook puts formatted text on the clipboard as HTML.
+  // What a paste of an Outlook signature leaves in the editor (the browser inserts it, then fires "insertFromPaste") –
+  // with everything the allow-list must remove.
   await editor.evaluate((element) => {
-    const data = new DataTransfer();
-    data.setData(
-      "text/html",
+    element.innerHTML =
       '<style>.x{color:red}</style><p class="MsoNormal" style="color:#1f497d;font-weight:bold" onclick="alert(1)">Max Mustermann</p>' +
-        '<p>Tel. <a href="tel:+491234">01234</a> · <a href="javascript:alert(2)">klick</a></p>' +
-        '<img src="cid:image001.png"><img src="https://example.com/logo.png" alt="Logo"><script>alert(3)</script>',
-    );
-    element.dispatchEvent(new ClipboardEvent("paste", { clipboardData: data, bubbles: true, cancelable: true }));
+      '<p>Tel. <a href="tel:+491234">01234</a> · <a href="javascript:alert(2)">klick</a></p>' +
+      '<img src="cid:image001.png"><img src="https://example.com/logo.png" alt="Logo"><o:p></o:p>';
+    element.dispatchEvent(new InputEvent("input", { inputType: "insertFromPaste", bubbles: true }));
   });
   const html = await editor.innerHTML();
   expect(html).toContain("Max Mustermann");
@@ -476,6 +478,7 @@ test("preselects large attachments and proposes a random password", async ({ pag
 
 test("uploads a large attachment in chunks, removes it and inserts the card", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Präsentation.pptx", 2.5 * MiB)] });
+  await expect(page.locator("#password")).not.toHaveValue(""); // the pane has started (settings loaded)
   const password = await page.locator("#password").inputValue();
   await page.click("#submit");
 
@@ -946,6 +949,7 @@ test("Nextcloud enforces link passwords: no 'Ohne Kennwort' option", async ({ pa
 
 test("Dateien von Empfängern erhalten inserts an upload link with the same password", async ({ page }) => {
   const calls = await openTaskpane(page);
+  await expect(page.locator("#password")).not.toHaveValue(""); // the pane has started (settings loaded)
   const password = await page.locator("#password").inputValue();
   await chooseKind(page, "request");
   await expect(page.locator("#request-section")).toBeVisible();
@@ -971,6 +975,7 @@ test("Nachricht: inserts a card with the link, never the text, and shares the pa
   await expect(page.locator("#mode-none-row")).toBeHidden(); // a confidential message always has a password
   await expect(page.locator("#validity-summary")).toHaveText("Nachricht 5 Tage · Kennwort-Link 5 Tage, 3-mal abrufbar");
 
+  await expect(page.locator("#password")).not.toHaveValue(""); // the pane has started (settings loaded)
   const password = await page.locator("#password").inputValue();
   await page.fill("#message", "Zugang zum Portal: anna / Sommer2026");
   await expect(page.locator("#message-count")).toHaveText("36 von 1000 Zeichen");
@@ -1217,6 +1222,7 @@ test("Meine Freigaben: Kennwort shows the password and sends it again the same w
 
 test("Meine Freigaben: Als Link einfügen creates a new link with this mail's password", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: SHARES });
+  await expect(page.locator("#password")).not.toHaveValue(""); // the pane has started (settings loaded)
   const password = await page.locator("#password").inputValue();
   await page.click("#tab-shares");
   await page.locator("#shares .share").nth(1).locator(".insert").click();
@@ -1321,14 +1327,19 @@ test("Hilfe: the \"?\" at the top right opens the guide in place of the tab, rea
   const help = page.locator("#panel-help");
   await expect(help).not.toContainText("help."); // every text exists in the language file
   const sections = help.locator("details");
-  await expect(sections).toHaveCount(7);
+  await expect(sections).toHaveCount(8);
   // The most common task is open, the rest closed until needed.
   await expect(sections.nth(1).locator("summary")).toHaveText("Große Dateien senden");
   await expect(sections.nth(1)).toHaveAttribute("open", "");
-  await expect(sections.nth(6)).not.toHaveAttribute("open", "");
-  await sections.nth(6).locator("summary").click();
-  await expect(sections.nth(6)).toHaveAttribute("open", "");
-  await expect(sections.nth(6)).toContainText("Ich habe den Link an die falsche Person geschickt.");
+  await expect(sections.nth(7)).not.toHaveAttribute("open", "");
+  await sections.nth(7).locator("summary").click();
+  await expect(sections.nth(7)).toHaveAttribute("open", "");
+  await expect(sections.nth(7)).toContainText("Ich habe den Link an die falsche Person geschickt.");
+  // "Einstellungen" shows the gear it talks about.
+  const settings = sections.filter({ has: page.locator("summary", { hasText: "Einstellungen" }) });
+  await settings.locator("summary").click();
+  await expect(settings.locator('[data-icon="settings"] svg')).toHaveCount(1);
+  await expect(settings).toContainText("Zurücksetzen");
   // "Meine Freigaben" explains every icon with the icon itself – also "Aktualisieren" in the tab bar.
   const shares = sections.filter({ has: page.locator("summary", { hasText: "Meine Freigaben" }) });
   await shares.locator("summary").click();

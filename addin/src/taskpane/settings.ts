@@ -7,7 +7,7 @@
  */
 import { desiredLanguage, language, languageChoices, SETTINGS_CACHE_KEY, t } from "../shared/i18n";
 import { api, type Channel, type SettingsResponse, type UserSettings } from "../shared/office";
-import { sanitizeSignature } from "./signature";
+import { cleanInPlace, sanitizeSignature } from "./signature";
 
 const CHANNELS: Channel[] = ["recipients", "mail", "sms"];
 const channelLabel = (c: Channel) => t(c === "recipients" ? "channel.recipients" : c === "mail" ? "channel.mail" : "channel.sms");
@@ -175,28 +175,12 @@ export function initSettings(options: Options) {
   channelBoxes.addEventListener("change", () => renderDefaultChannel(defaultChannel.value as Channel));
   signatureFormat.addEventListener("change", showSignatureFormat);
 
-  // Pasted from Outlook: formatted text keeps its formatting, cleaned (signature.ts) before it enters the editor.
-  signatureHtml.addEventListener("paste", (event) => {
-    const data = event.clipboardData;
-    if (!data) return;
-    event.preventDefault();
-    const html = data.getData("text/html");
-    const text = data.getData("text/plain");
-    const fragment = document.createRange().createContextualFragment(
-      html ? sanitizeSignature(html) : text.split("\n").map((line) => line.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]!)).join("<br>"),
-    );
-    const selection = window.getSelection();
-    if (selection && selection.rangeCount > 0 && signatureHtml.contains(selection.getRangeAt(0).commonAncestorContainer)) {
-      const range = selection.getRangeAt(0);
-      range.deleteContents();
-      range.insertNode(fragment);
-      range.collapse(false);
-    } else {
-      signatureHtml.appendChild(fragment);
-    }
+  // Pasted from Outlook: the browser inserts the formatted text (it already drops scripts and event handlers), then
+  // the allow-list of signature.ts cleans the editor in place – the clipboard is never parsed as a markup string.
+  signatureHtml.addEventListener("input", (event) => {
+    const type = (event as InputEvent).inputType ?? "";
+    if (type.startsWith("insertFrom")) cleanInPlace(signatureHtml);
   });
-  // Dropped content would bypass the cleaning.
-  signatureHtml.addEventListener("drop", (event) => event.preventDefault());
 
   const apply = async (response: SettingsResponse, message: string) => {
     current = response;

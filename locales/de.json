@@ -280,6 +280,7 @@
     "resend.failed": "Das Kennwort konnte nicht gesendet werden: {error}",
     "settings.button": "Einstellungen",
     "settings.heading": "Einstellungen",
+    "settings.close": "Einstellungen schließen",
     "settings.intro": "Ihre persönlichen Einstellungen für CloudShare – sie gelten für Sie auf allen Computern.",
     "settings.loading": "Einstellungen werden geladen …",
     "settings.loadFailed": "Die Einstellungen können nicht geladen werden: {error}",

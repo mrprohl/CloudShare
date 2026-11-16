@@ -77,6 +77,21 @@ function cleanNode(node: Node, doc: Document): Node[] {
   return [copy];
 }
 
+/**
+ * Cleans the content of an element in place (the signature editor right after a paste): the same allow-list as
+ * sanitizeSignature, applied to the nodes the browser inserted – no markup string is parsed. The caret goes to the end.
+ */
+export function cleanInPlace(root: HTMLElement): void {
+  const doc = root.ownerDocument;
+  const nodes = Array.from(root.childNodes).flatMap((child) => cleanNode(child, doc));
+  root.replaceChildren(...nodes);
+  const selection = doc.getSelection();
+  if (selection) {
+    selection.selectAllChildren(root);
+    selection.collapseToEnd();
+  }
+}
+
 /** Signature HTML with only harmless formatting left (see the module comment). Empty if nothing visible remains. */
 export function sanitizeSignature(html: string): string {
   const source = new DOMParser().parseFromString(html, "text/html");

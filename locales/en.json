@@ -280,6 +280,7 @@
     "resend.failed": "The password could not be sent: {error}",
     "settings.button": "Settings",
     "settings.heading": "Settings",
+    "settings.close": "Close settings",
     "settings.intro": "Your personal settings for CloudShare – they apply to you on every computer.",
     "settings.loading": "Loading settings …",
     "settings.loadFailed": "The settings cannot be loaded: {error}",
