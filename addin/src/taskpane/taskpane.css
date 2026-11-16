@@ -123,11 +123,11 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
   border-top: 1px solid var(--stroke2);
 }
 /*
- * Bottom bar under every tab, the guide and the settings: account (name and storage, "Verbindung trennen" on a line of
- * its own) on the left, help and settings on the right. Fixed height, so the button above can stack on it; a long
- * account name is shortened instead of wrapping – the bar looks the same at every width.
+ * Bottom bar under every tab, the guide and the settings – one quiet line: the account as a menu button on the left
+ * (like Outlook's profile menu: storage and "Verbindung trennen" open above it), help and settings on the right. Fixed
+ * height, so the button above can stack on it; a long account name is shortened instead of wrapping.
  */
-:root { --bar-height: 52px; }
+:root { --bar-height: 44px; }
 .account-bar {
   position: sticky;
   bottom: 0;
@@ -136,14 +136,36 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
   align-items: center;
   gap: 8px;
   height: var(--bar-height);
-  padding: 0 8px 0 16px;
+  padding: 0 8px;
   background: var(--bg1);
   border-top: 1px solid var(--stroke2);
 }
-.account-bar .account { flex: 1; min-width: 0; margin: 0; }
-.account-bar .account-name, .account-bar .disconnect-link {
-  display: block; width: fit-content; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+.account-menu-wrap { position: relative; flex: 1; min-width: 0; }
+.account-toggle {
+  display: inline-flex; align-items: center; gap: 6px; max-width: 100%; height: 32px; padding: 0 8px;
+  border: 1px solid transparent; border-radius: 4px; background: transparent; color: var(--fg2);
+  font: 400 12px/16px var(--font); cursor: pointer;
 }
+.account-toggle:hover { background: var(--bg1-hover); color: var(--fg1); }
+.account-toggle[aria-expanded="true"] { background: var(--bg1-pressed); color: var(--fg1); }
+.account-toggle:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.account-toggle .icon { width: 16px; height: 16px; flex: none; }
+.account-toggle .chevron { width: 12px; height: 12px; flex: none; transition: transform 0.15s ease; }
+.account-toggle[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+.account-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The menu opens above the bar, as a Fluent flyout. */
+.account-menu {
+  position: absolute; left: 0; bottom: calc(100% + 6px); z-index: 2; min-width: 200px; max-width: calc(100vw - 32px);
+  padding: 4px; background: var(--bg1); border: 1px solid var(--stroke2); border-radius: 6px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.14), 0 0 2px rgba(0, 0, 0, 0.12);
+}
+.account-storage { margin: 0; padding: 6px 8px 4px; color: var(--fg2); }
+.account-menu-item {
+  display: block; width: 100%; padding: 6px 8px; border: 0; border-radius: 4px; background: transparent;
+  color: var(--fg1); font: 400 14px/20px var(--font); text-align: left; cursor: pointer;
+}
+.account-menu-item:hover { background: var(--bg1-hover); }
+.account-menu-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 .account-actions { display: flex; flex: none; gap: 2px; }
 .account-actions .btn-subtle { margin: 0; color: var(--fg2); }
 .account-actions .btn-subtle .icon { color: var(--fg2); }
@@ -472,7 +494,12 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .tabbar { display: flex; align-items: stretch; border-bottom: 1px solid var(--stroke2); padding-right: 8px; }
 .tabbar .tabs { flex: 1; min-width: 0; border-bottom: 0; }
 .tabbar-action { align-self: center; margin: 0; color: var(--fg2); }
-.help-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0 6px; }
+/* Heading of the help and the settings with its "×": stays at the top while the content scrolls below it, so the
+   pane's own close button of Outlook is never the only "×" in sight. */
+.help-header {
+  position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: -12px -16px 6px; padding: 10px 16px 8px; background: var(--bg1); border-bottom: 1px solid var(--stroke2);
+}
 .help-header .btn-subtle { margin: 0 -6px 0 0; }
 .help { color: var(--fg1); }
 .help-intro { margin: 4px 0 12px; color: var(--fg2); }
