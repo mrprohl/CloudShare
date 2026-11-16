@@ -21,7 +21,7 @@
     "disconnect.link": "Disconnect",
     "nextcloud.open": "Open Nextcloud",
     "disconnect.confirm": "Really disconnect?",
-    "account.menu": "Nextcloud account: settings, help and connection",
+    "account.menu": "Menu: open Nextcloud, settings, help, disconnect",
     "account.signedIn": "Signed in as {name}",
     "disconnect.done": "The connection to Nextcloud has been removed.",
     "disconnect.failed": "The connection could not be removed: {error}",
