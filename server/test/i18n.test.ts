@@ -185,6 +185,7 @@ describe("i18n", () => {
     expect(context.result?.languages.en.messages["alert.button"]).toBe("Open CloudShare");
     expect(context.result?.languages.en.messages["files.remove"]).toBe("Remove “{name}”");
     expect(context.result?.languages.de.locale).toBe("de-DE");
+    expect((context.result?.languages.de as { name?: string }).name).toBe("Deutsch"); // for the language choice
     expect(context.result?.languages.de.messages["tabs.send"]).toBe("Senden");
   });
 

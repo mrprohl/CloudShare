@@ -346,6 +346,31 @@ In "My shares" and in the read mode (2.9) such links get **Password** (`password
 Revoking the last link of a step deletes its Sends at once (`forgetPasswordToken`); otherwise Vaultwarden deletes them
 when the links expire. Steps sent before this version have no entry – their password cannot be shown.
 
+### 2.11 Personal settings
+
+The gear in every account line opens the settings in place of the current tab, like the guide (`settings.ts` in the
+add-in, `server/src/settings.ts`, store `settings`):
+
+- **Ways for the password** (`channels`, `defaultChannel`): `applyChannelChoices` hides the other options of "Kennwort
+  senden an" (and of "Erneut senden an") but keeps the way a mail already uses; a new mail starts with
+  `defaultChannel`. Saving switches a mail without links to the new default if its way is no longer offered.
+- **Notices** (`downloadNotice`, `uploadNotice`, `smsNotice`): checked when it matters – `attachNoticeJob` and
+  `runNotices` (a notice the sender switched off is dropped), `noteUndeliveredSms`. A refused SMS is always reported:
+  the password never went out.
+- **Language** (`auto` or a language): kept in `roamingSettings` too, so `i18n.ts` (`preferredLanguage`) has it in
+  the taskpane and in the event handlers before any request; loaded from another computer, the pane reloads once
+  (`reloadOnce`), saved in the pane it reloads at once. Mails and SMS stay in `LANGUAGE`.
+- **Signature** (`signature: { format, content }` or null = `MAIL_FOOTER`): text is filled like `MAIL_FOOTER`
+  (`fillFooter`), HTML is pasted into an editable box. `signature.ts` cleans it with the browser's parser on paste, on
+  save and before insertion – an allow-list of elements, attributes and CSS properties; links only `http(s):`,
+  `mailto:`, `tel:`; pictures only `https:`; no scripts, event handlers, `url()`, comments or Office XML elements. The
+  card shows it as it is, text mails get its text version (`signatureText`). At most 20,000 characters.
+
+`settingsFor(oid)` merges `config.userDefaults` (`DEFAULT_*`), the stored fields and what the server offers
+(`availableSettings`: notices switched on, SMS with seven.io, the add-in languages) – so a user can never turn on what
+the organisation switched off, and the SMS rules (countries, allowed and blocked numbers) apply regardless. Only
+changed fields are stored; a new default reaches everyone else.
+
 ## 3. State and data
 
 | Where | What | Lifetime |
@@ -358,8 +383,9 @@ when the links expire. Steps sent before this version have no entry – their pa
 | … store `deliveries` | Per link: channel, masked recipient, SMS message ID and status | 120 days |
 | … store `password-refs` | Per sent step: Send ID (never the password), link tokens, file names, subject, distribution of the sent mail (To, Cc, Bcc), other address / SMS number, sender | Until the links expire |
 | … store `notices` | Links waiting for their first download or for uploads (sender, subject, recipients, expiry, files already reported) | Until downloaded / expired |
+| … store `settings` | Personal settings per `oid` (2.11) – only the fields the user changed | Until reset (`retention: false`) |
 | Memory (`store.ts`) | Running uploads (12 h), pending Nextcloud logins (20 min) | Lost on restart → single instance only |
-| `roamingSettings` | Last server configuration (for the handlers) | Per mailbox |
+| `roamingSettings` | Last server configuration (for the handlers); the language from the settings (`cloudshare-settings`) | Per mailbox |
 | `/app/public` (tmpfs) | Add-in files with address, client ID and texts of every language filled in, `taskpane.<language>.html` per language | Rebuilt at every start |
 | `/config` (read-only, host `env/config/`) | Optional `templates.json` and own `locales/<language>.json` | Managed by the admin |
 
@@ -385,6 +411,7 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `GET /api/config` | Public settings for the add-in (threshold, policy, limits, footer, `trace`, `smsEnabled`, message limits) |
 | `GET/POST /api/trace` | Diagnostics of the send handler, only with `CLIENT_TRACE=true` (no login) |
 | `GET /api/profile` | Sender's Microsoft 365 profile for `MAIL_FOOTER` |
+| `GET/PUT/DELETE /api/settings` | Personal settings (2.11): `{ settings, defaults, available }`; `PUT` changes single fields, `DELETE` resets |
 | `GET /api/nextcloud/status` | Connected?, storage (free/used/total), `passwordEnforced` |
 | `POST /api/nextcloud/connect`, `…/connect/:id/poll`, `DELETE /api/nextcloud/connection` | Login Flow v2, disconnect |
 | `POST /api/uploads`, `PUT …/:id/chunks/:n`, `POST …/:id/complete`, `DELETE …/:id` | Chunked upload, share link |

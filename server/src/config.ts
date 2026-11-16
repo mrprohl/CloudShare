@@ -178,6 +178,23 @@ export const config = {
    */
   smsNotice: envFlag("SMS_NOTICE", "DOWNLOAD_NOTICE"),
 
+  /**
+   * Defaults of the personal settings (⚙ in the add-in, settings.ts) – each user may change them for themselves:
+   * notices (only where the switch above is on), which ways to send the password the pane offers and which one it
+   * preselects, and the language of the add-in ("auto" = as in Outlook). The organisation's signature is MAIL_FOOTER.
+   */
+  userDefaults: {
+    downloadNotice: process.env.DEFAULT_DOWNLOAD_NOTICE !== "false",
+    uploadNotice: process.env.DEFAULT_UPLOAD_NOTICE !== "false",
+    smsNotice: process.env.DEFAULT_SMS_NOTICE !== "false",
+    channels: (process.env.DEFAULT_PASSWORD_CHANNELS ?? "recipients,mail,sms")
+      .split(",")
+      .map((c) => c.trim().toLowerCase())
+      .filter(Boolean),
+    defaultChannel: (process.env.DEFAULT_PASSWORD_CHANNEL ?? "recipients").trim().toLowerCase(),
+    language: (process.env.DEFAULT_LANGUAGE ?? "auto").trim().toLowerCase() || "auto",
+  },
+
   /** Optional text templates (SMS, password mail, download confirmation): default → department → user. */
   templatesFile: process.env.TEMPLATES_FILE ?? "/config/templates.json",
   /**

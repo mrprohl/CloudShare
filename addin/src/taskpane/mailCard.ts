@@ -13,6 +13,13 @@ export interface CardFile {
   url: string;
 }
 
+/**
+ * Footer of the card: plain text (MAIL_FOOTER or an own text signature, one line per line), or an own HTML signature
+ * pasted from Outlook – already sanitised (signature.ts) – with its text version for plain-text mails.
+ */
+export type Footer = string | { text: string; html: string };
+const footerText = (footer: Footer) => (typeof footer === "string" ? footer : footer.text);
+
 const FONT = "'Segoe UI',-apple-system,Helvetica,Arial,sans-serif";
 const BRAND = "#0f6cbd";
 
@@ -50,7 +57,8 @@ function button(url: string, text: string): string {
 }
 
 /** Outer frame: white card, thin border, brand accent on the left. `title` and `note` are plain text. */
-function frame(title: string, rows: string, note: string, footer: string): string {
+function frame(title: string, rows: string, note: string, footer: Footer): string {
+  const footerHtml = typeof footer === "string" ? escapeHtml(footer).split("\n").join("<br>") : footer.html;
   return (
     `<table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" ` +
     `style="width:100%;max-width:560px;border-collapse:separate;margin:12px 0;">` +
@@ -59,9 +67,9 @@ function frame(title: string, rows: string, note: string, footer: string): strin
     `<div style="font-size:15px;line-height:20px;font-weight:600;color:#242424;margin:0 0 6px;">${escapeHtml(title)}</div>` +
     rows +
     `<div style="font-size:12px;line-height:16px;color:#616161;margin:10px 0 0;">${escapeHtml(note)}</div>` +
-    (footer
+    (footerHtml
       ? `<div style="font-size:11px;line-height:15px;color:#8a8a8a;margin:10px 0 0;border-top:1px solid #f0f0f0;` +
-        `padding-top:8px;">${escapeHtml(footer).split("\n").join("<br>")}</div>`
+        `padding-top:8px;">${footerHtml}</div>`
       : "") +
     `</td></tr></table>`
   );
@@ -75,7 +83,7 @@ const cardNote = (expireDate: string, withPassword: boolean) =>
 export function filesCard(
   files: CardFile[],
   expireDate: string,
-  footer: string,
+  footer: Footer,
   formatSize: (bytes: number) => string,
   /** false for links "Ohne Kennwort" – then there is no password mail to point to. */
   withPassword = true,
@@ -101,7 +109,7 @@ export function filesCard(
 }
 
 /** Card for an upload link ("Dateien von Empfängern erhalten"). */
-export function requestCard(url: string, expireDate: string, footer: string): string {
+export function requestCard(url: string, expireDate: string, footer: Footer): string {
   const rows =
     `<div style="font-size:14px;line-height:20px;color:#424242;margin:0 0 12px;">` +
     `${escapeHtml(t("card.requestText"))}</div>` +
@@ -110,7 +118,7 @@ export function requestCard(url: string, expireDate: string, footer: string): st
 }
 
 /** Card for a confidential message: the text itself is not in the mail, only the password-protected link to it. */
-export function messageCard(url: string, expireDate: string, footer: string): string {
+export function messageCard(url: string, expireDate: string, footer: Footer): string {
   const rows =
     `<div style="font-size:14px;line-height:20px;color:#424242;margin:0 0 12px;">` +
     `${escapeHtml(t("card.messageText"))}</div>` +
@@ -119,12 +127,12 @@ export function messageCard(url: string, expireDate: string, footer: string): st
 }
 
 /** Plain-text versions for mails composed in text format. */
-const textFooter = (footer: string) => (footer ? `--\n${footer}\n` : "");
+const textFooter = (footer: Footer) => (footerText(footer) ? `--\n${footerText(footer)}\n` : "");
 
 export function filesText(
   files: CardFile[],
   expireDate: string,
-  footer: string,
+  footer: Footer,
   formatSize: (bytes: number) => string,
   withPassword = true,
 ): string {
@@ -136,11 +144,11 @@ export function filesText(
   );
 }
 
-export function messageText(url: string, expireDate: string, footer: string): string {
+export function messageText(url: string, expireDate: string, footer: Footer): string {
   return `\n${t("card.messagePlain", { date: expireDate })}\n${url}\n${t("card.passwordNote")}\n` + textFooter(footer);
 }
 
-export function requestText(url: string, expireDate: string, footer: string): string {
+export function requestText(url: string, expireDate: string, footer: Footer): string {
   return (
     `\n${t("card.requestPlain", { date: expireDate })}\n${url}\n` +
     `${t("card.passwordNote")}\n` +

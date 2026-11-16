@@ -62,7 +62,9 @@ export function localize(content, ext, language = "de", languages = loadLanguage
     const bundle = JSON.stringify({
       fallback: FALLBACK,
       languages: Object.fromEntries(
-        Object.keys(languages).sort().map((lang) => [lang, { locale: languages[lang]._meta.locale, messages: languages[lang].addin }]),
+        Object.keys(languages)
+          .sort()
+          .map((lang) => [lang, { locale: languages[lang]._meta.locale, name: languages[lang]._meta.name, messages: languages[lang].addin }]),
       ),
     });
     return content.replace(/(["'`])%%CLOUDSHARE_I18N%%\1/g, () => asciiJs(JSON.stringify(bundle)));

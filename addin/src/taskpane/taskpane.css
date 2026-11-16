@@ -480,3 +480,23 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .help-section dt { font-weight: 600; margin: 0 0 2px; }
 .help-section dd { margin: 0 0 10px; color: var(--fg2); }
 .help-support { margin: 14px 0 4px; }
+
+/* --- Personal settings (gear in the account line, settings.ts) ------------------- */
+.account .settings-toggle { width: 24px; min-width: 24px; height: 24px; margin: -4px 2px -4px -4px; vertical-align: middle; color: var(--fg2); }
+.account .settings-toggle .icon { width: 16px; height: 16px; color: var(--fg2); }
+.account .settings-toggle:hover .icon, .settings-toggle[aria-expanded="true"] .icon { color: var(--brand-fg); }
+.settings-group { margin: 0 0 8px; padding: 0 0 12px; border: 0; border-bottom: 1px solid var(--stroke2); min-width: 0; }
+.settings-group legend { padding: 0; margin-top: 12px; }
+.settings-text { margin: 0 0 4px; }
+.settings-field { margin: 8px 0 0; }
+.settings-group .select-wrap + .hint { margin-top: 4px; }
+.checkbox-text { flex: 1; min-width: 0; }
+.checkbox-hint { display: inline-block; margin: 2px 0 0; }
+.signature-input { margin-top: 8px; }
+/* Pasted Outlook signature: editable, in the small size of the card footer. */
+.signature-editor {
+  height: auto; min-height: 92px; max-height: 260px; overflow: auto; padding: 6px 10px;
+  font-size: 12px; line-height: 16px; overflow-wrap: anywhere;
+}
+.signature-editor img { max-width: 100%; height: auto; }
+.settings-actions { display: flex; gap: 8px; margin: 16px 0 4px; }
