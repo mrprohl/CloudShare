@@ -1249,7 +1249,9 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   await expect(toggle).toHaveText("max.mustermann");
   await expect(menu).toBeHidden();
   await expect(storage).toHaveText("12,5 / 50 GB frei");
-  await expect(toggle).toHaveAttribute("title", "Angemeldet als max.mustermann\nNextcloud-Konto: Einstellungen, Hilfe und Verbindung");
+  await expect(toggle).toHaveAttribute("title", "Angemeldet als max.mustermann");
+  // What the menu holds: for screen readers only (the arrow shows it on screen).
+  await expect(toggle).toHaveAccessibleDescription("Menü: Nextcloud öffnen, Einstellungen, Hilfe, Verbindung trennen");
   const [toggleBox, storageBox, barBox] = await Promise.all([toggle, storage, page.locator(".account-bar")].map((l) => l.boundingBox()));
   expect(Math.abs(toggleBox!.y + toggleBox!.height / 2 - (storageBox!.y + storageBox!.height / 2))).toBeLessThan(2); // one line
   expect(storageBox!.x).toBeGreaterThan(toggleBox!.x + toggleBox!.width);
@@ -1661,7 +1663,7 @@ test("a long account name at 320 px: shortened with \"…\", the storage stays w
   const toggle = page.locator("#account-toggle");
   await expect(toggle).toHaveText(name); // the whole name for screen readers …
   // … and on hover.
-  await expect(toggle).toHaveAttribute("title", `Angemeldet als ${name}\nNextcloud-Konto: Einstellungen, Hilfe und Verbindung`);
+  await expect(toggle).toHaveAttribute("title", `Angemeldet als ${name}`);
   const shown = page.locator("#account");
   expect(await shown.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true); // cut short with "…"
   const storage = page.locator("#account-storage");

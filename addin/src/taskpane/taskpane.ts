@@ -261,9 +261,8 @@ function showConnection(status: ConnectionStatus) {
   // The bottom bar shows the Nextcloud account (menu: settings, help, disconnect) and its storage on the right.
   accountText.textContent = status.loginName ?? "";
   // The bar may cut a long name short: hovering shows it whole.
-  accountToggle.title = status.loginName
-    ? `${t("account.signedIn", { name: status.loginName })}\n${t("account.menu")}`
-    : t("account.menu");
+  // That it opens a menu shows the arrow; screen readers hear what it holds (aria-description).
+  accountToggle.title = status.loginName ? t("account.signedIn", { name: status.loginName }) : "";
   const storage = storageText(status);
   accountStorage.textContent = storage;
   accountStorage.hidden = !storage;
