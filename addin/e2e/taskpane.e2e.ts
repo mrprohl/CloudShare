@@ -320,7 +320,7 @@ test("preselects large attachments and proposes a random password", async ({ pag
 
   const password = page.locator("#password");
   await expect(password).toHaveAttribute("readonly", "");
-  expect(await password.inputValue()).toMatch(/^([A-Z][aeiou][a-z][aeiou]){2}[A-Z][aeiou][2-9]{2}$/); // pronounceable
+  expect(await password.inputValue()).toMatch(/^(?=(?:[^2-9]*[2-9]){2}[^2-9]*$)[A-Za-z2-9]{12,15}$/); // pronounceable, two digits
   await expect(page.locator("#max-access")).toHaveValue("3");
   await expect(page.locator("#expire")).toHaveValue("14");
   await expect(page.locator("#account")).toHaveText("max [12,5 GB von 50 GB frei]");

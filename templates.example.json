@@ -4,17 +4,18 @@
     "update the stack. Without the file the built-in texts are used. Resolution per field: users (sender address /",
     "UPN) → groups (the sender's department in Microsoft 365) → default → built-in. Problems are logged at start.",
     "Fields and placeholders:",
-    "  sms_template            {password} (required), {sender_name} – GSM characters only, keep it under 160;",
+    "  sms_template            {password} (required), {sender_name}, {files} (first file name in GSM characters, shortened,",
+    "                          and how many more – never the link) – GSM characters only, keep it under 160;",
     "                          put {password} on a line of its own – phones may hyphenate a long word where they wrap the line",
     "  mail_password_subject   {files}, {subject}, {sender_name}",
     "  mail_password_intro     {subject}, {sender_name}, {count} – text above the card; empty line = new paragraph",
     "  download_notice_subject {filename}, {subject}",
     "  download_notice_body    {filename}, {subject}, {downloaded_at}, {expires}, {recipients}",
-    "{password} is only allowed in the SMS; the SMS never contains the link or a file name."
+    "{password} is only allowed in the SMS; the SMS never contains the link, only the shortened file name via {files}."
   ],
   "templates": {
     "default": {
-      "sms_template": "Ihr Kennwort fuer die Dateien von {sender_name}:\n{password}",
+      "sms_template": "Kennwort fuer {files} von {sender_name}:\n{password}",
       "mail_password_subject": "Kennwort für {files}: {subject}",
       "download_notice_subject": "Heruntergeladen: {filename}"
     },

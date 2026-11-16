@@ -276,6 +276,7 @@ describe("password by SMS, deliveries and download notices", () => {
     const [to, text] = sendSms.mock.calls[0];
     expect(to).toBe("+491701234567");
     expect(text).toContain("KateGeteFi45"); // read from the Send right before sending
+    expect(text).toContain("Kennwort fuer \"a.pdf\""); // which link the password belongs to
     expect(deleteSend).not.toHaveBeenCalled(); // the password stays readable until the links expire
     expect(deliveryFor("tok-sms-1", "oid")).toMatchObject({ channel: "sms", to: "+49 170 •••• 67", messageId: "77000001", status: "submitted" });
     expect(passwordRefFor("tok-sms-1", "oid")).toMatchObject({ sendId: "send-a", sms: "+491701234567", subject: "Unterlagen" });

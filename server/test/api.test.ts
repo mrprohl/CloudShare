@@ -916,6 +916,7 @@ describe("showing and sending the password again", () => {
     const [number, text] = (await sendSms()).mock.calls[0];
     expect(number).toBe("+491717654321");
     expect(text).toContain("KateGeteFi45");
+    expect(text).toContain("\"vertrag.pdf\""); // names the file
     const { deliveryFor } = await import("../src/deliveries.js");
     expect(deliveryFor("tokvertrag", "oid-anna")).toMatchObject({ channel: "sms", messageId: "99000001", status: "submitted" });
   });

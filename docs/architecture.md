@@ -215,7 +215,8 @@ How the password of each link went out (channel, masked recipient, SMS status) i
 with a fixed set of placeholders. Resolution per field: `users[<sender UPN>]` → `groups[<department>]` → `default` →
 built-in texts of the language (section `templates` of the language file); the department and display name are read
 from the sender's profile when arming. `templates.json` holds one set of texts for all languages – after a change of
-`LANGUAGE` translate it as well. At start the file is validated: `{password}` outside the SMS, an SMS without `{password}` or with the link / a file name drop the
+`LANGUAGE` translate it as well. At start the file is validated: `{password}` outside the SMS, an SMS without `{password}` or with the link / the raw file name
+(`{filename}`) drop the
 field (built-in text instead); unknown placeholders, non-GSM characters, SMS above 160 characters and a `{password}`
 that does not start a line (phones may hyphenate a wrapped password) are warnings.
 A broken file never stops CloudShare. Example: `templates.example.json`.
@@ -443,8 +444,9 @@ Alert trace". Off by default.
   (tested in `api.test.ts`).
 - **Nextcloud app passwords** have full access to the user's Nextcloud account; they are encrypted at rest with
   `CREDENTIAL_KEY` and only used server side.
-- **Passwords:** random passwords are pronounceable (`KateGeteFi45`: consonant-vowel syllables, two digits, ≈ 37.6
-  bits from the browser's CSPRNG). That is low for offline attacks but sufficient here: an attacker needs the link
+- **Passwords:** random passwords are pronounceable (`KateGeteFi45`, `47RantoBeKiwu`, `Sumo52DarniPe`: two words of
+  two syllables, a short syllable and two digits in random order, 12–15 characters, at least ≈ 42 bits from the
+  browser's CSPRNG). That is low for offline attacks but sufficient here: an attacker needs the link
   first, Nextcloud throttles failed attempts on public links, and links expire. Own passwords need ≥ 12 characters and
   three character classes (checked in the taskpane and again by the server). The password exists in readable form
   only in the Vaultwarden Send and briefly in the taskpane. The recipients can open the Send a limited number of
@@ -459,7 +461,9 @@ Alert trace". Off by default.
   (the Bitwarden CLI encrypts before upload) and deletes them at expiry. Anyone with link and password can read them
   until then – like a file link.
 - **SMS:** the API key and the webhook secret stay on the server; the add-in never talks to seven.io. The SMS carries
-  the password in plain text (it is the second channel); the password is read from the Send only for sending. A
+  the password in plain text (it is the second channel) and, with `{files}` (the built-in text), the first file name –
+  shortened to 32 characters, GSM characters only, "+ N more" – so a recipient of several SMS can tell which password
+  belongs to which link; never the link itself. The password is read from the Send only for sending. A
   failed SMS never falls back to another channel on its own. Numbers are stored masked in the status (the full
   number only in the encrypted entry for sending again); `SMS_MAX_PER_DAY` limits costs and abuse, also for SMS sent
   again. Conclude a data processing agreement with seven.io.

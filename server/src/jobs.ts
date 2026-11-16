@@ -22,7 +22,7 @@ import { passwordMailHtml, smsProblemMailHtml } from "./passwordMail.js";
 import { registerPasswordRef } from "./passwordRefs.js";
 import { maskPhone, sendSms, smsEnabled, smsNumberProblem } from "./sms.js";
 import { PersistentMap } from "./db.js";
-import { defaultTemplates, render, templatesFor, type Templates } from "./templates.js";
+import { defaultTemplates, render, smsFiles, templatesFor, type Templates } from "./templates.js";
 import { readSendPassword } from "./vaultwarden.js";
 
 export interface ArmedSend {
@@ -331,7 +331,7 @@ async function sendStepBySms(
     if (problem) throw new Error(problem);
     if (!takeSmsQuota(job.owner)) throw new Error(translate("server.smsDailyLimit", { max: config.smsMaxPerDay }));
     const password = await readSendPassword(part.sendId!);
-    const messageId = await sendSms(to, render(t.sms_template, { password, sender_name: job.senderName ?? "" }));
+    const messageId = await sendSms(to, render(t.sms_template, { password, sender_name: job.senderName ?? "", files: smsFiles(partFiles(part)) }));
     await recordDelivery(tokens, { owner: job.owner, channel: "sms", to: maskPhone(to), at: Date.now(), messageId, status: "submitted" });
     log.info({ user: job.ownerUpn, to: maskPhone(to), messageId }, "Password SMS sent");
   } catch (err) {

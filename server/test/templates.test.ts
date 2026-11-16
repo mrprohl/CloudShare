@@ -2,7 +2,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { defaultTemplates, gsmLength, isGsm, loadTemplates, render, renderHtml, templatesFor } from "../src/templates.js";
+import { defaultTemplates, gsmLength, isGsm, loadTemplates, render, renderHtml, smsFiles, templatesFor, toGsm } from "../src/templates.js";
 
 const dir = mkdtempSync(path.join(tmpdir(), "cloudshare-templates-"));
 function file(content: unknown) {
@@ -95,5 +95,26 @@ describe("templates", () => {
     expect(html).toBe('<p style="x">Guten Tag,</p><p style="x">&lt;b&gt;&lt;script&gt;&lt;/b&gt;<br>Zeile</p>');
     expect(gsmLength("€uro")).toBe(5); // € counts twice
     expect(isGsm("Grüße äöü ß")).toBe(true);
+  });
+
+  it("names the files in the SMS: GSM characters, shortened, how many more", () => {
+    expect(smsFiles([])).toBe("");
+    expect(smsFiles(["Angebot.pdf"])).toBe('"Angebot.pdf"');
+    expect(smsFiles(["a.pdf", "b.pdf", "c.pdf"])).toBe('"a.pdf" und 2 weitere');
+    expect(toGsm("„Crêpe“ – Señor ł.pdf")).toBe('"Crepe" - Señor _.pdf');
+    const long = smsFiles(["Angebot_Neubauprojekt_Rathausplatz_2026_final.pdf"]);
+    expect(long).toBe('"Angebot_Neubauproje..._final.pdf"');
+    expect(isGsm(smsFiles(["Präsentation – Entwurf „neu“.pptx", "x"]))).toBe(true);
+    // The built-in SMS stays one SMS with a long name and sender.
+    const sms = render(defaultTemplates().sms_template, { password: "x".repeat(12), sender_name: "x".repeat(25), files: long });
+    expect(gsmLength(sms)).toBeLessThanOrEqual(160);
+    expect(sms).toContain('Kennwort fuer "Angebot_Neubauproje..._final.pdf" von ');
+  });
+
+  it("accepts {files} in an own SMS text", () => {
+    const warnings: string[] = [];
+    const loaded = loadTemplates(file({ templates: { default: { sms_template: "Code fuer {files}:\n{password}" } } }), (m) => warnings.push(m));
+    expect(templatesFor({}, loaded).sms_template).toBe("Code fuer {files}:\n{password}");
+    expect(warnings).toEqual([]);
   });
 });
