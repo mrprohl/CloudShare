@@ -169,6 +169,7 @@
 
     "channel.label": "Kennwort senden an",
     "recipientLanguage.label": "Sprache für die Empfänger",
+    "recipientLanguage.hint": "In dieser Sprache erhalten die Empfänger die Link-Karte, die Kennwort-Mail und die SMS.",
     "channel.recipients": "Empfänger der Nachricht",
     "channel.mail": "Andere E-Mail-Adresse",
     "channel.sms": "Rufnummer (SMS)",
@@ -429,6 +430,7 @@
     "quotaExceededDetail": "Nicht genügend Speicherplatz in Ihrer Nextcloud (frei: {free}, benötigt: {needed}).",
     "shareNotFound": "Freigabe nicht gefunden",
     "mailUnknown": "Die gesendete Nachricht wurde nicht gefunden – vielleicht wurde sie gelöscht.",
+    "mailDeleted": "Die gesendete Nachricht wurde gelöscht.",
     "requestNeedsPassword": "Links zum Hochladen brauchen immer ein Kennwort.",
     "requestLabel": "Dateianforderung",
     "requestItem": "Upload-Link für Ihre Dateien",

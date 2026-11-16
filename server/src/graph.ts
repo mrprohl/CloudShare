@@ -216,3 +216,22 @@ export async function ewsIdFor(graphToken: string, immutableId: string): Promise
   const json = (await res.json()) as { value?: Array<{ targetId?: string }> };
   return json.value?.[0]?.targetId || null;
 }
+
+/**
+ * Whether the sent mail is still where the user keeps mails: "deleted" when it lies in "Deleted Items" or – after the
+ * folder was emptied – in the hidden "Recoverable Items" (Exchange keeps it there for a while, and Outlook would still
+ * open it by its ID), "gone" when Exchange no longer has it. Needs Mail.Read.
+ */
+export async function sentMailState(graphToken: string, immutableId: string): Promise<"ok" | "deleted" | "gone"> {
+  const headers = { Authorization: `Bearer ${graphToken}`, Prefer: `IdType="ImmutableId"` };
+  const get = (path: string) => fetch(`https://graph.microsoft.com/v1.0/me/${path}`, { headers });
+  const res = await get(`messages/${encodeURIComponent(immutableId)}?$select=parentFolderId`);
+  if (res.status === 404) return "gone";
+  if (!res.ok) throw new Error(`Graph message: HTTP ${res.status}`);
+  const { parentFolderId } = (await res.json()) as { parentFolderId?: string };
+  for (const folder of ["deleteditems", "recoverableitemsdeletions"]) {
+    const f = await get(`mailFolders/${folder}?$select=id`);
+    if (f.ok && ((await f.json()) as { id?: string }).id === parentFolderId) return "deleted";
+  }
+  return "ok";
+}
