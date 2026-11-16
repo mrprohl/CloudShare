@@ -1362,14 +1362,17 @@ test("reading a mail: tabs 'Nachricht' and 'Meine Freigaben', nothing to insert"
   await expect(page.locator("#mail-shares .share")).toHaveCount(1);
   await expect(page.locator("#shares .share")).toHaveCount(2);
   expect(calls.filter((c) => c.method === "DELETE").map((c) => c.path)).toEqual(["/api/shares/13"]);
+  await expect(page.locator("#status")).toBeVisible(); // "… ist nicht mehr abrufbar …"
 
-  // Pinned pane, the user selects another mail without CloudShare links: back to "Nachricht".
+  // Pinned pane, the user selects another mail without CloudShare links: back to "Nachricht", the message about
+  // the previous mail is gone.
   await page.click("#tab-shares");
   await page.evaluate(() => {
     (window as unknown as { __officeConfig: { readBody: string } }).__officeConfig.readBody = "<p>Keine Links</p>";
     (window as unknown as { __officeHandlers: Record<string, () => void> }).__officeHandlers.olkItemSelectedChanged();
   });
   await expect(page.locator("#tab-mail")).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#status")).toBeHidden();
   await expect(page.locator("#mail-none")).toHaveText("Diese Nachricht enthält keine CloudShare-Links von Ihnen.");
   await expect(page.locator("#mail-shares .share")).toHaveCount(0);
 });
