@@ -1641,6 +1641,18 @@ test("Nextcloud öffnen opens the user's Nextcloud in the browser", async ({ pag
   expect((await officeLog(page)).openedUrls).toEqual(["https://cloud.example.com"]);
 });
 
+test("a grey note runs down too (Verbindung getrennt)", async ({ page }) => {
+  await openTaskpane(page, { config: { successMessageSeconds: 1 } });
+  await page.locator("#account-toggle").click();
+  await page.locator("#disconnect").click();
+  await page.locator("#disconnect").click();
+  const status = page.locator("#status");
+  await expect(status).toHaveText("Die Verbindung zu Nextcloud wurde getrennt.");
+  await expect(status.locator(".status-timer")).toHaveCount(1); // grey ring around the "i"
+  await page.mouse.move(5, 700);
+  await expect(status).toBeHidden({ timeout: 3000 });
+});
+
 test("Verbindung trennen takes a second click, like Zurückziehen", async ({ page }) => {
   const calls = await openTaskpane(page);
   const disconnect = page.locator("#disconnect");

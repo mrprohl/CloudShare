@@ -295,7 +295,7 @@ deployed again.
 | `MAIL_FOOTER` | empty | Signature of the password mails for users without an own one (settings), filled from the sender's Microsoft 365 profile, e.g. `'{displayName} · {department}\n{company} · Tel. {phone} · {email}'` – recipients see who the password comes from; placeholders and rules in `cloudshare.env.example`. Empty = no signature (`setup.sh`: Enter). The link card in the message carries none |
 | `VAULTWARDEN_URL`, `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD` | – | Vaultwarden service account |
 | `RATE_LIMIT_PER_MINUTE` | `600` | Requests per minute and user |
-| `SUCCESS_MESSAGE_SECONDS` | `5` | Success and error messages in the pane ("The link has been inserted", "The sent message has been deleted") disappear after this many seconds – a ring around the tick or the "!" runs down and stops while the pointer is on the message. `0` = they stay. Progress and a failed start (with "Try again") always stay |
+| `SUCCESS_MESSAGE_SECONDS` | `5` | Messages in the pane ("The link has been inserted", "The sent message has been deleted", "The connection … has been removed") disappear after this many seconds – a ring around the tick, "!" or "i" runs down and stops while the pointer is on the message. `0` = they stay. Progress ("Uploading …") and a failed start (with "Try again") always stay |
 | `CLIENT_TRACE` | off | Diagnostics, see [Troubleshooting](#troubleshooting) |
 
 `env/versions.env` holds `CLOUDSHARE_HOST`, `CLOUDSHARE_VERSION` (`latest`) and `CADDY_VERSION`.
