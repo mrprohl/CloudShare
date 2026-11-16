@@ -46,6 +46,7 @@ vi.mock("../src/graph.js", async (importOriginal) => ({
   sendMail: vi.fn(async () => undefined),
   sendMailAsApp: vi.fn(async () => undefined),
   ewsIdFor: vi.fn(async (_token: string, id: string) => (id === "AAMk-gone" ? null : `ews-${id}`)),
+  sentMailState: vi.fn(async (_token: string, id: string) => (id === "AAMk-deleted" ? "deleted" : "ok")),
 }));
 // seven.io is not contacted: the SMS of "Kennwort erneut senden" goes to this double.
 vi.mock("../src/sms.js", async (importOriginal) => ({
@@ -510,6 +511,7 @@ describe("confidential messages", () => {
     recordSentMail(["msg-m1"], { owner: "oid-anna", subject: "Zugangsdaten", mailId: "AAMk-1", keepUntil });
     recordSentMail(["msg-m2"], { owner: "oid-anna", subject: "Alt", mailId: "AAMk-gone", keepUntil });
     recordSentMail(["msg-m3"], { owner: "oid-anna", subject: "Freigegebenes Postfach", keepUntil }); // no ID
+    recordSentMail(["msg-m4"], { owner: "oid-anna", subject: "Gelöscht", mailId: "AAMk-deleted", keepUntil });
     const mail = (id: string, who = "anna") => app.inject({ method: "GET", url: `/api/shares/${id}/mail`, headers: as(who) });
 
     const res = await mail("msg-m1");
@@ -519,6 +521,10 @@ describe("confidential messages", () => {
     expect((await mail("msg-m2")).statusCode).toBe(404); // deleted in the mailbox
     expect((await mail("msg-m3")).statusCode).toBe(404); // sent from a shared mailbox
     expect((await mail("msg-none")).statusCode).toBe(404); // sent before this version
+    // In Deleted Items or – after emptying it – in Recoverable Items: not opened, Outlook would still show it.
+    const deleted = await mail("msg-m4");
+    expect(deleted.statusCode).toBe(404);
+    expect(deleted.json().error).toBe("Die gesendete Nachricht wurde gelöscht.");
   });
 
   it("tells the add-in the limits", async () => {

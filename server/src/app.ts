@@ -9,7 +9,7 @@ import { existsSync } from "node:fs";
 import { appGraphToken, authenticate, HttpError, onBehalfOf, type User } from "./auth.js";
 import { config, SEND_DAYS_LIMIT } from "./config.js";
 import { getCredentials, removeCredentials, saveCredentials } from "./credentials.js";
-import { ewsIdFor, fetchProfile, GRAPH_PROFILE_SCOPES, GRAPH_SCOPES, sendMail, sendMailAsApp, type MailRecipients } from "./graph.js";
+import { ewsIdFor, fetchProfile, GRAPH_PROFILE_SCOPES, GRAPH_SCOPES, sendMail, sendMailAsApp, sentMailState, type MailRecipients } from "./graph.js";
 import {
   addFileToJob,
   addNoticeShare,
@@ -820,6 +820,15 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     }
     const mailId = sentMailFor(token, user.oid)?.mailId;
     if (!mailId) throw new HttpError(404, t("server.mailUnknown"));
+    // Deleted (also after emptying "Deleted Items": Exchange keeps it hidden for a while) – not opened. If the check
+    // itself fails, the mail is opened as before.
+    const state = await onBehalfOf(user, GRAPH_SCOPES)
+      .then(({ token: mailToken }) => sentMailState(mailToken, mailId))
+      .catch((err) => {
+        req.log.warn({ err, user: user.upn }, "State of the sent mail not checked");
+        return "ok" as const;
+      });
+    if (state !== "ok") throw new HttpError(404, t("server.mailDeleted"));
     const { token: graphToken } = await onBehalfOf(user, GRAPH_PROFILE_SCOPES);
     const ewsId = await ewsIdFor(graphToken, mailId).catch((err) => {
       req.log.warn({ err, user: user.upn }, "Mail ID not translated");

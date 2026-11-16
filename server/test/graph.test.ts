@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ewsIdFor, fetchProfile, findSentMessage, JOB_PROPERTY, sendMail } from "../src/graph.js";
+import { ewsIdFor, fetchProfile, findSentMessage, JOB_PROPERTY, sendMail, sentMailState } from "../src/graph.js";
 import { json, mockFetch } from "./helpers.js";
 
 const CUSTOM_PROPS_ID =
@@ -129,5 +129,25 @@ describe("ewsIdFor", () => {
   it("returns null when Exchange does not know the mail (any more)", async () => {
     mockFetch(json({ value: [{ sourceId: "x", errorDetails: { code: "ErrorItemNotFound" } }] }));
     expect(await ewsIdFor("token", "x")).toBeNull();
+  });
+});
+
+describe("sentMailState", () => {
+  it("knows a mail that lies in a mail folder", async () => {
+    mockFetch(json({ parentFolderId: "sent" }), json({ id: "deleted" }), json({ id: "dumpster" }));
+    expect(await sentMailState("token", "AAk-1")).toBe("ok");
+  });
+
+  it("counts a mail in Deleted Items or – after emptying it – in Recoverable Items as deleted", async () => {
+    const { call } = mockFetch(json({ parentFolderId: "dumpster" }), json({ id: "deleted" }), json({ id: "dumpster" }));
+    expect(await sentMailState("token", "AAk-1")).toBe("deleted");
+    expect(call(0).url).toContain("/me/messages/AAk-1?$select=parentFolderId");
+    expect((call(0).init.headers as Record<string, string>).Prefer).toBe(`IdType="ImmutableId"`);
+    expect(call(2).url).toContain("/me/mailFolders/recoverableitemsdeletions");
+  });
+
+  it("knows when Exchange no longer has the mail", async () => {
+    mockFetch(json({ error: { code: "ErrorItemNotFound" } }, 404));
+    expect(await sentMailState("token", "AAk-1")).toBe("gone");
   });
 });

@@ -375,7 +375,8 @@ mail it stores per link the subject and the mail's Graph ID (store `sent-mails`,
 `Prefer: IdType="ImmutableId"` so it survives moving the mail; only for the user's own mailbox, not a shared one).
 "History" titles each entry with that subject and opens the mail on a click (`openSentMail`: `GET /api/shares/:id/mail`
 translates the immutable ID into the current EWS ID with Graph `translateExchangeIds` – Outlook cannot open the
-immutable form – then `displayMessageFormAsync`, which reports a failure); until the mail is sent the entry is titled with its file, as before.
+immutable form – then `displayMessageFormAsync`, which reports a failure; a mail in Deleted Items or – after emptying them – in
+Recoverable Items counts as deleted, `sentMailState`); until the mail is sent the entry is titled with its file, as before.
 
 ### 2.11 Personal settings
 
@@ -456,7 +457,7 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `POST /api/messages` | Confidential message: text → password-protected Vaultwarden Send, joins the mail's password job |
 | `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "History": list (all valid links and confidential messages – `msg-<Send ID>`, `kind: "message"`, deleted in Vaultwarden on revoke –, each with `subject` and `mailId` of its sent mail, newest first, max. 100; loaded with the tab, when the pane regains focus and by the refresh button in the tab bar), revoke, insert again; also the read mode (2.9) |
 | `GET /api/shares/:id/password`, `POST /api/shares/:id/password/send` | The password of a sent link (owner only, until the link expires) and sending it again by SMS or password mail (2.10) |
-| `GET /api/shares/:id/mail` | "History": the sent mail of an entry as the EWS ID Outlook opens (`displayMessageFormAsync`) – the immutable Graph ID kept at sending, translated now with `translateExchangeIds` (User.Read), so it follows a moved mail; 404 if none is known or it is gone |
+| `GET /api/shares/:id/mail` | "History": the sent mail of an entry as the EWS ID Outlook opens (`displayMessageFormAsync`) – the immutable Graph ID kept at sending, translated now with `translateExchangeIds` (User.Read), so it follows a moved mail; 404 if none is known or it is gone – also when it lies in Deleted Items or, after emptying them, in Recoverable Items (`sentMailState`, Mail.Read), where Outlook would still open it |
 | `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send), `passwordTo` or `passwordSms` until the password went out |
 | `POST /api/jobs/:id/arm` | Arm the password mail (send handler); also reads the sender's name and department for the templates |
 | `GET/POST /webhooks/seven?token=…` | seven.io delivery reports (no login, secret `SEVEN_WEBHOOK_SECRET`) |

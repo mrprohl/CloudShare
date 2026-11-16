@@ -169,6 +169,7 @@
 
     "channel.label": "Send the password to",
     "recipientLanguage.label": "Language for the recipients",
+    "recipientLanguage.hint": "The recipients get the link card, the password mail and the text message in this language.",
     "channel.recipients": "Recipients of the message",
     "channel.mail": "Another email address",
     "channel.sms": "Phone number (text message)",
@@ -429,6 +430,7 @@
     "quotaExceededDetail": "Not enough storage in your Nextcloud (free: {free}, needed: {needed}).",
     "shareNotFound": "Share not found",
     "mailUnknown": "The sent message was not found – it may have been deleted.",
+    "mailDeleted": "The sent message has been deleted.",
     "requestNeedsPassword": "Upload links always need a password.",
     "requestLabel": "File request",
     "requestItem": "Upload link for your files",
