@@ -362,6 +362,22 @@ test("settings: the gear opens them in place of the tab; saved ways apply to the
   await expect(page.locator('#password-channel option[value="mail"]')).toHaveJSProperty("hidden", false);
 });
 
+test("settings and help: the heading with its × stays in sight while scrolling", async ({ page }) => {
+  await page.setViewportSize({ width: 340, height: 520 });
+  await openTaskpane(page, { config: { smsEnabled: true } });
+  await page.locator("#settings-toggle").click();
+  await expect(page.locator("#settings-form")).toBeVisible();
+  await page.locator("#settings-save").scrollIntoViewIfNeeded(); // scrolled to the bottom
+  await expect(page.locator("#settings-close")).toBeInViewport();
+  await expect(page.locator("#settings-heading")).toBeInViewport();
+  await page.click("#settings-close");
+  await expect(page.locator("#panel-settings")).toBeHidden();
+
+  await page.click("#help-toggle");
+  await page.locator(".help-support").scrollIntoViewIfNeeded();
+  await expect(page.locator("#help-close")).toBeInViewport();
+});
+
 test("settings: a new mail starts with the preselected way and offers only the chosen ones", async ({ page }) => {
   await openTaskpane(page, { config: { smsEnabled: true }, settings: { channels: ["recipients", "sms"], defaultChannel: "sms" } });
   await expect(page.locator("#password-channel")).toHaveValue("sms");
@@ -452,7 +468,8 @@ test("preselects large attachments and proposes a random password", async ({ pag
   expect(await password.inputValue()).toMatch(/^(?=(?:[^2-9]*[2-9]){2}[^2-9]*$)[A-Za-z2-9]{12,15}$/); // pronounceable, two digits
   await expect(page.locator("#max-access")).toHaveValue("3");
   await expect(page.locator("#expire")).toHaveValue("14");
-  await expect(page.locator("#account")).toHaveText("max [12,5 GB von 50 GB frei]");
+  await expect(page.locator("#account")).toHaveText("max");
+  await expect(page.locator("#account-storage")).toHaveText("12,5 GB von 50 GB frei"); // in the account menu
   // One button that says what it inserts; the rarely changed values collapsed behind a summary.
   await expect(page.locator("#kind-files")).toBeChecked();
   await expect(page.locator("#submit")).toHaveText("Datei als Link einfügen");
@@ -1117,18 +1134,34 @@ test("Meine Freigaben: shows the state of each link and revokes after confirmati
   await refresh.click();
   await expect.poll(loads).toBe(before + 1);
   await expect(refresh).toBeEnabled();
-  // One bottom bar for every tab: account, "Verbindung trennen" on a line of its own, help and settings on the right.
-  const name = page.locator(".account-bar .account-name");
-  const disconnect = page.locator(".account-bar .disconnect-link");
-  await expect(name).toHaveText("max [12,5 GB von 50 GB frei]");
-  await expect(disconnect).toHaveText("Verbindung trennen");
-  const [nameBox, linkBox, helpBox, gearBox] = await Promise.all(
-    [name, disconnect, page.locator("#help-toggle"), page.locator("#settings-toggle")].map((l) => l.boundingBox()),
+  // One quiet bottom bar for every tab: the account as a menu (like Outlook's profile menu), help and settings right.
+  const toggle = page.locator("#account-toggle");
+  const menu = page.locator("#account-menu");
+  await expect(toggle).toHaveText("max");
+  await expect(menu).toBeHidden();
+  const [toggleBox, helpBox, gearBox] = await Promise.all(
+    [toggle, page.locator("#help-toggle"), page.locator("#settings-toggle")].map((l) => l.boundingBox()),
   );
-  expect(linkBox!.y).toBeGreaterThanOrEqual(nameBox!.y + nameBox!.height - 1); // below the name, always
-  expect(helpBox!.x).toBeGreaterThan(linkBox!.x + linkBox!.width);
+  expect(Math.abs(toggleBox!.y + toggleBox!.height / 2 - (helpBox!.y + helpBox!.height / 2))).toBeLessThan(2); // one line
+  expect(helpBox!.x).toBeGreaterThan(toggleBox!.x + toggleBox!.width);
   expect(gearBox!.x).toBeGreaterThan(helpBox!.x);
   await expect(page.locator(".account-bar")).toHaveCount(1);
+  // The menu opens above the bar: storage and "Verbindung trennen"; Escape closes it, focus back on the account.
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(menu).toBeVisible();
+  await expect(page.locator("#account-storage")).toHaveText("12,5 GB von 50 GB frei");
+  await expect(page.locator("#disconnect")).toHaveText("Verbindung trennen");
+  await expect(page.locator("#disconnect")).toBeFocused();
+  expect((await menu.boundingBox())!.y + (await menu.boundingBox())!.height).toBeLessThanOrEqual(toggleBox!.y);
+  await expectAccessible(page);
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(toggle).toBeFocused();
+  // A click elsewhere closes it too.
+  await toggle.click();
+  await page.locator("#shares").click({ position: { x: 5, y: 5 } });
+  await expect(menu).toBeHidden();
   await page.click("#tab-send");
   await expect(refresh).toBeHidden();
   await page.click("#tab-shares");
@@ -1278,10 +1311,9 @@ test("reading a mail: tabs 'Nachricht' and 'Meine Freigaben', nothing to insert"
   await expect(inMail.nth(0).locator(".share-password")).toContainText("zugestellt am 10.11.2026, 11:00 Uhr");
   await expect(inMail.nth(1).locator(".share-name")).toHaveText("Upload-Link");
   await expect(page.locator("#mail-none")).toBeHidden();
-  // Reading a mail too: "Aktualisieren" in the tab bar, the account line at the bottom.
+  // Reading a mail too: "Aktualisieren" in the tab bar, the account at the bottom.
   await expect(page.locator("#refresh-shares")).toBeVisible();
-  await expect(page.locator(".account-bar .account-name")).toHaveText("max [12,5 GB von 50 GB frei]");
-  await expect(page.locator(".account-bar .disconnect-link")).toBeVisible();
+  await expect(page.locator("#account-toggle")).toHaveText("max");
   await expect(page.locator(".share .insert").first()).toBeHidden(); // a mail being read cannot take a link
   await expect(page.locator("#panel-mail")).not.toContainText("Weitere Freigaben");
   await expectAccessible(page);
@@ -1467,7 +1499,7 @@ test.describe("README pictures (English)", () => {
     await openTaskpane(page, { lang: "en", attachments: ATTACHMENTS, config: README_CONFIG });
     await expect(page.locator("#submit")).toHaveText("Insert file as link");
     await expect(page.locator("#validity-summary")).toHaveText("Link 14 days · Password link 5 days, opens 3 times");
-    await expect(page.locator("#account")).toHaveText("max [12.5 GB of 50 GB free]");
+    await expect(page.locator("#account")).toHaveText("max");
     await expectAccessible(page);
     await readmeShot(page, "send");
   });

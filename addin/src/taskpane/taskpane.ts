@@ -34,6 +34,10 @@ const connectHint = $<HTMLParagraphElement>("connect-hint");
 const connectLink = $<HTMLAnchorElement>("connect-link");
 const sendView = $<HTMLElement>("send-view");
 const accountText = $<HTMLElement>("account");
+const accountToggle = $<HTMLButtonElement>("account-toggle");
+const accountMenu = $<HTMLDivElement>("account-menu");
+const accountStorage = $<HTMLParagraphElement>("account-storage");
+const disconnectButton = $<HTMLButtonElement>("disconnect");
 const attachmentList = $<HTMLDivElement>("attachments");
 const pickedList = $<HTMLDivElement>("picked");
 const noAttachments = $<HTMLParagraphElement>("no-attachments");
@@ -185,14 +189,14 @@ interface ConnectionStatus {
   passwordEnforced?: boolean;
 }
 
-/** Storage behind the account: "[12,3 GB von 50 GB frei]", "[12,3 GB frei]" (no quota) or "[3,2 GB belegt]". */
+/** Storage of the account (account menu): "12,3 GB von 50 GB frei", "12,3 GB frei" (no quota), "3,2 GB belegt" or "". */
 function storageText(status: ConnectionStatus): string {
   const isBytes = (value: unknown): value is number => typeof value === "number" && value >= 0;
   if (isBytes(status.freeBytes) && isBytes(status.totalBytes)) {
-    return ` [${t("storage.freeOf", { free: formatSize(status.freeBytes), total: formatSize(status.totalBytes) })}]`;
+    return t("storage.freeOf", { free: formatSize(status.freeBytes), total: formatSize(status.totalBytes) });
   }
-  if (isBytes(status.freeBytes)) return ` [${t("storage.free", { free: formatSize(status.freeBytes) })}]`;
-  if (isBytes(status.usedBytes)) return ` [${t("storage.used", { used: formatSize(status.usedBytes) })}]`;
+  if (isBytes(status.freeBytes)) return t("storage.free", { free: formatSize(status.freeBytes) });
+  if (isBytes(status.usedBytes)) return t("storage.used", { used: formatSize(status.usedBytes) });
   return "";
 }
 
@@ -200,10 +204,12 @@ function showConnection(status: ConnectionStatus) {
   connectView.hidden = status.connected;
   sendView.hidden = !status.connected;
   connectHint.hidden = true;
-  // The account line at the bottom of every tab ("Senden", "Nachricht", "Meine Freigaben").
-  const account = `${status.loginName ?? ""}${storageText(status)}`;
-  accountText.textContent = account;
-  document.querySelectorAll<HTMLElement>(".account-name").forEach((line) => (line.textContent = account));
+  // The bottom bar shows the Nextcloud account; its menu the storage and "Verbindung trennen".
+  accountText.textContent = status.loginName ?? "";
+  const storage = storageText(status);
+  accountStorage.textContent = storage;
+  accountStorage.hidden = !storage;
+  showAccountMenu(false);
   applyPasswordPolicy(status.passwordEnforced === true);
   // Reading a mail: the list is all there is – load it as soon as the connection is there (also right after connecting).
   if (readMode && status.connected) loadShares().catch((err) => setStatus(errorMessage(err), "error"));
@@ -290,8 +296,33 @@ async function disconnect(e: Event) {
     setStatus(t("disconnect.failed", { error: errorMessage(err) }), "error");
   }
 }
-// "Trennen" in the account line of every tab.
-document.querySelectorAll<HTMLAnchorElement>(".disconnect-link").forEach((link) => link.addEventListener("click", disconnect));
+// --- Account menu (bottom bar, like the profile menu in Outlook) ----------------------
+
+/** Opens or closes the account menu above the bar: storage of the account and "Verbindung trennen". */
+function showAccountMenu(open: boolean) {
+  accountMenu.hidden = !open;
+  accountToggle.setAttribute("aria-expanded", String(open));
+}
+accountToggle.addEventListener("click", () => {
+  const open = accountMenu.hidden === true;
+  showAccountMenu(open);
+  if (open) disconnectButton.focus();
+});
+// Closes with Escape (focus back on the account) or a click anywhere else.
+accountMenu.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  showAccountMenu(false);
+  accountToggle.focus();
+});
+document.addEventListener("click", (event) => {
+  if (!accountMenu.hidden && !accountMenu.contains(event.target as Node) && !accountToggle.contains(event.target as Node)) {
+    showAccountMenu(false);
+  }
+});
+disconnectButton.addEventListener("click", (event) => {
+  showAccountMenu(false);
+  void disconnect(event);
+});
 
 // --- File lists ------------------------------------------------------------------
 
