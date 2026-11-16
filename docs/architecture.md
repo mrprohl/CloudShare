@@ -340,10 +340,14 @@ when the links expire. Steps sent before this version have no entry – their pa
 | `/config` (read-only, host `env/config/`) | Optional `templates.json` and own `locales/<language>.json` | Managed by the admin |
 
 Everything in `/data` lives in one SQLite database, `cloudshare.db` (`db.ts`, Node's built-in `node:sqlite`, WAL, file
-mode 600): one table `entries (store, key, data)`, one row per entry; every row is sealed AES-256-GCM with
+mode 600): one table `entries (store, key, data, updated)`, one row per entry; every row is sealed AES-256-GCM with
 `CREDENTIAL_KEY` (`storage.ts`, AAD = store and key), so the file holds nothing readable. The modules keep their
 entries in memory (`PersistentMap`) and write only the row that changed; a row that cannot be decrypted (e.g. the key
-changed) is skipped with a warning. The upgrade test in CI checks that data written by the published image stays
+changed) is skipped with a warning. **Retention:** entries leave on their own (jobs 7 days after
+their last link, password entries and notices when the links expire, delivery states after 120 days, cleanup entries
+when the folder was deleted, connections on disconnect); as a safety net a daily pass deletes every row not written
+for `DATA_RETENTION_DAYS` (default 365, `off` = never, at least `SHARE_MAX_EXPIRE_DAYS`) and then runs `VACUUM` –
+except the connections and the cleanup list (`retention: false`). The upgrade test in CI checks that data written by the published image stays
 readable by a new one; the switch from the former JSON files to SQLite took no data over (that one run is skipped).
 
 ## 4. HTTP API

@@ -22,6 +22,18 @@ function sendDays(name: string, fallback: number): number {
   return value;
 }
 
+/**
+ * DATA_RETENTION_DAYS: entries of the database not changed for this many days are deleted by a daily pass (default 365,
+ * "off" = never). A safety net – every kind of entry is removed on its own earlier (see db.ts).
+ */
+function retentionDays(): number | null {
+  const raw = (process.env.DATA_RETENTION_DAYS ?? "365").trim().toLowerCase();
+  if (raw === "off") return null;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) throw new Error("Environment variable DATA_RETENTION_DAYS is invalid (days or \"off\")");
+  return value;
+}
+
 /** Days after link expiry until CloudShare deletes the uploaded file; "off" = never (CLEANUP_AFTER_DAYS). */
 function cleanupDays(): number | null {
   const raw = (process.env.CLEANUP_AFTER_DAYS ?? "0").trim().toLowerCase();
@@ -111,10 +123,16 @@ export const config = {
   sendExpireDays: sendDays("SEND_EXPIRE_DAYS", 5),
   sendMaxExpireDays: sendDays("SEND_MAX_EXPIRE_DAYS", 30),
   /**
+   * SEND_SHOW_CREATOR=true: the Send page names the address of CloudShare's Vaultwarden account ("… created this Send")
+   * instead of warning that the creator hid it. Off by default (address hidden, the page shows the warning).
+   */
+  sendShowCreator: envFlag("SEND_SHOW_CREATOR"),
+  /**
    * Files in NEXTCLOUD_FOLDER are deleted (Nextcloud trash) this many days after their link expired; null = never.
    * Received files (NEXTCLOUD_REQUEST_FOLDER) are never deleted automatically.
    */
   cleanupAfterDays: cleanupDays(),
+  dataRetentionDays: retentionDays(),
 
   /**
    * SMS channel via seven.io ("Kennwort per SMS"): off without SEVEN_API_KEY. The sender is a phone number or up to
@@ -189,5 +207,13 @@ const allowedCodes = config.smsAllowedCountries.map(callingCodeOf);
 if (allowedCodes.length > 0 && !allowedCodes.includes(config.smsDefaultCountry)) {
   throw new Error(
     `SMS_DEFAULT_COUNTRY (${config.smsDefaultCountry}) must belong to SMS_ALLOWED_COUNTRIES – numbers like 0170 … would all be refused`,
+  );
+}
+
+// Entries of links that are still valid must not be deleted: "Meine Freigaben" needs them until the links expire.
+if (config.dataRetentionDays !== null && config.dataRetentionDays < config.maxExpireDays) {
+  throw new Error(
+    `DATA_RETENTION_DAYS (${config.dataRetentionDays}) must be at least SHARE_MAX_EXPIRE_DAYS (${config.maxExpireDays}) – ` +
+      "otherwise data of links that are still valid would be deleted",
   );
 }

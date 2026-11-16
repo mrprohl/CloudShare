@@ -21,6 +21,19 @@ describe("password Sends", () => {
     expect(days(body.deletionDate)).toBe(14); // the links' expiry
     expect(send).toMatchObject({ url: "https://vault.example.test/#/send/a/b", id: "s1" });
     expect(Math.round((send.expiresAt - Date.now()) / DAY)).toBe(5);
+    expect(body.hideEmail).toBe(true); // default: the Send page warns that the creator is hidden
+  });
+
+  it("names CloudShare's account on the Send page with SEND_SHOW_CREATOR", async () => {
+    const { config } = await import("../src/config.js");
+    config.sendShowCreator = true;
+    try {
+      const { call } = mockFetch(json({ success: true, data: { accessUrl: "https://vault.example.test/#/send/a/b", id: "s3" } }));
+      await createPasswordSend("CloudShare: a.pdf", "KateGeteFi45", 3, 5, Date.now() + 14 * DAY);
+      expect(JSON.parse(String(call(0).init.body)).hideEmail).toBe(false);
+    } finally {
+      config.sendShowCreator = false;
+    }
   });
 
   it("never lets the recipients' access outlast the Send", async () => {

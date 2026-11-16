@@ -13,7 +13,8 @@ interface StoredEntry extends NextcloudCredentials {
   connectedAt: string;
 }
 
-const entries = new PersistentMap<StoredEntry>("credentials");
+// No retention: a connection is in use as long as its user is; it ends on disconnect or when Nextcloud refuses it.
+const entries = new PersistentMap<StoredEntry>("credentials", { retention: false });
 
 export function getCredentials(oid: string): NextcloudCredentials | undefined {
   const entry = entries.get(oid);
