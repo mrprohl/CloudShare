@@ -62,8 +62,14 @@ export const pendingNotices = () => [...notices.entries()];
 
 const tokenOf = (url: string) => url.replace(/\/+$/, "").split("/").pop() ?? "";
 const formatDay = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString(locale(), { timeZone: config.timeZone });
-const formatTime = (iso: string) =>
-  new Date(iso).toLocaleString(locale(), { timeZone: config.timeZone, dateStyle: "medium", timeStyle: "short" });
+/** "16.11.2026, 00:42 Uhr" / "16 Nov 2026, 00:42" – the wording from "mail.dateTime". */
+const formatTime = (iso: string) => {
+  const d = new Date(iso);
+  return t("mail.dateTime", {
+    date: d.toLocaleDateString(locale(), { timeZone: config.timeZone, dateStyle: "medium" }),
+    time: d.toLocaleTimeString(locale(), { timeZone: config.timeZone, timeStyle: "short" }),
+  });
+};
 
 /** One pass (exported for tests; normally driven by startNotices). */
 export async function runNotices(log: Pick<FastifyBaseLogger, "info" | "warn">, now = Date.now()) {

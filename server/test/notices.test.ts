@@ -69,7 +69,7 @@ describe("download confirmation", () => {
     // Common layout of the automatic mails: a green card with the file, the line that CloudShare sent it.
     expect(html).toContain("border-left:4px solid #107c10");
     expect(html).toContain("Datei heruntergeladen");
-    expect(html).toMatch(/Zum ersten Mal heruntergeladen am .* · Link gültig bis /);
+    expect(html).toMatch(/Zum ersten Mal heruntergeladen am .*, \d{2}:\d{2} Uhr · Link gültig bis /);
     expect(html).toContain("automatisch von CloudShare");
     expect(pendingNotices().some(([t]) => t === "tokA")).toBe(false);
 

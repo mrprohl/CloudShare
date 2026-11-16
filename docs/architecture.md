@@ -7,8 +7,8 @@ together, where state lives, and the Outlook peculiarities the code has to work 
 [README](../README.md); Microsoft 365 (Entra ID, deployment, Exchange): [microsoft-365.md](microsoft-365.md).
 
 Everything visible to users and recipients (taskpane, Outlook hints, cards, password mail, SMS, download
-confirmation) comes from the language file picked by `LANGUAGE` (`locales/de.json` by default, see
-[2.8](#28-languages)); code, logs and documentation are English. Labels are quoted as in the English interface
+confirmation) comes from the language files in `locales/` – the add-in in the Outlook client's language, the mails and
+SMS in `LANGUAGE` (`de` by default, see [2.8](#28-languages)); code, logs and documentation are English. Labels are quoted as in the English interface
 ("Insert as link", "My shares" …); the German texts (the default) are in `locales/de.json` under the same keys.
 
 ## Contents
@@ -37,7 +37,7 @@ Outlook (classic on Windows / new Outlook / Outlook on the web)
 Caddy (Let's Encrypt, ports 80/443) ──► network "internal"
         ▼
 Container "cloudshare" (Node 24, read-only)
-  ├─ Fastify backend     server/src/           API, add-in files (texts of LANGUAGE filled in at start),
+  ├─ Fastify backend     server/src/           API, add-in files (texts of all languages filled in at start),
   │     │                                      manifest.xml, well-known file, seven.io webhook
   │     ├─ Nextcloud     app password per user → WebDAV chunked upload, OCS shares, activity, trash
   │     ├─ Graph         On-Behalf-Of token → read "Sent Items", send password mail as the user;
@@ -68,7 +68,7 @@ so it needs no CORS.
 
 **Placeholders.** `docker/entrypoint.sh` copies the add-in files from `/app/public.tpl` to `/app/public` (tmpfs) and
 replaces `%%PUBLIC_BASE_URL%%`, `%%PUBLIC_HOST%%` and `%%ENTRA_CLIENT_ID%%`; then the server fills in the texts of
-`LANGUAGE` ([2.8](#28-languages)). So one image serves every installation and language.
+every language ([2.8](#28-languages)). So one image serves every installation and language.
 
 ## 2. Main flows
 
@@ -240,22 +240,32 @@ folder in Nextcloud, texts `mail.uploaded*`). The entry stays until the link exp
 
 ### 2.8 Languages
 
-`LANGUAGE` (default `de`; `de` and `en` are included) picks `locales/<language>.json`. `i18n.ts` merges, per text:
+Two kinds of language:
+
+- **The add-in** follows the display language of the Outlook client (`Office.context.displayLanguage`): every
+  language in `locales/` and `CUSTOM_LOCALES_DIR` is offered; the exact one (`pt-br`), else the one without region
+  (`de-AT` → `de`), else English (`pickLanguage`, the same rule in `addin/src/shared/i18n.ts` and
+  `server/src/i18n.ts`). That covers the taskpane, info bar, Smart Alerts, the link card and the error messages the
+  server returns to the add-in.
+- **`LANGUAGE`** (default `de`) is the language of everything the server sends on its own – password mail and SMS,
+  download/upload confirmation, SMS notes – and the first guess of the taskpane page.
+
+Each language is `locales/<language>.json`. `i18n.ts` merges, per text:
 
 1. English – fallback for texts a language does not have yet;
 2. the built-in file of the language (`/app/locales` in the image);
 3. an optional own file from `CUSTOM_LOCALES_DIR` (`/config/locales`, mounted from `env/config/locales/`) – adds a
    language or changes single texts of a built-in one without a new image.
 
-An unknown language (or one that is not a code like `de`, `en`, `pt-br`) stops the start with the list of available
+An unknown `LANGUAGE` (or one that is not a code like `de`, `en`, `pt-br`) stops the start with the list of available
 languages. A language file:
 
 | Part | Content |
 |---|---|
-| `_meta` | `name`, `locale` (BCP 47, e.g. `de-DE`: date and number format, manifest `DefaultLocale`) |
+| `_meta` | `name`, `locale` (BCP 47, e.g. `de-DE`: date and number format, `Locale` of the manifest Overrides) |
 | `addin` | taskpane, info bar, Smart Alerts, link cards, SSO hints (`sso.<code>`) |
-| `manifest` | description, ribbon group, tooltip |
-| `server` | error messages the taskpane shows (`HttpError`), share label of upload links |
+| `manifest` | description, ribbon group, tooltip – English as `DefaultValue`, the other languages as `Override` |
+| `server` | error messages the taskpane shows (`HttpError`) – in the language of the request, share label of upload links |
 | `mail` | password mail (greeting, card, notes), subjects of fallback mails |
 | `templates` | built-in texts of [2.6](#26-text-templates) (SMS, password mail subject/intro, download confirmation) |
 
@@ -264,15 +274,28 @@ and plural form – `t("files.added", { count })` picks one. Texts never contain
 the bundles as an ASCII-only JSON string.
 
 The add-in gets its texts without an extra request: at startup (`index.ts`, `localizePublic`) the server replaces in
-the copies under `/app/public` the string marker `"%%CLOUDSHARE_I18N%%"` in `taskpane.js` / `commands.js` with a JSON
-string of the `addin` texts (read by `addin/src/shared/i18n.ts`, ASCII-escaped), and `%%t:<section>.<key>%%`,
-`%%LANG%%`, `%%LOCALE%%` in `taskpane.html`, `commands.html` and `manifest.xml`. So the send handler in classic
-Outlook's JavaScript-only runtime has the texts too. Comments in these files must not contain `%%` – the smoke test
-fails on any marker left over.
+the copies under `/app/public`:
 
-One language per installation, the same for all users; Nextcloud folder names do not depend on it
-(`NEXTCLOUD_REQUEST_FOLDER` identifies CloudShare's links). Outlook caches the add-in files – after a change of
-`LANGUAGE` clear the cache ([5](#5-outlook-runtimes-and-pitfalls)).
+- the string marker `"%%CLOUDSHARE_I18N%%"` in `taskpane.js` / `commands.js` with a JSON string
+  `{ fallback: "en", languages: { <language>: { locale, messages } } }` of the `addin` texts of every language (read
+  by `addin/src/shared/i18n.ts`, ASCII-escaped) – so the send handler in classic Outlook's JavaScript-only runtime has
+  them too and picks the client's language itself;
+- `%%t:<section>.<key>%%`, `%%LANG%%`, `%%LOCALE%%` in `taskpane.html` / `commands.html` with the texts of `LANGUAGE`,
+  and writes `taskpane.<language>.html` for every language. `taskpane.js` starts with `main.ts`: once Office.js is
+  ready, `language.ts` replaces the body with the page of the client's language (if it differs) and only then
+  `taskpane.ts` is evaluated (dynamic import inside the one IIFE bundle) – it binds its elements at evaluation. If
+  that page cannot be loaded, the pane stays in the page's language, texts of page and code always match;
+- `manifest.xml`: each `DefaultValue="%%t:manifest.<key>%%"` becomes the English text with one
+  `<Override Locale="<_meta.locale>">` / `<bt:Override …>` per other language; `DefaultLocale` is English's locale.
+
+Every request of the add-in carries `X-CloudShare-Language`; an `onRequest` hook runs the request in an
+`AsyncLocalStorage` with that language, so `t("server.…")` (error messages, also the rate limit's) answers in it. All
+other sections – mails, templates, SMS – stay in `LANGUAGE`, also for jobs started by a request. Comments in these
+files must not contain `%%` – the smoke test fails on any marker left over.
+
+Nextcloud folder names do not depend on the language (`NEXTCLOUD_REQUEST_FOLDER` identifies CloudShare's links).
+Outlook caches the add-in files – after adding a language clear the cache ([5](#5-outlook-runtimes-and-pitfalls)); the
+ribbon texts change only after the manifest was updated in Microsoft 365.
 
 **Adding a text:** put the key into **every** file in `locales/` with the same placeholders. `server/test/i18n.test.ts`
 checks that every language has the keys and placeholders of English, that every key the code uses (`t("…")`,
@@ -336,7 +359,7 @@ when the links expire. Steps sent before this version have no entry – their pa
 | … store `notices` | Links waiting for their first download or for uploads (sender, subject, recipients, expiry, files already reported) | Until downloaded / expired |
 | Memory (`store.ts`) | Running uploads (12 h), pending Nextcloud logins (20 min) | Lost on restart → single instance only |
 | `roamingSettings` | Last server configuration (for the handlers) | Per mailbox |
-| `/app/public` (tmpfs) | Add-in files with address, client ID and texts of `LANGUAGE` filled in | Rebuilt at every start |
+| `/app/public` (tmpfs) | Add-in files with address, client ID and texts of every language filled in, `taskpane.<language>.html` per language | Rebuilt at every start |
 | `/config` (read-only, host `env/config/`) | Optional `templates.json` and own `locales/<language>.json` | Managed by the admin |
 
 Everything in `/data` lives in one SQLite database, `cloudshare.db` (`db.ts`, Node's built-in `node:sqlite`, WAL, file
@@ -387,7 +410,7 @@ The same add-in runs in two very different environments; most hard-won fixes are
   `/.well-known/microsoft-officeaddins-allowed.json` – without it the send dialog hangs at "is taking longer
   than expected".
 - Office.js is preloaded, the handlers can be registered right away.
-- Outlook caches the script; after an update or a change of `LANGUAGE` clear `%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\`.
+- Outlook caches the script; after an update or a new language clear `%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\`.
 - The taskpane runs in WebView2, where the dialog of a file input did not reliably open (script click, `<label for>`
   and a transparent overlay were tried) → the button uses the File System Access API (`window.showOpenFilePicker`)
   first and the file input only as fallback; with `CLIENT_TRACE` every step is logged (`picker:*`). Drag & drop is
@@ -529,8 +552,8 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
 5. **Bitwarden CLI and Vaultwarden versions must match** (`BW_CLI_VERSION` in the `Dockerfile`).
 6. **Trademark:** the icon uses the Nextcloud mark – fine for internal use; check Nextcloud's trademark guidelines
    before distributing CloudShare to third parties.
-7. **One language per installation:** `LANGUAGE` applies to all users; the add-in does not follow each user's Outlook
-   language. Recipients get the password mail and the SMS in the same language. `templates.json` is not per
-   language.
-8. **Possible later:** OIDC token exchange (e.g. Keycloak) instead of app passwords would remove the connect step;
-   a language per user (Outlook display language) would need the texts of all languages in the bundles.
+7. **One mail language per installation:** the add-in follows each user's Outlook language, but the password mail,
+   the SMS and the confirmations use `LANGUAGE` for everyone; `templates.json` is not per language. The ribbon label
+   comes from a manifest `Override` for the language's `_meta.locale` (e.g. `de-DE`) – how Outlook treats other
+   regional variants there (e.g. `de-AT`) is up to Outlook; the pane itself maps them to their language.
+8. **Possible later:** OIDC token exchange (e.g. Keycloak) instead of app passwords would remove the connect step.

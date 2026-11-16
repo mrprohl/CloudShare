@@ -37,7 +37,7 @@ env_value() {
 echo "== CloudShare setup =="
 echo "-- General --"
 ask PUBLIC_BASE_URL         "Public address"                              "https://cloudshare.example.com"
-ask LANGUAGE                "Language (de, en – files in locales/)"       "de"
+ask LANGUAGE                "Language of mails and SMS (de, en)"          "de"
 ask ATTACHMENT_THRESHOLD_MB "CloudShare from attachment size (MB)"        "5"
 ask ATTACHMENT_POLICY       "Large attachments: enforce or suggest"       "suggest"
 ask SHARE_EXPIRE_DAYS       "Link valid, default (days)"                  "14"

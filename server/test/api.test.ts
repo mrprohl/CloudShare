@@ -177,6 +177,18 @@ describe("authentication", () => {
     const { res } = await startUpload("carla");
     expect(res.statusCode).toBe(409);
     expect(res.json().code).toBe("NEXTCLOUD_NOT_CONNECTED");
+    expect(res.json().error).toBe("Nextcloud ist noch nicht verbunden."); // no language header: LANGUAGE
+  });
+
+  it("answers in the language of the add-in (X-CloudShare-Language), English for unknown ones", async () => {
+    const english = await app.inject({
+      method: "POST", url: "/api/uploads", headers: { ...as("carla"), "x-cloudshare-language": "en-US" }, payload: { fileName: "a.pdf", size: 100 },
+    });
+    expect(english.json()).toMatchObject({ code: "NEXTCLOUD_NOT_CONNECTED", error: "Nextcloud is not connected yet." });
+    const french = await app.inject({
+      method: "POST", url: "/api/uploads", headers: { ...as("carla"), "x-cloudshare-language": "fr-FR" }, payload: { fileName: "a.pdf", size: 100 },
+    });
+    expect(french.json().error).toBe("Nextcloud is not connected yet.");
   });
 });
 

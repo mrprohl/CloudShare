@@ -42,11 +42,13 @@ interface Scenario {
   passwordEnforced?: boolean;
   /** Pane with the English texts (served below /en/ by serve.mjs) – for the README pictures. */
   lang?: "en";
+  /** Display language of the Outlook client (office-mock.js; default: German, below /en/ English). */
+  displayLanguage?: string;
   /** Opened from a mail being read (taskpane.html?view=read) with this HTML body. */
   readBody?: string;
 }
 
-interface ApiCall { method: string; path: string; body: Buffer | null }
+interface ApiCall { method: string; path: string; body: Buffer | null; language?: string }
 
 /**
  * GET /api/config as the server answers it (server/src/app.ts) – every field, with the server's defaults except where
@@ -83,7 +85,8 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
   await page.addInitScript((cfg) => {
     (window as unknown as { __officeConfig: unknown }).__officeConfig = cfg;
   }, { attachments: scenario.attachments ?? [], theme: scenario.theme, bodyType: scenario.bodyType, tokenError: scenario.tokenError,
-    cursorOutsideBody: scenario.cursorOutsideBody, bodyRejectsInsert: scenario.bodyRejectsInsert, readBody: scenario.readBody });
+    cursorOutsideBody: scenario.cursorOutsideBody, bodyRejectsInsert: scenario.bodyRejectsInsert, readBody: scenario.readBody,
+    displayLanguage: scenario.displayLanguage });
   await page.route("https://appsforoffice.microsoft.com/**", (route) =>
     route.fulfill({ contentType: "text/javascript", body: officeMock }),
   );
@@ -91,7 +94,8 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
   await page.route("**/api/**", async (route: Route) => {
     const request = route.request();
     const url = new URL(request.url());
-    const call = { method: request.method(), path: url.pathname, body: request.postDataBuffer() };
+    const call = { method: request.method(), path: url.pathname, body: request.postDataBuffer(),
+      language: request.headers()["x-cloudshare-language"] };
     calls.push(call);
     const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     const route_ = `${call.method} ${call.path}`;
@@ -269,6 +273,35 @@ test("Microsoft sign-in fails: readable message with the Office code", async ({ 
 test("server unreachable: says so instead of showing an empty pane", async ({ page }) => {
   await openTaskpane(page, { config: "down" });
   await expect(page.locator("#status")).toContainText("CloudShare ist derzeit nicht erreichbar");
+});
+
+// --- Language of the Outlook client --------------------------------------------------------------------------------
+
+test("language: the pane follows Outlook's display language and tells the server", async ({ page }) => {
+  // The page comes in German (LANGUAGE), the client is English: the English page replaces it before the pane starts.
+  const calls = await openTaskpane(page, { displayLanguage: "en-US" });
+  await expect(page.locator("#send-view")).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+  await expect(page.locator("#tab-send")).toHaveText("Send");
+  await expect(page.locator("#tab-shares")).toHaveText("My shares");
+  await expect(page.locator("#password-label")).toHaveText("Password");
+  await expect.poll(() => calls.filter((c) => c.path.startsWith("/api/")).length).toBeGreaterThan(0);
+  expect(calls.every((c) => c.language === "en")).toBe(true); // error messages of the server in English
+});
+
+test("language: a client language without texts falls back to English", async ({ page }) => {
+  const calls = await openTaskpane(page, { displayLanguage: "fr-FR" });
+  await expect(page.locator("#send-view")).toBeVisible();
+  await expect(page.locator("#tab-send")).toHaveText("Send");
+  expect(calls.every((c) => c.language === "en")).toBe(true);
+});
+
+test("language: a regional variant uses its language", async ({ page }) => {
+  const calls = await openTaskpane(page, { displayLanguage: "de-AT" });
+  await expect(page.locator("#send-view")).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("lang", "de");
+  await expect(page.locator("#tab-send")).toHaveText("Senden");
+  expect(calls.every((c) => c.language === "de")).toBe(true);
 });
 
 // --- Sending files -----------------------------------------------------------------------------------------------
@@ -938,13 +971,13 @@ test("Meine Freigaben: shows the state of each link and revokes after confirmati
   await page.click("#tab-send");
   await expect(refresh).toBeHidden();
   await page.click("#tab-shares");
-  await expect(rows.nth(0).locator(".state-text")).toHaveText("2× heruntergeladen, zuletzt 11.11.2026, 10:30"); // with the year
+  await expect(rows.nth(0).locator(".state-text")).toHaveText("2× heruntergeladen, zuletzt 11.11.2026, 10:30 Uhr"); // with the year
   await expect(rows.nth(1).locator(".state-text")).toHaveText("Noch nicht heruntergeladen");
   await expect(rows.nth(2).locator(".state-text")).toHaveText("3 Dateien empfangen");
   // One short line: period and password – the word "Kennwort" only once.
   const meta = rows.nth(0).locator(".share-meta").first();
   await expect(meta.locator(".share-period")).toHaveText("10.11.2026 – 24.11.2099");
-  await expect(meta.locator(".share-password")).toContainText("Kennwort per SMS an +49 170 •••• 67 – zugestellt am 10.11.2026, 11:00");
+  await expect(meta.locator(".share-password")).toContainText("Kennwort per SMS an +49 170 •••• 67 – zugestellt am 10.11.2026, 11:00 Uhr");
   expect((await meta.textContent())!.match(/Kennwort/g)).toHaveLength(1);
   await expect(rows.nth(1).locator(".share-period")).toHaveText("12.11. – 26.11.2099"); // same year: no year at the start
   await expect(rows.nth(1).locator(".share-password")).toHaveText("ohne Kennwort");
@@ -1023,13 +1056,13 @@ test("Meine Freigaben: Kennwort shows the password and sends it again the same w
   // The same choices as when sending: recipients of the message, another address, SMS.
   await expect(panel.locator("select option")).toHaveText(["Empfänger der Nachricht", "Andere E-Mail-Adresse", "Rufnummer (SMS)"]);
 
-  // Recipients of the message: To, Cc and Bcc as the first time – nothing to type, the hint names them.
+  // Recipients of the message: To, Cc and Bcc as in the message – nothing to type, the hint names them.
   await panel.locator("select").selectOption("recipients");
   await expect(panel.locator(".channel-input")).toBeHidden();
-  await expect(panel.locator(".hint")).toHaveText("Wie beim ersten Mal – An: erika@example.com · Cc: chef@example.com · Bcc: archiv@example.com");
+  await expect(panel.locator(".hint")).toHaveText("Wie in der Nachricht – An: erika@example.com · Cc: chef@example.com · Bcc: archiv@example.com");
   await panel.locator(".send-password").click();
   await expect(page.locator("#status")).toHaveText(
-    "Das Kennwort wurde wie beim ersten Mal an die Empfänger der Nachricht geschickt (erika@example.com, chef@example.com).");
+    "Das Kennwort wurde an die Empfänger der Nachricht geschickt (erika@example.com, chef@example.com).");
   const sends = () => calls.filter((c) => c.path === "/api/shares/11/password/send").map((c) => JSON.parse(c.body!.toString()));
   expect(sends()[0]).toEqual({ channel: "recipients", to: "" });
 
@@ -1080,7 +1113,7 @@ test("reading a mail: tabs 'Nachricht' and 'Meine Freigaben', nothing to insert"
   const inMail = page.locator("#mail-shares .share");
   await expect(inMail).toHaveCount(2);
   await expect(inMail.nth(0).locator(".share-name")).toHaveText("Präsentation.pptx");
-  await expect(inMail.nth(0).locator(".share-password")).toContainText("zugestellt am 10.11.2026, 11:00");
+  await expect(inMail.nth(0).locator(".share-password")).toContainText("zugestellt am 10.11.2026, 11:00 Uhr");
   await expect(inMail.nth(1).locator(".share-name")).toHaveText("Upload-Link");
   await expect(page.locator("#mail-none")).toBeHidden();
   // Reading a mail too: "Aktualisieren" in the tab bar, the account line at the bottom.

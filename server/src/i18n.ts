@@ -3,16 +3,20 @@
  * repository (shipped in the image as /app/locales) and optionally CUSTOM_LOCALES_DIR (default /config/locales,
  * mounted from env/config/locales) for an own language or single changed texts without a new image.
  *
- * LANGUAGE (default "de") picks the file. Missing texts fall back to English, then to the key itself, so a partly
- * translated file still works. Sections of a file:
+ * The add-in follows the language of the Outlook client: every available language goes into the add-in files, the
+ * add-in picks the one of Office.context.displayLanguage (English if there is none) and sends it with every request
+ * (header X-CloudShare-Language), so the error messages it shows come in that language too. LANGUAGE (default "de")
+ * is the language of everything CloudShare sends itself (mails, SMS) and the first guess of the taskpane page.
+ * Missing texts fall back to English, then to the key itself, so a partly translated file still works. Sections:
  *   addin      taskpane, Smart Alerts, info bar, link cards – injected into the add-in files at startup
- *   manifest   texts of manifest.xml (description, ribbon)
- *   server     error messages the taskpane shows
- *   mail       password mail
- *   templates  built-in texts of templates.ts (SMS, password mail, download confirmation)
+ *   manifest   texts of manifest.xml (description, ribbon) – English as default, one Override per other language
+ *   server     error messages the taskpane shows – in the language of the request
+ *   mail       password mail – LANGUAGE
+ *   templates  built-in texts of templates.ts (SMS, password mail, download confirmation) – LANGUAGE
  *
  * Placeholders are {name}. Plural forms: "key_one" (count 1) and "key_other"; t(key, { count }) picks one.
  */
+import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -96,9 +100,62 @@ export function loadLocale(language: string, dirs = { builtin: builtinLocalesDir
 export const language = config.language;
 let active: LocaleFile = loadLocale(language);
 
-/** Tests only: switch the language. */
-export function setLocale(file: LocaleFile): void {
+/** All languages the add-in can show, with LANGUAGE and English always among them. */
+function loadAll(): Record<string, LocaleFile> {
+  const all: Record<string, LocaleFile> = { [language]: active };
+  for (const lang of availableLanguages()) {
+    if (all[lang] || !LANGUAGE_PATTERN.test(lang)) continue;
+    try {
+      all[lang] = loadLocale(lang);
+    } catch {
+      // an unreadable custom file only stops the start when it is LANGUAGE itself
+    }
+  }
+  if (!all[FALLBACK_LANGUAGE]) all[FALLBACK_LANGUAGE] = loadLocale(FALLBACK_LANGUAGE);
+  return all;
+}
+let all: Record<string, LocaleFile> = loadAll();
+
+/** Tests only: switch the language (and use only it, besides English). */
+export function setLocale(file: LocaleFile, languages?: Record<string, LocaleFile>): void {
   active = file;
+  if (languages) all = languages;
+}
+
+/** Languages the add-in can show ("de", "en", …). */
+export const addinLanguages = () => Object.keys(all).sort();
+
+/**
+ * The language for a client language tag ("de-AT" → "de", "pt-BR" → "pt-br" or "pt"): the exact one, else the one
+ * without region, else English – as the add-in does (addin/src/shared/i18n.ts, pickLanguage).
+ */
+export function pickLanguage(tag: unknown, available: readonly string[] = addinLanguages()): string {
+  const wanted = typeof tag === "string" ? tag.trim().toLowerCase() : "";
+  if (available.includes(wanted)) return wanted;
+  const base = wanted.split("-")[0];
+  if (available.includes(base)) return base;
+  return available.includes(FALLBACK_LANGUAGE) ? FALLBACK_LANGUAGE : language;
+}
+
+/** Language of the request being handled: the add-in's language for the "server" texts (error messages). */
+const requestLanguage = new AsyncLocalStorage<string>();
+
+/**
+ * Runs `fn` (and everything it starts) with the "server" texts in the language of `tag`. Without a tag (an add-in
+ * from before this header, webhooks, scripts) the texts stay in LANGUAGE.
+ */
+export function withRequestLanguage(tag: unknown, fn: () => void): void {
+  const given = typeof tag === "string" && tag.trim() !== "";
+  requestLanguage.run(given ? pickLanguage(tag) : language, fn);
+}
+
+/** Texts of a section for the current context: "server" in the request's language, all others in LANGUAGE. */
+function sectionTexts(section: (typeof SECTIONS)[number]): Section {
+  if (section === "server") {
+    const lang = requestLanguage.getStore();
+    if (lang && all[lang]) return all[lang].server;
+  }
+  return active[section] ?? {};
 }
 
 /** BCP 47 locale of the active language for dates and numbers ("de-DE", "en-GB"). */
@@ -115,11 +172,14 @@ export function format(texts: Section, key: string, vars: Record<string, string 
   return text.replace(/\{(\w+)\}/g, (match, name: string) => (name in vars ? String(vars[name]) : match));
 }
 
-/** Text of the active language: t("server.notConnected"), t("mail.access", { count: 3 }). */
+/**
+ * Text: t("server.notConnected"), t("mail.access", { count: 3 }). "server" texts come in the language of the request
+ * (withRequestLanguage), everything else in LANGUAGE.
+ */
 export function t(key: string, vars?: Record<string, string | number>): string {
   const dot = key.indexOf(".");
   const section = key.slice(0, dot) as (typeof SECTIONS)[number];
-  return format(active[section] ?? {}, key.slice(dot + 1), vars);
+  return format(sectionTexts(section), key.slice(dot + 1), vars);
 }
 
 /** All texts of a section (e.g. the built-in templates). */
@@ -134,14 +194,55 @@ const asciiJs = (s: string) => s.replace(/[^\x00-\x7e]/g, (c) => String.fromChar
 /** The marker in the add-in bundles that receives the texts (see addin/src/shared/i18n.ts). */
 export const BUNDLE_MARKER = "%%CLOUDSHARE_I18N%%";
 
+const textOf = (file: LocaleFile, section: string, key: string) =>
+  format((file as unknown as Record<string, Section>)[section] ?? {}, key);
+
+/** HTML or XML with %%t:section.key%% as the escaped text of `lang`, %%LANG%% / %%LOCALE%% its language / locale. */
+function fillMarkup(content: string, languages: Record<string, LocaleFile>, lang: string): string {
+  const file = languages[lang];
+  return content
+    .replace(/%%t:(\w+)\.([\w.]+)%%/g, (_m, section: string, key: string) => escapeMarkup(textOf(file, section, key)))
+    .replaceAll("%%LANG%%", lang)
+    .replaceAll("%%LOCALE%%", file._meta.locale);
+}
+
 /**
- * Puts the active language into the add-in files (run once at startup on the copies in /app/public):
- *   *.js           the marker string becomes a JSON string with lang, locale and the "addin" texts
- *   *.html / *.xml %%t:section.key%% becomes the escaped text, %%LANG%% / %%LOCALE%% the language / locale
- * Returns the number of changed files.
+ * manifest.xml: an element `<X DefaultValue="%%t:section.key%%"/>` gets the text of `fallback` (English) as
+ * DefaultValue and one Override per other language (`<bt:Override>` inside bt:String, `<Override>` at the top level),
+ * so Outlook shows the ribbon and the description in the client's language. %%LOCALE%% is the fallback's locale.
  */
-export function localizePublic(dir: string, file: LocaleFile = active, lang = language): number {
-  const bundle = JSON.stringify({ lang, locale: file._meta.locale, messages: file.addin });
+function localizeManifest(xml: string, languages: Record<string, LocaleFile>, fallback: string): string {
+  const others = Object.keys(languages).filter((lang) => lang !== fallback).sort();
+  const withOverrides = xml.replace(
+    /<((?:\w+:)?\w+)(\s[^>]*?)DefaultValue="%%t:(\w+)\.([\w.]+)%%"([^>]*?)\s*\/>/g,
+    (_m, tag: string, before: string, section: string, key: string, after: string) => {
+      const prefix = tag.includes(":") ? `${tag.split(":")[0]}:` : "";
+      const value = (lang: string) => escapeMarkup(textOf(languages[lang], section, key));
+      const overrides = others
+        .map((lang) => `<${prefix}Override Locale="${languages[lang]._meta.locale}" Value="${value(lang)}"/>`)
+        .join("");
+      return `<${tag}${before}DefaultValue="${value(fallback)}"${after}>${overrides}</${tag}>`;
+    },
+  );
+  return fillMarkup(withOverrides, languages, fallback);
+}
+
+/**
+ * Puts the languages into the add-in files (run once at startup on the copies in /app/public):
+ *   *.js    the marker string becomes a JSON string { fallback, languages: { <lang>: { locale, messages } } } with the
+ *           "addin" texts of every language – the add-in picks the client's language (addin/src/shared/i18n.ts)
+ *   *.html  with text markers: the page itself in `base` (LANGUAGE, the first guess) and <name>.<lang>.html for
+ *           every language, which the taskpane loads when the client has another language
+ *   *.xml   the manifest: English as default, Overrides for the other languages
+ * Returns the number of changed files (without the language copies).
+ */
+export function localizePublic(dir: string, languages: Record<string, LocaleFile> = all, base = language): number {
+  const names = Object.keys(languages).sort();
+  const fallback = languages[FALLBACK_LANGUAGE] ? FALLBACK_LANGUAGE : base;
+  const bundle = JSON.stringify({
+    fallback,
+    languages: Object.fromEntries(names.map((lang) => [lang, { locale: languages[lang]._meta.locale, messages: languages[lang].addin }])),
+  });
   const jsLiteral = asciiJs(JSON.stringify(bundle));
   let changed = 0;
   for (const name of readdirSync(dir)) {
@@ -149,15 +250,17 @@ export function localizePublic(dir: string, file: LocaleFile = active, lang = la
     const ext = path.extname(name);
     if (![".js", ".html", ".xml"].includes(ext)) continue;
     const before = readFileSync(full, "utf8");
-    const after =
-      ext === ".js"
-        ? before.replace(/(["'`])%%CLOUDSHARE_I18N%%\1/g, () => jsLiteral)
-        : before
-            .replace(/%%t:(\w+)\.([\w.]+)%%/g, (_m, section: string, key: string) =>
-              escapeMarkup(format((file as unknown as Record<string, Section>)[section] ?? {}, key)),
-            )
-            .replaceAll("%%LANG%%", lang)
-            .replaceAll("%%LOCALE%%", file._meta.locale);
+    let after: string;
+    if (ext === ".js") {
+      after = before.replace(/(["'`])%%CLOUDSHARE_I18N%%\1/g, () => jsLiteral);
+    } else if (ext === ".xml") {
+      after = localizeManifest(before, languages, fallback);
+    } else {
+      if (/%%t:/.test(before)) {
+        for (const lang of names) writeFileSync(path.join(dir, `${name.slice(0, -ext.length)}.${lang}${ext}`), fillMarkup(before, languages, lang));
+      }
+      after = fillMarkup(before, languages, languages[base] ? base : fallback);
+    }
     if (after !== before) {
       writeFileSync(full, after);
       changed++;

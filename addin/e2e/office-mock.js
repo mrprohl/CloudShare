@@ -42,6 +42,8 @@
       },
     },
     context: {
+      // Outlook's display language: German, below /en/ English (README pictures), or the scenario's.
+      displayLanguage: cfg.displayLanguage || (location.pathname.indexOf("/en/") === 0 ? "en-GB" : "de-DE"),
       officeTheme: cfg.theme ? { bodyBackgroundColor: cfg.theme } : undefined,
       requirements: { isSetSupported: (name) => name === "OpenBrowserWindowApi" },
       ui: { openBrowserWindow: (url) => log.openedUrls.push(url) },

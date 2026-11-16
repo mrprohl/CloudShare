@@ -1491,9 +1491,13 @@ const REQUEST_ICON =
   '<path d="M10 13V4m0 0L6.5 7.5M10 4l3.5 3.5M4 12v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3" fill="none" ' +
   'stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
-/** Day with year and time: "16.11.2026, 00:42" (de) / "16/11/2026, 00:42" (en-GB). */
+/** Day with year and time: "16.11.2026, 00:42 Uhr" (de) / "16/11/2026, 00:42" (en-GB) – the wording from "shares.dateTime". */
 function formatDateTime(when: string | number): string {
-  return new Date(when).toLocaleString(locale(), { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const d = new Date(when);
+  return t("shares.dateTime", {
+    date: d.toLocaleDateString(locale(), { day: "2-digit", month: "2-digit", year: "numeric" }),
+    time: d.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" }),
+  });
 }
 
 /** Status line: downloads for files, received uploads for upload links. */
