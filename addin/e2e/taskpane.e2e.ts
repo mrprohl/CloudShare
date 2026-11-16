@@ -57,6 +57,8 @@ interface ApiCall { method: string; path: string; body: Buffer | null; language?
  * a test needs something else: a 1 MB threshold (small fixtures), "enforce" and a footer template.
  */
 const CONFIG = {
+  // Success messages stay in the tests (one test checks that they run down) – screenshots and checks see them.
+  successMessageSeconds: 0,
   thresholdMb: 1,
   attachmentPolicy: "enforce",
   defaultExpireDays: 14,
@@ -1231,6 +1233,24 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   await expect(rows).toHaveCount(2);
   expect(calls.filter((c) => c.method === "DELETE").map((c) => c.path)).toEqual(["/api/shares/12"]);
   await expect(page.locator("#status")).toContainText("„Angebot.pdf“ ist nicht mehr abrufbar.");
+});
+
+test("a success message runs down and goes; the pointer on it stops the ring", async ({ page }) => {
+  await openTaskpane(page, { shares: SHARES, config: { successMessageSeconds: 1 } });
+  await page.click("#tab-shares");
+  const revoke = page.locator("#shares .share").nth(1).locator(".revoke");
+  await revoke.click();
+  await revoke.click();
+  const status = page.locator("#status");
+  await expect(status).toHaveClass(/success/);
+  await expect(status.locator(".status-timer")).toHaveCount(1); // the ring around the tick
+  // Held with the pointer: it stays past its second.
+  await status.hover();
+  await page.waitForTimeout(1500);
+  await expect(status).toBeVisible();
+  // Let go: it runs down and goes.
+  await page.mouse.move(5, 700);
+  await expect(status).toBeHidden({ timeout: 3000 });
 });
 
 test("Verlauf: a failed SMS says whether it was sent at all, and how to send the password again", async ({ page }) => {

@@ -150,13 +150,36 @@ const STATUS_ICONS: Record<StatusKind, string> = {
   error: '<circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor"/><path d="M8 4.5v4.2M8 11v.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
 };
 
+/**
+ * Ring of a success message that runs down (SUCCESS_MESSAGE_SECONDS, like the OTP timer in Vaultwarden): a faint track
+ * and the green ring around the tick, emptying clockwise from 12 o'clock. It stops while the pointer (or the keyboard
+ * focus) is on the message – taskpane.css – and the message goes when it has run down.
+ */
+const STATUS_TIMER =
+  '<circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" opacity=".25"/>' +
+  '<circle class="status-timer" cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" pathLength="100" stroke-dasharray="100"/>' +
+  '<path d="m5.3 8.2 1.8 1.8 3.6-3.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>';
+
+/** Seconds a success message stays (server setting, 5 until the configuration is loaded); 0: it stays. */
+const successSeconds = () => serverConfig?.successMessageSeconds ?? 5;
+
+let statusShown = 0;
 function setStatus(text: string, kind: StatusKind = "info") {
+  const shown = ++statusShown;
   statusBar.hidden = !text;
   statusBar.className = `messagebar ${kind}`;
+  const seconds = kind === "success" ? successSeconds() : 0;
   statusBar.innerHTML = text
-    ? `<svg class="icon" viewBox="0 0 16 16" aria-hidden="true">${STATUS_ICONS[kind]}</svg><span></span>`
+    ? `<svg class="icon" viewBox="0 0 16 16" aria-hidden="true">${seconds > 0 ? STATUS_TIMER : STATUS_ICONS[kind]}</svg><span></span>`
     : "";
   if (text) statusBar.querySelector("span")!.textContent = text;
+  if (seconds > 0) {
+    const ring = statusBar.querySelector<SVGCircleElement>(".status-timer")!;
+    ring.style.animationDuration = `${seconds}s`;
+    ring.addEventListener("animationend", () => {
+      if (shown === statusShown) setStatus(""); // unless another message took its place meanwhile
+    });
+  }
 }
 
 function setProgress(percent: number | null) {

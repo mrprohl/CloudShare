@@ -32,6 +32,8 @@ export interface ServerConfig {
   /** Password link and confidential message (Vaultwarden Sends): default and maximum lifetime in days. */
   sendExpireDays?: number;
   sendMaxExpireDays?: number;
+  /** Success messages disappear after this many seconds (0: they stay); default 5. */
+  successMessageSeconds?: number;
 }
 
 export type Channel = "recipients" | "mail" | "sms";
