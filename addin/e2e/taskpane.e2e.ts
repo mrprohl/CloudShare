@@ -379,6 +379,22 @@ test("settings: an own signature is plain text with paragraphs – stored as typ
   await expect(text).toBeVisible();
   await expect(page.locator("#settings-signature-hint")).toContainText("Eine Leerzeile beginnt einen neuen Absatz.");
   await text.fill("Mit freundlichen Grüßen\n\n{displayName}\nTel. {phone}");
+  // The "i" folds out the placeholders; a click inserts one at the cursor.
+  const info = page.locator("#settings-placeholders-toggle");
+  await expect(page.locator("#settings-placeholders")).toBeHidden();
+  await info.click();
+  await expect(info).toHaveAttribute("aria-expanded", "true");
+  const list = page.locator("#settings-placeholder-list li");
+  await expect(list).toHaveCount(10);
+  await expect(list.filter({ hasText: "Mobiltelefon" }).locator("button")).toHaveText("{mobile}");
+  await expectAccessible(page);
+  await text.press("End"); // cursor at the end of the text
+  await text.pressSequentially(" · Mobil ");
+  await list.filter({ hasText: "Mobiltelefon" }).locator("button").click();
+  await expect(text).toHaveValue("Mit freundlichen Grüßen\n\n{displayName}\nTel. {phone} · Mobil {mobile}");
+  await info.click();
+  await expect(page.locator("#settings-placeholders")).toBeHidden();
+  await text.fill("Mit freundlichen Grüßen\n\n{displayName}\nTel. {phone}");
   await page.click("#settings-save");
   await expect(page.locator("#status")).toHaveText("Ihre Einstellungen wurden gespeichert.");
   const saved = JSON.parse(calls.find((c) => c.method === "PUT")!.body!.toString());

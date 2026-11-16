@@ -304,7 +304,23 @@
                 <!-- Plain text only: an empty line starts a new paragraph in the password mail. -->
                 <textarea id="settings-signature-text" class="input textarea signature-input" rows="6" spellcheck="false"
                   aria-label="%%t:addin.settings.signature.text%%" aria-describedby="settings-signature-hint" hidden></textarea>
-                <p class="hint" id="settings-signature-hint"></p>
+                <div class="hint-row">
+                  <p class="hint" id="settings-signature-hint"></p>
+                  <!-- The placeholders of the profile: folded away behind an "i", a click inserts one (settings.ts). -->
+                  <button type="button" id="settings-placeholders-toggle" class="btn btn-icon btn-subtle info-toggle"
+                    title="%%t:addin.settings.placeholders.button%%" aria-label="%%t:addin.settings.placeholders.button%%"
+                    aria-expanded="false" aria-controls="settings-placeholders" hidden>
+                    <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                      <circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                      <path d="M10 9v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                      <circle cx="10" cy="6.3" r=".95" fill="currentColor"/>
+                    </svg>
+                  </button>
+                </div>
+                <div id="settings-placeholders" class="placeholders" hidden>
+                  <p class="hint">%%t:addin.settings.placeholders.intro%%</p>
+                  <ul class="placeholder-list" id="settings-placeholder-list"></ul>
+                </div>
               </fieldset>
               <div class="settings-actions">
                 <button type="submit" id="settings-save" class="btn btn-primary">%%t:addin.settings.save%%</button>
