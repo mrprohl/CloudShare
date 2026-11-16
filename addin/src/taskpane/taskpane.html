@@ -299,13 +299,11 @@
                     aria-describedby="settings-signature-hint">
                     <option value="none">%%t:addin.settings.signature.none%%</option>
                     <option value="text">%%t:addin.settings.signature.text%%</option>
-                    <option value="html">%%t:addin.settings.signature.html%%</option>
                   </select>
                 </div>
-                <textarea id="settings-signature-text" class="input textarea signature-input" rows="4" spellcheck="false"
+                <!-- Plain text only: an empty line starts a new paragraph in the password mail. -->
+                <textarea id="settings-signature-text" class="input textarea signature-input" rows="6" spellcheck="false"
                   aria-label="%%t:addin.settings.signature.text%%" aria-describedby="settings-signature-hint" hidden></textarea>
-                <div id="settings-signature-html" class="input signature-input signature-editor" contenteditable="true" role="textbox"
-                  aria-multiline="true" aria-label="%%t:addin.settings.signature.html%%" aria-describedby="settings-signature-hint" hidden></div>
                 <p class="hint" id="settings-signature-hint"></p>
               </fieldset>
               <div class="settings-actions">

@@ -370,51 +370,32 @@ test("settings: a new mail starts with the preselected way and offers only the c
   await expect(page.locator('#password-channel option[value="recipients"]')).toHaveJSProperty("hidden", false);
 });
 
-test("settings: a pasted Outlook signature keeps its formatting, loses everything risky and is stored as nodes", async ({ page }) => {
+test("settings: an own signature is plain text with paragraphs – stored as typed, not in the link card", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Plan.pdf", 2 * MiB)] });
   await page.locator("#panel-send .settings-toggle").click();
-  await page.locator("#settings-signature-format").selectOption("html");
-  const editor = page.locator("#settings-signature-html");
-  await expect(editor).toBeVisible();
-  await editor.click();
-  // What a paste of an Outlook signature leaves in the editor (the browser inserts it, then fires "insertFromPaste") –
-  // with everything the allow-list must remove.
-  await editor.evaluate((element) => {
-    element.innerHTML =
-      '<style>.x{color:red}</style><p class="MsoNormal" style="color:#1f497d;font-weight:bold" onclick="alert(1)">Max Mustermann</p>' +
-      '<p>Tel. <a href="tel:+491234">01234</a> · <a href="javascript:alert(2)">klick</a></p>' +
-      '<img src="cid:image001.png"><img src="https://example.com/logo.png" alt="Logo"><o:p></o:p>';
-    element.dispatchEvent(new InputEvent("input", { inputType: "insertFromPaste", bubbles: true }));
-  });
-  const html = await editor.innerHTML();
-  expect(html).toContain("Max Mustermann");
-  expect(html).toContain("font-weight:bold");
-  expect(html).toContain('href="tel:+491234"');
-  expect(html).toContain('src="https://example.com/logo.png"');
-  expect(html).not.toMatch(/onclick|javascript:|<script|<style|cid:|class=/);
-
+  await expect(page.locator("#settings-signature-format option")).toHaveText(["Vorgabe der Organisation", "Eigene Signatur"]);
+  await page.locator("#settings-signature-format").selectOption("text");
+  const text = page.locator("#settings-signature-text");
+  await expect(text).toBeVisible();
+  await expect(page.locator("#settings-signature-hint")).toContainText("Eine Leerzeile beginnt einen neuen Absatz.");
+  await text.fill("Mit freundlichen Grüßen\n\n{displayName}\nTel. {phone}");
   await page.click("#settings-save");
   await expect(page.locator("#status")).toHaveText("Ihre Einstellungen wurden gespeichert.");
-  // Stored as a tree of nodes (the server builds the password mail's HTML from it), never as markup.
   const saved = JSON.parse(calls.find((c) => c.method === "PUT")!.body!.toString());
-  expect(saved.signature.format).toBe("html");
-  expect(saved.signature.content).toBeUndefined();
-  expect(saved.signature.nodes[0]).toEqual({ tag: "p", attrs: { style: "color:#1f497d;font-weight:bold" }, children: ["Max Mustermann"] });
-  expect(JSON.stringify(saved.signature.nodes)).not.toMatch(/onclick|javascript:|script|cid:|MsoNormal/);
+  expect(saved.signature).toEqual({ format: "text", content: "Mit freundlichen Grüßen\n\n{displayName}\nTel. {phone}" });
 
-  // Opened again: the editor shows the stored signature.
+  // Opened again: the text as typed.
   await page.click("#settings-close");
   await page.locator("#panel-send .settings-toggle").click();
-  await expect(page.locator("#settings-signature-format")).toHaveValue("html");
-  await expect(editor).toContainText("Max Mustermann");
-  await expect(editor.locator('img[src="https://example.com/logo.png"]')).toHaveCount(1);
+  await expect(page.locator("#settings-signature-format")).toHaveValue("text");
+  await expect(text).toHaveValue("Mit freundlichen Grüßen\n\n{displayName}\nTel. {phone}");
 
-  // The link card carries no signature – it goes into the password mail.
+  // The link card carries no signature – it ends the password mail.
   await page.click("#settings-close");
   await page.click("#submit");
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
   const inserted = (await officeLog(page)).inserted[0].data as string;
-  expect(inserted).not.toContain("Max Mustermann");
+  expect(inserted).not.toContain("Mit freundlichen Grüßen");
 });
 
 test("settings: a language chosen in the settings beats Outlook's", async ({ page }) => {

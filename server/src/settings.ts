@@ -1,6 +1,6 @@
 /**
  * Personal settings of a user (⚙ in the add-in): notices, the ways to send the password the pane offers and the one
- * it preselects, the language of the add-in and an own signature for the link card. Stored per Entra oid in the
+ * it preselects, the language of the add-in and an own signature for the password mails. Stored per Entra oid in the
  * database (store "settings", kept however old) – only the fields the user changed, so a new default in the
  * environment (config.userDefaults, DEFAULT_*) still reaches everyone who left it alone.
  *
@@ -11,16 +11,13 @@ import { config } from "./config.js";
 import { PersistentMap } from "./db.js";
 import { HttpError } from "./auth.js";
 import { addinLanguages, t } from "./i18n.js";
-import { cleanSignatureNodes, signatureHasContent, type Signature } from "./signature.js";
+import type { Signature } from "./signature.js";
 import { smsEnabled } from "./sms.js";
 
 export type Channel = "recipients" | "mail" | "sms";
 export const CHANNELS: readonly Channel[] = ["recipients", "mail", "sms"];
 
-/**
- * Own signature of the password mails: "text" (profile placeholders like {phone} allowed) or "html" – pasted from
- * Outlook, stored as a node tree cleaned by the allow-list (signature.ts), never as markup.
- */
+/** Own signature of the password mails: plain text, profile placeholders like {phone}, empty line = new paragraph. */
 export type { Signature } from "./signature.js";
 
 export interface UserSettings {
@@ -37,7 +34,7 @@ export interface UserSettings {
   signature: Signature | null;
 }
 
-/** Longest signature (characters of text or HTML). */
+/** Longest signature (characters). */
 export const SIGNATURE_MAX = 20_000;
 
 const stored = new PersistentMap<Partial<UserSettings>>("settings", { retention: false });
@@ -70,8 +67,8 @@ function effective(values: UserSettings): UserSettings {
     channels,
     defaultChannel: channels.includes(values.defaultChannel) ? values.defaultChannel : channels[0],
     language: values.language === "auto" || available.languages.includes(values.language) ? values.language : "auto",
-    // A formatted signature saved by the first version (markup instead of nodes) counts as none.
-    signature: values.signature?.format === "html" && !Array.isArray(values.signature.nodes) ? null : values.signature ?? null,
+    // Only text signatures count – a formatted one saved by an earlier version counts as none.
+    signature: values.signature?.format === "text" && typeof values.signature.content === "string" ? values.signature : null,
   };
 }
 
@@ -128,19 +125,12 @@ export function parseSettings(body: unknown): Partial<UserSettings> {
     if (signature === null) {
       result.signature = null;
     } else {
-      const s = signature as { format?: unknown; content?: unknown; nodes?: unknown } | undefined;
-      const tooLong = () => new HttpError(400, t("server.signatureTooLong", { max: SIGNATURE_MAX }), "SETTINGS_INVALID");
+      // Plain text only – no markup is ever taken over into a mail.
+      const s = signature as { format?: unknown; content?: unknown } | undefined;
+      if (s?.format !== "text" || typeof s.content !== "string") throw invalid("signature");
+      if (s.content.length > SIGNATURE_MAX) throw new HttpError(400, t("server.signatureTooLong", { max: SIGNATURE_MAX }), "SETTINGS_INVALID");
       // An empty signature is no signature: the organisation's applies again.
-      if (s?.format === "text" && typeof s.content === "string") {
-        if (s.content.length > SIGNATURE_MAX) throw tooLong();
-        result.signature = s.content.trim() ? { format: "text", content: s.content } : null;
-      } else if (s?.format === "html" && Array.isArray(s.nodes)) {
-        if (JSON.stringify(s.nodes).length > SIGNATURE_MAX) throw tooLong();
-        const nodes = cleanSignatureNodes(s.nodes);
-        result.signature = signatureHasContent(nodes) ? { format: "html", nodes } : null;
-      } else {
-        throw invalid("signature");
-      }
+      result.signature = s.content.trim() ? { format: "text", content: s.content } : null;
     }
   }
   return result;

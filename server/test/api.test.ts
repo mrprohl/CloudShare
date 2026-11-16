@@ -715,7 +715,7 @@ describe("password by SMS (seven.io)", () => {
     try {
       const id = await createJob("oid-anna", "anna@example.test", "a.pdf", "https://vault/#/send/x", 3, "send-10");
       await app.inject({ method: "POST", url: `/api/jobs/${id}/arm`, headers: as("anna"), payload: {} });
-      expect(getJob(id)?.signature).toBe("Anna Muster · Vertrieb<br>&lt;Team&gt;");
+      expect(getJob(id)?.signature).toMatch(/^<p style="[^"]*">Anna Muster · Vertrieb<br>&lt;Team&gt;<\/p>$/);
     } finally {
       resetSettings("oid-anna");
     }
@@ -990,12 +990,12 @@ describe("personal settings (/api/settings)", () => {
   it("keeps each user's own choices and only those – a reset brings back the defaults", async () => {
     const saved = await put("tom", {
       channels: ["mail", "sms"], defaultChannel: "sms", downloadNotice: false, language: "en",
-      signature: { format: "html", nodes: [{ tag: "p", attrs: { onclick: "x()" }, children: [{ tag: "b", children: ["Tom"] }] }, { tag: "script", children: [] }] },
+      signature: { format: "text", content: "Tom\n\nTeam Bau" },
     });
     expect(saved.statusCode).toBe(200);
     expect(saved.json().settings).toMatchObject({
       channels: ["mail", "sms"], defaultChannel: "sms", downloadNotice: false, uploadNotice: true, language: "en",
-      signature: { format: "html", nodes: [{ tag: "p", children: [{ tag: "b", children: ["Tom"] }] }] }, // cleaned on the server too
+      signature: { format: "text", content: "Tom\n\nTeam Bau" },
     });
     expect((await get("tom")).json().settings.defaultChannel).toBe("sms");
     expect((await get("sina")).json().settings.defaultChannel).toBe("recipients"); // other users untouched
@@ -1015,7 +1015,8 @@ describe("personal settings (/api/settings)", () => {
       { language: "xx" },
       { downloadNotice: "yes" },
       { signature: { format: "pdf", content: "x" } },
-      { signature: { format: "html", content: "<p>markup</p>" } },
+      { signature: { format: "html", content: "<p>markup</p>" } }, // plain text only
+      { signature: { format: "html", nodes: [{ tag: "b", children: ["x"] }] } },
       { signature: { format: "text", content: "x".repeat(20_001) } },
     ]) {
       const res = await put("tom", payload);

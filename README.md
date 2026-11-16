@@ -375,16 +375,15 @@ on the server per Microsoft account (encrypted like everything in `/data/cloudsh
 | Send the password to | which ways the pane offers (recipients of the message, another address, SMS) and which one a new message starts with | `DEFAULT_PASSWORD_CHANNELS`, `DEFAULT_PASSWORD_CHANNEL` |
 | Notifications | download confirmation, files received, SMS not delivered – each on or off | `DEFAULT_DOWNLOAD_NOTICE`, `DEFAULT_UPLOAD_NOTICE`, `DEFAULT_SMS_NOTICE` |
 | Language | as in Outlook, or a fixed language of the add-in | `DEFAULT_LANGUAGE` |
-| Signature of the password mail | at the end of the automatic mail with the password, so recipients see who it comes from: the organisation's (`MAIL_FOOTER`), an own text (profile placeholders allowed) or an own formatted one pasted from Outlook. The link card in the message carries no signature | `MAIL_FOOTER` |
+| Signature of the password mail | at the end of the automatic mail with the password, so recipients see who it comes from: the organisation's (`MAIL_FOOTER`) or an own one – plain text, an empty line starts a paragraph, profile placeholders allowed. The link card in the message carries no signature | `MAIL_FOOTER` |
 
 Only what users changed is stored, so a new starting value in `env/cloudshare.env` reaches everyone who left that
 setting alone; "Reset" brings back the starting values. What the organisation decides stays out of reach: a notice
 switched off on the server is not offered, SMS only with seven.io, and the SMS rules (`SMS_ALLOWED_COUNTRIES`,
-`SMS_ALLOWED_NUMBERS`, `SMS_BLOCKED_NUMBERS`) apply whatever a user chooses. A formatted signature is cleaned in the
-pane right after pasting and stored as a tree of elements, not as markup; the server checks it again and builds the
-mail's HTML itself: formatting, links (web, mail, phone) and pictures from `https` addresses stay; scripts, event
-handlers, styles that load anything and Outlook's embedded pictures are removed. The signature is fixed when the mail
-is sent (profile data of that moment). Mails and SMS that CloudShare sends itself keep `LANGUAGE`.
+`SMS_ALLOWED_NUMBERS`, `SMS_BLOCKED_NUMBERS`) apply whatever a user chooses. The signature is plain text only – no
+markup ever reaches a mail; it is shown like the text of the password mail ("Guten Tag, …"), each paragraph on its own,
+and fixed when the mail is sent (profile data of that moment). Mails and SMS that CloudShare sends itself keep
+`LANGUAGE`.
 
 ## Languages
 
