@@ -1,5 +1,5 @@
 /**
- * Personal settings (⚙ in the account line): notices, the ways "Kennwort senden an" offers and the one it preselects,
+ * Personal settings ("Einstellungen" in the account menu): notices, the ways "Kennwort senden an" offers and the one it preselects,
  * the language of the add-in and an own text signature for the password mails. Stored on the server per user
  * (server/src/settings.ts, /api/settings); the language is also kept in roamingSettings (SETTINGS_CACHE_KEY), so the
  * pane and the event handlers start in it without a request. What the organisation decides (notices switched off,

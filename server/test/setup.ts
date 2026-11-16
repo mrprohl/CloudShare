@@ -20,6 +20,8 @@ Object.assign(process.env, {
   SEVEN_WEBHOOK_SECRET: "test-webhook-secret",
   // Three spellings on purpose: a name, an ISO alpha-3 code and a calling code.
   SMS_ALLOWED_COUNTRIES: "Deutschland; AUT, +41",
+  // Mails, SMS and server messages in German (the default is English): the tests check the German wording.
+  LANGUAGE: "de",
   DOWNLOAD_NOTICE: "true",
   UPLOAD_NOTICE: "true",
   SMS_NOTICE: "true",

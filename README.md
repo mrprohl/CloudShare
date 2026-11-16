@@ -255,7 +255,7 @@ deployed again.
 | Setting | Default | Meaning |
 |---|---|---|
 | `PUBLIC_BASE_URL` | – | Public address of CloudShare, e.g. `https://cloudshare.example.com` |
-| `LANGUAGE` | `de` | Language of the mails and SMS CloudShare sends (password mail and SMS, download/upload confirmation, SMS notes): `de`, `en` or an own one. The add-in itself follows the Outlook language, see [Languages](#languages) |
+| `LANGUAGE` | `en` | Language of the mails and SMS CloudShare sends (password mail and SMS, download/upload confirmation, SMS notes): `de`, `en` or an own one. The add-in itself follows the Outlook language, see [Languages](#languages) |
 | `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` | – | Entra ID app registration |
 | `NEXTCLOUD_URL` | – | Public address of Nextcloud |
 | `NEXTCLOUD_FOLDER` | `CloudShare` | Folder for uploaded files in each user's Nextcloud |
@@ -397,11 +397,11 @@ manifest – comes from one language file per language in [`locales/`](locales) 
 come in the display language of the Outlook client; if CloudShare has no file for it, in English. A regional variant
 uses its language (`de-AT`, `de-CH` → `de`). Every language in `locales/` and in `env/config/locales/` is offered.
 
-**`LANGUAGE`** in `env/cloudshare.env` (`de` by default) is the language of everything CloudShare sends itself – the
+**`LANGUAGE`** in `env/cloudshare.env` (`en` by default) is the language of everything CloudShare sends itself – the
 password mail and SMS to recipients, the download and upload confirmations and the SMS notes to the sender:
 
 ```bash
-LANGUAGE=en
+LANGUAGE=de
 ```
 
 Update the stack; CloudShare puts the texts into the add-in files when it starts. Outlook caches the add-in: clear the

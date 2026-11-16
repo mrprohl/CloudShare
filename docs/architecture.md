@@ -8,7 +8,7 @@ together, where state lives, and the Outlook peculiarities the code has to work 
 
 Everything visible to users and recipients (taskpane, Outlook hints, cards, password mail, SMS, download
 confirmation) comes from the language files in `locales/` – the add-in in the Outlook client's language, the mails and
-SMS in `LANGUAGE` (`de` by default, see [2.8](#28-languages)); code, logs and documentation are English. Labels are quoted as in the English interface
+SMS in `LANGUAGE` (`en` by default, see [2.8](#28-languages)); code, logs and documentation are English. Labels are quoted as in the English interface
 ("Insert as link", "My shares" …); the German texts (the default) are in `locales/de.json` under the same keys.
 
 ## Contents
@@ -256,7 +256,7 @@ Two kinds of language:
   (`de-AT` → `de`), else English (`pickLanguage`, the same rule in `addin/src/shared/i18n.ts` and
   `server/src/i18n.ts`). That covers the taskpane, info bar, Smart Alerts, the link card and the error messages the
   server returns to the add-in.
-- **`LANGUAGE`** (default `de`) is the language of everything the server sends on its own – password mail and SMS,
+- **`LANGUAGE`** (default `en`) is the language of everything the server sends on its own – password mail and SMS,
   download/upload confirmation, SMS notes – and the first guess of the taskpane page.
 
 Each language is `locales/<language>.json`. `i18n.ts` merges, per text:
