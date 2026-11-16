@@ -1,7 +1,8 @@
 {
   "_meta": {
     "name": "Deutsch",
-    "locale": "de-DE"
+    "locale": "de-DE",
+    "regions": ["de-AT", "de-CH", "de-LU", "de-LI"]
   },
   "manifest": {
     "description": "Sendet große Dateien als kennwortgeschützten Link aus Ihrer Nextcloud.",
@@ -309,14 +310,14 @@
     "settings.language.auto": "Standard (wie in Outlook)",
     "settings.language.hint": "Gilt nur für CloudShare in Outlook.",
     "settings.recipientLanguage.label": "Sprache für die Empfänger",
-    "settings.recipientLanguage.hint": "Vorauswahl beim Senden: In dieser Sprache erhalten die Empfänger die Link-Karte, die Kennwort-Mail und die SMS. Beim Senden können Sie sie für jede Nachricht ändern.",
+    "settings.recipientLanguage.hint": "Vorauswahl beim Senden",
     "settings.signature.heading": "Signatur in der Nachricht mit dem Kennwort",
     "settings.signature.none": "Vorgabe der Organisation",
     "settings.signature.text": "Eigene Signatur",
     "settings.signature.hint.none": "Es gilt die Signatur Ihrer Organisation.",
-    "settings.signature.hint.text": "Steht als Text am Ende der Nachricht mit dem Kennwort, in derselben Schrift wie die Nachricht. Eine Leerzeile beginnt einen neuen Absatz. Platzhalter (siehe „i“) werden aus Ihrem Profil gefüllt; fehlt eine Angabe, entfällt ihr Abschnitt.",
+    "settings.signature.hint.text": "Steht als Text am Ende der Nachricht mit dem Kennwort.",
     "settings.placeholders.button": "Platzhalter anzeigen",
-    "settings.placeholders.intro": "Ein Klick fügt den Platzhalter an der Cursorposition ein. Abschnitte trennen Sie mit „ · “ – ein Abschnitt, dessen Angabe im Profil fehlt, entfällt samt seinem Text (z. B. „Mobil {mobile}“ ohne Mobilnummer).",
+    "settings.placeholders.intro": "Ein Klick fügt den Platzhalter an der Cursorposition ein.",
     "settings.placeholders.insert": "{placeholder} einfügen – {label}",
     "settings.placeholders.displayName": "Anzeigename",
     "settings.placeholders.givenName": "Vorname",

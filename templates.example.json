@@ -11,13 +11,23 @@
     "  mail_password_intro     {subject}, {sender_name}, {count} – text above the card; empty line = new paragraph",
     "  download_notice_subject {filename}, {subject}",
     "  download_notice_body    {filename}, {subject}, {downloaded_at}, {expires}, {recipients}",
-    "{password} is only allowed in the SMS; the SMS never contains the link, only the shortened file name via {files}."
+    "{password} is only allowed in the SMS; the SMS never contains the link, only the shortened file name via {files}.",
+    "Texts per language: every level may hold \"languages\": { \"en\": { … } } – they win over the level's own texts for a",
+    "mail in that language (SMS and password mail: the language chosen for the recipients; download confirmation: the",
+    "language of the sender's add-in). Without them the level's own texts apply in every language."
   ],
   "templates": {
     "default": {
       "sms_template": "Kennwort fuer {files} von {sender_name}:\n{password}",
       "mail_password_subject": "Kennwort für {files}: {subject}",
-      "download_notice_subject": "Heruntergeladen: {filename}"
+      "download_notice_subject": "Heruntergeladen: {filename}",
+      "languages": {
+        "en": {
+          "sms_template": "Password for {files} from {sender_name}:\n{password}",
+          "mail_password_subject": "Password for {files}: {subject}",
+          "download_notice_subject": "Downloaded: {filename}"
+        }
+      }
     },
     "groups": {
       "Ausbildungsberatung": {

@@ -368,6 +368,22 @@ describe("password by SMS, deliveries and download notices", () => {
     expect(getJob(id)?.dispatched).toBe(true); // no retry of the SMS
   });
 
+  it("writes the notes to the sender in the language of their add-in when they sent the mail", async () => {
+    const id = await smsJob("tok-sms-lang");
+    await arm(id, { language: "en" }); // the add-in in English, LANGUAGE is de in the tests
+    sentOnlyFor(id);
+    sendSms.mockRejectedValueOnce(new Error("seven.io: no credit"));
+
+    await checkJobs(quietLog());
+
+    const [, , subject, html] = sendMail.mock.calls[0];
+    expect(subject).toBe("Text message not sent – Unterlagen");
+    expect(html).toContain("could not be sent");
+    // Kept for a later note (SMS reported undelivered) and for the download confirmation.
+    expect(passwordRefFor("tok-sms-lang", "oid")?.senderLanguage).toBe("en");
+    expect(new Map(pendingNotices()).get("tok-sms-lang")?.language).toBe("en");
+  });
+
   it("records mail deliveries per link and registers the links for the download confirmation", async () => {
     const id = await createSeparateJob("oid", "max@example.test", {
       step: "s1", fileNames: ["a.pdf"], sendUrl: "https://vault/#/send/a", sendId: "send-a", maxAccessCount: 3,

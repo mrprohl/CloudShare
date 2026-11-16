@@ -4,13 +4,16 @@
  *
  *   { "templates": { "default": {…}, "groups": { "<department>": {…} }, "users": { "<upn>": {…} } } }
  *
+ * Every level may hold texts per language in "languages": { "en": {…} } – they win over the level's own texts for a
+ * mail in that language (the recipients' for SMS and password mail, the sender's for the download confirmation).
+ *
  * The first match wins per field (user → department of the sender → default → built-in texts of the language), so
  * every level may override single fields only. Placeholders are {name}; which ones a field may use is fixed below. Problems are logged when the
  * file is loaded – a broken file never stops CloudShare, it falls back to the built-in texts.
  */
 import { readFileSync } from "node:fs";
 import { config } from "./config.js";
-import { t as translate, texts } from "./i18n.js";
+import { mailLanguage, t as translate, texts } from "./i18n.js";
 
 export const TEMPLATE_FIELDS = {
   /** SMS with the password in plain text – {password} required; {files} names the files (GSM, shortened), never the
@@ -32,7 +35,8 @@ export type Templates = Record<TemplateField, string>;
 export const defaultTemplates = (): Templates =>
   Object.fromEntries(Object.keys(TEMPLATE_FIELDS).map((field) => [field, texts("templates")[field] ?? ""])) as Templates;
 
-type Level = Partial<Templates>;
+/** One level of the file; `languages` holds texts for one language each ("en": {…}) that win over the level's own. */
+type Level = Partial<Templates> & { languages?: Record<string, Partial<Templates>> };
 interface TemplateFile {
   default: Level;
   groups: Record<string, Level>;
@@ -81,10 +85,24 @@ export function smsFiles(names: readonly string[]): string {
 const placeholders = (text: string) => [...text.matchAll(/\{([a-z_]+)\}/g)].map((m) => m[1]);
 
 /** Checks one level of the file; drops fields that would leak something (e.g. {password} in a mail). */
-function validateLevel(level: unknown, where: string, warn: (msg: string) => void): Level {
+function validateLevel(level: unknown, where: string, warn: (msg: string) => void, nested = false): Level {
   if (!level || typeof level !== "object") return {};
   const result: Level = {};
   for (const [field, value] of Object.entries(level as Record<string, unknown>)) {
+    // Texts per language: { "languages": { "en": { "sms_template": "…" } } } – one level deep.
+    if (field === "languages" && !nested) {
+      if (!value || typeof value !== "object") {
+        warn(`templates: ${where}.languages is not an object – ignored`);
+        continue;
+      }
+      result.languages = Object.fromEntries(
+        Object.entries(value as Record<string, unknown>).map(([lang, texts]) => [
+          lang.toLowerCase(),
+          validateLevel(texts, `${where}.languages.${lang}`, warn, true),
+        ]),
+      );
+      continue;
+    }
     if (!(field in TEMPLATE_FIELDS)) {
       warn(`templates: unknown field "${field}" in ${where} – ignored`);
       continue;
@@ -157,12 +175,19 @@ let loaded: TemplateFile | undefined;
 
 /** The texts for a sender: user (UPN / mail address) → department → default → built-in. */
 export function templatesFor(sender: { upn?: string; department?: string }, file: TemplateFile = (loaded ??= loadTemplates(config.templatesFile))): Templates {
+  const lang = mailLanguage();
+  // Each level: its own texts, then those for the language of the mail being written.
+  const levelTexts = (level: Level | undefined): Partial<Templates> => {
+    if (!level) return {};
+    const { languages, ...own } = level;
+    return { ...own, ...languages?.[lang] };
+  };
   return {
     ...defaultTemplates(),
-    ...file.default,
-    ...(sender.department ? file.groups[sender.department.toLowerCase()] : undefined),
-    ...(sender.upn ? file.users[sender.upn.toLowerCase()] : undefined),
-  };
+    ...levelTexts(file.default),
+    ...levelTexts(sender.department ? file.groups[sender.department.toLowerCase()] : undefined),
+    ...levelTexts(sender.upn ? file.users[sender.upn.toLowerCase()] : undefined),
+  } as Templates;
 }
 
 /** Fills {name} placeholders; unknown ones stay visible so a typo is noticed. */

@@ -37,6 +37,10 @@ function fillMarkup(content, languages, language) {
     .replaceAll("%%LOCALE%%", file._meta.locale);
 }
 
+// Own locale and regional variants (_meta.regions) – as server/src/i18n.ts.
+const manifestLocales = (meta) =>
+  [...new Set([meta.locale, ...(Array.isArray(meta.regions) ? meta.regions : [])])].filter((l) => /^[a-z]{2,3}-[A-Za-z]{2,4}$/.test(l));
+
 function localizeManifest(xml, languages) {
   const others = Object.keys(languages).filter((lang) => lang !== FALLBACK).sort();
   const withOverrides = xml.replace(
@@ -45,7 +49,7 @@ function localizeManifest(xml, languages) {
       const prefix = tag.includes(":") ? `${tag.split(":")[0]}:` : "";
       const value = (lang) => escapeMarkup(textOf(languages[lang], section, key));
       const overrides = others
-        .map((lang) => `<${prefix}Override Locale="${languages[lang]._meta.locale}" Value="${value(lang)}"/>`)
+        .map((lang) => manifestLocales(languages[lang]._meta).map((locale) => `<${prefix}Override Locale="${locale}" Value="${value(lang)}"/>`).join(""))
         .join("");
       return `<${tag}${before}DefaultValue="${value(FALLBACK)}"${after}>${overrides}</${tag}>`;
     },
