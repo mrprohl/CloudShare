@@ -96,7 +96,8 @@ const DEFAULT_SETTINGS = {
 async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCall[]> {
   const calls: ApiCall[] = [];
   let connected = scenario.connected ?? true;
-  let userSettings = { ...DEFAULT_SETTINGS, ...scenario.settings };
+  // The English README pictures show English as the language for the recipients.
+  let userSettings = { ...DEFAULT_SETTINGS, ...(scenario.lang === "en" ? { recipientLanguage: "en" } : {}), ...scenario.settings };
   const uploads = new Map<string, { fileName: string; size: number }>();
 
   await page.addInitScript((cfg) => {
@@ -1408,7 +1409,7 @@ test("Verlauf: the subject is the title and opens the mail; confidential message
 
   // A click on the subject opens the sent mail in Outlook (the server gives its current EWS ID).
   await rows.nth(0).locator("button.share-title").click();
-  expect((await officeLog(page)).openedMails).toEqual(["ews-11"]); // translated by the server
+  await expect.poll(async () => (await officeLog(page)).openedMails).toEqual(["ews-11"]); // translated by the server
 
   // The message: envelope, "Vertrauliche Nachricht" below the subject, the password – but no copy, no insert, no
   // download state (CloudShare keeps no key, Vaultwarden reports no opening).

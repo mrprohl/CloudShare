@@ -1536,11 +1536,11 @@ async function insertMessage() {
       );
       // Same password and password mail as the files of this mail (one step).
       await rememberShareChoice(result.jobId);
-      const [html, text] = inLanguage(recipientLanguage(), () => {
+      const [cardHtml, cardText] = inLanguage(recipientLanguage(), () => {
         const expire = formatDate(result.expireDate);
         return [messageCard(result.shareUrl, expire), messageText(result.shareUrl, expire)];
       });
-      await insertIntoBody(html, text, shareToken(result.shareUrl));
+      await insertIntoBody(cardHtml, cardText, shareToken(result.shareUrl));
       messageInput.value = "";
       renderMessageCount();
       setStatus(t("message.inserted"), "success");
