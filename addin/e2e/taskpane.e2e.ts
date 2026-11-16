@@ -126,6 +126,10 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
             passwordEnforced: scenario.passwordEnforced ?? false }
         : { connected: false });
     }
+    if (route_ === "DELETE /api/nextcloud/connection") {
+      connected = false;
+      return json({ ok: true });
+    }
     if (route_ === "POST /api/nextcloud/connect") {
       return json({ connectId: "c1", loginUrl: "https://cloud.example.com/login/v2/flow/abc" });
     }
@@ -217,6 +221,13 @@ async function expectNoHorizontalScroll(page: Page) {
 
 /** "Dateien" / "Nachricht" / "Anfordern" – click the visible segment like a user (the radio is styled away). */
 const chooseKind = (page: Page, kind: "files" | "message" | "request") => page.click(`label:has(#kind-${kind})`);
+
+/** Opens the guide: account at the bottom left → "Hilfe". */
+async function openHelp(page: Page) {
+  await page.locator("#account-toggle").click();
+  await page.locator("#help-toggle").click();
+  await expect(page.locator("#panel-help")).toBeVisible();
+}
 
 /** Opens the personal settings: account at the bottom left → "Einstellungen". */
 async function openSettings(page: Page) {
@@ -398,7 +409,7 @@ test("settings and help: the heading with its × stays in sight while scrolling"
   await page.click("#settings-close");
   await expect(page.locator("#panel-settings")).toBeHidden();
 
-  await page.click("#help-toggle");
+  await openHelp(page);
   await page.locator(".help-support").scrollIntoViewIfNeeded();
   await expect(page.locator("#help-close")).toBeInViewport();
 });
@@ -494,7 +505,7 @@ test("preselects large attachments and proposes a random password", async ({ pag
   await expect(page.locator("#max-access")).toHaveValue("3");
   await expect(page.locator("#expire")).toHaveValue("14");
   await expect(page.locator("#account")).toHaveText("max.mustermann");
-  await expect(page.locator("#account-storage")).toHaveText("12,5 GB von 50 GB frei"); // in the account menu
+  await expect(page.locator("#account-storage")).toHaveText("12,5 GB von 50 GB frei"); // on the right of the bottom bar
   // One button that says what it inserts; the rarely changed values collapsed behind a summary.
   await expect(page.locator("#kind-files")).toBeChecked();
   await expect(page.locator("#submit")).toHaveText("Datei als Link einfügen");
@@ -1157,25 +1168,25 @@ test("Meine Freigaben: shows the state of each link and revokes after confirmati
   await refresh.click();
   await expect.poll(loads).toBe(before + 1);
   await expect(refresh).toBeEnabled();
-  // One quiet bottom bar for every tab: the account as a menu (like Outlook's profile menu), help and settings right.
+  // One quiet bottom bar for every tab: the account as a menu (like the menus of Outlook and OneDrive), the storage
+  // on the right.
   const toggle = page.locator("#account-toggle");
   const menu = page.locator("#account-menu");
+  const storage = page.locator("#account-storage");
   await expect(toggle).toHaveText("max.mustermann");
   await expect(menu).toBeHidden();
-  const [toggleBox, helpBox, barBox] = await Promise.all(
-    [toggle, page.locator("#help-toggle"), page.locator(".account-bar")].map((l) => l.boundingBox()),
-  );
-  expect(Math.abs(toggleBox!.y + toggleBox!.height / 2 - (helpBox!.y + helpBox!.height / 2))).toBeLessThan(2); // one line
-  expect(helpBox!.x).toBeGreaterThan(toggleBox!.x + toggleBox!.width);
-  expect(barBox!.x + barBox!.width - (helpBox!.x + helpBox!.width)).toBeLessThan(16); // "?" at the far right
+  await expect(storage).toHaveText("12,5 GB von 50 GB frei");
+  const [toggleBox, storageBox, barBox] = await Promise.all([toggle, storage, page.locator(".account-bar")].map((l) => l.boundingBox()));
+  expect(Math.abs(toggleBox!.y + toggleBox!.height / 2 - (storageBox!.y + storageBox!.height / 2))).toBeLessThan(2); // one line
+  expect(storageBox!.x).toBeGreaterThan(toggleBox!.x + toggleBox!.width);
+  expect(barBox!.x + barBox!.width - (storageBox!.x + storageBox!.width)).toBeLessThan(16); // at the far right
   await expect(page.locator(".account-bar")).toHaveCount(1);
-  await expect(page.locator("#settings-toggle")).toHaveCount(0); // settings are in the account menu
-  // The menu opens above the bar: storage and "Verbindung trennen"; Escape closes it, focus back on the account.
+  // The menu opens above the bar: each entry with an icon; Escape closes it, focus back on the account.
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(menu).toBeVisible();
-  await expect(page.locator("#account-storage")).toHaveText("12,5 GB von 50 GB frei");
-  await expect(page.locator("#account-menu button")).toHaveText(["Einstellungen", "Verbindung trennen"]);
+  await expect(page.locator("#account-menu button")).toHaveText(["Einstellungen", "Hilfe", "Verbindung trennen"]);
+  await expect(page.locator("#account-menu button svg")).toHaveCount(3);
   await expect(page.locator("#settings-open")).toBeFocused();
   expect((await menu.boundingBox())!.y + (await menu.boundingBox())!.height).toBeLessThanOrEqual(toggleBox!.y);
   await expectAccessible(page);
@@ -1330,7 +1341,7 @@ test("reading a mail: tabs 'Nachricht' and 'Meine Freigaben', nothing to insert"
   await expect(page.locator("#tab-send")).toBeHidden();
   await expect(page.locator(".tabs [role=tab]:visible")).toHaveText(["Nachricht", "Meine Freigaben"]);
   await expect(page.locator("#tab-mail")).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator("#help-toggle")).toBeVisible(); // the guide is there too
+  await expect(page.locator("#account-toggle")).toBeVisible(); // the guide and the settings are there too, in its menu
   await expect(page.locator("#panel-send")).toBeHidden();
   await expect(page.locator("#panel-shares")).toBeHidden();
   const inMail = page.locator("#mail-shares .share");
@@ -1396,13 +1407,13 @@ test("Meine Freigaben: upload links are not inserted again without password", as
 
 // --- Help -----------------------------------------------------------------------------------------------------------
 
-test("Hilfe: the \"?\" at the bottom right opens the guide in place of the tab, readable at 320 px", async ({ page }) => {
+test("Hilfe: \"Hilfe\" in the account menu opens the guide in place of the tab, readable at 320 px", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   await openTaskpane(page);
-  await expectNoHorizontalScroll(page); // tabs and the bottom bar fit
+  await expectNoHorizontalScroll(page); // tabs and the bottom bar (account and storage) fit
   const toggle = page.locator("#help-toggle");
-  await expect(toggle).toHaveAttribute("aria-label", "Hilfe");
-  await toggle.click();
+  await openHelp(page);
+  await expect(page.locator("#account-menu")).toBeHidden();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(page.locator("#panel-help")).toBeVisible();
   await expect(page.locator("#help-close")).toBeFocused(); // screen readers start in the guide
@@ -1431,29 +1442,50 @@ test("Hilfe: the \"?\" at the bottom right opens the guide in place of the tab, 
     await expect(shares.locator(`[data-icon="${icon}"] svg`)).toHaveCount(1);
   }
   await expect(shares).toContainText("Aktualisieren – oben rechts neben den Reitern");
-  await expect(shares).toContainText("Verbindung auch trennen");
+  await expect(shares).toContainText("„Verbindung trennen“ – Trennen braucht zur Sicherheit einen zweiten Klick");
   await expect(help).toContainText("Personenbezogene oder vertrauliche Daten versenden Sie bitte immer mit Kennwort.");
   await expectAccessible(page);
   await expectNoHorizontalScroll(page);
   await shot(page, "help");
 
-  // "×" closes it: back where the user was, focus on the "?".
+  // "×" closes it: back where the user was, focus on the account.
   await page.click("#help-close");
   await expect(page.locator("#panel-help")).toBeHidden();
   await expect(page.locator("#panel-send")).toBeVisible();
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
-  await expect(toggle).toBeFocused();
+  await expect(page.locator("#account-toggle")).toBeFocused();
 
   // Opened from "Meine Freigaben": a click on a tab closes it as well.
   await page.click("#tab-shares");
-  await toggle.click();
+  await openHelp(page);
   await expect(page.locator("#panel-shares")).toBeHidden();
-  await toggle.click(); // the "?" again closes it
-  await expect(page.locator("#panel-shares")).toBeVisible();
-  await toggle.click();
   await page.click("#tab-send");
   await expect(page.locator("#panel-help")).toBeHidden();
   await expect(page.locator("#panel-send")).toBeVisible();
+});
+
+test("Verbindung trennen takes a second click, like Zurückziehen", async ({ page }) => {
+  const calls = await openTaskpane(page);
+  const disconnect = page.locator("#disconnect");
+  const deletes = () => calls.filter((c) => c.method === "DELETE" && c.path === "/api/nextcloud/connection").length;
+  await page.locator("#account-toggle").click();
+  // First click: "Wirklich trennen?" in red, the menu stays open, nothing disconnected yet.
+  await disconnect.click();
+  await expect(disconnect).toHaveText("Wirklich trennen?");
+  await expect(disconnect).toHaveClass(/confirm/);
+  await expect(page.locator("#account-menu")).toBeVisible();
+  expect(deletes()).toBe(0);
+  await expectAccessible(page);
+  // Closing the menu disarms it.
+  await page.keyboard.press("Escape");
+  await page.locator("#account-toggle").click();
+  await expect(disconnect).toHaveText("Verbindung trennen");
+  // Two clicks: disconnected, the connect view shows.
+  await disconnect.click();
+  await disconnect.click();
+  await expect(page.locator("#status")).toHaveText("Die Verbindung zu Nextcloud wurde getrennt.");
+  await expect(page.locator("#connect-view")).toBeVisible();
+  expect(deletes()).toBe(1);
 });
 
 // --- Look ----------------------------------------------------------------------------------------------------------
@@ -1576,7 +1608,7 @@ test.describe("README pictures (English)", () => {
 
   test("Help", async ({ page }) => {
     await openTaskpane(page, { lang: "en", config: README_CONFIG });
-    await page.click("#help-toggle");
+    await openHelp(page);
     await expect(page.locator("#panel-help details").nth(1)).toHaveAttribute("open", "");
     await expect(page.locator("#panel-help")).not.toContainText("help.");
     await expectAccessible(page);
