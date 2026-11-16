@@ -43,6 +43,14 @@ describe("password mail", () => {
   it("states a single access", () => {
     expect(passwordMailHtml({ ...base, maxAccessCount: 1, fileNames: ["a.pdf"] })).toContain("nur einmal abrufbar");
   });
+
+  it("ends with the sender's signature, before the line about the automatic mail", () => {
+    const html = passwordMailHtml({ ...base, fileNames: ["a.pdf"], signature: "<b>Max Mustermann</b><br>Projektleitung" });
+    const signature = html.indexOf("<b>Max Mustermann</b>");
+    expect(signature).toBeGreaterThan(html.indexOf("Falls der Button nicht funktioniert"));
+    expect(signature).toBeLessThan(html.indexOf("automatisch"));
+    expect(passwordMailHtml({ ...base, fileNames: ["a.pdf"] })).not.toContain("Max Mustermann");
+  });
 });
 
 describe("password mail for a confidential message", () => {

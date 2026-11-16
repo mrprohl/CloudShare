@@ -29,7 +29,7 @@ Outlook ──Office SSO──► token for "api://cloudshare.example.com/<clien
                          └─On-Behalf-Of (client secret)──► Graph token of the user
                                                              Mail.Read(.Shared): find the sent mail
                                                              Mail.Send(.Shared): send the password mail
-                                                             User.Read: name, department, footer
+                                                             User.Read: name, department, signature
 ```
 
 - Users never sign in to CloudShare themselves: Outlook hands the add-in a token for the app registration
@@ -94,7 +94,7 @@ Outlook ──Office SSO──► token for "api://cloudshare.example.com/<clien
 | Permission | Used for |
 |---|---|
 | `openid`, `profile`, `offline_access` | sign-in basics of the token exchange |
-| `User.Read` | sender's name, department and contact data (footer of the card, text templates) |
+| `User.Read` | sender's name, department and contact data (signature of the password mail, text templates) |
 | `Mail.Read` | find the sent mail in the sender's "Sent Items" before the password goes out |
 | `Mail.Read.Shared` | the same for shared mailboxes the user sends from |
 | `Mail.Send` | send the password mail as the sender |

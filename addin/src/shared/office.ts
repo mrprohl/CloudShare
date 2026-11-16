@@ -1,5 +1,6 @@
 import { language, t } from "./i18n";
 import { toSsoError } from "./sso";
+import type { SignatureNode } from "../taskpane/signature";
 
 /** Replaced with the real base URL at container start (see docker/entrypoint.sh). */
 export const API_BASE = "%%PUBLIC_BASE_URL%%";
@@ -16,8 +17,6 @@ export interface ServerConfig {
   /** Default and upper limit for how often the password link (Vaultwarden Send) can be opened. */
   sendMaxAccessCount: number;
   sendMaxAccessLimit: number;
-  /** Optional footer line of the card inserted into the mail. */
-  mailFooter: string;
   /** Diagnostics switch (CLIENT_TRACE): the send handler reports its steps to the server. */
   trace?: boolean;
   /** SMS channel configured on the server (seven.io); country code for numbers entered without one. */
@@ -48,8 +47,11 @@ export interface UserSettings {
   defaultChannel: Channel;
   /** "auto" (as in Outlook) or a language code. */
   language: string;
-  /** Own signature of the link card; null = the organisation's (MAIL_FOOTER). */
-  signature: { format: "text" | "html"; content: string } | null;
+  /**
+   * Own signature of the password mails; null = the organisation's (MAIL_FOOTER). "html": a node tree of the cleaned
+   * paste (taskpane/signature.ts), never markup.
+   */
+  signature: { format: "text"; content: string } | { format: "html"; nodes: SignatureNode[] } | null;
 }
 
 /** GET/PUT/DELETE /api/settings: what applies, the organisation's defaults and what the server offers at all. */

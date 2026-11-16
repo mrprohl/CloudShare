@@ -11,16 +11,17 @@ import { config } from "./config.js";
 import { PersistentMap } from "./db.js";
 import { HttpError } from "./auth.js";
 import { addinLanguages, t } from "./i18n.js";
+import { cleanSignatureNodes, signatureHasContent, type Signature } from "./signature.js";
 import { smsEnabled } from "./sms.js";
 
 export type Channel = "recipients" | "mail" | "sms";
 export const CHANNELS: readonly Channel[] = ["recipients", "mail", "sms"];
 
-export interface Signature {
-  /** "text": plain text (profile placeholders like {phone} allowed); "html": pasted from Outlook, sanitised by the add-in. */
-  format: "text" | "html";
-  content: string;
-}
+/**
+ * Own signature of the password mails: "text" (profile placeholders like {phone} allowed) or "html" – pasted from
+ * Outlook, stored as a node tree cleaned by the allow-list (signature.ts), never as markup.
+ */
+export type { Signature } from "./signature.js";
 
 export interface UserSettings {
   downloadNotice: boolean;
@@ -32,7 +33,7 @@ export interface UserSettings {
   defaultChannel: Channel;
   /** "auto" (as in Outlook) or a language of the add-in. */
   language: string;
-  /** Own signature in the link card instead of MAIL_FOOTER; null = the organisation's (MAIL_FOOTER). */
+  /** Own signature of the password mails; null = the organisation's (MAIL_FOOTER, filled from the profile). */
   signature: Signature | null;
 }
 
@@ -69,7 +70,8 @@ function effective(values: UserSettings): UserSettings {
     channels,
     defaultChannel: channels.includes(values.defaultChannel) ? values.defaultChannel : channels[0],
     language: values.language === "auto" || available.languages.includes(values.language) ? values.language : "auto",
-    signature: values.signature ?? null,
+    // A formatted signature saved by the first version (markup instead of nodes) counts as none.
+    signature: values.signature?.format === "html" && !Array.isArray(values.signature.nodes) ? null : values.signature ?? null,
   };
 }
 
@@ -126,11 +128,19 @@ export function parseSettings(body: unknown): Partial<UserSettings> {
     if (signature === null) {
       result.signature = null;
     } else {
-      const s = signature as Partial<Signature> | undefined;
-      if (!s || (s.format !== "text" && s.format !== "html") || typeof s.content !== "string") throw invalid("signature");
-      if (s.content.length > SIGNATURE_MAX) throw new HttpError(400, t("server.signatureTooLong", { max: SIGNATURE_MAX }), "SETTINGS_INVALID");
+      const s = signature as { format?: unknown; content?: unknown; nodes?: unknown } | undefined;
+      const tooLong = () => new HttpError(400, t("server.signatureTooLong", { max: SIGNATURE_MAX }), "SETTINGS_INVALID");
       // An empty signature is no signature: the organisation's applies again.
-      result.signature = s.content.trim() ? { format: s.format, content: s.content } : null;
+      if (s?.format === "text" && typeof s.content === "string") {
+        if (s.content.length > SIGNATURE_MAX) throw tooLong();
+        result.signature = s.content.trim() ? { format: "text", content: s.content } : null;
+      } else if (s?.format === "html" && Array.isArray(s.nodes)) {
+        if (JSON.stringify(s.nodes).length > SIGNATURE_MAX) throw tooLong();
+        const nodes = cleanSignatureNodes(s.nodes);
+        result.signature = signatureHasContent(nodes) ? { format: "html", nodes } : null;
+      } else {
+        throw invalid("signature");
+      }
     }
   }
   return result;

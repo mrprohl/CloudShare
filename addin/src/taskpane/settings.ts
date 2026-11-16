@@ -7,7 +7,7 @@
  */
 import { desiredLanguage, language, languageChoices, SETTINGS_CACHE_KEY, t } from "../shared/i18n";
 import { api, type Channel, type SettingsResponse, type UserSettings } from "../shared/office";
-import { cleanInPlace, sanitizeSignature } from "./signature";
+import { cleanInPlace, signatureFromNodes, signatureHasContent, signatureNodes } from "./signature";
 
 const CHANNELS: Channel[] = ["recipients", "mail", "sms"];
 const channelLabel = (c: Channel) => t(c === "recipients" ? "channel.recipients" : c === "mail" ? "channel.mail" : "channel.sms");
@@ -153,7 +153,7 @@ export function initSettings(options: Options) {
     const signature = settings.signature;
     signatureFormat.value = signature ? signature.format : "none";
     signatureText.value = signature?.format === "text" ? signature.content : "";
-    signatureHtml.innerHTML = signature?.format === "html" ? sanitizeSignature(signature.content) : "";
+    signatureHtml.replaceChildren(...(signature?.format === "html" ? signatureFromNodes(signature.nodes, document) : []));
     showSignatureFormat();
   };
 
@@ -202,12 +202,18 @@ export function initSettings(options: Options) {
       return;
     }
     const format = signatureFormat.value;
-    const content = format === "html" ? sanitizeSignature(signatureHtml.innerHTML) : format === "text" ? signatureText.value.trim() : "";
+    let signature: UserSettings["signature"] = null;
+    if (format === "text" && signatureText.value.trim()) {
+      signature = { format: "text", content: signatureText.value.trim() };
+    } else if (format === "html") {
+      cleanInPlace(signatureHtml); // typed or formatted by hand after the last paste
+      if (signatureHasContent(signatureHtml)) signature = { format: "html", nodes: signatureNodes(signatureHtml) };
+    }
     const body: Partial<UserSettings> = {
       channels,
       defaultChannel: defaultChannel.value as Channel,
       language: languageSelect.value,
-      signature: content ? { format: format as "text" | "html", content } : null,
+      signature,
     };
     for (const input of notices.querySelectorAll<HTMLInputElement>("input")) {
       (body as Record<string, unknown>)[input.name] = input.checked;

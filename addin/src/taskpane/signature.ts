@@ -1,9 +1,14 @@
 /**
- * Own signature of the link card (settings): pasted from Outlook as formatted text (HTML) or typed as plain text.
- * HTML is cleaned with the browser's parser before it is shown in the pane, stored or inserted into a mail: only
- * harmless formatting stays – no scripts, no event handlers, no styles that load anything, links only to web, mail
- * and phone addresses, images only from https (Outlook's local or embedded images cannot travel with the card).
+ * Own signature of the password mails (settings): pasted from Outlook as formatted text. The browser inserts the
+ * paste into an editable box; the allow-list below cleans it in place right away – only harmless formatting stays: no
+ * scripts, no event handlers, no styles that load anything, links only to web, mail and phone addresses, pictures
+ * only from https (Outlook's local or embedded pictures cannot travel with a mail). The result is stored as a tree of
+ * nodes, never as markup; the server checks it against the same allow-list (server/src/signature.ts) and builds the
+ * HTML of the password mail itself.
  */
+
+/** A text, or an element with attributes and children – what /api/settings stores for a formatted signature. */
+export type SignatureNode = string | { tag: string; attrs?: Record<string, string>; children?: SignatureNode[] };
 
 /** Elements kept (their content too). Anything else is unwrapped – its text stays, the element goes. */
 const KEEP = new Set([
@@ -78,8 +83,8 @@ function cleanNode(node: Node, doc: Document): Node[] {
 }
 
 /**
- * Cleans the content of an element in place (the signature editor right after a paste): the same allow-list as
- * sanitizeSignature, applied to the nodes the browser inserted – no markup string is parsed. The caret goes to the end.
+ * Cleans the content of an element in place (the signature editor right after a paste and before saving): the
+ * allow-list applied to the nodes the browser inserted – no markup string is parsed. The caret goes to the end.
  */
 export function cleanInPlace(root: HTMLElement): void {
   const doc = root.ownerDocument;
@@ -92,43 +97,41 @@ export function cleanInPlace(root: HTMLElement): void {
   }
 }
 
-/** Signature HTML with only harmless formatting left (see the module comment). Empty if nothing visible remains. */
-export function sanitizeSignature(html: string): string {
-  const source = new DOMParser().parseFromString(html, "text/html");
-  const target = document.implementation.createHTMLDocument("");
-  const container = target.createElement("div");
-  for (const node of Array.from(source.body.childNodes).flatMap((child) => cleanNode(child, target))) container.appendChild(node);
-  const cleaned = container.innerHTML.trim();
-  return signatureText(cleaned) || container.querySelector("img") ? cleaned : "";
+
+/** The (cleaned) content of an element as a node tree for the settings. */
+export function signatureNodes(root: Element): SignatureNode[] {
+  return Array.from(root.childNodes).flatMap((node): SignatureNode[] => {
+    if (node.nodeType === Node.TEXT_NODE) return node.textContent ? [node.textContent] : [];
+    if (node.nodeType !== Node.ELEMENT_NODE) return [];
+    const element = node as Element;
+    const attrs: Record<string, string> = {};
+    for (const attribute of Array.from(element.attributes)) {
+      if (attribute.name !== "target") attrs[attribute.name] = attribute.value;
+    }
+    const children = signatureNodes(element);
+    return [{ tag: element.tagName.toLowerCase(), ...(Object.keys(attrs).length ? { attrs } : {}), ...(children.length ? { children } : {}) }];
+  });
 }
 
-/** Text version of signature HTML for plain-text mails: one line per paragraph, row or line break. */
-export function signatureText(html: string): string {
-  const doc = new DOMParser().parseFromString(html, "text/html");
-  const lines: string[] = [];
-  let line = "";
-  const flush = () => {
-    lines.push(line.replace(/\s+/g, " ").trim());
-    line = "";
-  };
-  const walk = (node: Node) => {
-    if (node.nodeType === Node.TEXT_NODE) {
-      line += node.textContent ?? "";
-      return;
-    }
-    if (node.nodeType !== Node.ELEMENT_NODE) return;
-    const tag = (node as Element).tagName.toUpperCase();
-    if (tag === "BR") return flush();
-    const block = ["P", "DIV", "TR", "LI", "TABLE", "UL", "OL", "HR"].includes(tag);
-    if (block && line.trim()) flush();
-    node.childNodes.forEach(walk);
-    if (tag === "TD" || tag === "TH") line += " ";
-    if (block && line.trim()) flush();
-  };
-  doc.body.childNodes.forEach(walk);
-  if (line.trim()) flush();
-  return lines
-    .filter((l, i, all) => l || (i > 0 && all[i - 1]))
-    .join("\n")
-    .trim();
+/**
+ * DOM nodes for the editor from a stored tree – built element by element in an inert document (nothing loads or
+ * runs there), then copied into `doc` by the allow-list.
+ */
+export function signatureFromNodes(nodes: SignatureNode[] | undefined, doc: Document): Node[] {
+  const inert = doc.implementation.createHTMLDocument("");
+  const build = (list: SignatureNode[]): Node[] =>
+    list.flatMap((node): Node[] => {
+      if (typeof node === "string") return [inert.createTextNode(node)];
+      if (!node || typeof node.tag !== "string" || !/^[a-z][a-z0-9]*$/.test(node.tag)) return [];
+      const element = inert.createElement(node.tag);
+      for (const [name, value] of Object.entries(node.attrs ?? {})) {
+        if (/^[a-z][a-z-]*$/.test(name) && typeof value === "string") element.setAttribute(name, value);
+      }
+      for (const child of build(node.children ?? [])) element.appendChild(child);
+      return [element];
+    });
+  return build(Array.isArray(nodes) ? nodes : []).flatMap((node) => cleanNode(node, doc));
 }
+
+/** Whether the editor shows anything (text or a picture). */
+export const signatureHasContent = (root: Element) => Boolean(root.textContent?.trim()) || root.querySelector("img") !== null;

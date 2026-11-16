@@ -9,7 +9,7 @@ const files = [
 ];
 
 describe("filesCard", () => {
-  const html = filesCard(files, "27.11.2026", "Max Mustermann\nMuster GmbH", formatSize);
+  const html = filesCard(files, "27.11.2026", formatSize);
 
   it("has one download button per file and a plural title", () => {
     expect(html).toContain("3 Dateien wurden für Sie bereitgestellt");
@@ -23,23 +23,23 @@ describe("filesCard", () => {
     expect(html).toContain(">DATEI<"); // no extension → the "file" badge of the language
   });
 
-  it("shows expiry, password note and a multi-line footer", () => {
+  it("shows expiry and password note, no signature (that is in the password mail)", () => {
     expect(html).toContain("Gültig bis 27.11.2026");
     expect(html).toContain("Das Kennwort erhalten Sie in einer separaten Nachricht.");
-    expect(html).toContain("Max Mustermann<br>Muster GmbH");
+    expect(html).not.toContain("padding-top:8px");
   });
 
   it("leaves out the password note for links without password", () => {
-    const open = filesCard(files, "27.11.2026", "", formatSize, false);
+    const open = filesCard(files, "27.11.2026", formatSize, false);
     expect(open).toContain("Gültig bis 27.11.2026");
     expect(open).not.toContain("Kennwort");
-    expect(filesText(files, "27.11.2026", "", formatSize, false)).not.toContain("Kennwort");
+    expect(filesText(files, "27.11.2026", formatSize, false)).not.toContain("Kennwort");
   });
 
   it("leaves out an unknown size (links inserted again from 'Meine Freigaben')", () => {
     const file = { name: "Angebot.pdf", size: null, url: "https://cloud.example.test/s/a" };
-    expect(filesCard([file], "27.11.2026", "", formatSize)).not.toContain(" B<");
-    expect(filesText([file], "27.11.2026", "", formatSize)).toContain("- Angebot.pdf: https://cloud.example.test/s/a");
+    expect(filesCard([file], "27.11.2026", formatSize)).not.toContain(" B<");
+    expect(filesText([file], "27.11.2026", formatSize)).toContain("- Angebot.pdf: https://cloud.example.test/s/a");
   });
 
   it("uses only inline styles and tables (mail-client safe)", () => {
@@ -47,29 +47,21 @@ describe("filesCard", () => {
     expect(html.startsWith("<table")).toBe(true);
   });
 
-  it("uses the singular title for one file and omits an empty footer", () => {
-    const one = filesCard([files[0]], "27.11.2026", "", formatSize);
-    expect(one).toContain("Eine Datei wurde für Sie bereitgestellt");
-    expect(one).not.toContain("border-top:1px solid #f0f0f0;padding-top:8px");
+  it("uses the singular title for one file", () => {
+    expect(filesCard([files[0]], "27.11.2026", formatSize)).toContain("Eine Datei wurde für Sie bereitgestellt");
   });
 
-  it("escapes names, URLs and footer", () => {
-    const evil = filesCard(
-      [{ name: '<img src=x onerror="a()">.pdf', size: 1, url: 'https://x.test/"><script>' }],
-      "27.11.2026",
-      "<b>Fett</b>",
-      formatSize,
-    );
+  it("escapes names and URLs", () => {
+    const evil = filesCard([{ name: '<img src=x onerror="a()">.pdf', size: 1, url: 'https://x.test/"><script>' }], "27.11.2026", formatSize);
     expect(evil).not.toContain("<img");
     expect(evil).not.toContain("<script>");
-    expect(evil).not.toContain("<b>Fett</b>");
     expect(evil).toContain("&lt;img src=x onerror=&quot;a()&quot;&gt;.pdf");
   });
 });
 
 describe("requestCard", () => {
   it("contains the upload button and the password note", () => {
-    const html = requestCard("https://cloud.example.test/s/up", "27.11.2026", "");
+    const html = requestCard("https://cloud.example.test/s/up", "27.11.2026");
     expect(html).toContain("Dateien sicher hochladen");
     expect(html).toContain('href="https://cloud.example.test/s/up"');
     expect(html).toContain(">Dateien hochladen<");
@@ -78,22 +70,22 @@ describe("requestCard", () => {
 });
 
 describe("plain-text versions", () => {
-  it("list every link and include the footer", () => {
-    const text = filesText(files, "27.11.2026", "Max Mustermann", formatSize);
+  it("list every link, without a signature", () => {
+    const text = filesText(files, "27.11.2026", formatSize);
     expect(text).toContain("- Angebot.pdf (1000 B): https://cloud.example.test/s/a");
-    expect(text).toContain("--\nMax Mustermann");
-    expect(requestText("https://cloud.example.test/s/up", "27.11.2026", "")).toContain("https://cloud.example.test/s/up");
+    expect(text).not.toContain("--\n");
+    expect(requestText("https://cloud.example.test/s/up", "27.11.2026")).toContain("https://cloud.example.test/s/up");
   });
 });
 
 describe("messageCard", () => {
   it("links the confidential message without its text and points to the password", () => {
     const url = "https://vault.example.test/#/send/abc/key123";
-    const html = messageCard(url, "27.11.2026", "");
+    const html = messageCard(url, "27.11.2026");
     expect(html).toContain("Vertrauliche Nachricht für Sie");
     expect(html).toContain(`href="${url}"`);
     expect(html).toContain(">Nachricht öffnen<");
     expect(html).toContain("Gültig bis 27.11.2026 · Das Kennwort erhalten Sie in einer separaten Nachricht.");
-    expect(messageText(url, "27.11.2026", "Max")).toContain(`Vertrauliche Nachricht für Sie (gültig bis 27.11.2026):\n${url}`);
+    expect(messageText(url, "27.11.2026")).toContain(`Vertrauliche Nachricht für Sie (gültig bis 27.11.2026):\n${url}`);
   });
 });

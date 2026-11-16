@@ -65,7 +65,6 @@ const CONFIG = {
   chunkSize: 1 * MiB,
   sendMaxAccessCount: 3,
   sendMaxAccessLimit: 20,
-  mailFooter: "{displayName} · {jobTitle}",
   trace: false,
   smsEnabled: false,
   smsDefaultCountry: "49",
@@ -86,7 +85,7 @@ const DEFAULT_SETTINGS = {
   channels: ["recipients", "mail", "sms"] as string[],
   defaultChannel: "recipients",
   language: "auto",
-  signature: null as { format: "text" | "html"; content: string } | null,
+  signature: null as null | Record<string, unknown>,
 };
 
 /** Opens the taskpane with the given mail and backend state; returns the list of API calls made by the pane. */
@@ -277,11 +276,11 @@ test("not connected: shows the connect view and connects via the Nextcloud login
   expect(calls.some((c) => c.path === "/api/nextcloud/connect/c1/poll")).toBe(true);
 });
 
-test("opening the pane: profile and connection status share one sign-in (no 13008)", async ({ page }) => {
-  // The footer template has placeholders → profile and Nextcloud status both need a token right at startup.
+test("opening the pane: settings and connection status share one sign-in (no 13008)", async ({ page }) => {
+  // Settings and Nextcloud status both need a token right at startup.
   const calls = await openTaskpane(page);
   await expect(page.locator("#send-view")).toBeVisible();
-  await expect.poll(() => calls.some((c) => c.path === "/api/profile")).toBe(true);
+  await expect.poll(() => calls.some((c) => c.path === "/api/settings")).toBe(true);
   await expect(page.locator("#status")).toBeHidden();
   const log = await page.evaluate(() => (window as unknown as { __officeLog: { tokenRequests: number } }).__officeLog);
   expect(log.tokenRequests).toBe(1);
@@ -371,7 +370,7 @@ test("settings: a new mail starts with the preselected way and offers only the c
   await expect(page.locator('#password-channel option[value="recipients"]')).toHaveJSProperty("hidden", false);
 });
 
-test("settings: a pasted Outlook signature keeps its formatting, loses everything risky and goes into the card", async ({ page }) => {
+test("settings: a pasted Outlook signature keeps its formatting, loses everything risky and is stored as nodes", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Plan.pdf", 2 * MiB)] });
   await page.locator("#panel-send .settings-toggle").click();
   await page.locator("#settings-signature-format").selectOption("html");
@@ -396,30 +395,26 @@ test("settings: a pasted Outlook signature keeps its formatting, loses everythin
 
   await page.click("#settings-save");
   await expect(page.locator("#status")).toHaveText("Ihre Einstellungen wurden gespeichert.");
+  // Stored as a tree of nodes (the server builds the password mail's HTML from it), never as markup.
   const saved = JSON.parse(calls.find((c) => c.method === "PUT")!.body!.toString());
   expect(saved.signature.format).toBe("html");
-  expect(saved.signature.content).not.toMatch(/onclick|javascript:|<script/);
+  expect(saved.signature.content).toBeUndefined();
+  expect(saved.signature.nodes[0]).toEqual({ tag: "p", attrs: { style: "color:#1f497d;font-weight:bold" }, children: ["Max Mustermann"] });
+  expect(JSON.stringify(saved.signature.nodes)).not.toMatch(/onclick|javascript:|script|cid:|MsoNormal/);
 
-  // The next link carries the signature in its card.
+  // Opened again: the editor shows the stored signature.
+  await page.click("#settings-close");
+  await page.locator("#panel-send .settings-toggle").click();
+  await expect(page.locator("#settings-signature-format")).toHaveValue("html");
+  await expect(editor).toContainText("Max Mustermann");
+  await expect(editor.locator('img[src="https://example.com/logo.png"]')).toHaveCount(1);
+
+  // The link card carries no signature – it goes into the password mail.
   await page.click("#settings-close");
   await page.click("#submit");
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
   const inserted = (await officeLog(page)).inserted[0].data as string;
-  expect(inserted).toContain("Max Mustermann");
-  expect(inserted).toContain("https://example.com/logo.png");
-  expect(inserted).not.toContain("alert(");
-});
-
-test("settings: a text signature with profile placeholders replaces the organisation's footer", async ({ page }) => {
-  await openTaskpane(page, {
-    attachments: [attachment("a1", "Plan.pdf", 2 * MiB)],
-    settings: { signature: { format: "text", content: "{displayName}\nTeam Bau · Tel. {phone}" } },
-  });
-  await page.click("#submit");
-  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
-  const inserted = (await officeLog(page)).inserted[0].data as string;
-  expect(inserted).toContain("Max Mustermann<br>Team Bau"); // no phone in the profile: "Tel. {phone}" is dropped
-  expect(inserted).not.toContain("Projektleitung"); // MAIL_FOOTER ("{displayName} · {jobTitle}") does not apply
+  expect(inserted).not.toContain("Max Mustermann");
 });
 
 test("settings: a language chosen in the settings beats Outlook's", async ({ page }) => {
@@ -498,7 +493,7 @@ test("uploads a large attachment in chunks, removes it and inserts the card", as
   expect(log.inserted[0].data.endsWith("<p style=\"margin:0;\"><br></p>")).toBe(true);
   expect(log.inserted[0].data).toContain("https://cloud.example.com/s/u1");
   expect(log.inserted[0].data).toContain("Präsentation.pptx");
-  expect(log.inserted[0].data).toContain("Max Mustermann · Projektleitung"); // footer from the profile
+  expect(log.inserted[0].data).not.toContain("Max Mustermann"); // no signature in the card – it is in the password mail
   expect(log.customProps.cloudshareJob).toBe("job-1"); // links the draft to the password mail
   expect(JSON.parse(log.session["cloudshare-state"])).toMatchObject({ jobId: "job-1", separate: true });
 
