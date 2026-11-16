@@ -1,13 +1,10 @@
 /**
  * How the password of each link went out – shown in "Meine Freigaben" ("Kennwort per SMS an +49 170 •••• 78 –
  * zugestellt") and updated by seven.io's delivery reports. Keyed by the share token (last segment of the link URL).
- * Encrypted in /data/deliveries.json like the password jobs; entries are dropped after DELIVERY_TTL.
+ * Stored in the database (db.ts, store "deliveries"); entries are dropped after DELIVERY_TTL.
  */
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { config } from "./config.js";
+import { PersistentMap } from "./db.js";
 import type { SmsStatus } from "./sms.js";
-import { createAtomicWriter, seal, unseal, type Sealed } from "./storage.js";
 
 export interface Delivery {
   owner: string;
@@ -22,32 +19,18 @@ export interface Delivery {
 }
 
 const DELIVERY_TTL = 120 * 86_400_000;
-const AAD = "deliveries";
-const file = path.join(config.dataDir, "deliveries.json");
-const write = createAtomicWriter(file);
-const deliveries = new Map<string, Delivery>();
+const deliveries = new PersistentMap<Delivery>("deliveries");
 
-try {
-  const sealed = JSON.parse(readFileSync(file, "utf8")) as Sealed;
-  for (const [token, d] of Object.entries(JSON.parse(unseal(sealed, AAD)) as Record<string, Delivery>)) {
-    deliveries.set(token, d);
-  }
-} catch (err) {
-  if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-    console.warn(`deliveries.json could not be read and is ignored: ${(err as Error).message}`);
-  }
-}
-
-function persist() {
+/** Drops entries older than DELIVERY_TTL. */
+function prune() {
   const now = Date.now();
   for (const [token, d] of deliveries) if (now - d.at > DELIVERY_TTL) deliveries.delete(token);
-  return write(JSON.stringify(seal(JSON.stringify(Object.fromEntries(deliveries)), AAD)));
 }
 
 /** Records the delivery for every token of a step (one password message covers all files of a step). */
 export async function recordDelivery(tokens: string[], delivery: Delivery): Promise<void> {
+  prune();
   for (const token of tokens) deliveries.set(token, { ...delivery });
-  await persist();
 }
 
 export const deliveryFor = (token: string, owner: string) => {
@@ -74,7 +57,7 @@ export async function updateSmsStatus(
     d.status = status;
     if (status === "delivered") d.deliveredAt = at;
     if (status === "failed") failedTokens.push(token);
+    deliveries.save(token);
   }
-  if (known) await persist();
   return { known, failedTokens };
 }

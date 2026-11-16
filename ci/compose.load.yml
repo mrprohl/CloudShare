@@ -2,7 +2,7 @@
 # a mock of Microsoft's token keys and of Nextcloud (ci/mocks/server.mjs), CloudShare pointed at it.
 services:
   mocks:
-    image: node:22-alpine
+    image: node:24-alpine
     container_name: cloudshare-mocks
     command: ["node", "/ci/mocks/server.mjs"]
     user: "1000:1000"

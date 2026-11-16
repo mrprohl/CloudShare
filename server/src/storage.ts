@@ -1,10 +1,8 @@
 /**
- * Shared helpers for the persistent files in DATA_DIR: AES-256-GCM sealing with CREDENTIAL_KEY and
- * atomic, sequential writes.
+ * AES-256-GCM sealing with CREDENTIAL_KEY for everything CloudShare keeps in DATA_DIR (the database rows of db.ts).
  */
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import { mkdirSync } from "node:fs";
-import { rename, writeFile } from "node:fs/promises";
 import { config } from "./config.js";
 
 const key = Buffer.from(config.credentialKey, "base64");
@@ -18,7 +16,7 @@ export interface Sealed {
   data: string;
 }
 
-/** Encrypts text; the AAD binds the ciphertext to its context (e.g. the user's oid). */
+/** Encrypts text; the AAD binds the ciphertext to its context (e.g. store and key of a database row). */
 export function seal(plaintext: string, aad: string): Sealed {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", key, iv);
@@ -33,19 +31,4 @@ export function unseal(sealed: Sealed, aad: string): string {
   decipher.setAAD(Buffer.from(aad));
   decipher.setAuthTag(Buffer.from(sealed.tag, "base64"));
   return Buffer.concat([decipher.update(Buffer.from(sealed.data, "base64")), decipher.final()]).toString("utf8");
-}
-
-/** Returns a writer that replaces the file atomically (tmp + rename) and serialises concurrent writes. */
-export function createAtomicWriter(file: string): (content: string) => Promise<void> {
-  let queue: Promise<void> = Promise.resolve();
-  return (content: string) => {
-    queue = queue
-      .catch(() => undefined)
-      .then(async () => {
-        const tmp = `${file}.tmp`;
-        await writeFile(tmp, content, { mode: 0o600 });
-        await rename(tmp, file);
-      });
-    return queue;
-  };
 }

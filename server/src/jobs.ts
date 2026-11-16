@@ -8,11 +8,10 @@
  *      actual recipients. If the mail never shows up (prompt cancelled, sending failed, draft discarded), the job
  *      is disarmed and stays open – further files are added to it, so there is only ever one password mail.
  *
- * Jobs are persisted (encrypted, DATA_DIR/password-jobs.json) so that a restart does not lose a pending mail.
+ * Jobs are persisted (encrypted, in the database – db.ts, store "password-jobs") so that a restart does not lose a
+ * pending mail.
  */
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import path from "node:path";
 import type { FastifyBaseLogger } from "fastify";
 import { config } from "./config.js";
 import { findSentMessage, sendMail } from "./graph.js";
@@ -22,7 +21,7 @@ import { registerNotices, type Notice } from "./notices.js";
 import { passwordMailHtml, smsProblemMailHtml } from "./passwordMail.js";
 import { registerPasswordRef } from "./passwordRefs.js";
 import { maskPhone, sendSms, smsEnabled, smsNumberProblem } from "./sms.js";
-import { createAtomicWriter, seal, unseal, type Sealed } from "./storage.js";
+import { PersistentMap } from "./db.js";
 import { defaultTemplates, render, templatesFor, type Templates } from "./templates.js";
 import { readSendPassword } from "./vaultwarden.js";
 
@@ -124,25 +123,8 @@ const UNSENT_RETRY = 60 * MINUTE;
 /** How long after "Send" the watcher looks for the mail in "Sent Items". */
 const ARM_WINDOW = 15 * MINUTE;
 const POLL_INTERVAL = 20_000;
-const AAD = "password-jobs";
-
-const file = path.join(config.dataDir, "password-jobs.json");
-const write = createAtomicWriter(file);
-const jobs = new Map<string, PasswordJob>();
-
-try {
-  const sealed = JSON.parse(readFileSync(file, "utf8")) as Sealed;
-  for (const [id, job] of Object.entries(JSON.parse(unseal(sealed, AAD)) as Record<string, PasswordJob>)) {
-    jobs.set(id, job);
-  }
-} catch (err) {
-  if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-    // Unreadable (e.g. CREDENTIAL_KEY changed) – start empty instead of refusing to start.
-    console.warn(`password-jobs.json could not be read and is ignored: ${(err as Error).message}`);
-  }
-}
-
-const persist = () => write(JSON.stringify(seal(JSON.stringify(Object.fromEntries(jobs)), AAD)));
+/** All jobs; `set`/`delete` write their row, a job changed in place is written with `jobs.save(id)`. */
+const jobs = new PersistentMap<PasswordJob>("password-jobs");
 
 export const getJob = (id: string) => jobs.get(id);
 
@@ -199,7 +181,6 @@ export async function createJob(
     expiresAt: Date.now() + JOB_TTL,
     armedOnce: false,
   });
-  await persist();
   return id;
 }
 
@@ -207,7 +188,7 @@ export async function addFileToJob(id: string, fileName: string): Promise<void> 
   const job = jobs.get(id)!;
   job.fileNames.push(fileName);
   touch(job);
-  await persist();
+  jobs.save(id);
 }
 
 /** First step of a mail with one password per step (see SeparatePart). */
@@ -224,7 +205,6 @@ export async function createSeparateJob(owner: string, ownerUpn: string, part: S
     expiresAt: Date.now() + JOB_TTL,
     armedOnce: false,
   });
-  await persist();
   return id;
 }
 
@@ -241,7 +221,6 @@ export async function createNoticeJob(owner: string, ownerUpn: string, share: St
     dispatched: false,
     expiresAt: Date.now() + JOB_TTL,
   });
-  await persist();
   return id;
 }
 
@@ -250,7 +229,7 @@ export async function addNoticeShare(id: string, share: StepShare): Promise<void
   job.fileNames.push(share.name);
   (job.noticeShares ??= []).push(share);
   touch(job);
-  await persist();
+  jobs.save(id);
 }
 
 /** The password goes by SMS: the Sends of steps not sent yet only hold it until then – keep them to `expiresAt`. */
@@ -258,7 +237,7 @@ export async function setPartsExpiry(id: string, expiresAt: number): Promise<voi
   const job = jobs.get(id);
   if (!job?.separate) return;
   for (const part of job.separate) if (!part.dispatched && part.sendId) part.sendExpiresAt = expiresAt;
-  await persist();
+  jobs.save(id);
 }
 
 /** Further step with its own password and password mail. */
@@ -267,7 +246,7 @@ export async function addSeparatePart(id: string, part: SeparatePart): Promise<v
   job.fileNames.push(...part.fileNames);
   (job.separate ??= []).push(part);
   touch(job);
-  await persist();
+  jobs.save(id);
 }
 
 /** The part of a step, if the step already created one (further files of the same click). */
@@ -281,7 +260,7 @@ export async function addFileToPart(id: string, step: string, fileName: string, 
   part.fileNames.push(fileName);
   if (share) (part.shares ??= []).push(share);
   touch(job);
-  await persist();
+  jobs.save(id);
 }
 
 /**
@@ -292,7 +271,7 @@ export async function setJobPasswordTo(id: string, passwordTo: string | undefine
   const job = jobs.get(id)!;
   job.passwordTo = passwordSms ? undefined : passwordTo;
   job.passwordSms = passwordSms;
-  await persist();
+  jobs.save(id);
 }
 
 /** Sender's name and department, read from the profile when arming (templates). */
@@ -300,13 +279,13 @@ export async function setJobSender(id: string, senderName: string, department: s
   const job = jobs.get(id)!;
   job.senderName = senderName || undefined;
   job.department = department || undefined;
-  await persist();
+  jobs.save(id);
 }
 
 /** New number of password-link accesses (the Send itself is updated by the caller). */
 export async function setJobMaxAccess(id: string, maxAccessCount: number): Promise<void> {
   jobs.get(id)!.maxAccessCount = maxAccessCount;
-  await persist();
+  jobs.save(id);
 }
 
 /** Marks the job as "send pressed"; the watcher sends the password mail once the mail appears in "Sent Items". */
@@ -314,7 +293,7 @@ export async function armJob(id: string, armed: ArmedSend): Promise<void> {
   const job = jobs.get(id)!;
   job.armed = armed;
   job.armedOnce = true;
-  await persist();
+  jobs.save(id);
 }
 
 /** SMS per user and day (SMS_MAX_PER_DAY) – cost and abuse protection; also counts SMS sent again by hand. */
@@ -370,7 +349,6 @@ async function sendStepBySms(
 /** One pass of the watcher over all jobs (exported for tests; normally driven by startJobWatcher). */
 export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
   const now = Date.now();
-  let changed = false;
   for (const [id, job] of jobs) {
     if (job.expiresAt < now) {
       // A draft with links that was never sent (discarded): its links never left the mailbox – revoke them.
@@ -384,12 +362,11 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
         } catch (err) {
           log.warn({ err, user: job.ownerUpn, jobId: id }, "Links of a mail never sent not revoked, retrying later");
           job.expiresAt = now + UNSENT_RETRY;
-          changed = true;
+          jobs.save(id);
           continue;
         }
       }
       jobs.delete(id);
-      changed = true;
       continue;
     }
     const armed = job.armed;
@@ -398,7 +375,7 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
     if (now - armed.armedAt > ARM_WINDOW || armed.tokenExpiresAt < now) {
       // The mail was not sent (prompt cancelled, sending failed, draft discarded) – keep the job open.
       job.armed = undefined;
-      changed = true;
+      jobs.save(id);
       log.info({ user: job.ownerUpn, jobId: id }, "Send not observed in Sent Items, job disarmed");
       continue;
     }
@@ -472,7 +449,7 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
             await recordDelivery(tokens, { owner: job.owner, channel: "mail", to: recipients.to.concat(recipients.cc).join(", "), at: Date.now() });
           }
           part.dispatched = true;
-          changed = true;
+          jobs.save(id);
           await watchDownloads(part.shares ?? []);
           // The Send stays until the links expire: the sender can see the password and send it again.
           if (part.sendId && tokens.length > 0) {
@@ -501,13 +478,12 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
       }
       job.dispatched = true;
       job.armed = undefined;
-      changed = true;
+      jobs.save(id);
       log.info({ user: job.ownerUpn, from: sent.from, files: job.fileNames, other: Boolean(job.passwordTo) }, "Password mail sent");
     } catch (err) {
       log.warn({ err, user: job.ownerUpn, jobId: id }, "Password mail check failed, retrying");
     }
   }
-  if (changed) await persist();
 }
 
 /** Starts the background check of armed jobs. */

@@ -2,13 +2,10 @@
  * Where the password of each sent step lives – the ID of its Vaultwarden Send, never the password itself. Lets the
  * sender see the password again and send it once more ("Kennwort erneut senden": by SMS or mail) until the links
  * expire; then Vaultwarden deletes the Send and the entry is dropped. Keyed by the Send ID, looked up by the share
- * token (last segment of a link URL). Encrypted in /data/password-refs.json like the password jobs.
+ * token (last segment of a link URL). Stored in the database (db.ts, store "password-refs").
  */
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import { config } from "./config.js";
+import { PersistentMap } from "./db.js";
 import type { MailRecipients } from "./graph.js";
-import { createAtomicWriter, seal, unseal, type Sealed } from "./storage.js";
 
 export interface PasswordRef {
   owner: string;
@@ -41,32 +38,18 @@ export interface PasswordRef {
   department?: string;
 }
 
-const AAD = "password-refs";
-const file = path.join(config.dataDir, "password-refs.json");
-const write = createAtomicWriter(file);
-const refs = new Map<string, PasswordRef>();
+const refs = new PersistentMap<PasswordRef>("password-refs");
 
-try {
-  const sealed = JSON.parse(readFileSync(file, "utf8")) as Sealed;
-  for (const [id, ref] of Object.entries(JSON.parse(unseal(sealed, AAD)) as Record<string, PasswordRef>)) {
-    refs.set(id, ref);
-  }
-} catch (err) {
-  if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-    console.warn(`password-refs.json could not be read and is ignored: ${(err as Error).message}`);
-  }
-}
-
-function persist() {
+/** Drops entries whose links expired or were all revoked. */
+function prune() {
   const now = Date.now();
   for (const [id, ref] of refs) if (ref.keepUntil < now || ref.tokens.length === 0) refs.delete(id);
-  return write(JSON.stringify(seal(JSON.stringify(Object.fromEntries(refs)), AAD)));
 }
 
 /** Records the Send of a step once its mail was sent (again for the same Send: the newer data wins). */
 export async function registerPasswordRef(ref: PasswordRef): Promise<void> {
+  prune();
   refs.set(ref.sendId, ref);
-  await persist();
 }
 
 /** The entry of a link of `owner`, if its password can still be read (null: none, expired or someone else's). */
@@ -88,7 +71,7 @@ export async function updatePasswordRef(
   if (change.otherTo) ref.otherTo = change.otherTo;
   if (change.sms) ref.sms = change.sms;
   if (change.resentSend) (ref.resentSends ??= []).push(change.resentSend);
-  await persist();
+  refs.save(sendId);
 }
 
 /**
@@ -99,7 +82,8 @@ export async function forgetPasswordToken(token: string, owner: string): Promise
   const ref = passwordRefFor(token, owner);
   if (!ref) return [];
   ref.tokens = ref.tokens.filter((t) => t !== token);
-  await persist();
+  if (ref.tokens.length === 0) refs.delete(ref.sendId);
+  else refs.save(ref.sendId);
   return ref.tokens.length === 0 ? [ref.sendId, ...(ref.resentSends ?? [])] : [];
 }
 

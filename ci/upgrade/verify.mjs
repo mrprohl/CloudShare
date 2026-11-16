@@ -3,6 +3,12 @@
 import { readFileSync } from "node:fs";
 
 const expected = JSON.parse(readFileSync("/data/ci-upgrade-expected.json", "utf8"));
+// The switch from JSON files to SQLite takes no data over (accepted during the test phase): nothing to compare once.
+// Exit code 3 = skipped (ci/stack.sh). From the next release on, both versions use the database again.
+if (expected.storage !== "sqlite") {
+  console.log("  – the previous version kept its data in JSON files, this one uses SQLite and takes none of them over");
+  process.exit(3);
+}
 const { getCredentials } = await import("/app/dist/credentials.js");
 const { getJob } = await import("/app/dist/jobs.js");
 

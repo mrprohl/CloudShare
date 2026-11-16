@@ -36,7 +36,7 @@ Outlook (classic on Windows / new Outlook / Outlook on the web)
         ▼
 Caddy (Let's Encrypt, ports 80/443) ──► network "internal"
         ▼
-Container "cloudshare" (Node 22, read-only)
+Container "cloudshare" (Node 24, read-only)
   ├─ Fastify backend     server/src/           API, add-in files (texts of LANGUAGE filled in at start),
   │     │                                      manifest.xml, well-known file, seven.io webhook
   │     ├─ Nextcloud     app password per user → WebDAV chunked upload, OCS shares, activity, trash
@@ -59,7 +59,7 @@ Container "cloudshare" (Node 22, read-only)
 | Integrations | `auth.ts` (SSO validation, OBO, app token), `nextcloud.ts`, `graph.ts`, `vaultwarden.ts`, `sms.ts` (seven.io) | |
 | Texts sent on the sender's behalf | `passwordMail.ts`, `templates.ts` (`templates.json`) | Password mail, SMS, download confirmation |
 | Background jobs | `jobs.ts` (password mails and SMS), `cleanup.ts` (expired uploads), `notices.ts` (download confirmation) | Every 20 s / hourly / every 10 min, see below |
-| Persistence | `credentials.ts`, `storage.ts`, `deliveries.ts` | AES-256-GCM files in `/data` |
+| Persistence | `db.ts` (`PersistentMap`), `storage.ts` (sealing) | SQLite `/data/cloudshare.db`, every row AES-256-GCM sealed |
 
 **Why app passwords for Nextcloud?** Nextcloud usually cannot accept Entra ID tokens (it often signs users in through
 another IdP, e.g. Keycloak via `user_oidc`). Each user therefore connects once with Nextcloud's Login Flow v2; the
@@ -163,7 +163,7 @@ server is unreachable. Outlook mobile and other mail clients do not run the add-
 
 ### 2.4 Cleanup of uploads
 
-Every file link registers its upload folder with the link's expiry date in `/data/cleanup.json` (the latest link
+Every file link registers its upload folder with the link's expiry date in the database (store `cleanup`; the latest link
 wins) – Nextcloud's housekeeping deletes expired shares, so the date could not be read back later. An hourly pass
 (`cleanup.ts`) deletes due folders via WebDAV `DELETE` with the owner's app password, i.e. into the owner's Nextcloud
 **trash**:
@@ -224,7 +224,7 @@ A broken file never stops CloudShare. Example: `templates.example.json`.
 
 With `DOWNLOAD_NOTICE=true`, every file link of a sent mail is registered – with password or, via the job without
 password of 2.2, without – with the sender, subject, recipients and
-expiry (`notices.ts`, `/data/download-notices.json`). Every 10 minutes the Activity API is asked with the owner's
+expiry (`notices.ts`, store `notices`). Every 10 minutes the Activity API is asked with the owner's
 app password; only downloads **after** the password went out count (older links of the same file are ignored). On the
 first download the sender gets a mail (`download_notice_*` templates above a green card, layout of 8) – sent with CloudShare's **own app token**
 (client credentials, application permission `Mail.Send`), because the sender's delegated token has long expired by
@@ -301,7 +301,7 @@ and Revoke work as in the compose pane; Insert is hidden.
 ### 2.10 Showing and sending the password again
 
 Once a step's mail was sent, the watcher records where its password lives: `passwordRefs.ts`,
-`/data/password-refs.json` (encrypted like the jobs) with the **Send ID** – never the password –, the links' tokens,
+store `password-refs` in the database (sealed like the jobs) with the **Send ID** – never the password –, the links' tokens,
 file names, subject, the distribution of the sent mail (To, Cc, Bcc), another address or SMS number the password
 went to, and the sender. It is kept until the links
 expire (`keepUntil`, the Send's deletion date) and only ever returned to its owner.
@@ -328,19 +328,23 @@ when the links expire. Steps sent before this version have no entry – their pa
 |---|---|---|
 | Draft: `item.sessionData` (`DraftState`, `shared/office.ts`) | `jobId`, `separate` (passwords per step), `noPassword`, `passwordTo` / `passwordSms` (channel), `maxAccess`, `links` (tokens of inserted cards); legacy drafts: `password` | Until the draft is sent or closed |
 | Draft: custom property `cloudshareJob` | Job ID; travels with the sent mail into "Sent Items" | With the mail |
-| `/data/nextcloud-credentials.json` | Nextcloud app password per `oid` | Until disconnect / 401 |
-| `/data/password-jobs.json` | Password jobs: owner, sender name and department, file names, Sends and links per step (`separate`), `passwordTo` / `passwordSms`, armed Graph token | 7 days after the last link |
-| `/data/cleanup.json` | Upload folders with expiry date per owner | Until deleted |
-| `/data/deliveries.json` | Per link: channel, masked recipient, SMS message ID and status | 120 days |
-| `/data/password-refs.json` | Per sent step: Send ID (never the password), link tokens, file names, subject, distribution of the sent mail (To, Cc, Bcc), other address / SMS number, sender | Until the links expire |
-| `/data/download-notices.json` | Links waiting for their first download (sender, subject, recipients, expiry) | Until downloaded / expired |
+| `/data/cloudshare.db`, store `credentials` | Nextcloud app password per `oid` | Until disconnect / 401 |
+| … store `password-jobs` | Password jobs: owner, sender name and department, file names, Sends and links per step (`separate`), `passwordTo` / `passwordSms`, armed Graph token | 7 days after the last link |
+| … store `cleanup` | Upload folders with expiry date per owner | Until deleted |
+| … store `deliveries` | Per link: channel, masked recipient, SMS message ID and status | 120 days |
+| … store `password-refs` | Per sent step: Send ID (never the password), link tokens, file names, subject, distribution of the sent mail (To, Cc, Bcc), other address / SMS number, sender | Until the links expire |
+| … store `notices` | Links waiting for their first download or for uploads (sender, subject, recipients, expiry, files already reported) | Until downloaded / expired |
 | Memory (`store.ts`) | Running uploads (12 h), pending Nextcloud logins (20 min) | Lost on restart → single instance only |
 | `roamingSettings` | Last server configuration (for the handlers) | Per mailbox |
 | `/app/public` (tmpfs) | Add-in files with address, client ID and texts of `LANGUAGE` filled in | Rebuilt at every start |
 | `/config` (read-only, host `env/config/`) | Optional `templates.json` and own `locales/<language>.json` | Managed by the admin |
 
-All files in `/data` are AES-256-GCM encrypted with `CREDENTIAL_KEY` (`storage.ts`, atomic writes). The upgrade test
-in CI checks that data written by the published image stays readable by a new one.
+Everything in `/data` lives in one SQLite database, `cloudshare.db` (`db.ts`, Node's built-in `node:sqlite`, WAL, file
+mode 600): one table `entries (store, key, data)`, one row per entry; every row is sealed AES-256-GCM with
+`CREDENTIAL_KEY` (`storage.ts`, AAD = store and key), so the file holds nothing readable. The modules keep their
+entries in memory (`PersistentMap`) and write only the row that changed; a row that cannot be decrypted (e.g. the key
+changed) is skipped with a warning. The upgrade test in CI checks that data written by the published image stays
+readable by a new one; the switch from the former JSON files to SQLite took no data over (that one run is skipped).
 
 ## 4. HTTP API
 

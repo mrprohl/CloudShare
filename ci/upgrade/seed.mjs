@@ -87,5 +87,7 @@ if (refs?.registerPasswordRef) {
   seeded.push("a password entry for sending it again");
 }
 
+// Where the previous version keeps its data: JSON files up to the switch to SQLite (db.ts), the database after it.
+expected.storage = await import("/app/dist/db.js").then(() => "sqlite", () => "files");
 writeFileSync("/data/ci-upgrade-expected.json", JSON.stringify(expected));
 console.log(`seeded ${seeded.join(", ")}`);
