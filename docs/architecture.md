@@ -86,7 +86,7 @@ every language ([2.8](#28-languages)). So one image serves every installation an
 The "Send" tab starts with a switch for **what** goes into the mail – **Files**, **Message** (a confidential message) or
 **Request** (an upload link) – and shows only that part; the one button in the footer names what it inserts ("Insert 2
 files as links", "Insert confidential message", "Insert upload link"). Password, "Send the password to" and the collapsed
-"Validity" (one-line summary of the values for the chosen kind) apply to all three. "No password" is offered for files
+"Validity and language" (one-line summary of the values for the chosen kind and the language for the recipients) apply to all three. "No password" is offered for files
 only; a mail already fixed to links without password disables the button for the other two and says why. Files
 dragged onto the pane switch it to "Files".
 
@@ -262,7 +262,7 @@ Two kinds of language:
 - **`LANGUAGE`** (default `en`) is the language of everything the server sends on its own – download/upload
   confirmation, SMS notes to the sender – the first guess of the taskpane page and the preselected language for the
   recipients.
-- **"Language for the recipients"** (`#recipient-language` under "Send the password to", preselected from the personal
+- **"Language for the recipients"** (`#recipient-language` in "Validity and language", preselected from the personal
   setting `recipientLanguage`, kept per draft in `DraftState.recipientLanguage`): the link card is rendered in it
   (`inLanguage` in `addin/src/shared/i18n.ts`), and every link request carries it as `language`. The server keeps it
   per step (`SeparatePart.language`, the first link of a step decides) and writes the step's password mail and SMS in
@@ -494,7 +494,9 @@ Mailbox 1.14; with 1.12 users are pointed to the ribbon button. The "Send anyway
 follows Outlook's display language; the message (`alert.suggest`) names it as the language file says.
 
 **Office SSO:** only one `getAccessToken` call may run at a time (13008), so the token is cached and concurrent
-callers share one request; SSO errors (plain objects with a code) are shown with a hint (language file, `sso.<code>`) and the code
+callers share one request. Outlook also throttles the calls per add-in (13013, "too many sign-ins"): the token is
+kept in `sessionStorage` (this Outlook window only) so a pane loaded anew for every selected mail reuses it, a 13013
+is retried after a few seconds, and a token the server refuses (401) is dropped; SSO errors (plain objects with a code) are shown with a hint (language file, `sso.<code>`) and the code
 (`shared/sso.ts`). Every step of the send handler has a time limit, so a hanging step ends with a message instead of
 "is taking longer than expected".
 
@@ -598,7 +600,8 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
 - **Messages** (`#status`, `setStatus`): errors and progress stay until the next message; success messages disappear
   after `SUCCESS_MESSAGE_SECONDS` (default 5, `0` = they stay, served in `/api/config`) – the ring around the tick runs
   down clockwise like an OTP timer (CSS animation `status-timer`, the message goes on `animationend`) and stops while
-  the pointer or the focus is on the message.
+  the pointer or the focus is on the message. A failed start (sign-in, server unreachable) offers "Erneut versuchen" in the
+  message (`retryAction`): CloudShare loads anew, as if the pane was opened again.
 - Outlook sets the width of the pane; the layout is designed for 320 px (short labels in "History", full text
   in `title`/`aria-label`).
 - **Cards** (`mailCard.ts`, inserted by the taskpane) and **every mail CloudShare sends itself** share one look. The

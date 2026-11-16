@@ -175,15 +175,6 @@
             <p class="hint" id="password-to-hint" hidden></p>
           </div>
 
-          <!-- Language of what the recipients get: the link card, the password mail and the SMS (preselected from the
-               settings, taskpane.ts renderRecipientLanguages). Hidden while only one language is available. -->
-          <div class="field" id="recipient-language-field">
-            <label for="recipient-language" class="label">%%t:addin.recipientLanguage.label%%</label>
-            <div class="select-wrap">
-              <select id="recipient-language" class="input select"></select>
-            </div>
-          </div>
-
           <!-- Lifetimes and accesses: rarely changed, so collapsed behind a one-line summary (renderValidity). -->
           <div class="validity">
             <button type="button" id="validity-toggle" class="disclosure disclosure-block" aria-expanded="false" aria-controls="validity-section">
@@ -231,6 +222,15 @@
                   <span class="suffix">%%t:addin.expire.suffix%%</span>
                 </div>
                 <p class="hint" id="password-days-hint">%%t:addin.passwordDays.hint%%</p>
+              </div>
+
+              <!-- Language of what the recipients get: the link card, the password mail and the SMS (preselected from the
+                   settings, taskpane.ts renderRecipientLanguages; named in the summary). Hidden with only one language. -->
+              <div class="field" id="recipient-language-field">
+                <label for="recipient-language" class="label">%%t:addin.recipientLanguage.label%%</label>
+                <div class="select-wrap">
+                  <select id="recipient-language" class="input select"></select>
+                </div>
               </div>
             </div>
           </div>
