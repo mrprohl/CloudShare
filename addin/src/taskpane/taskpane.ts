@@ -103,7 +103,7 @@ const progressBar = $<HTMLDivElement>("progress-bar");
 const statusBar = $<HTMLDivElement>("status");
 
 /**
- * Opened from a mail being read (manifest: taskpane.html?view=read, e.g. in "Sent Items"): only "Meine Freigaben",
+ * Opened from a mail being read (manifest: taskpane.html?view=read, e.g. in "Sent Items"): only "Verlauf",
  * with the links found in that mail on top. Nothing is inserted or changed in the mail.
  */
 const readMode = new URLSearchParams(location.search).get("view") === "read";
@@ -633,7 +633,7 @@ async function shareSettingsBody(step: string) {
   };
 }
 
-/** New ID for one click on "Als Link einfügen" / "Link zum Hochladen einfügen" / "Meine Freigaben → Als Link einfügen". */
+/** New ID for one click on "Als Link einfügen" / "Link zum Hochladen einfügen" / "Verlauf → Als Link einfügen". */
 const newStep = () => Math.random().toString(36).slice(2, 12);
 
 /** From the first link on, the choice (this password or none) applies to the whole mail. */
@@ -890,7 +890,7 @@ async function insertIntoBody(html: string, text: string, marker: string) {
   const options = { coercionType: isText ? Office.CoercionType.Text : Office.CoercionType.Html };
 
   // Only links that really landed in the mail are recorded: after a failed insertion the user may paste the link
-  // by hand ("Meine Freigaben"), so the draft must not be released then (see releaseDraftIfLinksGone).
+  // by hand ("Verlauf"), so the draft must not be released then (see releaseDraftIfLinksGone).
   await officeAsync<void>((cb) => body.setSelectedDataAsync(data, options, cb));
   if (await bodyContains(marker)) return rememberLink(marker);
 
@@ -1490,7 +1490,7 @@ async function insertMessage() {
 
 // --- Tabs ------------------------------------------------------------------------------
 
-/** "send" | "shares" while writing ("Senden" | "Meine Freigaben"), "mail" | "shares" while reading. */
+/** "send" | "shares" while writing ("Senden" | "Verlauf"), "mail" | "shares" while reading. */
 type Tab = "send" | "mail" | "shares";
 /** The tab shown – also while the guide covers it, so closing the guide returns there. */
 let currentTab: Tab = "send";
@@ -1579,13 +1579,21 @@ refreshSharesButton.addEventListener("click", () => {
     });
 });
 
-// --- My shares ("Meine Freigaben") -----------------------------------------------------
+// --- History ("Verlauf") -----------------------------------------------------
 
 interface ShareItem {
   id: string;
-  kind: "file" | "request";
+  /** "message": a confidential message (Vaultwarden Send) – no link to copy or insert, no download count. */
+  kind: "file" | "request" | "message";
   name: string;
-  url: string;
+  /** The link; null for a message (CloudShare does not keep its key). */
+  url: string | null;
+  /** Message: the access ID in its link (…/#/send/<accessId>/…), to find it in a mail being read. */
+  accessId?: string;
+  /** Subject of the mail it went out with (title of the entry); null while unknown (not sent yet, older entries). */
+  subject?: string | null;
+  /** Graph ID of that mail in the user's own mailbox – a click on the subject opens it. */
+  mailId?: string | null;
   sharedAt: number;
   expiration: string | null;
   downloads: { count: number; last: string | null } | null;
@@ -1610,7 +1618,7 @@ interface ShareItem {
   revokeAt?: number | null;
 }
 
-/** "Kennwort per SMS an +49 170 •••• 78 – zugestellt am 16.11.2026, 14:05" for the "Meine Freigaben" list. */
+/** "Kennwort per SMS an +49 170 •••• 78 – zugestellt am 16.11.2026, 14:05" for the "Verlauf" list. */
 function passwordText(p: NonNullable<ShareItem["password"]>): string {
   if (p.channel === "mail") return t("shares.passwordMail", { to: p.to });
   const status =
@@ -1625,6 +1633,29 @@ const REQUEST_ICON =
   '<svg class="file-icon" viewBox="0 0 20 20" aria-hidden="true">' +
   '<path d="M10 13V4m0 0L6.5 7.5M10 4l3.5 3.5M4 12v3a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3" fill="none" ' +
   'stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+/** Envelope with a lock: a confidential message. */
+const MESSAGE_ICON =
+  '<svg class="file-icon" viewBox="0 0 20 20" aria-hidden="true">' +
+  '<path d="M16.5 9V5.5a1 1 0 0 0-1-1h-12a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1H11" fill="none" stroke="currentColor" stroke-width="1.2"/>' +
+  '<path d="m2.8 5.2 6.5 5 6.9-5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>' +
+  '<rect x="12.5" y="13" width="5" height="4" rx=".6" fill="none" stroke="currentColor" stroke-width="1.2"/>' +
+  '<path d="M13.6 13v-1.2a1.4 1.4 0 0 1 2.8 0V13" fill="none" stroke="currentColor" stroke-width="1.2"/></svg>';
+
+/**
+ * Opens the sent mail of an entry ("Verlauf": click on its subject). The server keeps the Graph (REST) ID; Outlook's
+ * form wants the EWS ID. Fails quietly into a message if the mail is gone or Outlook cannot open it.
+ */
+function openSentMail(mailId: string) {
+  try {
+    const mailbox = Office.context.mailbox;
+    const ewsId =
+      typeof mailbox.convertToEwsId === "function" ? mailbox.convertToEwsId(mailId, Office.MailboxEnums.RestVersion.v2_0) : mailId;
+    mailbox.displayMessageForm(ewsId);
+  } catch {
+    setStatus(t("shares.openMailFailed"), "error");
+  }
+}
 
 /** Day with year and time: "16.11.2026, 00:42 Uhr" (de) / "16/11/2026, 00:42" (en-GB) – the wording from "shares.dateTime". */
 function formatDateTime(when: string | number): string {
@@ -1696,7 +1727,7 @@ const COPY_ICON =
   'stroke="currentColor" stroke-width="1.4"/><path d="M13 4.5V4a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h.5" ' +
   'fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
 
-/** Icons of the actions in "Meine Freigaben" (Fluent style, 20 × 20) – also shown next to their explanation in the help. */
+/** Icons of the actions in "Verlauf" (Fluent style, 20 × 20) – also shown next to their explanation in the help. */
 const icon = (paths: string) =>
   `<svg class="icon" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.4" ` +
   `stroke-linecap="round" stroke-linejoin="round">${paths}</svg>`;
@@ -1868,7 +1899,7 @@ function shareRow(share: ShareItem): HTMLElement {
   row.dataset.id = share.id; // reading a mail, a link can be in both lists
   const state = shareState(share);
   row.innerHTML =
-    (share.kind === "request" ? REQUEST_ICON : FILE_ICON) +
+    (share.kind === "request" ? REQUEST_ICON : share.kind === "message" ? MESSAGE_ICON : FILE_ICON) +
     `<div class="share-body">` +
     `<div class="share-head"><div class="share-name"></div>` +
     // Icons only: the taskpane is narrow (Outlook sets its width); the text is in title / aria-label (and the help).
@@ -1901,6 +1932,21 @@ function shareRow(share: ShareItem): HTMLElement {
   const name = row.querySelector<HTMLElement>(".share-name")!;
   name.replaceChildren(nameStart, nameEnd);
   name.title = share.name;
+  // Once the mail is known, its subject is the title (a click opens the mail) and the file moves to the line below.
+  if (typeof share.subject === "string") {
+    const title = document.createElement(share.mailId ? "button" : "div");
+    title.className = "share-title";
+    title.textContent = share.subject || t("shares.noSubject");
+    if (share.mailId) {
+      const button = title as HTMLButtonElement;
+      button.type = "button";
+      button.title = t("shares.openMail");
+      button.addEventListener("click", () => openSentMail(share.mailId!));
+    }
+    name.replaceWith(title);
+    name.classList.add("share-item");
+    row.querySelector(".share-head")!.after(name);
+  }
 
   // "15.11. – 29.11.2026 · Kennwort per SMS an +49 170 •••• 72 – übermittelt": the word "Kennwort" only once.
   const period = row.querySelector<HTMLElement>(".share-period")!;
@@ -1918,6 +1964,11 @@ function shareRow(share: ShareItem): HTMLElement {
   passwordLine.classList.toggle("failed", share.password?.status === "failed");
 
   row.querySelector<HTMLElement>(".state-text")!.textContent = state.text;
+  // A message: no download state (Vaultwarden does not report it), no link to copy or insert again (no key kept).
+  if (share.kind === "message") {
+    row.querySelector<HTMLElement>(".share-state")!.hidden = true;
+    row.querySelector<HTMLElement>(".copy")!.hidden = true;
+  }
   if (share.unsent) {
     const line = row.querySelector<HTMLElement>(".share-unsent")!;
     // Downloaded already: it reached someone (e.g. sent from an Outlook without CloudShare) – only the password is missing.
@@ -1947,6 +1998,7 @@ function shareRow(share: ShareItem): HTMLElement {
 
   const copy = row.querySelector<HTMLButtonElement>(".copy")!;
   copy.addEventListener("click", async () => {
+    if (!share.url) return;
     await copyText(share.url);
     copy.innerHTML = ICONS.copied;
     label(copy, t("shares.copied"));
@@ -1958,7 +2010,7 @@ function shareRow(share: ShareItem): HTMLElement {
 
   // A new link for this mail with the settings of the "Senden" tab – the original password cannot be recovered.
   const insert = row.querySelector<HTMLButtonElement>(".insert")!;
-  insert.hidden = readMode; // a mail being read cannot take a link
+  insert.hidden = readMode || share.kind === "message"; // a mail being read cannot take a link
   insert.addEventListener("click", () => {
     linkAgain(share, insert).catch(() => undefined);
   });
@@ -1992,7 +2044,9 @@ function shareRow(share: ShareItem): HTMLElement {
       document.querySelectorAll(`.share[data-id="${CSS.escape(share.id)}"]`).forEach((other) => other.remove());
       // A revoked link counts as expired: the server moved the file to the trash or scheduled it (CLEANUP_AFTER_DAYS).
       const fate =
-        share.kind === "request"
+        share.kind === "message"
+          ? t("shares.fateMessage")
+          : share.kind === "request"
           ? t("shares.fateRequest")
           : result.file === "deleted"
             ? t("shares.fateDeleted")
@@ -2020,7 +2074,7 @@ interface LinkAgainResult {
 }
 
 /**
- * "Als Link einfügen" in "Meine Freigaben": creates a new link to the same file or upload folder with this mail's
+ * "Als Link einfügen" in "Verlauf": creates a new link to the same file or upload folder with this mail's
  * settings (password and password mail, or "Ohne Kennwort" for files) and inserts it like a fresh one.
  */
 async function linkAgain(share: ShareItem, button: HTMLButtonElement) {
@@ -2081,9 +2135,10 @@ async function loadShares() {
   sharesLoadedAt = Date.now();
   const shares = (await api<ShareItem[]>("/api/shares", {}, await getToken())).filter(isValid);
   if (readMode) {
-    // "Nachricht": the links of the mail being read; "Meine Freigaben": all of them.
+    // "Nachricht": the links of the mail being read; "Verlauf": all of them.
     const tokens = await mailTokens();
-    mailShares.replaceChildren(...shares.filter((share) => tokens.has(shareToken(share.url))).map(shareRow));
+    const inMail = (share: ShareItem) => tokens.has(share.url ? shareToken(share.url) : (share.accessId ?? ""));
+    mailShares.replaceChildren(...shares.filter(inMail).map(shareRow));
   }
   sharesList.replaceChildren(...shares.map(shareRow));
   renderEmptyLists();
@@ -2106,18 +2161,21 @@ function renderEmptyLists() {
 }
 
 /**
- * Share tokens of the links in the mail being read – Nextcloud links end in /s/<token>. Only the user's own shares
- * are matched against them, so other links in the mail do no harm.
+ * Tokens of the links in the mail being read – Nextcloud links end in /s/<token>, confidential messages are Send links
+ * …/#/send/<accessId>/<key>. Only the user's own entries are matched against them, so other links do no harm.
  */
 async function mailTokens(): Promise<Set<string>> {
   const item = Office.context.mailbox.item as Office.MessageRead | null | undefined;
   if (!item) return new Set(); // pinned pane, no mail selected
   const html = await officeAsync<string>((cb) => item.body.getAsync(Office.CoercionType.Html, cb)).catch(() => "");
-  return new Set(Array.from(html.matchAll(/\/s\/([A-Za-z0-9]+)/g), (match) => match[1]));
+  return new Set([
+    ...Array.from(html.matchAll(/\/s\/([A-Za-z0-9]+)/g), (match) => match[1]),
+    ...Array.from(html.matchAll(/#\/send\/([A-Za-z0-9_-]+)\//g), (match) => match[1]),
+  ]);
 }
 
 /**
- * Read mode: tabs "Nachricht" (the links of the mail being read, in place of "Senden") and "Meine Freigaben"
+ * Read mode: tabs "Nachricht" (the links of the mail being read, in place of "Senden") and "Verlauf"
  * (plus "Hilfe"); follows the selected mail while the pane is pinned.
  */
 async function startReadView() {

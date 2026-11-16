@@ -435,6 +435,18 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .share-name { flex: 1; min-width: 0; display: flex; font-weight: 600; white-space: pre; } /* pre: a space at the cut stays */
 .share-name .name-start { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .share-name .name-end { flex: none; }
+/*
+ * "Verlauf": once the mail is known its subject is the title – a link-like button that opens the mail – and the file
+ * (or "Dateianforderung", "Vertrauliche Nachricht") moves to its own line below, in regular weight.
+ */
+.share-title {
+  flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: var(--fg1); font: 600 14px/20px var(--font);
+  text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+button.share-title { cursor: pointer; }
+button.share-title:hover { color: var(--brand-fg); text-decoration: underline; text-underline-offset: 2px; }
+button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 2px; }
+.share-name.share-item { font-weight: 400; font-size: 13px; line-height: 18px; color: var(--fg2); }
 .share-meta { font-size: 12px; line-height: 16px; color: var(--fg3); }
 .share-password.failed { color: var(--danger-fg); }
 .share-unsent { color: var(--fg2); font-weight: 600; }

@@ -1,6 +1,6 @@
 /**
  * CloudShare's public links in Nextcloud: which links are CloudShare's and how one is revoked – by its owner
- * ("Zurückziehen" in "Meine Freigaben") or by the job watcher for the links of a mail that was never sent.
+ * ("Zurückziehen" in "Verlauf") or by the job watcher for the links of a mail that was never sent.
  */
 import type { FastifyBaseLogger } from "fastify";
 import { HttpError } from "./auth.js";
@@ -9,6 +9,7 @@ import { config } from "./config.js";
 import { getCredentials, removeCredentials } from "./credentials.js";
 import type { UnsentLinks } from "./jobs.js";
 import { NextcloudClient, NOT_CONNECTED, type PublicShare } from "./nextcloud.js";
+import { forgetMessage, isMessageToken, messageFor } from "./history.js";
 import { forgetPasswordToken } from "./passwordRefs.js";
 import { deleteSend } from "./vaultwarden.js";
 
@@ -55,10 +56,25 @@ export async function revokeShare(
 }
 
 /**
+ * Ends a confidential message ("Zurückziehen" in "Verlauf"): its Send is deleted, so the link stops working at once,
+ * and the Sends of its password once nothing of the step is left. False if it is not the owner's (or gone already).
+ */
+export async function revokeMessage(owner: string, token: string, log: Log): Promise<boolean> {
+  const message = messageFor(token, owner);
+  if (!message) return false;
+  await deleteSend(message.sendId);
+  for (const sendId of await forgetPasswordToken(token, owner)) {
+    await deleteSend(sendId).catch((err) => log.warn({ err, owner }, "Send of a revoked message's password not deleted"));
+  }
+  forgetMessage(token);
+  return true;
+}
+
+/**
  * The links of a mail that was never sent – its password job expired without "Send" ever being pressed: they are
  * revoked and the step's Sends deleted, so no link that never left the draft stays reachable. A link that was already
  * downloaded stays (it reached someone – the mail may have gone out from an Outlook without CloudShare, or the link
- * was copied); the owner decides about it in "Meine Freigaben". Throws if Nextcloud cannot be reached (the watcher
+ * was copied); the owner decides about it in "Verlauf". Throws if Nextcloud cannot be reached (the watcher
  * tries again later); a user who is no longer connected is skipped.
  */
 export async function revokeUnsentLinks(unsent: UnsentLinks, log: Log): Promise<void> {
@@ -79,6 +95,10 @@ export async function revokeUnsentLinks(unsent: UnsentLinks, log: Log): Promise<
       await revokeShare(nc, unsent.owner, share, shares, log);
       shares = shares.filter((s) => s.id !== share.id);
       revoked++;
+    }
+    // Confidential messages of that mail: never sent, so nobody has their link.
+    for (const token of unsent.tokens.filter(isMessageToken)) {
+      if (await revokeMessage(unsent.owner, token, log).catch(() => false)) revoked++;
     }
     for (const sendId of unsent.sendIds) {
       await deleteSend(sendId).catch((err) => log.warn({ err, user: unsent.ownerUpn }, "Send of a mail never sent not deleted"));

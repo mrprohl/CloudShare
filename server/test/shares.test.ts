@@ -55,7 +55,7 @@ describe("links of a mail that was never sent", () => {
     expect(nc.deletePath).toHaveBeenCalledWith("uid", ["CloudShare", "2026-11-13_ab12cd34"]);
   });
 
-  it("keeps a file another link still shares (a link inserted again from \"Meine Freigaben\")", async () => {
+  it("keeps a file another link still shares (a link inserted again from \"Verlauf\")", async () => {
     nc.listPublicShares.mockResolvedValue([
       share("1", "/CloudShare/2026-11-13_ab12cd34/a.pdf", "tokA"),
       share("5", "/CloudShare/2026-11-13_ab12cd34/a.pdf", "tokOriginal"), // the link that was sent earlier

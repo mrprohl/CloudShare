@@ -8,7 +8,7 @@ import { t } from "../shared/i18n";
 
 export interface CardFile {
   name: string;
-  /** Bytes; null if unknown (links inserted again from "Meine Freigaben") – the size is then left out. */
+  /** Bytes; null if unknown (links inserted again from "Verlauf") – the size is then left out. */
   size: number | null;
   url: string;
 }

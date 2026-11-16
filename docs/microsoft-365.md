@@ -151,7 +151,7 @@ Apps*) → **Upload custom apps** (*Benutzerdefinierte Apps hochladen*):
    latest after 24 hours (classic Outlook: tab *Message* (*Nachricht*); new Outlook and the web: the ribbon or the
    *Apps* menu of the compose window). When a mail is **read**, the button is there as well (classic Outlook: tab
    *Home* (*Start*) and the reading window; new Outlook and the web: the ribbon or the *Apps* menu of the mail) – it
-   opens "My shares" with the links of that mail.
+   opens "History" with the links of that mail.
 
 Alternative with a clearer error message on failure (Exchange Online PowerShell, `Connect-ExchangeOnline` first):
 
@@ -201,7 +201,7 @@ Notes:
 Only for `DOWNLOAD_NOTICE=true`, `UPLOAD_NOTICE=true` and `SMS_NOTICE=true`: these mails are sent days later, when the
 user's delegated token has long expired, so CloudShare uses its own **application** permission `Mail.Send` (download
 confirmation, files received through an upload link, password SMS reported as not delivered – without it, only
-"My shares" shows these). CloudShare only ever sends such a mail as the user who shared the link, to that user (or to
+"History" shows these). CloudShare only ever sends such a mail as the user who shared the link, to that user (or to
 the shared mailbox the original mail came from). Only `Mail.Send` is needed: nothing is read with this permission –
 subject and recipients were taken from *Sent Items* with the delegated token when the mail was sent, downloads and
 uploads come from Nextcloud. There is no application version of `Mail.Send.Shared`, and none is needed.
@@ -209,7 +209,7 @@ uploads come from Nextcloud. There is no application version of `Mail.Send.Share
 **All delegated permissions of step 2 stay** – including the delegated `Mail.Send`, `Mail.Send.Shared`, `Mail.Read`
 and `Mail.Read.Shared`. They serve the password mail: right after sending, CloudShare finds the mail in *Sent Items*
 and sends the password with the user's own token, as the user or the shared mailbox (also "send again" in
-"My shares"). The application permission cannot replace them; it is only used days later for the hints above.
+"History"). The application permission cannot replace them; it is only used days later for the hints above.
 
 | `Mail.Send` | Token | When | For |
 |---|---|---|---|

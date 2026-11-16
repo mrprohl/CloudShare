@@ -77,6 +77,8 @@ export interface SentMessage {
   /** Address in the "From" field – the user's own or a shared mailbox (send as / on behalf). */
   from: string | null;
   recipients: MailRecipients;
+  /** Graph ID of the sent mail (immutable: it survives moving the mail) – the pane opens the mail with it. */
+  id?: string;
 }
 
 type GraphRecipient = { emailAddress?: { address?: string } };
@@ -156,7 +158,8 @@ export async function findSentMessage(
     `$expand=${encodeURIComponent(`singleValueExtendedProperties($filter=id eq '${customPropertiesId()}')`)}`,
   ].join("&");
   const res = await fetch(`https://graph.microsoft.com/v1.0/${root}/mailFolders/sentitems/messages?${query}`, {
-    headers: { Authorization: `Bearer ${graphToken}` },
+    // Immutable IDs: the ID stays the same when the user moves the mail out of "Sent Items".
+    headers: { Authorization: `Bearer ${graphToken}`, Prefer: `IdType="ImmutableId"` },
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
@@ -164,6 +167,7 @@ export async function findSentMessage(
   }
   const json = (await res.json()) as {
     value?: Array<{
+      id?: string;
       subject?: string;
       from?: GraphRecipient;
       toRecipients?: GraphRecipient[];
@@ -181,6 +185,7 @@ export async function findSentMessage(
       continue;
     }
     return {
+      id: message.id,
       subject: message.subject ?? "",
       from: message.from?.emailAddress?.address ?? null,
       recipients: {

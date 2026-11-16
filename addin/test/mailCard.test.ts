@@ -36,7 +36,7 @@ describe("filesCard", () => {
     expect(filesText(files, "27.11.2026", formatSize, false)).not.toContain("Kennwort");
   });
 
-  it("leaves out an unknown size (links inserted again from 'Meine Freigaben')", () => {
+  it("leaves out an unknown size (links inserted again from 'Verlauf')", () => {
     const file = { name: "Angebot.pdf", size: null, url: "https://cloud.example.test/s/a" };
     expect(filesCard([file], "27.11.2026", formatSize)).not.toContain(" B<");
     expect(filesText([file], "27.11.2026", formatSize)).toContain("- Angebot.pdf: https://cloud.example.test/s/a");

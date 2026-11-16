@@ -9,7 +9,7 @@ together, where state lives, and the Outlook peculiarities the code has to work 
 Everything visible to users and recipients (taskpane, Outlook hints, cards, password mail, SMS, download
 confirmation) comes from the language files in `locales/` – the add-in in the Outlook client's language, the mails and
 SMS in `LANGUAGE` (`en` by default, see [2.8](#28-languages)); code, logs and documentation are English. Labels are quoted as in the English interface
-("Insert as link", "My shares" …); the German texts (the default) are in `locales/de.json` under the same keys.
+("Insert as link", "History" …); the German texts (the default) are in `locales/de.json` under the same keys.
 
 ## Contents
 
@@ -28,7 +28,7 @@ SMS in `LANGUAGE` (`en` by default, see [2.8](#28-languages)); code, logs and do
 ```
 Outlook (classic on Windows / new Outlook / Outlook on the web)
   ├─ Taskpane            addin/src/taskpane/   connect Nextcloud, pick files, upload, insert cards,
-  │                                            "My shares"; read mode (?view=read): the shares of
+  │                                            "History"; read mode (?view=read): the shares of
   │                                            the mail being read
   └─ Event handlers      addin/src/commands/   OnMessageAttachmentsChanged → info bar
                                                OnMessageSend (Smart Alert) → attachment policy, arm password mail
@@ -113,7 +113,7 @@ a create-only link ("file drop") – same password rules, its own step. **"No pa
 links only) creates a link without password and Send; with `DOWNLOAD_NOTICE=true` it joins a job **without password**
 (`createNoticeJob`, `PasswordJob.noPassword`, the links in `noticeShares`), which the send handler arms like any job –
 the watcher sends nothing and only registers the links for the download confirmation once the mail is in "Sent
-Items". Without the confirmation there is no job (`jobId: null`). The answer always says `noPassword: true`. **"My shares → Insert"**
+Items". Without the confirmation there is no job (`jobId: null`). The answer always says `noPassword: true`. **"History → Insert"**
 (`POST /api/shares/:id/link`) creates a new link to an existing upload with a new password, as a new step.
 
 **"Message"** (`POST /api/messages`): a text instead of a file. It is never written to Nextcloud or to
@@ -132,8 +132,8 @@ from inserting, not from sending; the date is stored with the step (`sendExpires
 `sendKeepUntil`), so the sender can still see and resend the password (2.10). Vaultwarden accepts deletion dates at
 most 31 days ahead, hence **a link with password lasts at most 30 days** (`passwordLinkMaxDays`, also in
 `/api/config`); links "Ohne Kennwort" up to `SHARE_MAX_EXPIRE_DAYS`. A confidential message's password Send lives as
-long as the message. Messages are not listed in "My shares" (they are no Nextcloud shares) and get no
-download confirmation.
+long as the message. Messages are listed in "History" (`history.ts`, 2.10) – with password and revoke, never their
+key – but get no download confirmation.
 
 ### 2.3 Send and password mail
 
@@ -154,13 +154,13 @@ download confirmation.
 4. If the mail does not show up within 15 minutes (sending cancelled or failed), the job is disarmed and stays open
    for further links. Jobs expire 7 days after their last link was added.
 5. Links are created when they are inserted, not when the mail is sent. Until the watcher has seen the mail sent,
-   "My shares" marks the links of a job as **not sent** (`unsent`, `revokeAt` in `GET /api/shares`, from
+   "History" marks the links of a job as **not sent** (`unsent`, `revokeAt` in `GET /api/shares`, from
    `unsentShares`). A job that expires without "Send" ever having been pressed (`armedOnce: false` – the draft was
    discarded) has its links revoked and its Sends deleted (`revokeUnsentLinks` in `shares.ts`, retried hourly while
    Nextcloud is unreachable). Jobs that were armed once are left alone – the mail may have gone out without the
    watcher seeing it – and so are links without password, which may have been sent from a client without CloudShare.
    A link that was already downloaded (Nextcloud activity) is never revoked automatically either: it reached someone
-   (opened by the sender, sent from Outlook without CloudShare, copied). "My shares" then shows it without a revoke
+   (opened by the sender, sent from Outlook without CloudShare, copied). "History" then shows it without a revoke
    date as "Password not sent yet." (`shares.unsentDownloaded`), next to its downloads.
 
 If the add-in cannot run at all, SoftBlock lets the mail through – otherwise a CloudShare outage would stop all mail.
@@ -214,10 +214,10 @@ The ways:
   - seven.io reports it later as not delivered: delivery reports arrive at `/webhooks/seven` (secret in the query,
     compared in constant time, idempotent, webhook and classic form callback) and update `deliveries.ts`; a newly
     failed SMS triggers the note with CloudShare's app token (`sendMailAsApp`) – only with `SMS_NOTICE=true`
-    (application permission `Mail.Send`; unset it follows `DOWNLOAD_NOTICE`, `envFlag`), otherwise "My shares"
+    (application permission `Mail.Send`; unset it follows `DOWNLOAD_NOTICE`, `envFlag`), otherwise "History"
     shows it only.
 
-How the password of each link went out (channel, masked recipient, SMS status) is shown in "My shares".
+How the password of each link went out (channel, masked recipient, SMS status) is shown in "History".
 
 ### 2.6 Text templates
 
@@ -322,11 +322,11 @@ test checks the German texts in the running stack.
 The manifest also adds the CloudShare button to the ribbon of a mail being **read** (`MessageReadCommandSurface`,
 pinnable via `SupportsPinning`; legacy `ItemRead` form for older clients). It opens `taskpane.html?view=read`: no
 "Send" tab; the tabs are "Message" (`#tab-mail`, opened first and again when a pinned pane moves to another mail:
-the links of that mail) and "My shares" (the same list as while writing). A link revoked in one list
+the links of that mail) and "History" (the same list as while writing). A link revoked in one list
 disappears from both.
 
 The mail is matched by its body, not by a server-side record: the pane reads the HTML body (`body.getAsync`) and
-collects the tokens of Nextcloud links (`/s/<token>`); the shares of `GET /api/shares` whose token is among them belong
+collects the tokens of Nextcloud links (`/s/<token>`) and the access IDs of message links (`#/send/<accessId>/`); the entries of `GET /api/shares` whose token or `accessId` is among them belong
 to this mail. That works for every mail with CloudShare links – sent ones, forwarded ones, also links "Ohne Kennwort"
 that never had a job – and needs no new permission (the item is only read). Only the user's own shares can match;
 links of other people or other sites in the mail are ignored. Confidential messages are not listed (Vaultwarden
@@ -341,7 +341,7 @@ file names, subject, the distribution of the sent mail (To, Cc, Bcc), another ad
 went to, and the sender. It is kept until the links
 expire (`keepUntil`, the Send's deletion date) and only ever returned to its owner.
 
-In "My shares" and in the read mode (2.9) such links get **Password** (`passwordAvailable` in `GET /api/shares`):
+In "History" and in the read mode (2.9) such links get **Password** (`passwordAvailable` in `GET /api/shares`):
 
 - `GET /api/shares/:id/password` – the server reads the password from the Send with the service account
   (`readSendPassword`; also after the recipients' access ended) and returns it with the suggested targets.
@@ -352,10 +352,21 @@ In "My shares" and in the read mode (2.9) such links get **Password** (`password
   others (remembered in `otherTo`); `{ channel: "sms", to }` sends an SMS to that number (same template and daily
   limit as the first one). A mail gets a **new** Send with the same password (default access and days, deleted with
   the links) and goes out as the user via Graph (delegated, like the first one, also from a shared mailbox); it never
-  contains the password itself. "My shares" shows the new delivery – To and Cc, never Bcc.
+  contains the password itself. "History" shows the new delivery – To and Cc, never Bcc.
 
 Revoking the last link of a step deletes its Sends at once (`forgetPasswordToken`); otherwise Vaultwarden deletes them
 when the links expire. Steps sent before this version have no entry – their password cannot be shown.
+
+**Confidential messages and the sent mail in "History"** (`history.ts`): a message is a Vaultwarden Send, no Nextcloud
+share, so CloudShare records it itself when it is created (store `messages`: Send ID, access ID, dates – never the key
+from the link or the text) and adds it to its step like a link (`StepShare.message`, token `msg-<Send ID>`). It is then
+covered by the step's password entry above – "Password" works as for files – and `DELETE /api/shares/msg-…` deletes its
+Send (`revokeMessage`); the watcher deletes the message of a mail never sent with its links. It has no "Copy" or
+"Insert again" (no key) and no download state (Vaultwarden does not report openings). When the watcher finds the sent
+mail it stores per link the subject and the mail's Graph ID (store `sent-mails`, `recordSentMail`; requested with
+`Prefer: IdType="ImmutableId"` so it survives moving the mail; only for the user's own mailbox, not a shared one).
+"History" titles each entry with that subject and opens the mail on a click (`openSentMail`: `convertToEwsId` →
+`displayMessageForm`); until the mail is sent the entry is titled with its file, as before.
 
 ### 2.11 Personal settings
 
@@ -397,6 +408,8 @@ changed fields are stored; a new default reaches everyone else.
 | … store `cleanup` | Upload folders with expiry date per owner | Until deleted |
 | … store `deliveries` | Per link: channel, masked recipient, SMS message ID and status | 120 days |
 | … store `password-refs` | Per sent step: Send ID (never the password), link tokens, file names, subject, distribution of the sent mail (To, Cc, Bcc), other address / SMS number, sender | Until the links expire |
+| … store `sent-mails` | Per link: subject of the mail it went out with and the Graph ID (immutable) of that mail in the sender's own "Sent Items" – the title in "History", a click opens the mail | Until the link expires |
+| … store `messages` | Confidential messages: owner, Send ID, access ID (the link without its key), created, expiry – never key or text | Until the message expires |
 | … store `notices` | Links waiting for their first download or for uploads (sender, subject, recipients, expiry, files already reported) | Until downloaded / expired |
 | … store `settings` | Personal settings per `oid` (2.11) – only the fields the user changed | Until reset (`retention: false`) |
 | Memory (`store.ts`) | Running uploads (12 h), pending Nextcloud logins (20 min) | Lost on restart → single instance only |
@@ -432,7 +445,7 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `POST /api/uploads`, `PUT …/:id/chunks/:n`, `POST …/:id/complete`, `DELETE …/:id` | Chunked upload, share link |
 | `POST /api/requests` | Upload link ("Receive files from recipients") |
 | `POST /api/messages` | Confidential message: text → password-protected Vaultwarden Send, joins the mail's password job |
-| `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "My shares": list (all valid links, newest first, max. 100; loaded with the tab, when the pane regains focus and by the refresh button in the tab bar), revoke, insert again; also the read mode (2.9) |
+| `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "History": list (all valid links and confidential messages – `msg-<Send ID>`, `kind: "message"`, deleted in Vaultwarden on revoke –, each with `subject` and `mailId` of its sent mail, newest first, max. 100; loaded with the tab, when the pane regains focus and by the refresh button in the tab bar), revoke, insert again; also the read mode (2.9) |
 | `GET /api/shares/:id/password`, `POST /api/shares/:id/password/send` | The password of a sent link (owner only, until the link expires) and sending it again by SMS or password mail (2.10) |
 | `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send), `passwordTo` or `passwordSms` until the password went out |
 | `POST /api/jobs/:id/arm` | Arm the password mail (send handler); also reads the sender's name and department for the templates |
@@ -493,7 +506,7 @@ Alert trace". Off by default.
   three character classes (checked in the taskpane and again by the server). The password exists in readable form
   only in the Vaultwarden Send and briefly in the taskpane. The recipients can open the Send a limited number of
   times for a few days (5 by default); the Send itself lives until the links expire (at most 30 days), so its
-  sender can see and resend the password in "My shares" (2.10) – the server reads it with the service account and
+  sender can see and resend the password in "History" (2.10) – the server reads it with the service account and
   returns it only to the link's owner. CloudShare stores only the Send ID.
 - **Graph:** delegated permissions for everything the user triggers; the armed token is stored encrypted for at most
   15 minutes of use, and the `.Shared` permissions reach only mailboxes the user already has rights to. Only the
@@ -566,10 +579,10 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   `title`/`aria-label`.
 - **Help** ("Hilfe" in the account menu of the bottom bar, `#help-toggle`; `#panel-help` in `taskpane.html`, shown in place of the
   current tab, closed by "×" or a tab): a user guide for everyday users – short `<details>`
-  sections (getting started, sending files, password and channel, confidential message, receiving files, "My shares",
+  sections (getting started, sending files, password and channel, confidential message, receiving files, "History",
   FAQ), the most common one open. Texts in the language files (`help.*`); admins put their own support contact into
   `help.support` (`/config/locales`). Plain words, the button names of the pane, no technical terms.
-- Outlook sets the width of the pane; the layout is designed for 320 px (short labels in "My shares", full text
+- Outlook sets the width of the pane; the layout is designed for 320 px (short labels in "History", full text
   in `title`/`aria-label`).
 - **Cards** (`mailCard.ts`, inserted by the taskpane) and **every mail CloudShare sends itself** share one look. The
   mails are built by `mailLayout.ts` (`mailDocument`, `mailCard`): text paragraphs, one white card with a coloured

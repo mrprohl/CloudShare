@@ -174,11 +174,11 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     if (route_ === "GET /api/shares") return json(scenario.shares ?? []);
     if (/^DELETE \/api\/shares\/.+$/.test(route_)) return json({ ok: true });
     if (/^PATCH \/api\/jobs\/[^/]+$/.test(route_)) return json({ maxAccess: JSON.parse(call.body!.toString()).maxAccess });
-    if (/^GET \/api\/shares\/\d+\/password$/.test(route_)) {
+    if (/^GET \/api\/shares\/[^/]+\/password$/.test(route_)) {
       return json({ password: "KateGeteFi45", sms: "+491701234567", otherTo: [],
         recipients: { to: ["erika@example.com"], cc: ["chef@example.com"], bcc: ["archiv@example.com"] } });
     }
-    if (/^POST \/api\/shares\/\d+\/password\/send$/.test(route_)) {
+    if (/^POST \/api\/shares\/[^/]+\/password\/send$/.test(route_)) {
       const { channel, to } = JSON.parse(call.body!.toString());
       return json({ channel, to: channel === "sms" ? "+49 171 •••• 21" : channel === "recipients" ? "erika@example.com, chef@example.com" : to });
     }
@@ -204,6 +204,7 @@ const officeLog = (page: Page) =>
     customProps: Record<string, string>;
     session: Record<string, string>;
     openedUrls: string[];
+    openedMails: string[];
   } }).__officeLog);
 
 /** No serious or critical WCAG 2 A/AA violations in the current view. */
@@ -343,7 +344,7 @@ test("language: the pane follows Outlook's display language and tells the server
   await expect(page.locator("#send-view")).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.locator("#tab-send")).toHaveText("Send");
-  await expect(page.locator("#tab-shares")).toHaveText("My shares");
+  await expect(page.locator("#tab-shares")).toHaveText("History");
   await expect(page.locator("#password-label")).toHaveText("Password");
   await expect.poll(() => calls.filter((c) => c.path.startsWith("/api/")).length).toBeGreaterThan(0);
   expect(calls.every((c) => c.language === "en")).toBe(true); // error messages of the server in English
@@ -790,7 +791,7 @@ test("Outlook takes no insertion at all: honest error instead of a false success
   await page.click("#submit");
   const status = page.locator("#status");
   await expect(status).toContainText("Outlook hat den Link nicht in die Nachricht übernommen");
-  await expect(status).toContainText("Meine Freigaben");
+  await expect(status).toContainText("Verlauf");
   await expect(status).not.toContainText("Der Link wurde eingefügt");
 });
 
@@ -1138,7 +1139,7 @@ test("revoked Nextcloud app password: returns to the connect view", async ({ pag
   expect((await officeLog(page)).removed).toEqual([]); // attachment stays in the mail
 });
 
-// --- My shares ---------------------------------------------------------------------------------------------------
+// --- History ---------------------------------------------------------------------------------------------------
 
 const SHARES = [
   { id: "11", kind: "file", name: "Präsentation.pptx", url: "https://cloud.example.com/s/a", sharedAt: Date.parse("2026-11-10"),
@@ -1152,7 +1153,7 @@ const SHARES = [
     expiration: "2020-01-15", downloads: { count: 0, last: null }, received: null },
 ];
 
-test("Meine Freigaben: shows the state of each link and revokes after confirmation", async ({ page }) => {
+test("Verlauf: shows the state of each link and revokes after confirmation", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: SHARES });
   await page.click("#tab-shares");
   const rows = page.locator("#shares .share");
@@ -1232,7 +1233,7 @@ test("Meine Freigaben: shows the state of each link and revokes after confirmati
   await expect(page.locator("#status")).toContainText("„Angebot.pdf“ ist nicht mehr abrufbar.");
 });
 
-test("Meine Freigaben: a failed SMS says whether it was sent at all, and how to send the password again", async ({ page }) => {
+test("Verlauf: a failed SMS says whether it was sent at all, and how to send the password again", async ({ page }) => {
   const sms = { channel: "sms", to: "+49 170 •••• 67", status: "failed", at: Date.parse("2026-11-10T10:00:00Z"), deliveredAt: null };
   const share = (id: string, name: string, refused: boolean) => ({ ...SHARES[0], id, name, url: `https://cloud.example.com/s/${id}`,
     password: { ...sms, refused }, passwordAvailable: true });
@@ -1246,7 +1247,7 @@ test("Meine Freigaben: a failed SMS says whether it was sent at all, and how to 
   await expect(rows.nth(1).locator(".share-password")).toHaveClass(/failed/);
 });
 
-test("Meine Freigaben: links of a mail not sent (e.g. a discarded draft) say so and when they are revoked", async ({ page }) => {
+test("Verlauf: links of a mail not sent (e.g. a discarded draft) say so and when they are revoked", async ({ page }) => {
   const revokeAt = Date.parse("2099-11-22T10:00:00Z");
   await openTaskpane(page, {
     shares: [
@@ -1269,7 +1270,7 @@ test("Meine Freigaben: links of a mail not sent (e.g. a discarded draft) say so 
   await expectAccessible(page);
 });
 
-test("Meine Freigaben: Kennwort shows the password and sends it again the same ways as the first time", async ({ page }) => {
+test("Verlauf: Kennwort shows the password and sends it again the same ways as the first time", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: [{ ...SHARES[0], passwordAvailable: true }, SHARES[1]], config: { smsEnabled: true } });
   await page.click("#tab-shares");
   const rows = page.locator("#shares .share");
@@ -1313,7 +1314,7 @@ test("Meine Freigaben: Kennwort shows the password and sends it again the same w
   expect(sends()[1]).toEqual({ channel: "mail", to: "kollege@example.com, buergerin@example.com" });
 });
 
-test("Meine Freigaben: Als Link einfügen creates a new link with this mail's password", async ({ page }) => {
+test("Verlauf: Als Link einfügen creates a new link with this mail's password", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: SHARES });
   await expect(page.locator("#password")).not.toHaveValue(""); // the pane has started (settings loaded)
   const password = await page.locator("#password").inputValue();
@@ -1335,11 +1336,66 @@ test("Meine Freigaben: Als Link einfügen creates a new link with this mail's pa
 const SENT_MAIL = '<p>Hallo,</p><a href="https://cloud.example.com/s/a">Herunterladen</a>' +
   '<a href="https://cloud.example.com/s/c">Dateien hochladen</a><a href="https://example.org/s/zzz">Shop</a>';
 
-test("reading a mail: tabs 'Nachricht' and 'Meine Freigaben', nothing to insert", async ({ page }) => {
+test("Verlauf: the subject is the title and opens the mail; confidential messages with password and revoke only", async ({ page }) => {
+  const message = { id: "msg-s1", kind: "message", name: "Vertrauliche Nachricht", url: null, accessId: "acc9", sharedAt: Date.parse("2026-11-12"),
+    expiration: "2099-11-17", downloads: null, received: null, protected: true, passwordAvailable: true, subject: "Zugangsdaten", mailId: "AAMk-mail",
+    password: { channel: "mail", to: "erika@example.com", status: null, at: Date.parse("2026-11-12T08:00:00Z"), deliveredAt: null } };
+  const calls = await openTaskpane(page, {
+    shares: [
+      { ...SHARES[0], subject: "Unterlagen Neubau", mailId: "AAMk-files" },
+      { ...SHARES[1], subject: "", mailId: null }, // no subject, mail in a shared mailbox: not openable
+      message,
+      SHARES[2], // not sent yet: no subject known – titled with its name as before
+    ],
+  });
+  await page.click("#tab-shares");
+  const rows = page.locator("#shares .share");
+  await expect(rows.nth(0).locator(".share-title")).toHaveText("Unterlagen Neubau");
+  await expect(rows.nth(0).locator(".share-item")).toHaveText("Präsentation.pptx"); // the file below the subject
+  await expect(rows.nth(1).locator(".share-title")).toHaveText("(Kein Betreff)");
+  await expect(rows.nth(1).locator("button.share-title")).toHaveCount(0);
+  await expect(rows.nth(3).locator(".share-title")).toHaveCount(0);
+  await expect(rows.nth(3).locator(".share-name")).toHaveText("Upload-Link");
+
+  // A click on the subject opens the sent mail in Outlook (EWS ID from the Graph ID).
+  await rows.nth(0).locator("button.share-title").click();
+  expect((await officeLog(page)).openedMails).toEqual(["ews:v2.0:AAMk-files"]);
+
+  // The message: envelope, "Vertrauliche Nachricht" below the subject, the password – but no copy, no insert, no
+  // download state (CloudShare keeps no key, Vaultwarden reports no opening).
+  const msg = rows.nth(2);
+  await expect(msg.locator(".share-title")).toHaveText("Zugangsdaten");
+  await expect(msg.locator(".share-item")).toHaveText("Vertrauliche Nachricht");
+  await expect(msg.locator(".show-password")).toBeVisible();
+  await expect(msg.locator(".copy")).toBeHidden();
+  await expect(msg.locator(".insert")).toBeHidden();
+  await expect(msg.locator(".share-state")).toBeHidden();
+  await expectAccessible(page);
+
+  // Revoked: deleted in Vaultwarden.
+  await msg.locator(".revoke").click();
+  await msg.locator(".revoke").click();
+  await expect(page.locator("#status")).toHaveText("„Vertrauliche Nachricht“ ist nicht mehr abrufbar. Die Nachricht wurde gelöscht.");
+  expect(calls.filter((c) => c.method === "DELETE").map((c) => c.path)).toEqual(["/api/shares/msg-s1"]);
+  await expect(rows).toHaveCount(3);
+});
+
+test("reading a mail: a confidential message of that mail shows under 'Nachricht'", async ({ page }) => {
+  const message = { id: "msg-r1", kind: "message", name: "Vertrauliche Nachricht", url: null, accessId: "accR1", sharedAt: Date.parse("2026-11-12"),
+    expiration: "2099-11-17", downloads: null, received: null, protected: true, subject: "Zugangsdaten", mailId: "AAMk-r" };
+  await openTaskpane(page, {
+    shares: [SHARES[1], message],
+    readBody: '<p>Hallo,</p><a href="https://vault.example.com/#/send/accR1/geheimerSchluessel">Nachricht öffnen</a>',
+  });
+  await expect(page.locator("#mail-shares .share")).toHaveCount(1);
+  await expect(page.locator("#mail-shares .share .share-item")).toHaveText("Vertrauliche Nachricht");
+});
+
+test("reading a mail: tabs 'Nachricht' and 'Verlauf', nothing to insert", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: SHARES, readBody: SENT_MAIL });
-  // No "Senden" when reading: "Nachricht" (opened first) takes its place, "Meine Freigaben" as when writing.
+  // No "Senden" when reading: "Nachricht" (opened first) takes its place, "Verlauf" as when writing.
   await expect(page.locator("#tab-send")).toBeHidden();
-  await expect(page.locator(".tabs [role=tab]:visible")).toHaveText(["Nachricht", "Meine Freigaben"]);
+  await expect(page.locator(".tabs [role=tab]:visible")).toHaveText(["Nachricht", "Verlauf"]);
   await expect(page.locator("#tab-mail")).toHaveAttribute("aria-selected", "true");
   await expect(page.locator("#account-toggle")).toBeVisible(); // the guide and the settings are there too, in its menu
   await expect(page.locator("#panel-send")).toBeHidden();
@@ -1359,7 +1415,7 @@ test("reading a mail: tabs 'Nachricht' and 'Meine Freigaben', nothing to insert"
   await expectNoHorizontalScroll(page);
   await shot(page, "read-view");
 
-  // "Meine Freigaben": every valid link, those of this mail included (Alt.zip has expired).
+  // "Verlauf": every valid link, those of this mail included (Alt.zip has expired).
   await page.click("#tab-shares");
   await expect(page.locator("#panel-mail")).toBeHidden();
   await expect(page.locator("#shares .share .share-name")).toHaveText(["Präsentation.pptx", "Angebot.pdf", "Upload-Link"]);
@@ -1396,7 +1452,7 @@ test("reading a mail before connecting Nextcloud: connect view, then the shares"
   await expect(page.locator("#tab-send")).toBeHidden();
 });
 
-test("Meine Freigaben: upload links are not inserted again without password", async ({ page }) => {
+test("Verlauf: upload links are not inserted again without password", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: SHARES });
   await page.check("#mode-none");
   await page.click("#tab-shares");
@@ -1435,8 +1491,8 @@ test("Hilfe: \"Hilfe\" in the account menu opens the guide in place of the tab, 
   await settings.locator("summary").click();
   await expect(settings).toContainText("auf Ihr Konto und dann auf „Einstellungen“");
   await expect(settings).toContainText("Zurücksetzen");
-  // "Meine Freigaben" explains every icon with the icon itself – also "Aktualisieren" in the tab bar.
-  const shares = sections.filter({ has: page.locator("summary", { hasText: "Meine Freigaben" }) });
+  // "Verlauf" explains every icon with the icon itself – also "Aktualisieren" in the tab bar.
+  const shares = sections.filter({ has: page.locator("summary", { hasText: "Verlauf" }) });
   await shares.locator("summary").click();
   for (const icon of ["copy", "password", "insert", "revoke", "refresh"]) {
     await expect(shares.locator(`[data-icon="${icon}"] svg`)).toHaveCount(1);
@@ -1455,7 +1511,7 @@ test("Hilfe: \"Hilfe\" in the account menu opens the guide in place of the tab, 
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await expect(page.locator("#account-toggle")).toBeFocused();
 
-  // Opened from "Meine Freigaben": a click on a tab closes it as well.
+  // Opened from "Verlauf": a click on a tab closes it as well.
   await page.click("#tab-shares");
   await openHelp(page);
   await expect(page.locator("#panel-shares")).toBeHidden();
@@ -1523,7 +1579,7 @@ test("reading a mail at 320 px: the tab names stay on one line", async ({ page }
   await shot(page, "read-320px");
 });
 
-test("Meine Freigaben at 320 px: a long name is shortened in the middle, the icons stay in its line", async ({ page }) => {
+test("Verlauf at 320 px: a long name is shortened in the middle, the icons stay in its line", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   const long = "cloudshare-icon-varianten-mit-sehr-langem-namen und Leerzeichen-final.png";
   await openTaskpane(page, { shares: [{ ...SHARES[0], name: long, passwordAvailable: true }, SHARES[1]] });
@@ -1556,7 +1612,14 @@ test.describe("README pictures (English)", () => {
 
   const ATTACHMENTS = [attachment("a1", "Presentation.pptx", 6.5 * MiB), attachment("a2", "Notes.txt", 200 * 1024)];
   const README_CONFIG = { smsEnabled: true, smsDefaultCountry: "49", thresholdMb: 5, sendExpireDays: 5, sendMaxExpireDays: 30 };
-  const SHARES_EN = SHARES.map((share, i) => ({ ...share, name: ["Presentation.pptx", "Quote.pdf", "File request", "Old.zip"][i] }));
+  // With the mails they went out with (subject as title), and a confidential message.
+  const SUBJECTS = ["Documents new building project", "Quote 2026-118", "Documents new building project", ""];
+  const SHARES_EN = [
+    ...SHARES.map((share, i) => ({ ...share, name: ["Presentation.pptx", "Quote.pdf", "File request", "Old.zip"][i], subject: SUBJECTS[i], mailId: `AAMk-${i}` })),
+    { id: "msg-1", kind: "message", name: "Confidential message", url: null, accessId: "acc1", sharedAt: Date.parse("2026-11-12"),
+      expiration: "2099-11-17", downloads: null, received: null, protected: true, passwordAvailable: true, subject: "Access data", mailId: "AAMk-9",
+      password: { channel: "mail", to: "erika.beispiel@example.com", status: null, at: Date.parse("2026-11-12T08:00:00Z"), deliveredAt: null } },
+  ];
 
   test("Send: files", async ({ page }) => {
     await openTaskpane(page, { lang: "en", attachments: ATTACHMENTS, config: README_CONFIG });
@@ -1585,11 +1648,11 @@ test.describe("README pictures (English)", () => {
     await readmeShot(page, "dark");
   });
 
-  test("My shares", async ({ page }) => {
+  test("History", async ({ page }) => {
     const shares = SHARES_EN.map((share, i) => (i === 0 ? { ...share, passwordAvailable: true } : share));
     await openTaskpane(page, { lang: "en", shares, config: README_CONFIG });
     await page.click("#tab-shares");
-    await expect(page.locator("#shares .share")).toHaveCount(3);
+    await expect(page.locator("#shares .share")).toHaveCount(4);
     await expect(page.locator("#shares .share").nth(1).locator(".state-text")).toHaveText("Not downloaded yet");
     // "Password" opened at the first link: the password and "Send again to".
     await page.locator("#shares .share").nth(0).locator(".show-password").click();
@@ -1602,7 +1665,7 @@ test.describe("README pictures (English)", () => {
     await openTaskpane(page, { lang: "en", shares: SHARES_EN, config: README_CONFIG, readBody: SENT_MAIL });
     await expect(page.locator("#mail-shares .share")).toHaveCount(2);
     await expect(page.locator("#tab-mail")).toHaveText("Message");
-    await expect(page.locator("#tab-shares")).toHaveText("My shares");
+    await expect(page.locator("#tab-shares")).toHaveText("History");
     await readmeShot(page, "read");
   });
 

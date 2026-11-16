@@ -1,7 +1,7 @@
 /**
  * Download confirmation (DOWNLOAD_NOTICE=true): the sender gets a mail when a recipient downloads a file for the
  * first time. After the password went out (jobs.ts), every file link of the mail is registered here; a pass every
- * 10 minutes asks Nextcloud's Activity API with the owner's app password (the same data "Meine Freigaben" shows) and
+ * 10 minutes asks Nextcloud's Activity API with the owner's app password (the same data "Verlauf" shows) and
  * counts only downloads after the registration. The mail is sent with CloudShare's own app token (application
  * permission Mail.Send), because the sender's delegated token has long expired by then.
  *
