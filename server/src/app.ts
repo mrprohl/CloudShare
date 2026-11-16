@@ -59,7 +59,7 @@ import {
   smsNumber,
   smsNumberProblem,
 } from "./sms.js";
-import { accessIdOf, isMessageToken, messageFor, messagesOf, recordMessage, sentMailFor } from "./history.js";
+import { accessIdOf, isMessageToken, messageFor, messagesOf, recordDraftSubject, recordMessage, sentMailFor, updateDraftSubject } from "./history.js";
 import { isCloudShareShare, isRequestShare, revokeMessage, revokeShare, tokenOf } from "./shares.js";
 import { defaultTemplates, render, smsFiles, templatesFor } from "./templates.js";
 import { clampInt, isEmailAddress } from "./limits.js";
@@ -115,6 +115,8 @@ interface ShareRequest {
   passwordSms?: unknown;
   /** "Sprache für die Empfänger": language of the password mail and SMS of this link's step (a code of the add-in). */
   language?: unknown;
+  /** Subject of the draft the link goes into – "Verlauf" shows it until the mail is sent. */
+  subject?: unknown;
 }
 
 /** The way the password of a new link goes out (see ShareRequest), checked like PATCH /api/jobs/:id does. */
@@ -298,6 +300,13 @@ const shareInfo = (url: string, name: string, expireDate: string, knownFiles?: s
   ...(knownFiles ? { request: true as const, knownFiles } : {}),
 });
 
+/** "Verlauf": the draft's subject for a new link (or message) until its mail is sent – see recordDraftSubject. */
+function rememberDraftSubject(user: User, body: { subject?: unknown } | undefined, share: StepShare | undefined) {
+  if (!share || typeof body?.subject !== "string") return;
+  const keepUntil = Date.parse(`${share.expireDate}T00:00:00Z`) + 86_400_000;
+  recordDraftSubject(share.token, { owner: user.oid, subject: body.subject.trim().slice(0, 255), keepUntil });
+}
+
 const formatBytes = (bytes: number) =>
   bytes >= 1024 ** 3
     ? `${(bytes / 1024 ** 3).toLocaleString(locale(), { maximumFractionDigits: 1 })} GB`
@@ -406,7 +415,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     messageMaxLength: MESSAGE_MAX_LENGTH,
     sendExpireDays: config.sendExpireDays,
     sendMaxExpireDays: config.sendMaxExpireDays,
-    // Success messages in the pane disappear after this many seconds (0: they stay).
+    // Success and error messages in the pane disappear after this many seconds (0: they stay).
     successMessageSeconds: config.successMessageSeconds,
     // "Nextcloud öffnen" in the account menu.
     nextcloudUrl: config.nextcloudUrl,
@@ -638,6 +647,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const shareUrl = await nc.createPublicShare(upload.target, noPassword ? undefined : password, expireDate);
       await registerForCleanup(user.oid, upload.target, expireDate);
       const share = shareInfo(shareUrl, upload.fileName, expireDate);
+      rememberDraftSubject(user, req.body, share);
       const jobId = noPassword
         ? await attachNoticeJob(user, req.body?.jobId, share)
         : await attachToJob(user, req.body?.jobId, upload.fileName, password, passwordLink, req.body?.step, share, delivery, knownLanguage(req.body?.language));
@@ -664,8 +674,10 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     // Create-only share ("file drop"): recipients can upload but cannot see or download anything.
     const shareUrl = await nc.createPublicShare(folder, password, expireDate, 4, t("server.requestLabel"));
     const language = knownLanguage(req.body?.language);
+    const share = shareInfo(shareUrl, uploadLinkItem(), expireDate, []); // a new folder: nothing received yet
+    rememberDraftSubject(user, req.body, share);
     const jobId = await attachToJob(user, req.body?.jobId, uploadLinkItem(language), password, passwordLink, req.body?.step,
-      shareInfo(shareUrl, uploadLinkItem(), expireDate, []), delivery, language); // a new folder: nothing received yet
+      share, delivery, language);
     req.log.info({ user: user.upn, folder: folder.join("/") }, "Upload link created");
     return { shareUrl, expireDate, jobId };
   });
@@ -701,6 +713,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
           message: true,
         }
       : undefined;
+    rememberDraftSubject(user, req.body, share);
     const jobId = await attachToJob(user, req.body?.jobId, item, password, link, req.body?.step, share, delivery, knownLanguage(req.body?.language));
     req.log.info({ user: user.upn, days, length: text.length }, "Confidential message created");
     return { shareUrl: send.url, expireDate, jobId };
@@ -728,7 +741,13 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     /** The mail a link went out with: its subject (title in "Verlauf") and ID (the pane opens it). */
     const mailOf = (token: string) => {
       const mail = sentMailFor(token, user.oid);
-      return { subject: mail ? mail.subject : null, mailId: mail?.mailId ?? null };
+      return {
+        subject: mail ? mail.subject : null,
+        mailId: mail?.mailId ?? null,
+        // When and to whom it went (tooltip of the subject) – only known once the sent mail was found.
+        sentAt: mail?.sentAt ?? null,
+        sentTo: mail?.to ? { to: mail.to, cc: mail.cc ?? [] } : null,
+      };
     };
 
     const links = await Promise.all(
@@ -979,6 +998,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         ? config.uploadNotice ? ((await nc.listFiles((await nc.userInfo()).id, segments)) ?? []) : []
         : undefined;
       const info = shareInfo(shareUrl, request ? uploadLinkItem() : fileName, expireDate, knownFiles);
+      rememberDraftSubject(user, req.body, info);
       const jobId = noPassword
         ? await attachNoticeJob(user, req.body?.jobId, info)
         : await attachToJob(user, req.body?.jobId, request ? uploadLinkItem(knownLanguage(req.body?.language)) : fileName, password, passwordLink, req.body?.step, info, delivery, knownLanguage(req.body?.language));
@@ -993,7 +1013,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
    *   passwordTo – "Kennwort an andere Adresse": the password mail goes only to this address; "" = the recipients
    *   passwordSms – "Kennwort per SMS": the password goes by SMS to this number instead; "" = no SMS
    */
-  app.patch<{ Params: { id: string }; Body: { maxAccess?: unknown; passwordTo?: unknown; passwordSms?: unknown } }>(
+  app.patch<{ Params: { id: string }; Body: { maxAccess?: unknown; passwordTo?: unknown; passwordSms?: unknown; subject?: unknown } }>(
     "/api/jobs/:id",
     async (req) => {
       const user = await authenticate(req);
@@ -1001,6 +1021,13 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       if (!job || job.owner !== user.oid) throw new HttpError(404, t("server.jobNotFound"));
       if (job.dispatched) throw new HttpError(409, t("server.passwordAlreadySent"));
       const body = req.body ?? {};
+
+      // The draft's subject changed ("Verlauf" shows it until the mail is sent – also if the draft is discarded).
+      if (typeof body.subject === "string") {
+        const shares = [...(job.separate ?? []).flatMap((part) => part.shares ?? []), ...(job.noticeShares ?? [])];
+        const links = shares.map((s) => ({ token: s.token, keepUntil: Date.parse(`${s.expireDate}T00:00:00Z`) + 86_400_000 }));
+        updateDraftSubject(links, user.oid, body.subject.trim().slice(0, 255));
+      }
 
       if (body.passwordSms !== undefined && body.passwordSms !== "") {
         if (!smsEnabled()) throw new HttpError(409, t("server.smsNotConfigured"));

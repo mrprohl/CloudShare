@@ -17,6 +17,10 @@ export interface SentMail {
   subject: string;
   /** Graph ID (immutable) of the mail in the sender's own "Sent Items"; none for a shared mailbox. */
   mailId?: string;
+  /** When it was sent (ms) and to whom (To and Cc – never Bcc): the tooltip of the subject in "Verlauf". */
+  sentAt?: number;
+  to?: string[];
+  cc?: string[];
   /** When the link expires (ms) – the entry is dropped then. */
   keepUntil: number;
 }
@@ -43,6 +47,27 @@ function prune() {
   const now = Date.now();
   for (const [token, mail] of sentMails) if (mail.keepUntil < now) sentMails.delete(token);
   for (const [token, message] of messages) if (message.expiresAt < now) messages.delete(token);
+}
+
+/**
+ * The subject of the draft a link was inserted into – shown in "Verlauf" until the mail is sent (recordSentMail then
+ * puts the real one and the mail's ID in its place). Never overwrites a known mail.
+ */
+export function recordDraftSubject(token: string, mail: Omit<SentMail, "mailId">): void {
+  if (!sentMails.has(token)) sentMails.set(token, { ...mail });
+}
+
+/**
+ * The draft's subject changed (the pane checks it every few seconds while it is open): the links of the mail not sent
+ * yet show the new one – also when the draft is discarded afterwards. Links whose mail was found keep its subject.
+ */
+export function updateDraftSubject(links: Array<{ token: string; keepUntil: number }>, owner: string, subject: string): void {
+  for (const { token, keepUntil } of links) {
+    const mail = sentMails.get(token);
+    if (mail && (mail.owner !== owner || mail.mailId)) continue;
+    if (mail?.subject === subject) continue;
+    sentMails.set(token, { owner, subject, keepUntil: mail?.keepUntil ?? keepUntil });
+  }
 }
 
 /** Remembers the mail the links (tokens) went out with. */

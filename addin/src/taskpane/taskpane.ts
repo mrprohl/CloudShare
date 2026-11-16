@@ -147,24 +147,29 @@ function applyOfficeTheme() {
 
 type StatusKind = "info" | "success" | "error";
 
-const STATUS_ICONS: Record<StatusKind, string> = {
-  info: '<circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor"/><path d="M8 7v4M8 4.8v.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
-  success: '<circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor"/><path d="m5.3 8.2 1.8 1.8 3.6-3.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>',
-  error: '<circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor"/><path d="M8 4.5v4.2M8 11v.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
+/** The sign inside the circle of each kind of message. */
+const STATUS_GLYPHS: Record<StatusKind, string> = {
+  info: '<path d="M8 7v4M8 4.8v.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
+  success: '<path d="m5.3 8.2 1.8 1.8 3.6-3.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>',
+  error: '<path d="M8 4.5v4.2M8 11v.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>',
 };
+const STATUS_CIRCLE = '<circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor"/>';
 
 /**
- * Ring of a success message that runs down (SUCCESS_MESSAGE_SECONDS, like the OTP timer in Vaultwarden): a faint track
- * and the green ring around the tick, emptying clockwise from 12 o'clock. It stops while the pointer (or the keyboard
- * focus) is on the message – taskpane.css – and the message goes when it has run down.
+ * A message that runs down (SUCCESS_MESSAGE_SECONDS, like the OTP timer in Vaultwarden): a faint track and the ring
+ * around the tick (or the "!"), emptying clockwise from 12 o'clock. It stops while the pointer (or the keyboard focus)
+ * is on the message – taskpane.css – and the message goes when it has run down.
  */
-const STATUS_TIMER =
+const statusTimer = (kind: StatusKind) =>
   '<circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" opacity=".25"/>' +
   '<circle class="status-timer" cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" pathLength="100" stroke-dasharray="100"/>' +
-  '<path d="m5.3 8.2 1.8 1.8 3.6-3.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/>';
+  STATUS_GLYPHS[kind];
 
-/** Seconds a success message stays (server setting, 5 until the configuration is loaded); 0: it stays. */
-const successSeconds = () => serverConfig?.successMessageSeconds ?? 5;
+/**
+ * Seconds a success or error message stays (server setting, 5 until the configuration is loaded); 0: it stays.
+ * Progress ("info") and a message with a button ("Erneut versuchen") stay until the next one.
+ */
+const messageSeconds = () => serverConfig?.successMessageSeconds ?? 5;
 
 /** A button in the message, e.g. "Erneut versuchen" after a failed start. */
 type StatusAction = { label: string; run: () => void };
@@ -177,9 +182,9 @@ function setStatus(text: string, kind: StatusKind = "info", action?: StatusActio
   const shown = ++statusShown;
   statusBar.hidden = !text;
   statusBar.className = `messagebar ${kind}`;
-  const seconds = kind === "success" ? successSeconds() : 0;
+  const seconds = kind !== "info" && !action ? messageSeconds() : 0;
   statusBar.innerHTML = text
-    ? `<svg class="icon" viewBox="0 0 16 16" aria-hidden="true">${seconds > 0 ? STATUS_TIMER : STATUS_ICONS[kind]}</svg><span></span>`
+    ? `<svg class="icon" viewBox="0 0 16 16" aria-hidden="true">${seconds > 0 ? statusTimer(kind) : STATUS_CIRCLE + STATUS_GLYPHS[kind]}</svg><span></span>`
     : "";
   if (text) statusBar.querySelector("span")!.textContent = text;
   if (text && action) {
@@ -666,9 +671,43 @@ async function upload(blob: Blob, fileName: string, step: string): Promise<Uploa
  * Settings of the "Senden" tab for a new link. `step` identifies the click ("Als Link einfügen" etc.): every step
  * gets its own password and password mail, files of the same step share them (see attachToJob on the server).
  */
+/** The draft's subject the server knows (sent with the last link or by syncDraftSubject). */
+let syncedSubject: string | undefined;
+
+/** Subject of the draft (undefined if Outlook cannot tell) – "Verlauf" shows it until the mail is sent. */
+async function draftSubject(): Promise<string | undefined> {
+  try {
+    const item = Office.context.mailbox.item as Office.MessageCompose;
+    return await officeAsync<string>((cb) => item.subject.getAsync(cb));
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The subject typed after a link was inserted reaches "Verlauf" too: checked with the drafts' other state every few
+ * seconds while the pane is open; a change goes to the server (PATCH /api/jobs/:id) – also kept if the draft is then
+ * discarded. Only for a mail with links (a job).
+ */
+async function syncDraftSubject() {
+  if (busy > 0 || document.hidden || readMode) return;
+  const state = await readDraftState();
+  if (!state.jobId) return;
+  const subject = await draftSubject();
+  if (subject === undefined || subject === syncedSubject) return;
+  syncedSubject = subject;
+  await api(`/api/jobs/${encodeURIComponent(state.jobId)}`, { method: "PATCH", body: JSON.stringify({ subject }) }, await getToken()).catch(
+    () => {
+      syncedSubject = undefined; // try again on the next check
+    },
+  );
+}
+
 async function shareSettingsBody(step: string) {
   const expireDays = Number(expireInput.value);
-  if (withoutPassword()) return { noPassword: true, expireDays, jobId: (await readDraftState()).jobId, language: recipientLanguage() };
+  const subject = await draftSubject();
+  syncedSubject = subject;
+  if (withoutPassword()) return { noPassword: true, expireDays, jobId: (await readDraftState()).jobId, language: recipientLanguage(), subject };
   // An address or number typed just before the click (its "change" event may not have run yet) must reach the job.
   const wanted = channelTarget();
   const current = await readDraftState();
@@ -689,6 +728,7 @@ async function shareSettingsBody(step: string) {
     ...(wanted?.passwordSms ? { passwordSms: wanted.passwordSms } : { passwordTo: wanted?.passwordTo ?? "" }),
     // Language of this step's password mail and SMS ("Sprache für die Empfänger").
     language: recipientLanguage(),
+    subject,
   };
 }
 
@@ -1678,6 +1718,9 @@ interface ShareItem {
   subject?: string | null;
   /** Graph ID of that mail in the user's own mailbox – a click on the subject opens it. */
   mailId?: string | null;
+  /** When the mail went out (ms) and to whom (To, Cc) – the tooltip of the subject; null until it is sent. */
+  sentAt?: number | null;
+  sentTo?: { to: string[]; cc: string[] } | null;
   sharedAt: number;
   expiration: string | null;
   downloads: { count: number; last: string | null } | null;
@@ -2020,27 +2063,42 @@ function shareRow(share: ShareItem): HTMLElement {
   const name = row.querySelector<HTMLElement>(".share-name")!;
   name.replaceChildren(nameStart, nameEnd);
   name.title = share.name;
-  // Once the mail is known, its subject is the title (a click opens the mail) and the file moves to the line below.
-  if (typeof share.subject === "string") {
+  // Every entry the same way: the subject of its mail as the title (the draft's until it is sent; a click opens a sent
+  // mail), below it what went out – the file with its label. Entries from before subjects were kept say so.
+  {
     const title = document.createElement(share.mailId ? "button" : "div");
     title.className = "share-title";
-    title.textContent = share.subject || t("shares.noSubject");
+    // No subject yet in a mail not sent: it may still come ("Noch kein Betreff").
+    title.textContent =
+      typeof share.subject === "string"
+        ? share.subject || t(share.unsent ? "shares.noSubjectYet" : "shares.noSubject")
+        : t("shares.subjectUnknown");
+    title.classList.toggle("unknown", typeof share.subject !== "string");
+    // Hovering the subject: when the mail went out and to whom (To, Cc – never Bcc), then how to open it.
+    const sent = share.sentTo
+      ? [
+          t("shares.sentTo", { time: formatDateTime(share.sentAt ?? share.sharedAt), to: share.sentTo.to.join(", ") || "–" }),
+          share.sentTo.cc.length ? t("shares.sentCc", { cc: share.sentTo.cc.join(", ") }) : "",
+        ]
+      : [];
     if (share.mailId) {
       const button = title as HTMLButtonElement;
       button.type = "button";
-      button.title = t("shares.openMail");
       button.addEventListener("click", () => void openSentMail(share));
     }
-    name.replaceWith(title);
-    name.classList.add("share-item");
+    const tooltip = [...sent, share.mailId ? t("shares.openMail") : ""].filter(Boolean).join("\n");
+    if (tooltip) title.title = tooltip;
     // What went out, as a label like "Groß" at the attachments: "Datei" before the file name, "Dateianforderung" and
     // "Vertrauliche Nachricht" (in colour, so it stands out) on their own.
+    const item = document.createElement("div");
+    item.className = "share-item";
     const kind = document.createElement("span");
     kind.className = `badge kind-${share.kind}`;
     kind.textContent = t(`shares.kind.${share.kind}`);
-    if (share.kind === "file") name.prepend(kind);
-    else name.replaceChildren(kind);
-    row.querySelector(".share-head")!.after(name);
+    item.append(kind);
+    name.replaceWith(title);
+    if (share.kind === "file") item.append(name);
+    row.querySelector(".share-head")!.after(item);
   }
 
   // "15.11. – 29.11.2026 · Kennwort per SMS an +49 170 •••• 72 – übermittelt": the word "Kennwort" only once.
@@ -2374,8 +2432,14 @@ Office.onReady(async () => {
   renderKind();
   // Outlook has no "body changed" event: check when the pane gets focus and every few seconds while locked.
   await releaseIfLinksDeleted();
-  window.addEventListener("focus", () => void releaseIfLinksDeleted());
-  setInterval(() => void releaseIfLinksDeleted(), 4000);
+  window.addEventListener("focus", () => {
+    void releaseIfLinksDeleted();
+    void syncDraftSubject();
+  });
+  setInterval(() => {
+    void releaseIfLinksDeleted();
+    void syncDraftSubject();
+  }, 4000);
 
   await renderAttachments().catch(() => undefined);
   composeItem().addHandlerAsync(Office.EventType.AttachmentsChanged, () => {

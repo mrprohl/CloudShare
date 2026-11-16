@@ -212,8 +212,8 @@ export const config = {
   /** Diagnostics: the Smart Alert reports its steps to POST /api/trace (logged). Off by default. */
   clientTrace: process.env.CLIENT_TRACE === "true",
   /**
-   * Success messages in the pane disappear after this many seconds (a ring around the tick runs down; it stops while
-   * the pointer is on the message). 0 = they stay. Errors always stay.
+   * Success and error messages in the pane disappear after this many seconds (a ring around the tick or "!" runs
+   * down; it stops while the pointer is on the message). 0 = they stay. Progress and a failed start stay.
    */
   successMessageSeconds: (() => {
     const value = Number(process.env.SUCCESS_MESSAGE_SECONDS ?? 5);

@@ -373,10 +373,14 @@ Send (`revokeMessage`); the watcher deletes the message of a mail never sent wit
 "Insert again" (no key) and no download state (Vaultwarden does not report openings). When the watcher finds the sent
 mail it stores per link the subject and the mail's Graph ID (store `sent-mails`, `recordSentMail`; requested with
 `Prefer: IdType="ImmutableId"` so it survives moving the mail; only for the user's own mailbox, not a shared one).
-"History" titles each entry with that subject and opens the mail on a click (`openSentMail`: `GET /api/shares/:id/mail`
+"History" titles each entry with that subject and opens the mail on a click (hovering shows when and to whom it went –
+`sentAt`, `sentTo` with To and Cc, never Bcc, kept with the subject) (`openSentMail`: `GET /api/shares/:id/mail`
 translates the immutable ID into the current EWS ID with Graph `translateExchangeIds` – Outlook cannot open the
 immutable form – then `displayMessageFormAsync`, which reports a failure; a mail in Deleted Items or – after emptying them – in
-Recoverable Items counts as deleted, `sentMailState`); until the mail is sent the entry is titled with its file, as before.
+Recoverable Items counts as deleted, `sentMailState`); until the mail is sent the entry shows the draft's subject (every link request carries `subject`,
+`recordDraftSubject`, a subject typed later follows with `PATCH /api/jobs/:id` from the pane's 4-second check,
+`syncDraftSubject` – kept even if the draft is then discarded; replaced by the real one when the mail is found); a mail not
+sent yet without subject says "(No subject yet)", entries from before "(Subject unknown)".
 
 ### 2.11 Personal settings
 
@@ -458,7 +462,7 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "History": list (all valid links and confidential messages – `msg-<Send ID>`, `kind: "message"`, deleted in Vaultwarden on revoke –, each with `subject` and `mailId` of its sent mail, newest first, max. 100; loaded with the tab, when the pane regains focus and by the refresh button in the tab bar), revoke, insert again; also the read mode (2.9) |
 | `GET /api/shares/:id/password`, `POST /api/shares/:id/password/send` | The password of a sent link (owner only, until the link expires) and sending it again by SMS or password mail (2.10) |
 | `GET /api/shares/:id/mail` | "History": the sent mail of an entry as the EWS ID Outlook opens (`displayMessageFormAsync`) – the immutable Graph ID kept at sending, translated now with `translateExchangeIds` (User.Read), so it follows a moved mail; 404 if none is known or it is gone – also when it lies in Deleted Items or, after emptying them, in Recoverable Items (`sentMailState`, Mail.Read), where Outlook would still open it |
-| `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send), `passwordTo` or `passwordSms` until the password went out |
+| `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send), `passwordTo` or `passwordSms` until the password went out; `subject`: the draft's subject changed (the pane checks it every 4 s while open) – "History" shows it for the mail's links until the sent mail is found (`updateDraftSubject`) |
 | `POST /api/jobs/:id/arm` | Arm the password mail (send handler); also reads the sender's name and department for the templates |
 | `GET/POST /webhooks/seven?token=…` | seven.io delivery reports (no login, secret `SEVEN_WEBHOOK_SECRET`) |
 
@@ -598,8 +602,8 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   sections (getting started, sending files, password and channel, confidential message, receiving files, "History",
   FAQ), the most common one open. Texts in the language files (`help.*`); admins put their own support contact into
   `help.support` (`/config/locales`). Plain words, the button names of the pane, no technical terms.
-- **Messages** (`#status`, `setStatus`): errors and progress stay until the next message; success messages disappear
-  after `SUCCESS_MESSAGE_SECONDS` (default 5, `0` = they stay, served in `/api/config`) – the ring around the tick runs
+- **Messages** (`#status`, `setStatus`): progress and a failed start (with "Erneut versuchen") stay until the next message; success and error messages disappear
+  after `SUCCESS_MESSAGE_SECONDS` (default 5, `0` = they stay, served in `/api/config`) – the ring around the tick or the "!" runs
   down clockwise like an OTP timer (CSS animation `status-timer`, the message goes on `animationend`) and stops while
   the pointer or the focus is on the message. A failed start (sign-in, server unreachable) offers "Erneut versuchen" in the
   message (`retryAction`): CloudShare loads anew, as if the pane was opened again.
