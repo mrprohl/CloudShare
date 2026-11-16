@@ -242,7 +242,11 @@ interface ConnectionStatus {
 function storageText(status: ConnectionStatus): string {
   const isBytes = (value: unknown): value is number => typeof value === "number" && value >= 0;
   if (isBytes(status.freeBytes) && isBytes(status.totalBytes)) {
-    return t("storage.freeOf", { free: formatSize(status.freeBytes), total: formatSize(status.totalBytes) });
+    // Short for the narrow bar: "12,5 / 50 GB frei" – the unit once when both use the same.
+    const total = formatSize(status.totalBytes);
+    const unit = total.slice(total.lastIndexOf(" "));
+    const free = formatSize(status.freeBytes);
+    return t("storage.freeOf", { free: free.endsWith(unit) ? free.slice(0, -unit.length) : free, total });
   }
   if (isBytes(status.freeBytes)) return t("storage.free", { free: formatSize(status.freeBytes) });
   if (isBytes(status.usedBytes)) return t("storage.used", { used: formatSize(status.usedBytes) });
@@ -255,6 +259,10 @@ function showConnection(status: ConnectionStatus) {
   connectHint.hidden = true;
   // The bottom bar shows the Nextcloud account (menu: settings, help, disconnect) and its storage on the right.
   accountText.textContent = status.loginName ?? "";
+  // The bar may cut a long name short: hovering shows it whole.
+  accountToggle.title = status.loginName
+    ? `${t("account.signedIn", { name: status.loginName })}\n${t("account.menu")}`
+    : t("account.menu");
   const storage = storageText(status);
   accountStorage.textContent = storage;
   accountStorage.hidden = !storage;
