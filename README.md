@@ -36,7 +36,7 @@ is "Datei als Link einfügen", "My shares" is "Meine Freigaben".*
 
 | 1. The mail with the download links | 2. Shortly after: the password |
 |---|---|
-| ![Received mail with a card for three files and a card for an upload link](docs/images/mail-received.png) | ![Password mail with the three file names and a "Show password" button](docs/images/password-mail.png) |
+| ![Received mail with a card for three files and a card for an upload link](docs/images/mail-received.png) | ![Password mail with the three file names, a "Show password" button and the sender's signature at the end](docs/images/password-mail.png) |
 | One card per click on the insert button: file type, name, size and a download button; here also a link through which the recipients can upload files themselves (a confidential message gets its own card with "Open message"). | One password mail per card. "Show password" opens the Vaultwarden Send; it works only a few times (default 3) and for a few days (default 5, chosen by the sender). |
 
 The password never travels in the same mail as the link, and it is only sent once the mail with the link has really
@@ -273,7 +273,7 @@ deployed again.
 | `SMS_BLOCKED_NUMBERS` / `SMS_ALLOWED_NUMBERS` | `^\+49(800\|900\|180)` / empty | Regular expressions on the number (`+491701234567`): matching numbers are refused / only matching numbers are accepted. Mobile and landline numbers are allowed; the default blocks 0800, 0900 and 0180 numbers |
 | `DOWNLOAD_NOTICE` | off | `true`: mail to the sender on the first download (needs the Entra application permission `Mail.Send`, see [microsoft-365.md → 5](docs/microsoft-365.md#5-optional-application-permission-for-the-download-confirmation)) |
 | `UPLOAD_NOTICE` | off | `true`: mail to the sender when files arrive through an upload link ("Anfordern"), at most one per link every 10 minutes, until the link expires (same application permission `Mail.Send`) |
-| `DEFAULT_PASSWORD_CHANNELS` | `recipients,mail,sms` | Personal settings, starting value: ways "Send the password to" offers (`recipients`, `mail`, `sms`; SMS only with seven.io). Each user can change it under the gear, see [Personal settings](#personal-settings) |
+| `DEFAULT_PASSWORD_CHANNELS` | `recipients,mail,sms` | Personal settings, starting value: ways "Send the password to" offers (`recipients`, `mail`, `sms`; SMS only with seven.io). Each user can change it in the settings (account menu at the bottom left), see [Personal settings](#personal-settings) |
 | `DEFAULT_PASSWORD_CHANNEL` | `recipients` | Personal settings, starting value: the way preselected for a new message |
 | `DEFAULT_DOWNLOAD_NOTICE` / `DEFAULT_UPLOAD_NOTICE` / `DEFAULT_SMS_NOTICE` | `true` | Personal settings, starting value of the notices – only where `DOWNLOAD_NOTICE` / `UPLOAD_NOTICE` / `SMS_NOTICE` are on |
 | `DEFAULT_LANGUAGE` | `auto` | Personal settings, starting value of the add-in language: `auto` (as in Outlook) or a language code |
@@ -369,7 +369,7 @@ The built-in texts are those of the configured language (section `templates` of 
 
 ## Personal settings
 
-The gear at the bottom of the pane (next to the Nextcloud account) opens each user's own settings. They are stored
+"Einstellungen" in the account menu (a click on the Nextcloud account at the bottom left) opens each user's own settings. They are stored
 on the server per Microsoft account (encrypted like everything in `/data/cloudshare.db`) and apply on every computer:
 
 | Setting | Choice | Starting value |
@@ -493,8 +493,8 @@ Every push and pull request runs the pipeline in `.github/workflows/image.yml`:
 
 | Stage | What is checked |
 |---|---|
-| test | type check and unit tests of both packages, **language files** (same texts and placeholders in every language, every key used exists, Outlook's length limits), `npm audit`, manifest validation per language, ShellCheck, deployment files (`setup.sh` with dummy answers, `docker compose config`, `caddy validate`) |
-| ui | the real taskpane in Chromium with Office.js and the API mocked – upload, cards, passwords, "My shares", dark theme, 320 px width and **accessibility** (axe, WCAG 2 A/AA); screenshots as artifact `ui-test-report`, including the English pane pictures of this README |
+| test | type check and unit tests of both packages, **documentation** (settings, API routes, pictures, help – `docs.test.ts`), **language files** (same texts and placeholders in every language, every key used exists, Outlook's length limits), `npm audit`, manifest validation per language, ShellCheck, deployment files (`setup.sh` with dummy answers, `docker compose config`, `caddy validate`) |
+| ui | the real taskpane in Chromium with Office.js and the API mocked – upload, cards, passwords, "My shares", dark theme, 320 px width and **accessibility** (axe, WCAG 2 A/AA); screenshots as artifact `ui-test-report`; the English pane pictures of this README **compared with `docs/images`** (fresh ones as artifact `readme-pictures`) |
 | build | image build, Trivy scan, **smoke test** of the real stack with Caddy (TLS, headers, add-in files with the texts of every language, English manifest with Overrides, read button and help, limits, login required on the API, hardening; the Vaultwarden mock refuses Sends beyond 31 days), **upgrade test** (connections, password jobs, delivery status, download confirmations, cleanup list and password entries written by the published image must stay readable), **load test** (k6: 10 users × 2 × 45 MiB) |
 | push | only if everything passed: `ghcr.io/mrprohl/cloudshare` (`latest`, `sha-<commit>`, version tags); pull requests publish nothing |
 
@@ -510,12 +510,27 @@ $edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 $repo = (Get-Location).Path; $url = "file:///" + ($repo -replace '\\','/') + "/docs/mockups"
 $opts = "--headless=new", "--hide-scrollbars", "--user-data-dir=$env:TEMP\cloudshare-edge"
 foreach ($shot in @(("outlook-compose", "compose-send", "1440,1010"), ("mail-received", "mail-received", "760,706"),
-                    ("password-mail", "password-mail", "760,566"), ("sender-notices", "sender-notices", "760,942"))) {
+                    ("password-mail", "password-mail", "760,676"), ("sender-notices", "sender-notices", "760,942"))) {
   Start-Process -Wait $edge ($opts + "--window-size=$($shot[2])", "--screenshot=$repo\docs\images\$($shot[0]).png", "$url/$($shot[1]).html")
 }
 ```
 
 The pane pictures (`taskpane-*.png`) come from the UI tests in English ("README pictures" in
-`addin/e2e/taskpane.e2e.ts`, served below `/en/` by `addin/e2e/serve.mjs`): attachments `readme-send`,
-`readme-message`, `readme-dark`, `readme-shares`, `readme-read`, `readme-help` and `readme-connect` of the artifact `ui-test-report`, already as tall
-as the content.
+`addin/e2e/taskpane.e2e.ts`, served below `/en/` by `addin/e2e/serve.mjs`), already as tall as the content. **The UI
+tests compare them with `docs/images`**: a visible change of the pane fails the `ui` job until the pictures are
+updated. Every run uploads the fresh ones as artifact `readme-pictures`; take them over with
+
+```bash
+gh run download <run-id> -n readme-pictures -D docs/images
+```
+
+**Documentation checks** – so docs and pictures keep up with the code:
+
+- `server/test/docs.test.ts` (job `test`): every environment variable the server reads is in the settings table above
+  and in `cloudshare.env.example`, every HTTP route in the API table of `docs/architecture.md`, every README picture
+  exists, and the help has its texts in every language.
+- The README pictures of the pane, as described above (job `ui`).
+- `.github/pull_request_template.md`: a checklist for what no test can check (help in plain words, mockup pictures,
+  manifest version).
+- `.claude/settings.json`: a Claude Code Stop hook (`.claude/hooks/doc-check.sh`) that does not let Claude finish
+  after changing code without touching the documentation, or the pane without the README pictures.

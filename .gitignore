@@ -5,3 +5,4 @@ env/
 # UI test output (addin)
 playwright-report/
 test-results/
+addin/readme-pictures/

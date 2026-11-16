@@ -283,6 +283,48 @@ describe("password by SMS, deliveries and download notices", () => {
     expect(getJob(id)?.dispatched).toBe(true);
   });
 
+  it("sends the password of one step on every way its links chose – one password mail and one SMS", async () => {
+    // A file for the recipients, an upload link with the same password for them too, then a file by SMS.
+    const id = await createSeparateJob("oid", "max@example.test", {
+      step: "s1", fileNames: ["a.pdf"], sendUrl: "https://vault/#/send/a", sendId: "send-a", maxAccessCount: 3,
+      shares: [share("tok-way-1", "a.pdf")], deliveries: [{ channel: "recipients" }],
+    });
+    await addFileToPart(id, "s1", "Upload-Link", share("tok-way-2", "Upload-Link"), { channel: "recipients" });
+    await addFileToPart(id, "s1", "b.pdf", share("tok-way-3", "b.pdf"), { channel: "sms", to: "+491701234567" });
+    expect(getJob(id)?.separate?.[0].deliveries).toEqual([{ channel: "recipients" }, { channel: "sms", to: "+491701234567" }]);
+    await arm(id);
+    sentOnlyFor(id);
+
+    await checkJobs(quietLog());
+
+    expect(sendMail).toHaveBeenCalledOnce(); // one password mail for the step …
+    expect(sendMail.mock.calls[0][1]).toEqual(sentMessage.recipients);
+    expect(sendSms).toHaveBeenCalledOnce(); // … and one SMS with the same password
+    expect(sendSms.mock.calls[0][0]).toBe("+491701234567");
+    expect(getJob(id)?.dispatched).toBe(true);
+    expect(passwordRefFor("tok-way-1", "oid")).toMatchObject({ sms: "+491701234567" });
+
+    // A second pass sends nothing again.
+    await checkJobs(quietLog());
+    expect(sendMail).toHaveBeenCalledOnce();
+    expect(sendSms).toHaveBeenCalledOnce();
+  });
+
+  it("does not send a way twice when a later one failed", async () => {
+    const id = await createSeparateJob("oid", "max@example.test", {
+      step: "s1", fileNames: ["a.pdf"], sendUrl: "https://vault/#/send/a", sendId: "send-a", maxAccessCount: 3,
+      shares: [share("tok-retry-1", "a.pdf")], deliveries: [{ channel: "recipients" }, { channel: "mail", to: "kollege@example.test" }],
+    });
+    await arm(id);
+    sentOnlyFor(id);
+    sendMail.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("Graph down"));
+    await checkJobs(quietLog()).catch(() => undefined);
+    await checkJobs(quietLog()).catch(() => undefined);
+    const targets = sendMail.mock.calls.map((call) => (call[1] as { to: string[] }).to[0]);
+    expect(targets.filter((to) => to === "erika@example.test")).toHaveLength(1); // the recipients only once
+    expect(targets.filter((to) => to === "kollege@example.test")).toHaveLength(2); // the failed one again
+  });
+
   it("sends no password another way when the SMS fails – only a note without password to the sender", async () => {
     const id = await smsJob("tok-sms-2");
     await arm(id);

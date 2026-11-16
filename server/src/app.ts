@@ -27,6 +27,7 @@ import {
   setPartsExpiry,
   takeSmsQuota,
   unsentShares,
+  type Delivery,
   type StepShare,
 } from "./jobs.js";
 import {
@@ -105,6 +106,25 @@ interface ShareRequest {
   passwordDays?: unknown;
   /** ID of the "Als Link einfügen" step (one password and one password mail per step, see attachToJob). */
   step?: unknown;
+  /**
+   * "Kennwort senden an" of this link: passwordSms (a number) or passwordTo (an address; "" = the recipients of the
+   * mail). Neither sent (clients from before): the mail's one way set by PATCH /api/jobs/:id applies.
+   */
+  passwordTo?: unknown;
+  passwordSms?: unknown;
+}
+
+/** The way the password of a new link goes out (see ShareRequest), checked like PATCH /api/jobs/:id does. */
+function deliveryFrom(body: ShareRequest | undefined): Delivery | undefined {
+  if (!body || (body.passwordTo === undefined && body.passwordSms === undefined)) return undefined;
+  if (typeof body.passwordSms === "string" && body.passwordSms.trim()) {
+    if (!smsEnabled()) throw new HttpError(409, t("server.smsNotConfigured"));
+    return { channel: "sms", to: smsNumber(body.passwordSms) };
+  }
+  const to = typeof body.passwordTo === "string" ? body.passwordTo.trim() : "";
+  if (!to) return { channel: "recipients" };
+  if (!isEmailAddress(to)) throw new HttpError(400, t("server.recipientsInvalid", { max: 1 }));
+  return { channel: "mail", to };
 }
 
 /** The password link of a step: how often and for how many days it can be opened, and how long its Send lives. */
@@ -155,20 +175,24 @@ async function attachToJob(
   requestedStep: unknown,
   /** The link just created (token, file name, expiry) – for "Meine Freigaben" and download confirmations. */
   share?: StepShare,
+  /** "Kennwort senden an" of this link (deliveryFrom); joins the ways of its step. */
+  delivery?: Delivery,
 ) {
   const step = typeof requestedStep === "string" && /^[A-Za-z0-9-]{1,40}$/.test(requestedStep) ? requestedStep : undefined;
   const id = typeof requestedJobId === "string" ? requestedJobId : undefined;
   const existing = id ? getJob(id) : undefined;
+  // Password by SMS: the link of the Send is never sent – its access may last as long as the Send itself.
+  const bySms = delivery ? delivery.channel === "sms" : Boolean(existing?.passwordSms);
+  if (bySms) link = { ...link, days: config.sendMaxExpireDays };
+  const deliveries = delivery ? [delivery] : undefined;
   if (id && existing && existing.owner === user.oid && !existing.dispatched) {
-    // Password by SMS: the link of the Send is never sent – its access may last as long as the Send itself.
-    if (existing.passwordSms) link = { ...link, days: config.sendMaxExpireDays };
     // A mail started with one shared password (before this version) keeps it.
     if (!existing.separate) {
       await addFileToJob(id, itemName);
       return id;
     }
     if (step && findPart(id, step)) {
-      await addFileToPart(id, step, itemName, share);
+      await addFileToPart(id, step, itemName, share, delivery);
       return id;
     }
     const send = await createPasswordSend(`CloudShare: ${itemName}`, password, link.maxAccess, link.days, link.keepUntil);
@@ -181,6 +205,7 @@ async function attachToJob(
       sendExpiresAt: send.expiresAt,
       sendKeepUntil: link.keepUntil,
       shares: share ? [share] : undefined,
+      deliveries,
     });
     return id;
   }
@@ -195,6 +220,7 @@ async function attachToJob(
       sendExpiresAt: send.expiresAt,
       sendKeepUntil: link.keepUntil,
       shares: share ? [share] : undefined,
+      deliveries,
     });
   }
   return createJob(user.oid, user.upn, itemName, send.url, link.maxAccess, send.id);
@@ -592,6 +618,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       // "Ohne Kennwort": plain public link – no Vaultwarden Send, no password job, no password mail.
       const noPassword = req.body?.noPassword === true;
       const { password, expireDate, passwordLink } = shareSettings(req.body, !noPassword);
+      const delivery = noPassword ? undefined : deliveryFrom(req.body);
 
       const nc = nextcloudFor(user);
       await nc.finishUpload(upload.uid, req.params.id, upload.target, upload.size);
@@ -602,7 +629,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const share = shareInfo(shareUrl, upload.fileName, expireDate);
       const jobId = noPassword
         ? await attachNoticeJob(user, req.body?.jobId, share)
-        : await attachToJob(user, req.body?.jobId, upload.fileName, password, passwordLink, req.body?.step, share);
+        : await attachToJob(user, req.body?.jobId, upload.fileName, password, passwordLink, req.body?.step, share, delivery);
       req.log.info({ user: user.upn, file: upload.fileName, noPassword }, "Share created");
       return { shareUrl, expireDate, jobId, noPassword, fileName: upload.fileName, size: upload.size };
     },
@@ -616,6 +643,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
   app.post<{ Body: ShareRequest & { jobId?: string } }>("/api/requests", { config: { rateLimit: strictLimit } }, async (req) => {
     const user = await authenticate(req);
     const { password, expireDate, passwordLink } = shareSettings(req.body);
+    const delivery = deliveryFrom(req.body);
 
     const nc = nextcloudFor(user);
     const { id: uid } = await nc.userInfo();
@@ -624,7 +652,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     // Create-only share ("file drop"): recipients can upload but cannot see or download anything.
     const shareUrl = await nc.createPublicShare(folder, password, expireDate, 4, t("server.requestLabel"));
     const jobId = await attachToJob(user, req.body?.jobId, uploadLinkItem(), password, passwordLink, req.body?.step,
-      shareInfo(shareUrl, uploadLinkItem(), expireDate, [])); // a new folder: nothing received yet
+      shareInfo(shareUrl, uploadLinkItem(), expireDate, []), delivery); // a new folder: nothing received yet
     req.log.info({ user: user.upn, folder: folder.join("/") }, "Upload link created");
     return { shareUrl, expireDate, jobId };
   });
@@ -642,6 +670,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       throw new HttpError(400, t("server.messageInvalid", { max: MESSAGE_MAX_LENGTH }));
     }
     const { password, passwordLink } = shareSettings(req.body);
+    const delivery = deliveryFrom(req.body);
     const days = clampInt(req.body?.messageDays, config.sendExpireDays, 1, config.sendMaxExpireDays);
     const expiresAt = new Date(Date.now() + days * 86_400_000);
     const expireDate = expiresAt.toISOString().slice(0, 10);
@@ -649,7 +678,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     const send = await createMessageSend(item, text, password, expiresAt);
     // The password is needed exactly as long as the message can be read.
     const link = { ...passwordLink, days: Math.min(passwordLink.days, days), keepUntil: expiresAt.getTime() };
-    const jobId = await attachToJob(user, req.body?.jobId, item, password, link, req.body?.step);
+    const jobId = await attachToJob(user, req.body?.jobId, item, password, link, req.body?.step, undefined, delivery);
     req.log.info({ user: user.upn, days, length: text.length }, "Confidential message created");
     return { shareUrl: send.url, expireDate, jobId };
   });
@@ -825,6 +854,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const noPassword = req.body?.noPassword === true;
       if (request && noPassword) throw new HttpError(400, t("server.requestNeedsPassword"));
       const { password, expireDate, passwordLink } = shareSettings(req.body, !noPassword);
+      const delivery = noPassword ? undefined : deliveryFrom(req.body);
 
       const segments = share.path.split("/").filter(Boolean);
       const fileName = segments[segments.length - 1];
@@ -839,7 +869,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const info = shareInfo(shareUrl, request ? uploadLinkItem() : fileName, expireDate, knownFiles);
       const jobId = noPassword
         ? await attachNoticeJob(user, req.body?.jobId, info)
-        : await attachToJob(user, req.body?.jobId, request ? uploadLinkItem() : fileName, password, passwordLink, req.body?.step, info);
+        : await attachToJob(user, req.body?.jobId, request ? uploadLinkItem() : fileName, password, passwordLink, req.body?.step, info, delivery);
       req.log.info({ user: user.upn, path: share.path, noPassword }, "Share linked again");
       return { kind: request ? "request" : "file", shareUrl, expireDate, jobId, noPassword, fileName, size: share.size };
     },
