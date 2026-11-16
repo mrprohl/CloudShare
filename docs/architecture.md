@@ -103,7 +103,10 @@ dragged onto the pane switch it to "Files".
    inserted nothing (new Outlook without a cursor in the body) – followed by an empty paragraph, so the next card does
    not land inside this one. It tags the draft with the custom property `cloudshareJob` (job ID) and records the link
    token in the draft state.
-5. After the step the taskpane offers a new random password (or clears an own one) for the next step.
+5. After the step the taskpane preselects "Gleiches Kennwort wie zuvor" (`mode-same`, `DraftState.lastStep` = step ID
+   and password): the next link – files, message or upload link – is sent with the same `step` and joins that part
+   (`findPart`/`addFileToPart` on the server: same password, same Send, one password mail or SMS). "Zufällig" or
+   "Eigenes" start a new step with a new password and its own password mail (`stepForClick`).
 
 Variants: **"Request"** (`POST /api/requests`) creates a folder in `NEXTCLOUD_REQUEST_FOLDER` with
 a create-only link ("file drop") – same password rules, its own step. **"No password"** (`noPassword: true`, file
@@ -348,7 +351,7 @@ when the links expire. Steps sent before this version have no entry – their pa
 
 ### 2.11 Personal settings
 
-The gear in every account line opens the settings in place of the current tab, like the guide (`settings.ts` in the
+The gear in the bottom bar (next to the "?") opens the settings in place of the current tab, like the guide (`settings.ts` in the
 add-in, `server/src/settings.ts`, store `settings`):
 
 - **Ways for the password** (`channels`, `defaultChannel`): `applyChannelChoices` hides the other options of "Kennwort
@@ -552,7 +555,7 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   language). Accessibility is tested with axe (WCAG 2 A/AA) in CI.
 - Layout and labels must survive longer translations: buttons and labels wrap or are short, the full text is in
   `title`/`aria-label`.
-- **Help** ("?" at the right of the tab row, `#help-toggle`; `#panel-help` in `taskpane.html`, shown in place of the
+- **Help** ("?" in the bottom bar next to the gear, `#help-toggle`; `#panel-help` in `taskpane.html`, shown in place of the
   current tab, closed by "×", the "?" or a tab): a user guide for everyday users – short `<details>`
   sections (getting started, sending files, password and channel, confidential message, receiving files, "My shares",
   FAQ), the most common one open. Texts in the language files (`help.*`); admins put their own support contact into

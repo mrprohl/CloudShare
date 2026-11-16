@@ -96,9 +96,11 @@ three.
    password went out, for SMS with the delivery status. With the download confirmation switched on, you get a mail
    when a recipient downloads a file for the first time – also for links without password.
 
-Every click on the button gets **its own password and its own password mail**; files selected together in one click
-share them. If you delete all CloudShare cards from the mail before sending, no password mail goes out and the
-password options are free again.
+Files selected together in one click share one password and one password mail. After the first link,
+**"Same password as before"** is preselected: the next link – more files, a confidential message or an upload link –
+joins it, so the recipients get one password for all of them in one password mail (or SMS). "Random password" or "Own
+password" give the next link its own password and password mail. If you delete all CloudShare cards from the mail
+before sending, no password mail goes out and the password options are free again.
 
 <img src="docs/images/taskpane-message.png" alt="Pane with Message chosen: the message field with its character count, the password and the opened validity with Message valid for, Password can be opened and Password link valid for; the button Insert confidential message" width="300" align="right">
 
@@ -149,9 +151,9 @@ there. Confidential messages are not listed (they are not stored in Nextcloud).
 
 <br clear="right">
 
-<img src="docs/images/taskpane-help.png" alt="Help, opened with the question mark at the top right: a short introduction and sections to open – Getting started, Sending large files (open), Password and how it is sent, Confidential message, Receiving files from others, My shares, Frequently asked questions" width="300" align="right">
+<img src="docs/images/taskpane-help.png" alt="Help, opened with the question mark at the bottom right: a short introduction and sections to open – Getting started, Sending large files (open), Password and how it is sent, Confidential message, Receiving files from others, My shares, Frequently asked questions" width="300" align="right">
 
-**Help for users:** the **question mark** at the top right of the pane opens a short guide ("Hilfe") written for
+**Help for users:** the **question mark** at the bottom right of the pane opens a short guide ("Hilfe") written for
 everyday users without IT knowledge – e.g. clerks in an administration: the first connection, sending large files
 step by step, choosing the password and how it is sent (with a clear note that personal or confidential data always go
 with a password), the confidential message, receiving files, "My shares" and frequently asked questions ("The

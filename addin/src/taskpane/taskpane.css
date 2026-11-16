@@ -114,15 +114,41 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* --- Layout -------------------------------------------------------------------- */
 .content { flex: 1; padding: 12px 16px 16px; }
 .send-view { display: flex; flex-direction: column; flex: 1; }
+/* "Senden": progress and the insert button, kept just above the bottom bar. */
 .footer {
   position: sticky;
-  bottom: 0;
+  bottom: var(--bar-height);
   padding: 12px 16px;
   background: var(--bg1);
   border-top: 1px solid var(--stroke2);
 }
-.footer .account { margin-top: 8px; text-align: center; overflow-wrap: anywhere; }
-.footer .account:first-child { margin-top: 0; } /* "Nachricht" / "Meine Freigaben": only the account line */
+/*
+ * Bottom bar under every tab, the guide and the settings: account (name and storage, "Verbindung trennen" on a line of
+ * its own) on the left, help and settings on the right. Fixed height, so the button above can stack on it; a long
+ * account name is shortened instead of wrapping – the bar looks the same at every width.
+ */
+:root { --bar-height: 52px; }
+.account-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: var(--bar-height);
+  padding: 0 8px 0 16px;
+  background: var(--bg1);
+  border-top: 1px solid var(--stroke2);
+}
+.account-bar .account { flex: 1; min-width: 0; margin: 0; }
+.account-bar .account-name, .account-bar .disconnect-link {
+  display: block; width: fit-content; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.account-actions { display: flex; flex: none; gap: 2px; }
+.account-actions .btn-subtle { margin: 0; color: var(--fg2); }
+.account-actions .btn-subtle .icon { color: var(--fg2); }
+.account-actions .btn-subtle:hover .icon, .account-actions [aria-expanded="true"] .icon { color: var(--brand-fg); }
+.account-actions [aria-expanded="true"] { background: var(--bg1-pressed); }
 
 .empty-state { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 24px; text-align: center; }
 .empty-icon { width: 48px; height: 48px; color: var(--brand-fg); }
@@ -445,8 +471,7 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* The "?" at the right of the tab row opens the guide in place of the current tab. */
 .tabbar { display: flex; align-items: stretch; border-bottom: 1px solid var(--stroke2); padding-right: 8px; }
 .tabbar .tabs { flex: 1; min-width: 0; border-bottom: 0; }
-.help-toggle, .tabbar-action { align-self: center; margin: 0; color: var(--fg2); }
-.help-toggle[aria-expanded="true"] { background: var(--bg1-pressed); color: var(--brand-fg); }
+.tabbar-action { align-self: center; margin: 0; color: var(--fg2); }
 .help-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 2px 0 6px; }
 .help-header .btn-subtle { margin: 0 -6px 0 0; }
 .help { color: var(--fg1); }
@@ -482,9 +507,6 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .help-support { margin: 14px 0 4px; }
 
 /* --- Personal settings (gear in the account line, settings.ts) ------------------- */
-.account .settings-toggle { width: 24px; min-width: 24px; height: 24px; margin: -4px 2px -4px -4px; vertical-align: middle; color: var(--fg2); }
-.account .settings-toggle .icon { width: 16px; height: 16px; color: var(--fg2); }
-.account .settings-toggle:hover .icon, .settings-toggle[aria-expanded="true"] .icon { color: var(--brand-fg); }
 .settings-group { margin: 0 0 8px; padding: 0 0 12px; border: 0; border-bottom: 1px solid var(--stroke2); min-width: 0; }
 .settings-group legend { padding: 0; margin-top: 12px; }
 .settings-text { margin: 0 0 4px; }

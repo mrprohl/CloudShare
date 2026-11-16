@@ -46,6 +46,8 @@ const modeRandom = $<HTMLInputElement>("mode-random");
 const modeOwn = $<HTMLInputElement>("mode-own");
 const modeNone = $<HTMLInputElement>("mode-none");
 const modeNoneRow = $<HTMLLabelElement>("mode-none-row");
+const modeSame = $<HTMLInputElement>("mode-same");
+const modeSameRow = $<HTMLLabelElement>("mode-same-row");
 const passwordGroup = $<HTMLDivElement>("password-group");
 const maxAccessField = $<HTMLDivElement>("max-access-field");
 const passwordDaysField = $<HTMLDivElement>("password-days-field");
@@ -596,8 +598,9 @@ async function rememberShareChoice(jobId: string | null, noPassword = jobId === 
     state = await updateDraftState({ jobId });
     await tagDraft(jobId);
   } else {
-    // One password per step: only the mode is fixed; the next step gets a new password (nextStepPassword).
-    state = await updateDraftState({ jobId, separate: true });
+    // One password per step; this step is the one "Gleiches Kennwort wie zuvor" joins next (nextStepPassword).
+    if (pendingStep) lastStep = pendingStep;
+    state = await updateDraftState({ jobId, separate: true, ...(lastStep ? { lastStep } : {}) });
     await tagDraft(jobId);
     lockSeparate();
   }
@@ -675,6 +678,7 @@ function showChannel(channel: Channel) {
   passwordToHint.hidden = channel === "recipients";
   passwordToHint.textContent = channelHint(channel);
   renderValidity();
+  renderSubmit(); // another address or SMS needs its input first
 }
 
 /** "Kennwort senden an" offers the ways chosen in the settings – and always the one this mail already uses. */
@@ -887,12 +891,23 @@ function renderRules() {
 }
 
 /**
+ * The last step with a password in this mail (DraftState.lastStep): "Gleiches Kennwort wie zuvor" puts the next link
+ * into it. Set when a link with a password was inserted, cleared when the links are deleted from the mail.
+ */
+let lastStep: { id: string; password: string } | null = null;
+
+/**
  * Random: generated, visible, read-only. Own: hidden input with "show" toggle and live rule check.
+ * Same: the password of the last step, visible, read-only – one password and one password mail for both.
  * None: no password field, no "Kennwort abrufbar" – a plain link without password mail.
  */
-function setPasswordMode(mode: "random" | "own" | "none") {
+function setPasswordMode(mode: "same" | "random" | "own" | "none") {
+  if (mode === "same" && !lastStep) mode = "random";
   const own = mode === "own";
   const none = mode === "none";
+  const same = mode === "same";
+  modeSameRow.hidden = !lastStep;
+  modeSame.checked = same;
   modeRandom.checked = mode === "random";
   modeOwn.checked = own;
   modeNone.checked = none;
@@ -900,11 +915,14 @@ function setPasswordMode(mode: "random" | "own" | "none") {
   passwordToField.hidden = none;
   applyLinkMax();
   passwordInput.readOnly = !own;
-  generateButton.hidden = own;
+  generateButton.hidden = own || same;
   revealButton.hidden = !own;
   rulesList.hidden = !own;
   if (none) {
     passwordInput.value = "";
+  } else if (same) {
+    passwordInput.type = "text";
+    passwordInput.value = lastStep!.password;
   } else if (own) {
     passwordInput.value = "";
     setRevealed(false);
@@ -916,6 +934,7 @@ function setPasswordMode(mode: "random" | "own" | "none") {
   }
   renderPasswordHint();
   renderValidity();
+  renderSubmit(); // an own password must meet the rules first
 }
 
 /** The mail already has links without password: a confidential message or upload link cannot join it. */
@@ -928,12 +947,14 @@ function renderPasswordHint() {
   if (blockedByNoPassword()) key = `${kind}.needsPasswordLocked`;
   else if (modeNone.checked) key = modeNone.disabled ? "password.hintLockedNone" : "password.hintNone";
   else if (modeRandom.disabled) key = "password.hintLocked"; // one password for the whole mail (older drafts)
+  else if (modeSame.checked) key = "password.hintSame";
   else if (perStep) key = "password.hintSeparate";
   else key = "password.hint";
   passwordHint.textContent = t(key);
   passwordHint.classList.toggle("warning", blockedByNoPassword());
 }
 
+modeSame.addEventListener("change", () => setPasswordMode("same"));
 modeRandom.addEventListener("change", () => setPasswordMode("random"));
 modeOwn.addEventListener("change", () => setPasswordMode("own"));
 modeNone.addEventListener("change", () => setPasswordMode("none"));
@@ -966,15 +987,27 @@ function lockSeparate() {
   renderPasswordHint();
 }
 
-/** After a step: a new random password for the next one, or an empty field for an own one. */
+/**
+ * After a step: the next link joins it by default ("Gleiches Kennwort wie zuvor" – one password and one password mail
+ * for file, message and upload link of the same mail); "Zufällig" or "Eigenes" start a new step with a new password.
+ */
 function nextStepPassword() {
   if (!perStep) return;
-  if (modeRandom.checked) {
+  if (lastStep) {
+    setPasswordMode("same");
+  } else if (modeRandom.checked) {
     passwordInput.value = generatePassword();
   } else if (modeOwn.checked) {
     passwordInput.value = "";
     renderRules();
   }
+}
+
+/** The step for one click: the last one with "Gleiches Kennwort wie zuvor", else a new one with the shown password. */
+let pendingStep: { id: string; password: string } | null = null;
+function stepForClick(): string {
+  pendingStep = modeSame.checked && lastStep ? { ...lastStep } : { id: newStep(), password: passwordInput.value };
+  return pendingStep.id;
 }
 
 /** After the first link without password the whole mail stays without password (no mix in one mail). */
@@ -992,6 +1025,7 @@ function unlockPassword() {
   modeOwn.disabled = false;
   modeNone.disabled = false;
   perStep = false;
+  lastStep = null;
   maxAccessInput.readOnly = false;
   maxAccessInput.value = String(serverConfig.sendMaxAccessCount);
   passwordDaysInput.value = String(sendDefaultDays());
@@ -1157,8 +1191,34 @@ function renderSubmit() {
     const count = selectedFileCount();
     submitButton.textContent = count > 0 ? t("submit.files", { count }) : t("submit.button");
   }
-  submitButton.disabled = inserting || blockedByNoPassword();
+  // As in Outlook: the button stays greyed out until everything it needs is there (the hints say what is missing).
+  submitButton.disabled = inserting || blockedByNoPassword() || !insertReady();
 }
+
+/**
+ * Whether the chosen kind can be inserted now – the checks of settingsProblem and the insert functions, without
+ * messages or focus changes: files selected, a message within its length, a password where one is needed (an own one
+ * meeting the rules) and the address or number of the chosen password channel.
+ */
+function insertReady(): boolean {
+  if (!serverConfig) return false;
+  const kind = selectedKind();
+  if (kind === "files" && selectedFileCount() === 0) return false;
+  if (kind === "message") {
+    const text = messageInput.value.trim();
+    if (!text || text.length > messageMax()) return false;
+  }
+  if (kind !== "files" && withoutPassword()) return false;
+  if (!passwordInput.readOnly && !checkPassword(passwordInput.value).ok) return false;
+  if (!withoutPassword() && channelTarget() === null) return false;
+  return true;
+}
+
+// Everything insertReady looks at: re-check while the user types or chooses.
+messageInput.addEventListener("input", () => renderSubmit());
+passwordInput.addEventListener("input", () => renderSubmit());
+passwordToInput.addEventListener("input", () => renderSubmit());
+passwordSmsInput.addEventListener("input", () => renderSubmit());
 
 /** "Gültigkeit": only the fields of the chosen kind, collapsed behind a one-line summary of the values. */
 function renderValidity() {
@@ -1245,7 +1305,7 @@ async function insertFiles() {
   await runInsert(async () => {
     const results: UploadResult[] = [];
     // One step for this click: all selected files share one password and one password mail.
-    const step = newStep();
+    const step = stepForClick();
     let failed = false;
     try {
       for (const box of selectedAttachments) {
@@ -1308,7 +1368,7 @@ async function insertRequest() {
       setStatus(t("request.creating"));
       const result = await api<{ shareUrl: string; expireDate: string; jobId: string }>(
         "/api/requests",
-        { method: "POST", body: JSON.stringify(await shareSettingsBody(newStep())) },
+        { method: "POST", body: JSON.stringify(await shareSettingsBody(stepForClick())) },
         await getToken(),
       );
       // Same password and password mail as the files of this mail.
@@ -1360,7 +1420,7 @@ async function insertMessage() {
         "/api/messages",
         {
           method: "POST",
-          body: JSON.stringify({ ...(await shareSettingsBody(newStep())), text, messageDays: sendDays(messageDaysInput).value }),
+          body: JSON.stringify({ ...(await shareSettingsBody(stepForClick())), text, messageDays: sendDays(messageDaysInput).value }),
         },
         await getToken(),
       );
@@ -1605,10 +1665,13 @@ const ICONS = {
   revoke: icon('<circle cx="10" cy="10" r="6.5"/><path d="M5.4 5.4l9.2 9.2"/>'),
   /** Same drawing as the refresh button in the tab bar (taskpane.html). */
   refresh: icon('<path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11"/>'),
-  /** Gear of the settings: a ring with eight teeth around a hub. */
+  /** Gear of the settings: eight teeth (outer radius 8.4, inner 6.1) around a hole. */
   settings: icon(
-    '<circle cx="10" cy="10" r="4.6"/><circle cx="10" cy="10" r="1.8"/>' +
-      '<path d="M10 2.6v2.8M10 14.6v2.8M2.6 10h2.8M14.6 10h2.8M4.8 4.8l2 2M13.2 13.2l2 2M4.8 15.2l2-2M13.2 6.8l2-2"/>',
+    '<path d="M8.63 4.06L8.83 1.68L11.17 1.68L11.37 4.06A6.1 6.1 0 0 1 13.23 4.83L15.06 3.29L16.71 4.94L15.17 6.77' +
+      "A6.1 6.1 0 0 1 15.94 8.63L18.32 8.83L18.32 11.17L15.94 11.37A6.1 6.1 0 0 1 15.17 13.23L16.71 15.06L15.06 16.71" +
+      "L13.23 15.17A6.1 6.1 0 0 1 11.37 15.94L11.17 18.32L8.83 18.32L8.63 15.94A6.1 6.1 0 0 1 6.77 15.17L4.94 16.71" +
+      "L3.29 15.06L4.83 13.23A6.1 6.1 0 0 1 4.06 11.37L1.68 11.17L1.68 8.83L4.06 8.63A6.1 6.1 0 0 1 4.83 6.77L3.29 4.94" +
+      'L4.94 3.29L6.77 4.83A6.1 6.1 0 0 1 8.63 4.06Z"/><circle cx="10" cy="10" r="2.5"/>',
   ),
 } as const;
 
@@ -1932,7 +1995,7 @@ async function linkAgain(share: ShareItem, button: HTMLButtonElement) {
     setStatus(t("shares.linking", { name: share.name }));
     const result = await api<LinkAgainResult>(
       `/api/shares/${encodeURIComponent(share.id)}/link`,
-      { method: "POST", body: JSON.stringify(await shareSettingsBody(newStep())) },
+      { method: "POST", body: JSON.stringify(await shareSettingsBody(stepForClick())) },
       await getToken(),
     );
     await rememberShareChoice(result.jobId, isWithoutPassword(result));
@@ -2096,7 +2159,9 @@ Office.onReady(async () => {
     lockNoPassword();
   } else if (state.separate) {
     lockSeparate();
-    setPasswordMode("random");
+    // The pane opened again on a mail with links: the next link joins the last step by default.
+    lastStep = state.lastStep ?? null;
+    setPasswordMode(lastStep ? "same" : "random");
   } else {
     setPasswordMode("random");
   }
