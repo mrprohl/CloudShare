@@ -88,8 +88,8 @@ const panelShares = $<HTMLDivElement>("panel-shares");
 const panelHelp = $<HTMLElement>("panel-help");
 const panelSettings = $<HTMLElement>("panel-settings");
 const settingsClose = $<HTMLButtonElement>("settings-close");
-/** The gear in every account line. */
-const settingsToggles = Array.from(document.querySelectorAll<HTMLButtonElement>(".settings-toggle"));
+/** "Einstellungen" in the account menu. */
+const settingsOpen = $<HTMLButtonElement>("settings-open");
 const mailShares = $<HTMLDivElement>("mail-shares");
 const mailNone = $<HTMLParagraphElement>("mail-none");
 const sharesList = $<HTMLDivElement>("shares");
@@ -306,7 +306,7 @@ function showAccountMenu(open: boolean) {
 accountToggle.addEventListener("click", () => {
   const open = accountMenu.hidden === true;
   showAccountMenu(open);
-  if (open) disconnectButton.focus();
+  if (open) settingsOpen.focus(); // the first entry
 });
 // Closes with Escape (focus back on the account) or a click anywhere else.
 accountMenu.addEventListener("keydown", (event) => {
@@ -607,6 +607,9 @@ async function shareSettingsBody(step: string) {
     passwordDays: selectedChannel() === "sms" ? sendMaxDays() : sendDays(passwordDaysInput).value,
     jobId: state.jobId,
     step,
+    // "Kennwort senden an" of this link (per insertion): links of one step with different ways get the password on
+    // every way – e.g. one password mail to the recipients and one SMS.
+    ...(wanted?.passwordSms ? { passwordSms: wanted.passwordSms } : { passwordTo: wanted?.passwordTo ?? "" }),
   };
 }
 
@@ -623,24 +626,17 @@ async function rememberShareChoice(jobId: string | null, noPassword = jobId === 
     lockNoPassword();
     return;
   }
-  let state = await readDraftState();
-  if (state.password) {
+  // The way of "Kennwort senden an" travels with every link (shareSettingsBody) – nothing to hand to the job here.
+  if ((await readDraftState()).password) {
     // Mail started before passwords per step existed: it keeps its one shared password.
-    state = await updateDraftState({ jobId });
+    await updateDraftState({ jobId });
     await tagDraft(jobId);
   } else {
     // One password per step; this step is the one "Gleiches Kennwort wie zuvor" joins next (nextStepPassword).
     if (pendingStep) lastStep = pendingStep;
-    state = await updateDraftState({ jobId, separate: true, ...(lastStep ? { lastStep } : {}) });
+    await updateDraftState({ jobId, separate: true, ...(lastStep ? { lastStep } : {}) });
     await tagDraft(jobId);
     lockSeparate();
-  }
-  // Chosen before the first link: hand the channel to the new job (the send handler passes it on again when arming).
-  if (state.passwordTo || state.passwordSms) {
-    await api(`/api/jobs/${encodeURIComponent(jobId)}`, {
-      method: "PATCH",
-      body: JSON.stringify(state.passwordSms ? { passwordSms: state.passwordSms } : { passwordTo: state.passwordTo }),
-    }, await getToken()).catch(() => undefined);
   }
 }
 
@@ -740,20 +736,20 @@ function channelTarget(): { passwordTo?: string; passwordSms?: string } | null {
 async function applyChannel(target: { passwordTo?: string; passwordSms?: string }) {
   const state = await updateDraftState(target);
   try {
-    if (state.jobId) {
+    // Per insertion: the choice travels with the next link (shareSettingsBody); links already in the mail keep their
+    // way. Only a mail with one shared password from before this version changes its one way on the job.
+    if (state.jobId && state.password) {
       await api(`/api/jobs/${encodeURIComponent(state.jobId)}`, {
         method: "PATCH",
         body: JSON.stringify(target.passwordSms ? { passwordSms: target.passwordSms } : { passwordTo: target.passwordTo ?? "" }),
       }, await getToken());
     }
-    setStatus(
-      target.passwordSms
-        ? t("channel.savedSms", { to: target.passwordSms })
-        : target.passwordTo
-          ? t("channel.savedMail", { to: target.passwordTo })
-          : t("channel.savedRecipients"),
-      "success",
-    );
+    const saved = target.passwordSms
+      ? t("channel.savedSms", { to: target.passwordSms })
+      : target.passwordTo
+        ? t("channel.savedMail", { to: target.passwordTo })
+        : t("channel.savedRecipients");
+    setStatus(state.jobId && !state.password ? sentences(saved, t("channel.nextLinkOnly")) : saved, "success");
   } catch (err) {
     setStatus(t("channel.saveFailed", { error: errorMessage(err) }), "error");
   }
@@ -1495,7 +1491,6 @@ type Overlay = "help" | "settings" | null;
 /** Shows the guide or the settings in place of the current tab; closed, that tab shows again. */
 function showOverlay(overlay: Overlay) {
   helpToggle.setAttribute("aria-expanded", String(overlay === "help"));
-  for (const toggle of settingsToggles) toggle.setAttribute("aria-expanded", String(overlay === "settings"));
   panelHelp.hidden = overlay !== "help";
   panelSettings.hidden = overlay !== "settings";
   panelSend.hidden = overlay !== null || currentTab !== "send";
@@ -1537,21 +1532,17 @@ const settingsView = initSettings({
     });
   },
 });
-let settingsOpener: HTMLButtonElement | null = null;
-for (const toggle of settingsToggles) {
-  toggle.addEventListener("click", () => {
-    const open = panelSettings.hidden === true;
-    showOverlay(open ? "settings" : null);
-    if (open) {
-      settingsOpener = toggle;
-      void settingsView.open();
-      settingsClose.focus();
-    }
-  });
-}
+// "Einstellungen" in the account menu (bottom left) opens them in place of the current tab; "×" closes them, the focus
+// goes back to the account.
+settingsOpen.addEventListener("click", () => {
+  showAccountMenu(false);
+  showOverlay("settings");
+  void settingsView.open();
+  settingsClose.focus();
+});
 settingsClose.addEventListener("click", () => {
   showOverlay(null);
-  (settingsOpener && !settingsOpener.closest("[hidden]") ? settingsOpener : settingsToggles[0])?.focus();
+  accountToggle.focus();
 });
 refreshSharesButton.addEventListener("click", () => {
   refreshSharesButton.disabled = true;
@@ -1696,21 +1687,12 @@ const ICONS = {
   revoke: icon('<circle cx="10" cy="10" r="6.5"/><path d="M5.4 5.4l9.2 9.2"/>'),
   /** Same drawing as the refresh button in the tab bar (taskpane.html). */
   refresh: icon('<path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11"/>'),
-  /** Gear of the settings: eight teeth (outer radius 8.4, inner 6.1) around a hole. */
-  settings: icon(
-    '<path d="M8.63 4.06L8.83 1.68L11.17 1.68L11.37 4.06A6.1 6.1 0 0 1 13.23 4.83L15.06 3.29L16.71 4.94L15.17 6.77' +
-      "A6.1 6.1 0 0 1 15.94 8.63L18.32 8.83L18.32 11.17L15.94 11.37A6.1 6.1 0 0 1 15.17 13.23L16.71 15.06L15.06 16.71" +
-      "L13.23 15.17A6.1 6.1 0 0 1 11.37 15.94L11.17 18.32L8.83 18.32L8.63 15.94A6.1 6.1 0 0 1 6.77 15.17L4.94 16.71" +
-      "L3.29 15.06L4.83 13.23A6.1 6.1 0 0 1 4.06 11.37L1.68 11.17L1.68 8.83L4.06 8.63A6.1 6.1 0 0 1 4.83 6.77L3.29 4.94" +
-      'L4.94 3.29L6.77 4.83A6.1 6.1 0 0 1 8.63 4.06Z"/><circle cx="10" cy="10" r="2.5"/>',
-  ),
 } as const;
 
 /** The help explains the actions with their icons: `<span data-icon="copy">` gets the icon. */
 document.querySelectorAll<HTMLElement>("[data-icon]").forEach((slot) => {
   slot.innerHTML = ICONS[slot.dataset.icon as keyof typeof ICONS] ?? "";
 });
-for (const toggle of settingsToggles) toggle.innerHTML = ICONS.settings;
 
 interface SentPassword {
   password: string;

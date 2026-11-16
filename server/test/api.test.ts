@@ -391,6 +391,25 @@ describe("upload links", () => {
       expect.objectContaining({ token: "abc", request: true, knownFiles: [] }),
     ]);
   });
+
+  it("keeps the way of each link in its step: the same step by SMS adds the SMS to the password mail", async () => {
+    const first = await app.inject({
+      method: "POST", url: "/api/requests", headers: as("anna"), payload: { password: STRONG, step: "way-1", passwordTo: "" },
+    });
+    const { jobId } = first.json();
+    expect(getJob(jobId)?.separate?.[0].deliveries).toEqual([{ channel: "recipients" }]);
+    await app.inject({
+      method: "POST", url: "/api/requests", headers: as("anna"),
+      payload: { password: STRONG, step: "way-1", jobId, passwordSms: "0170 1234567" },
+    });
+    expect(getJob(jobId)?.separate?.[0].deliveries).toEqual([{ channel: "recipients" }, { channel: "sms", to: "+491701234567" }]);
+    // A number SMS may not go to is refused before any link is created.
+    const refused = await app.inject({
+      method: "POST", url: "/api/requests", headers: as("anna"), payload: { password: STRONG, step: "way-2", jobId, passwordSms: "0800 1234567" },
+    });
+    expect(refused.statusCode).toBe(400);
+    expect(getJob(jobId)?.separate).toHaveLength(1);
+  });
 });
 
 describe("password by SMS: the link of the Send is never sent", () => {

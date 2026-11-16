@@ -116,6 +116,15 @@ jobs:
           path: addin/playwright-report
           retention-days: 14
 
+      # The README pictures of this run: when the pane changed, the UI tests fail until these replace docs/images.
+      - name: Upload README pictures
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: readme-pictures
+          path: addin/readme-pictures
+          retention-days: 14
+
   build:
     needs: [test, ui]
     runs-on: ubuntu-latest

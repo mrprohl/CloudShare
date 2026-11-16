@@ -179,8 +179,13 @@ wins) – Nextcloud's housekeeping deletes expired shares, so the date could not
 
 ### 2.5 Password channel: recipients, another address or SMS
 
-"Send the password to" (a select) in the taskpane decides per mail where the password goes (`DraftState.passwordTo` /
-`passwordSms`, stored on the job via `PATCH /api/jobs/:id` and passed again with `/arm`):
+"Send the password to" (a select) in the taskpane decides **per insertion** where the password goes: every link carries
+its way in its request (`passwordTo` – `""` = the recipients – or `passwordSms`, `deliveryFrom` in `app.ts`), and the
+step collects the ways of its links (`SeparatePart.deliveries`). A step with links for the recipients and one of the
+same password by SMS sends one password mail and one SMS; each way exactly once, also after an error in another one
+(`sentWays`). Changing the select only affects the next link. Steps from before this (no `deliveries`) and mails with
+one shared password keep the mail's one way (`PasswordJob.passwordTo` / `passwordSms`, `PATCH /api/jobs/:id`, `/arm`).
+The ways:
 
 - **Recipients of the message** (default) – the password mail to the mail's actual recipients;
 - **Another email address** – the password mail only to that address;
@@ -351,7 +356,7 @@ when the links expire. Steps sent before this version have no entry – their pa
 
 ### 2.11 Personal settings
 
-The gear in the bottom bar (next to the "?") opens the settings in place of the current tab, like the guide (`settings.ts` in the
+"Einstellungen" in the account menu (`#settings-open`, bottom left) opens the settings in place of the current tab, like the guide (`settings.ts` in the
 add-in, `server/src/settings.ts`, store `settings`):
 
 - **Ways for the password** (`channels`, `defaultChannel`): `applyChannelChoices` hides the other options of "Kennwort
@@ -555,7 +560,7 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   language). Accessibility is tested with axe (WCAG 2 A/AA) in CI.
 - Layout and labels must survive longer translations: buttons and labels wrap or are short, the full text is in
   `title`/`aria-label`.
-- **Help** ("?" in the bottom bar next to the gear, `#help-toggle`; `#panel-help` in `taskpane.html`, shown in place of the
+- **Help** ("?" at the right of the bottom bar, `#help-toggle`; `#panel-help` in `taskpane.html`, shown in place of the
   current tab, closed by "×", the "?" or a tab): a user guide for everyday users – short `<details>`
   sections (getting started, sending files, password and channel, confidential message, receiving files, "My shares",
   FAQ), the most common one open. Texts in the language files (`help.*`); admins put their own support contact into

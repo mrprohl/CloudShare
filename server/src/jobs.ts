@@ -51,8 +51,29 @@ export interface SeparatePart {
   sendKeepUntil?: number;
   /** Its password mail went out (the others may still be pending after an error). */
   dispatched?: boolean;
+  /**
+   * The ways the step's password goes out – one per way chosen for one of its links ("Kennwort senden an" is per
+   * insertion): a link sent to the recipients and one of the same password by SMS give one password mail and one SMS.
+   * Missing (steps from before): the mail's one way (passwordTo / passwordSms of the job).
+   */
+  deliveries?: Delivery[];
+  /** Ways already sent (deliveryKey) – a retry after an error does not send them twice. */
+  sentWays?: string[];
   /** The links of the step (share token, file name, last valid day) – for "Meine Freigaben" and download notices. */
   shares?: StepShare[];
+}
+
+/** One way the password of a step goes out: the recipients of the mail, another address, or an SMS to a number. */
+export type Delivery = { channel: "recipients" } | { channel: "mail"; to: string } | { channel: "sms"; to: string };
+
+export const deliveryKey = (d: Delivery) => (d.channel === "recipients" ? "recipients" : `${d.channel}:${d.to.toLowerCase()}`);
+
+/** The ways of a step: its own, or (steps from before) the one way of the whole mail. */
+export function partDeliveries(job: Pick<PasswordJob, "passwordTo" | "passwordSms">, part: SeparatePart): Delivery[] {
+  if (part.deliveries?.length) return part.deliveries;
+  if (job.passwordSms) return [{ channel: "sms", to: job.passwordSms }];
+  if (job.passwordTo) return [{ channel: "mail", to: job.passwordTo }];
+  return [{ channel: "recipients" }];
 }
 
 export interface StepShare {
@@ -254,13 +275,20 @@ export async function addSeparatePart(id: string, part: SeparatePart): Promise<v
 /** The part of a step, if the step already created one (further files of the same click). */
 export const findPart = (id: string, step: string) => jobs.get(id)?.separate?.find((p) => p.step === step);
 
-/** Further file of the same step: same password, same Send, same password mail. */
-export async function addFileToPart(id: string, step: string, fileName: string, share?: StepShare): Promise<void> {
+/**
+ * Further link of the same step: same password, same Send. Its way ("Kennwort senden an") joins the step's ways if it
+ * is a new one – the password then goes out that way too.
+ */
+export async function addFileToPart(id: string, step: string, fileName: string, share?: StepShare, delivery?: Delivery): Promise<void> {
   const job = jobs.get(id)!;
   job.fileNames.push(fileName);
   const part = findPart(id, step)!;
   part.fileNames.push(fileName);
   if (share) (part.shares ??= []).push(share);
+  if (delivery) {
+    const ways = part.deliveries ?? partDeliveries(job, part);
+    if (!ways.some((d) => deliveryKey(d) === deliveryKey(delivery))) part.deliveries = [...ways, delivery];
+  }
   touch(job);
   jobs.save(id);
 }
@@ -319,6 +347,7 @@ export function takeSmsQuota(owner: string): boolean {
 async function sendStepBySms(
   job: PasswordJob,
   part: SeparatePart,
+  to: string,
   t: Templates,
   tokens: string[],
   graphToken: string,
@@ -326,7 +355,6 @@ async function sendStepBySms(
   subject: string,
   log: Pick<FastifyBaseLogger, "info" | "warn">,
 ) {
-  const to = job.passwordSms!;
   try {
     if (!smsEnabled()) throw new Error(translate("server.smsNotConfigured"));
     // SMS_ALLOWED_COUNTRIES / _NUMBERS / SMS_BLOCKED_NUMBERS may have changed since the number was entered.
@@ -443,13 +471,24 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
               expiresOn: part.sendExpiresAt ? formatDate(part.sendExpiresAt) : undefined, signature: job.signature }),
           });
           const tokens = (part.shares ?? []).map((s) => s.token);
+          const ways = partDeliveries(job, part);
 
-          if (job.passwordSms && part.sendId) {
-            await sendStepBySms(job, part, t, tokens, armed.graphToken, sender, message.subject, log);
-          } else {
-            const mail = mailFor();
-            await sendMail(armed.graphToken, recipients, mail.subject, mail.html, sender);
-            await recordDelivery(tokens, { owner: job.owner, channel: "mail", to: recipients.to.concat(recipients.cc).join(", "), at: Date.now() });
+          // Every way of the step once: password mail to the recipients or another address, SMS to a number. SMS last –
+          // "Meine Freigaben" shows the last delivery, and an SMS has a status to follow. A way already sent (before an
+          // error in a later one) is not sent again.
+          for (const way of [...ways].sort((a, b) => Number(a.channel === "sms") - Number(b.channel === "sms"))) {
+            const key = deliveryKey(way);
+            if (part.sentWays?.includes(key)) continue;
+            if (way.channel === "sms") {
+              if (part.sendId) await sendStepBySms(job, part, way.to, t, tokens, armed.graphToken, sender, message.subject, log);
+            } else {
+              const to = way.channel === "mail" ? { to: [way.to], cc: [], bcc: [] } : message.recipients;
+              const mail = mailFor();
+              await sendMail(armed.graphToken, to, mail.subject, mail.html, sender);
+              await recordDelivery(tokens, { owner: job.owner, channel: "mail", to: to.to.concat(to.cc).join(", "), at: Date.now() });
+            }
+            (part.sentWays ??= []).push(key);
+            jobs.save(id);
           }
           part.dispatched = true;
           jobs.save(id);
@@ -465,8 +504,11 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
               keepUntil: part.sendKeepUntil ?? linksExpireAt(part.shares ?? []),
               subject: message.subject,
               recipients: message.recipients,
-              otherTo: job.passwordTo ? [job.passwordTo] : undefined,
-              sms: job.passwordSms,
+              otherTo: (() => {
+                const others = ways.flatMap((w) => (w.channel === "mail" ? [w.to] : []));
+                return others.length ? others : undefined;
+              })(),
+              sms: ways.find((w): w is Extract<Delivery, { channel: "sms" }> => w.channel === "sms")?.to,
               from: sender ?? undefined,
               maxAccessCount: part.maxAccessCount,
               senderName: job.senderName,

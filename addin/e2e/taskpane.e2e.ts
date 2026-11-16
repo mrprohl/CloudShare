@@ -4,7 +4,7 @@
  */
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page, type Route } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -218,6 +218,13 @@ async function expectNoHorizontalScroll(page: Page) {
 /** "Dateien" / "Nachricht" / "Anfordern" – click the visible segment like a user (the radio is styled away). */
 const chooseKind = (page: Page, kind: "files" | "message" | "request") => page.click(`label:has(#kind-${kind})`);
 
+/** Opens the personal settings: account at the bottom left → "Einstellungen". */
+async function openSettings(page: Page) {
+  await page.locator("#account-toggle").click();
+  await page.locator("#settings-open").click();
+  await expect(page.locator("#panel-settings")).toBeVisible();
+}
+
 /** Opens the collapsed "Gültigkeit" section (lifetimes, accesses). */
 async function openValidity(page: Page) {
   await page.click("#validity-toggle");
@@ -242,9 +249,13 @@ async function fullShot(page: Page, name: string) {
   await page.setViewportSize(size);
 }
 
+/** Fresh README pictures of this run (artifact "readme-pictures") – copied to docs/images when the pane changed. */
+const README_PICTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), "../readme-pictures");
+
 /**
  * Picture for the README (attachment "readme-<name>"): exactly as tall as the pane's content – the viewport is first
  * made small so the full-height layout collapses, then set to the content height (sticky footer at its natural place).
+ * It must match docs/images/taskpane-<name>.png: the documentation shows the pane as it is (README → "Pictures").
  */
 async function readmeShot(page: Page, name: string) {
   const size = page.viewportSize()!;
@@ -253,8 +264,15 @@ async function readmeShot(page: Page, name: string) {
   const height = await page.evaluate(() => document.documentElement.scrollHeight);
   await page.setViewportSize({ width: size.width, height });
   await page.waitForTimeout(100); // layout after the resize
-  test.info().attach(`readme-${name}`, { body: await page.screenshot(), contentType: "image/png" });
+  const picture = await page.screenshot({ animations: "disabled", caret: "hide" });
+  test.info().attach(`readme-${name}`, { body: picture, contentType: "image/png" });
+  mkdirSync(README_PICTURES, { recursive: true });
+  writeFileSync(path.join(README_PICTURES, `taskpane-${name}.png`), picture);
   await page.setViewportSize(size);
+  expect(
+    picture,
+    `docs/images/taskpane-${name}.png no longer shows the pane – take it from the artifact "readme-pictures" (README → "Pictures")`,
+  ).toMatchSnapshot(`taskpane-${name}.png`, { maxDiffPixelRatio: 0.002 });
 }
 
 // --- Connection --------------------------------------------------------------------------------------------------
@@ -327,7 +345,7 @@ test("language: a client language without texts falls back to English", async ({
 test("settings: the gear opens them in place of the tab; saved ways apply to the password at once", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Plan.pdf", 2 * MiB)], config: { smsEnabled: true } });
   await expect(page.locator("#send-view")).toBeVisible();
-  await page.locator("#settings-toggle").click();
+  await openSettings(page);
   await expect(page.locator("#panel-settings")).toBeVisible();
   await expect(page.locator("#panel-send")).toBeHidden();
   await expect(page.locator("#settings-form")).toBeVisible();
@@ -365,7 +383,7 @@ test("settings: the gear opens them in place of the tab; saved ways apply to the
 test("settings and help: the heading with its × stays in sight while scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 340, height: 520 });
   await openTaskpane(page, { config: { smsEnabled: true } });
-  await page.locator("#settings-toggle").click();
+  await openSettings(page);
   await expect(page.locator("#settings-form")).toBeVisible();
   await page.locator("#settings-save").scrollIntoViewIfNeeded(); // scrolled to the bottom
   await expect(page.locator("#settings-close")).toBeInViewport();
@@ -388,7 +406,7 @@ test("settings: a new mail starts with the preselected way and offers only the c
 
 test("settings: an own signature is plain text with paragraphs – stored as typed, not in the link card", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Plan.pdf", 2 * MiB)] });
-  await page.locator("#settings-toggle").click();
+  await openSettings(page);
   await expect(page.locator("#settings-signature-format option")).toHaveText(["Vorgabe der Organisation", "Eigene Signatur"]);
   await page.locator("#settings-signature-format").selectOption("text");
   const text = page.locator("#settings-signature-text");
@@ -418,7 +436,7 @@ test("settings: an own signature is plain text with paragraphs – stored as typ
 
   // Opened again: the text as typed.
   await page.click("#settings-close");
-  await page.locator("#settings-toggle").click();
+  await openSettings(page);
   await expect(page.locator("#settings-signature-format")).toHaveValue("text");
   await expect(text).toHaveValue("Mit freundlichen Grüßen\n\n{displayName}\nTel. {phone}");
 
@@ -436,7 +454,7 @@ test("settings: a language chosen in the settings beats Outlook's", async ({ pag
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
   await expect(page.locator("#tab-send")).toHaveText("Send");
   await expect.poll(() => calls.filter((c) => c.path === "/api/config").length).toBeGreaterThan(1);
-  await page.locator("#settings-toggle").click();
+  await openSettings(page);
   await expect(page.locator("#settings-language")).toHaveValue("en");
   await expect(page.locator("#settings-language option")).toHaveText(["Default (as in Outlook)", "Deutsch", "English"]);
 });
@@ -632,11 +650,11 @@ test("Kennwort an eine andere E-Mail-Adresse: stored on the job once it exists",
   expect(JSON.parse((await officeLog(page)).session["cloudshare-state"]).passwordTo).toBe("kollege@example.com");
   await expectAccessible(page);
 
-  // No job yet – after the first link the address goes to the new job.
+  // The address travels with the link (per insertion) – no change on the job.
   await page.click("#submit");
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
-  await expect.poll(() => calls.filter((c) => c.method === "PATCH").map((c) => JSON.parse(c.body!.toString())))
-    .toEqual([{ passwordTo: "kollege@example.com" }]);
+  expect(JSON.parse(calls.find((c) => c.path.endsWith("/complete"))!.body!.toString())).toMatchObject({ passwordTo: "kollege@example.com" });
+  expect(calls.filter((c) => c.method === "PATCH")).toEqual([]);
 });
 
 test("Kennwort per SMS: not offered without seven.io on the server", async ({ page }) => {
@@ -668,8 +686,7 @@ test("Kennwort per SMS: number required, normalized to E.164 and stored on the j
 
   await page.click("#submit");
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
-  await expect.poll(() => calls.filter((c) => c.method === "PATCH").map((c) => JSON.parse(c.body!.toString())))
-    .toEqual([{ passwordSms: "+491701234567" }]);
+  expect(JSON.parse(calls.find((c) => c.path.endsWith("/complete"))!.body!.toString())).toMatchObject({ passwordSms: "+491701234567" });
   expect(JSON.parse((await officeLog(page)).session["cloudshare-state"])).toMatchObject({ passwordSms: "+491701234567" });
 });
 
@@ -712,13 +729,12 @@ test("Kennwort an eine andere E-Mail-Adresse chosen without an address: no link 
   await expect(page.locator("#submit")).toBeDisabled();
   expect(calls.some((c) => c.path === "/api/uploads" || c.path === "/api/requests")).toBe(false); // nothing shared
 
-  // Typed and clicked right away (no "change" yet): the address still reaches the job.
+  // Typed and clicked right away (no "change" yet): the address still travels with the link.
   await chooseKind(page, "files");
   await page.fill("#password-to", "kollege@example.com");
   await page.click("#submit");
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
-  await expect.poll(() => calls.filter((c) => c.method === "PATCH").map((c) => JSON.parse(c.body!.toString())))
-    .toContainEqual({ passwordTo: "kollege@example.com" });
+  expect(JSON.parse(calls.find((c) => c.path.endsWith("/complete"))!.body!.toString())).toMatchObject({ passwordTo: "kollege@example.com" });
 });
 
 test("links deleted from the mail again: password options unlock, no password mail", async ({ page }) => {
@@ -1139,20 +1155,21 @@ test("Meine Freigaben: shows the state of each link and revokes after confirmati
   const menu = page.locator("#account-menu");
   await expect(toggle).toHaveText("max");
   await expect(menu).toBeHidden();
-  const [toggleBox, helpBox, gearBox] = await Promise.all(
-    [toggle, page.locator("#help-toggle"), page.locator("#settings-toggle")].map((l) => l.boundingBox()),
+  const [toggleBox, helpBox, barBox] = await Promise.all(
+    [toggle, page.locator("#help-toggle"), page.locator(".account-bar")].map((l) => l.boundingBox()),
   );
   expect(Math.abs(toggleBox!.y + toggleBox!.height / 2 - (helpBox!.y + helpBox!.height / 2))).toBeLessThan(2); // one line
   expect(helpBox!.x).toBeGreaterThan(toggleBox!.x + toggleBox!.width);
-  expect(gearBox!.x).toBeGreaterThan(helpBox!.x);
+  expect(barBox!.x + barBox!.width - (helpBox!.x + helpBox!.width)).toBeLessThan(16); // "?" at the far right
   await expect(page.locator(".account-bar")).toHaveCount(1);
+  await expect(page.locator("#settings-toggle")).toHaveCount(0); // settings are in the account menu
   // The menu opens above the bar: storage and "Verbindung trennen"; Escape closes it, focus back on the account.
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(menu).toBeVisible();
   await expect(page.locator("#account-storage")).toHaveText("12,5 GB von 50 GB frei");
-  await expect(page.locator("#disconnect")).toHaveText("Verbindung trennen");
-  await expect(page.locator("#disconnect")).toBeFocused();
+  await expect(page.locator("#account-menu button")).toHaveText(["Einstellungen", "Verbindung trennen"]);
+  await expect(page.locator("#settings-open")).toBeFocused();
   expect((await menu.boundingBox())!.y + (await menu.boundingBox())!.height).toBeLessThanOrEqual(toggleBox!.y);
   await expectAccessible(page);
   await page.keyboard.press("Escape");
@@ -1388,10 +1405,10 @@ test("Hilfe: the \"?\" at the bottom right opens the guide in place of the tab, 
   await sections.nth(7).locator("summary").click();
   await expect(sections.nth(7)).toHaveAttribute("open", "");
   await expect(sections.nth(7)).toContainText("Ich habe den Link an die falsche Person geschickt.");
-  // "Einstellungen" shows the gear it talks about.
+  // "Einstellungen" says where to find them: in the account menu at the bottom left.
   const settings = sections.filter({ has: page.locator("summary", { hasText: "Einstellungen" }) });
   await settings.locator("summary").click();
-  await expect(settings.locator('[data-icon="settings"] svg')).toHaveCount(1);
+  await expect(settings).toContainText("auf Ihr Konto und dann auf „Einstellungen“");
   await expect(settings).toContainText("Zurücksetzen");
   // "Meine Freigaben" explains every icon with the icon itself – also "Aktualisieren" in the tab bar.
   const shares = sections.filter({ has: page.locator("summary", { hasText: "Meine Freigaben" }) });

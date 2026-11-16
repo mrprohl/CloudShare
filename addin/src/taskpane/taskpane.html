@@ -380,9 +380,7 @@
 
             <details class="help-section">
               <summary>%%t:addin.help.settings.title%%</summary>
-              <ul class="help-icons">
-                <li><span class="help-icon" data-icon="settings"></span>%%t:addin.help.settings.open%%</li>
-              </ul>
+              <p>%%t:addin.help.settings.open%%</p>
               <ul>
                 <li>%%t:addin.help.settings.channels%%</li>
                 <li>%%t:addin.help.settings.notices%%</li>
@@ -433,6 +431,8 @@
             </button>
             <div id="account-menu" class="account-menu" hidden>
               <p class="caption account-storage" id="account-storage"></p>
+              <!-- Personal settings: shown in place of the current tab like the guide (settings.ts). -->
+              <button type="button" id="settings-open" class="account-menu-item" aria-controls="panel-settings">%%t:addin.settings.button%%</button>
               <button type="button" id="disconnect" class="account-menu-item">%%t:addin.disconnect.link%%</button>
             </div>
           </div>
@@ -446,9 +446,6 @@
                 <circle cx="10" cy="14.2" r=".9" fill="currentColor"/>
               </svg>
             </button>
-            <!-- Personal settings (icon filled in by taskpane.ts, ICONS.settings). -->
-            <button type="button" id="settings-toggle" class="btn btn-icon btn-subtle settings-toggle" title="%%t:addin.settings.button%%"
-              aria-label="%%t:addin.settings.button%%" aria-expanded="false" aria-controls="panel-settings"></button>
           </div>
         </footer>
       </section>
