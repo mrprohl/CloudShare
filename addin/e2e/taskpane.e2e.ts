@@ -36,6 +36,8 @@ interface Scenario {
   bodyRejectsInsert?: boolean;
   /** Office SSO failure (plain object as Office delivers it). */
   tokenError?: { code: number; name: string; message: string };
+  /** Nextcloud login name in the status (default "max.mustermann"). */
+  loginName?: string;
   /** Error response for POST /api/uploads, e.g. Nextcloud connection revoked. */
   uploadError?: { status: number; error: string; code?: string };
   /** Nextcloud enforces passwords for public links. */
@@ -127,7 +129,7 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     }
     if (route_ === "GET /api/nextcloud/status") {
       return json(connected
-        ? { connected: true, loginName: "max.mustermann", freeBytes: 12.5 * 1024 ** 3, usedBytes: 37.5 * 1024 ** 3, totalBytes: 50 * 1024 ** 3,
+        ? { connected: true, loginName: scenario.loginName ?? "max.mustermann", freeBytes: 12.5 * 1024 ** 3, usedBytes: 37.5 * 1024 ** 3, totalBytes: 50 * 1024 ** 3,
             passwordEnforced: scenario.passwordEnforced ?? false }
         : { connected: false });
     }
@@ -520,7 +522,7 @@ test("preselects large attachments and proposes a random password", async ({ pag
   await expect(page.locator("#max-access")).toHaveValue("3");
   await expect(page.locator("#expire")).toHaveValue("14");
   await expect(page.locator("#account")).toHaveText("max.mustermann");
-  await expect(page.locator("#account-storage")).toHaveText("12,5 GB von 50 GB frei"); // on the right of the bottom bar
+  await expect(page.locator("#account-storage")).toHaveText("12,5 / 50 GB frei"); // on the right of the bottom bar
   // One button that says what it inserts; the rarely changed values collapsed behind a summary.
   await expect(page.locator("#kind-files")).toBeChecked();
   await expect(page.locator("#submit")).toHaveText("Datei als Link einfügen");
@@ -1237,7 +1239,8 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   const storage = page.locator("#account-storage");
   await expect(toggle).toHaveText("max.mustermann");
   await expect(menu).toBeHidden();
-  await expect(storage).toHaveText("12,5 GB von 50 GB frei");
+  await expect(storage).toHaveText("12,5 / 50 GB frei");
+  await expect(toggle).toHaveAttribute("title", "Angemeldet als max.mustermann\nNextcloud-Konto: Einstellungen, Hilfe und Verbindung");
   const [toggleBox, storageBox, barBox] = await Promise.all([toggle, storage, page.locator(".account-bar")].map((l) => l.boundingBox()));
   expect(Math.abs(toggleBox!.y + toggleBox!.height / 2 - (storageBox!.y + storageBox!.height / 2))).toBeLessThan(2); // one line
   expect(storageBox!.x).toBeGreaterThan(toggleBox!.x + toggleBox!.width);
@@ -1640,6 +1643,22 @@ test("Nextcloud öffnen opens the user's Nextcloud in the browser", async ({ pag
   await page.locator("#nextcloud-open").click();
   await expect(page.locator("#account-menu")).toBeHidden();
   expect((await officeLog(page)).openedUrls).toEqual(["https://cloud.example.com"]);
+});
+
+test("a long account name at 320 px: shortened with \"…\", the storage stays whole, the tooltip names it", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  const name = "philipp.rohlmann.mit.einem.sehr.langen.namen@verwaltung.example.com";
+  await openTaskpane(page, { loginName: name });
+  const toggle = page.locator("#account-toggle");
+  await expect(toggle).toHaveText(name); // the whole name for screen readers …
+  // … and on hover.
+  await expect(toggle).toHaveAttribute("title", `Angemeldet als ${name}\nNextcloud-Konto: Einstellungen, Hilfe und Verbindung`);
+  const shown = page.locator("#account");
+  expect(await shown.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true); // cut short with "…"
+  const storage = page.locator("#account-storage");
+  await expect(storage).toHaveText("12,5 / 50 GB frei");
+  expect(await storage.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true); // whole
+  await expectNoHorizontalScroll(page);
 });
 
 test("a grey note runs down too (Verbindung getrennt)", async ({ page }) => {
