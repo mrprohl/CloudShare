@@ -493,10 +493,4 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .checkbox-text { flex: 1; min-width: 0; }
 .checkbox-hint { display: inline-block; margin: 2px 0 0; }
 .signature-input { margin-top: 8px; }
-/* Pasted Outlook signature: editable, in the small size of the card footer. */
-.signature-editor {
-  height: auto; min-height: 92px; max-height: 260px; overflow: auto; padding: 6px 10px;
-  font-size: 12px; line-height: 16px; overflow-wrap: anywhere;
-}
-.signature-editor img { max-width: 100%; height: auto; }
 .settings-actions { display: flex; gap: 8px; margin: 16px 0 4px; }

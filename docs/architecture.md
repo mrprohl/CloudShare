@@ -51,7 +51,7 @@ Container "cloudshare" (Node 24, read-only)
 
 | Part | Files | Notes |
 |---|---|---|
-| Taskpane | `taskpane.ts/.html/.css`, `mailCard.ts`, `settings.ts`, `signature.ts` | Plain TypeScript, bundled as IIFE (esbuild, ES2017) |
+| Taskpane | `taskpane.ts/.html/.css`, `mailCard.ts`, `settings.ts` | Plain TypeScript, bundled as IIFE (esbuild, ES2017) |
 | Event handlers | `commands.ts` → `commands.js` | ES2016 bundle for classic Outlook's JavaScript-only runtime |
 | Shared add-in code | `shared/office.ts`, `shared/password.ts`, `shared/sso.ts`, `shared/i18n.ts` | Office.js helpers, draft state, SSO token cache, password rules, `t()` for the texts |
 | Languages | `locales/<language>.json`, `server/src/i18n.ts` | Texts of every language; loading, fallback, `t()`, injection into the add-in files ([2.8](#28-languages)) |
@@ -360,16 +360,14 @@ add-in, `server/src/settings.ts`, store `settings`):
 - **Language** (`auto` or a language): kept in `roamingSettings` too, so `i18n.ts` (`preferredLanguage`) has it in
   the taskpane and in the event handlers before any request; loaded from another computer, the pane reloads once
   (`reloadOnce`), saved in the pane it reloads at once. Mails and SMS stay in `LANGUAGE`.
-- **Signature of the password mails** (`{ format: "text", content }`, `{ format: "html", nodes }` or null =
-  `MAIL_FOOTER`), so recipients see who the password comes from; the link card in the message carries none. Text is
-  filled from the profile like `MAIL_FOOTER` always was (`fillTemplate`). A formatted one is pasted into an editable
-  box: the browser inserts it, then `addin/src/taskpane/signature.ts` cleans the box's nodes in place (`cleanInPlace`
-  – no clipboard markup is ever parsed) and stores them as a node tree (`signatureNodes`). `server/src/signature.ts`
-  cleans the tree again (`cleanSignatureNodes`) and builds the HTML itself, escaping every text and attribute
-  (`renderSignatureNodes`) – the same allow-list of elements, attributes and CSS properties; links only `http(s):`,
-  `mailto:`, `tel:`; pictures only `https:`; no scripts, event handlers, `url()` or Office XML elements. When the job
-  is armed, `signatureHtml` fixes it with the profile of that moment (`PasswordJob.signature`); "send again" builds it
-  anew. At most 20,000 characters.
+- **Signature of the password mails** (`{ format: "text", content }` or null = `MAIL_FOOTER`), so recipients see who
+  the password comes from; the link card in the message carries none. **Plain text only** – nothing the user types
+  becomes markup (a formatted signature was considered and dropped for safety). `server/src/signature.ts`: an empty
+  line separates paragraphs (`signatureParagraphs`, also `\n\n` in the env file), each paragraph is filled from the
+  profile like `MAIL_FOOTER` always was (`fillTemplate`), escaped and shown as a `<p>` in the style of the mail text
+  (`TEXT_STYLE`, like "Guten Tag"), lines as `<br>`. When the job is armed, `signatureHtml` fixes it with the profile
+  of that moment (`PasswordJob.signature`); "send again" builds it anew. At most 20,000 characters; a formatted
+  signature saved by an earlier version counts as none.
 
 `settingsFor(oid)` merges `config.userDefaults` (`DEFAULT_*`), the stored fields and what the server offers
 (`availableSettings`: notices switched on, SMS with seven.io, the add-in languages) – so a user can never turn on what

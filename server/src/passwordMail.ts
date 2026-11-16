@@ -53,7 +53,7 @@ export function passwordMailHtml(mail: PasswordMailContent): string {
       smallPrint(
         `${escapeHtml(t("mail.buttonFallback"))} <a href="${escapeHtml(mail.sendUrl)}" style="color:#0f6cbd;">` +
           `${escapeHtml(mail.sendUrl)}</a>`,
-      ) + (mail.signature ? `<div style="${TEXT_STYLE}margin:16px 0 0;">${mail.signature}</div>` : ""),
+      ) + (mail.signature ? `<div style="margin:20px 0 0;">${mail.signature}</div>` : ""),
   });
 }
 

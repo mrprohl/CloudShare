@@ -1,13 +1,12 @@
 /**
  * Personal settings (⚙ in the account line): notices, the ways "Kennwort senden an" offers and the one it preselects,
- * the language of the add-in and an own signature for the link card. Stored on the server per user
+ * the language of the add-in and an own text signature for the password mails. Stored on the server per user
  * (server/src/settings.ts, /api/settings); the language is also kept in roamingSettings (SETTINGS_CACHE_KEY), so the
  * pane and the event handlers start in it without a request. What the organisation decides (notices switched off,
  * SMS without seven.io, SMS countries and blocked numbers) is not offered here.
  */
 import { desiredLanguage, language, languageChoices, SETTINGS_CACHE_KEY, t } from "../shared/i18n";
 import { api, type Channel, type SettingsResponse, type UserSettings } from "../shared/office";
-import { cleanInPlace, signatureFromNodes, signatureHasContent, signatureNodes } from "./signature";
 
 const CHANNELS: Channel[] = ["recipients", "mail", "sms"];
 const channelLabel = (c: Channel) => t(c === "recipients" ? "channel.recipients" : c === "mail" ? "channel.mail" : "channel.sms");
@@ -79,7 +78,6 @@ export function initSettings(options: Options) {
   const languageSelect = $<HTMLSelectElement>("settings-language");
   const signatureFormat = $<HTMLSelectElement>("settings-signature-format");
   const signatureText = $<HTMLTextAreaElement>("settings-signature-text");
-  const signatureHtml = $<HTMLDivElement>("settings-signature-html");
   const signatureHint = $<HTMLParagraphElement>("settings-signature-hint");
   const save = $<HTMLButtonElement>("settings-save");
   const reset = $<HTMLButtonElement>("settings-reset");
@@ -117,8 +115,7 @@ export function initSettings(options: Options) {
   const showSignatureFormat = () => {
     const format = signatureFormat.value;
     signatureText.hidden = format !== "text";
-    signatureHtml.hidden = format !== "html";
-    signatureHint.textContent = t(`settings.signature.hint.${format === "text" ? "text" : format === "html" ? "html" : "none"}`);
+    signatureHint.textContent = t(format === "text" ? "settings.signature.hint.text" : "settings.signature.hint.none");
   };
 
   /** Fills the form with `response`. */
@@ -151,9 +148,8 @@ export function initSettings(options: Options) {
     languageSelect.value = settings.language;
 
     const signature = settings.signature;
-    signatureFormat.value = signature ? signature.format : "none";
+    signatureFormat.value = signature?.format === "text" ? "text" : "none";
     signatureText.value = signature?.format === "text" ? signature.content : "";
-    signatureHtml.replaceChildren(...(signature?.format === "html" ? signatureFromNodes(signature.nodes, document) : []));
     showSignatureFormat();
   };
 
@@ -175,13 +171,6 @@ export function initSettings(options: Options) {
   channelBoxes.addEventListener("change", () => renderDefaultChannel(defaultChannel.value as Channel));
   signatureFormat.addEventListener("change", showSignatureFormat);
 
-  // Pasted from Outlook: the browser inserts the formatted text (it already drops scripts and event handlers), then
-  // the allow-list of signature.ts cleans the editor in place – the clipboard is never parsed as a markup string.
-  signatureHtml.addEventListener("input", (event) => {
-    const type = (event as InputEvent).inputType ?? "";
-    if (type.startsWith("insertFrom")) cleanInPlace(signatureHtml);
-  });
-
   const apply = async (response: SettingsResponse, message: string) => {
     current = response;
     await cacheLanguage(response.settings);
@@ -201,14 +190,9 @@ export function initSettings(options: Options) {
       options.setStatus(t("settings.channelsNone"), "error");
       return;
     }
-    const format = signatureFormat.value;
-    let signature: UserSettings["signature"] = null;
-    if (format === "text" && signatureText.value.trim()) {
-      signature = { format: "text", content: signatureText.value.trim() };
-    } else if (format === "html") {
-      cleanInPlace(signatureHtml); // typed or formatted by hand after the last paste
-      if (signatureHasContent(signatureHtml)) signature = { format: "html", nodes: signatureNodes(signatureHtml) };
-    }
+    // Plain text; an empty line starts a new paragraph in the password mail.
+    const text = signatureText.value.trim();
+    const signature: UserSettings["signature"] = signatureFormat.value === "text" && text ? { format: "text", content: text } : null;
     const body: Partial<UserSettings> = {
       channels,
       defaultChannel: defaultChannel.value as Channel,

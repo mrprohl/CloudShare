@@ -1,6 +1,5 @@
 import { language, t } from "./i18n";
 import { toSsoError } from "./sso";
-import type { SignatureNode } from "../taskpane/signature";
 
 /** Replaced with the real base URL at container start (see docker/entrypoint.sh). */
 export const API_BASE = "%%PUBLIC_BASE_URL%%";
@@ -47,11 +46,8 @@ export interface UserSettings {
   defaultChannel: Channel;
   /** "auto" (as in Outlook) or a language code. */
   language: string;
-  /**
-   * Own signature of the password mails; null = the organisation's (MAIL_FOOTER). "html": a node tree of the cleaned
-   * paste (taskpane/signature.ts), never markup.
-   */
-  signature: { format: "text"; content: string } | { format: "html"; nodes: SignatureNode[] } | null;
+  /** Own signature of the password mails (plain text, empty line = new paragraph); null = the organisation's (MAIL_FOOTER). */
+  signature: { format: "text"; content: string } | null;
 }
 
 /** GET/PUT/DELETE /api/settings: what applies, the organisation's defaults and what the server offers at all. */

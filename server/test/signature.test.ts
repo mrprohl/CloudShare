@@ -1,9 +1,10 @@
 /**
- * Signature of the password mails (src/signature.ts): profile placeholders as MAIL_FOOTER always had them, and the
- * allow-list for formatted signatures – the server builds the HTML from a node tree and never trusts the add-in.
+ * Signature of the password mails (src/signature.ts): plain text with profile placeholders as MAIL_FOOTER always had
+ * them, paragraphs separated by an empty line, everything escaped, in the style of the mail text.
  */
 import { describe, expect, it } from "vitest";
-import { cleanSignatureNodes, fillTemplate, renderSignatureNodes, signatureHasContent, signatureHtml } from "../src/signature.js";
+import { TEXT_STYLE } from "../src/mailLayout.js";
+import { fillTemplate, signatureHtml, signatureParagraphs } from "../src/signature.js";
 
 const profile = {
   displayName: "Max Mustermann",
@@ -15,7 +16,7 @@ const profile = {
 };
 const TEMPLATE = "{displayName} · {jobTitle}\\n{company} · Tel. {phone} · {email}";
 
-describe("fillTemplate (MAIL_FOOTER and text signatures)", () => {
+describe("fillTemplate (one paragraph)", () => {
   it("fills placeholders and turns \\n into line breaks", () => {
     expect(fillTemplate(TEMPLATE, profile)).toBe("Max Mustermann · Projektleitung\nMuster GmbH · Tel. +49 30 1234567 · max@example.test");
   });
@@ -32,49 +33,36 @@ describe("fillTemplate (MAIL_FOOTER and text signatures)", () => {
   });
 });
 
-describe("formatted signatures", () => {
-  it("keeps formatting, links and https pictures, drops everything else", () => {
-    const nodes = cleanSignatureNodes([
-      { tag: "p", attrs: { style: "color:#1f497d;font-weight:bold;background:url(https://x.test/t.gif)", onclick: "a()", class: "Mso" }, children: ["Max"] },
-      { tag: "script", children: ["alert(1)"] },
-      { tag: "a", attrs: { href: "javascript:alert(2)" }, children: ["klick"] },
-      { tag: "a", attrs: { href: "mailto:max@example.test" }, children: ["Mail"] },
-      { tag: "img", attrs: { src: "cid:image001.png" } },
-      { tag: "img", attrs: { src: "https://example.com/logo.png", alt: "Logo", onerror: "a()" } },
-      { tag: "marquee", children: ["text stays"] },
-      42,
-      null,
+describe("paragraphs", () => {
+  it("are separated by an empty line – typed, with spaces in it, or written as \\n\\n in the env file", () => {
+    expect(signatureParagraphs("Mit freundlichen Grüßen\n\n{displayName}\n{jobTitle}", profile)).toEqual([
+      "Mit freundlichen Grüßen",
+      "Max Mustermann\nProjektleitung",
     ]);
-    const html = renderSignatureNodes(nodes);
-    expect(html).toContain('<p style="color:#1f497d;font-weight:bold">Max</p>');
-    expect(html).toContain("alert(1)"); // the text of an unknown element stays as text …
-    expect(html).not.toContain("<script"); // … the element does not
-    expect(html).toContain("<a>klick</a>"); // the unsafe href is gone
-    expect(html).toContain('<a href="mailto:max@example.test" target="_blank" rel="noopener">Mail</a>');
-    expect(html).toContain('<img src="https://example.com/logo.png" alt="Logo">');
-    expect(html).not.toMatch(/onclick|onerror|javascript:|cid:|url\(|class=|marquee/);
-    expect(html).toContain("text stays");
+    expect(signatureParagraphs("A\r\n  \r\nB", profile)).toEqual(["A", "B"]);
+    expect(signatureParagraphs("{displayName}\\n\\n{company}", profile)).toEqual(["Max Mustermann", "Muster GmbH"]);
   });
 
-  it("escapes texts and attribute values", () => {
-    const html = renderSignatureNodes([{ tag: "span", attrs: { style: "color:red" }, children: ['<b>"x"</b> & y'] }]);
-    expect(html).toBe('<span style="color:red">&lt;b&gt;&quot;x&quot;&lt;/b&gt; &amp; y</span>');
-    expect(renderSignatureNodes([{ tag: "a", attrs: { href: 'https://x.test/"><script>' }, children: ["l"] }])).toContain(
-      'href="https://x.test/&quot;&gt;&lt;script&gt;"',
-    );
-  });
-
-  it("knows whether anything is left", () => {
-    expect(signatureHasContent(cleanSignatureNodes([{ tag: "p", children: ["  "] }]))).toBe(false);
-    expect(signatureHasContent(cleanSignatureNodes([{ tag: "img", attrs: { src: "https://x.test/l.png" } }]))).toBe(true);
+  it("drops paragraphs whose placeholders are all empty", () => {
+    expect(signatureParagraphs("{displayName}\n\n{department}\n\nEnde", profile)).toEqual(["Max Mustermann", "Ende"]);
   });
 });
 
 describe("signatureHtml", () => {
-  it("uses the own formatted or text signature, else MAIL_FOOTER (empty in the tests)", () => {
-    expect(signatureHtml({ format: "html", nodes: [{ tag: "b", children: ["Max"] }] }, profile)).toBe("<b>Max</b>");
-    expect(signatureHtml({ format: "text", content: "{displayName}\nTel. {phone}" }, profile)).toBe("Max Mustermann<br>Tel. +49 30 1234567");
-    expect(signatureHtml({ format: "text", content: "<b>{displayName}</b>" }, profile)).toBe("&lt;b&gt;Max Mustermann&lt;/b&gt;");
+  it("shows each paragraph like the mail text, lines as line breaks", () => {
+    expect(signatureHtml({ format: "text", content: "Mit freundlichen Grüßen\n\n{displayName}\nTel. {phone}" }, profile)).toBe(
+      `<p style="${TEXT_STYLE}">Mit freundlichen Grüßen</p><p style="${TEXT_STYLE}">Max Mustermann<br>Tel. +49 30 1234567</p>`,
+    );
+  });
+
+  it("is plain text: markup is escaped, never taken over", () => {
+    const html = signatureHtml({ format: "text", content: '<b>{displayName}</b> <img src=x onerror="a()">' }, profile);
+    expect(html).toContain("&lt;b&gt;Max Mustermann&lt;/b&gt; &lt;img src=x onerror=&quot;a()&quot;&gt;");
+    expect(html).not.toContain("<b>");
+    expect(html).not.toContain("<img");
+  });
+
+  it("falls back to MAIL_FOOTER (empty in the tests: no signature)", () => {
     expect(signatureHtml(null, profile)).toBe("");
   });
 });
