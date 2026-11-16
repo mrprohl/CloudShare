@@ -320,6 +320,16 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .messagebar.error .icon { color: var(--danger-fg); }
 .messagebar.success { background: var(--success-bg); border-color: var(--success-stroke); }
 .messagebar.success .icon { color: var(--success-fg); }
+/*
+ * Success message running down (SUCCESS_MESSAGE_SECONDS, duration set in taskpane.ts): the ring around the tick empties
+ * clockwise from 12 o'clock; it stops while the pointer or the focus is on the message, like holding a status.
+ */
+.status-timer {
+  transform: rotate(-90deg); transform-origin: 8px 8px; stroke-dashoffset: 0;
+  animation: status-timer linear forwards;
+}
+.messagebar:hover .status-timer, .messagebar:focus-within .status-timer { animation-play-state: paused; }
+@keyframes status-timer { to { stroke-dashoffset: -100; } } /* negative: the gap grows clockwise */
 
 /* --- Progress bar -------------------------------------------------------------- */
 .progress { height: 2px; margin-bottom: 12px; background: var(--stroke2); border-radius: 1px; overflow: hidden; }

@@ -211,6 +211,17 @@ export const config = {
   rateLimitPerMinute: number("RATE_LIMIT_PER_MINUTE", 600),
   /** Diagnostics: the Smart Alert reports its steps to POST /api/trace (logged). Off by default. */
   clientTrace: process.env.CLIENT_TRACE === "true",
+  /**
+   * Success messages in the pane disappear after this many seconds (a ring around the tick runs down; it stops while
+   * the pointer is on the message). 0 = they stay. Errors always stay.
+   */
+  successMessageSeconds: (() => {
+    const value = Number(process.env.SUCCESS_MESSAGE_SECONDS ?? 5);
+    if (!Number.isFinite(value) || value < 0 || value > 600) {
+      throw new Error("Environment variable SUCCESS_MESSAGE_SECONDS must be a number of seconds from 0 to 600");
+    }
+    return value;
+  })(),
 
   /** Nextcloud chunking v2: at least 5 MiB per chunk (except the last), at most 10,000 chunks. */
   chunkSizeBytes: 10 * 1024 * 1024,

@@ -400,6 +400,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     messageMaxLength: MESSAGE_MAX_LENGTH,
     sendExpireDays: config.sendExpireDays,
     sendMaxExpireDays: config.sendMaxExpireDays,
+    // Success messages in the pane disappear after this many seconds (0: they stay).
+    successMessageSeconds: config.successMessageSeconds,
   }));
 
   /**

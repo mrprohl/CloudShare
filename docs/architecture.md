@@ -582,6 +582,10 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   sections (getting started, sending files, password and channel, confidential message, receiving files, "History",
   FAQ), the most common one open. Texts in the language files (`help.*`); admins put their own support contact into
   `help.support` (`/config/locales`). Plain words, the button names of the pane, no technical terms.
+- **Messages** (`#status`, `setStatus`): errors and progress stay until the next message; success messages disappear
+  after `SUCCESS_MESSAGE_SECONDS` (default 5, `0` = they stay, served in `/api/config`) – the ring around the tick runs
+  down clockwise like an OTP timer (CSS animation `status-timer`, the message goes on `animationend`) and stops while
+  the pointer or the focus is on the message.
 - Outlook sets the width of the pane; the layout is designed for 320 px (short labels in "History", full text
   in `title`/`aria-label`).
 - **Cards** (`mailCard.ts`, inserted by the taskpane) and **every mail CloudShare sends itself** share one look. The
