@@ -122,7 +122,7 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     }
     if (route_ === "GET /api/nextcloud/status") {
       return json(connected
-        ? { connected: true, loginName: "max", freeBytes: 12.5 * 1024 ** 3, usedBytes: 37.5 * 1024 ** 3, totalBytes: 50 * 1024 ** 3,
+        ? { connected: true, loginName: "max.mustermann", freeBytes: 12.5 * 1024 ** 3, usedBytes: 37.5 * 1024 ** 3, totalBytes: 50 * 1024 ** 3,
             passwordEnforced: scenario.passwordEnforced ?? false }
         : { connected: false });
     }
@@ -131,7 +131,7 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     }
     if (route_ === "POST /api/nextcloud/connect/c1/poll") {
       connected = true;
-      return json({ connected: true, loginName: "max" });
+      return json({ connected: true, loginName: "max.mustermann" });
     }
     if (route_ === "POST /api/uploads") {
       if (scenario.uploadError) return json(scenario.uploadError, scenario.uploadError.status);
@@ -295,7 +295,7 @@ test("not connected: shows the connect view and connects via the Nextcloud login
 
   await expect(page.locator("#send-view")).toBeVisible({ timeout: 10_000 });
   await expect(page.locator("#status")).toContainText("Die Verbindung zu Nextcloud wurde hergestellt.");
-  await expect(page.locator("#account")).toContainText("max");
+  await expect(page.locator("#account")).toContainText("max.mustermann");
   expect(calls.some((c) => c.path === "/api/nextcloud/connect/c1/poll")).toBe(true);
 });
 
@@ -493,7 +493,7 @@ test("preselects large attachments and proposes a random password", async ({ pag
   expect(await password.inputValue()).toMatch(/^(?=(?:[^2-9]*[2-9]){2}[^2-9]*$)[A-Za-z2-9]{12,15}$/); // pronounceable, two digits
   await expect(page.locator("#max-access")).toHaveValue("3");
   await expect(page.locator("#expire")).toHaveValue("14");
-  await expect(page.locator("#account")).toHaveText("max");
+  await expect(page.locator("#account")).toHaveText("max.mustermann");
   await expect(page.locator("#account-storage")).toHaveText("12,5 GB von 50 GB frei"); // in the account menu
   // One button that says what it inserts; the rarely changed values collapsed behind a summary.
   await expect(page.locator("#kind-files")).toBeChecked();
@@ -993,7 +993,7 @@ test("Nachricht / Anfordern: 'Ohne Kennwort' is not offered – a choice made fo
 
 test("Nextcloud enforces link passwords: no 'Ohne Kennwort' option", async ({ page }) => {
   await openTaskpane(page, { passwordEnforced: true });
-  await expect(page.locator("#account")).toContainText("max"); // connection status has arrived
+  await expect(page.locator("#account")).toContainText("max.mustermann"); // connection status has arrived
   await expect(page.locator("label:has(#mode-none)")).toBeHidden();
   await expect(page.locator("#mode-random")).toBeChecked();
   await expect(page.locator("#password-group")).toBeVisible();
@@ -1160,7 +1160,7 @@ test("Meine Freigaben: shows the state of each link and revokes after confirmati
   // One quiet bottom bar for every tab: the account as a menu (like Outlook's profile menu), help and settings right.
   const toggle = page.locator("#account-toggle");
   const menu = page.locator("#account-menu");
-  await expect(toggle).toHaveText("max");
+  await expect(toggle).toHaveText("max.mustermann");
   await expect(menu).toBeHidden();
   const [toggleBox, helpBox, barBox] = await Promise.all(
     [toggle, page.locator("#help-toggle"), page.locator(".account-bar")].map((l) => l.boundingBox()),
@@ -1337,7 +1337,7 @@ test("reading a mail: tabs 'Nachricht' and 'Meine Freigaben', nothing to insert"
   await expect(page.locator("#mail-none")).toBeHidden();
   // Reading a mail too: "Aktualisieren" in the tab bar, the account at the bottom.
   await expect(page.locator("#refresh-shares")).toBeVisible();
-  await expect(page.locator("#account-toggle")).toHaveText("max");
+  await expect(page.locator("#account-toggle")).toHaveText("max.mustermann");
   await expect(page.locator(".share .insert").first()).toBeHidden(); // a mail being read cannot take a link
   await expect(page.locator("#panel-mail")).not.toContainText("Weitere Freigaben");
   await expectAccessible(page);
@@ -1523,7 +1523,7 @@ test.describe("README pictures (English)", () => {
     await openTaskpane(page, { lang: "en", attachments: ATTACHMENTS, config: README_CONFIG });
     await expect(page.locator("#submit")).toHaveText("Insert file as link");
     await expect(page.locator("#validity-summary")).toHaveText("Link 14 days · Password link 5 days, opens 3 times");
-    await expect(page.locator("#account")).toHaveText("max");
+    await expect(page.locator("#account")).toHaveText("max.mustermann");
     await expectAccessible(page);
     await readmeShot(page, "send");
   });
