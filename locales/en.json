@@ -414,6 +414,8 @@
     "buttonFallback": "If the button does not work:",
     "files_one": "“{name}”",
     "files_other": "{count} files",
+    "smsFiles_one": "\"{name}\"",
+    "smsFiles_other": "\"{name}\" and {more} more",
     "subjectLegacy": "Password for: {subject}",
     "smsFailedSubject": "Text message not sent – {subject}",
     "smsUndeliveredSubject": "Text message not delivered – {subject}",
@@ -440,7 +442,7 @@
     "noSubject": "(no subject)"
   },
   "templates": {
-    "sms_template": "Your password for the files from {sender_name}:\n{password}",
+    "sms_template": "Password for {files} from {sender_name}:\n{password}",
     "mail_password_subject": "Password for {files}: {subject}",
     "mail_password_intro": "Hello,\n\nYou need a password for the files shared in the message “{subject}”. You can get it with the button:",
     "download_notice_subject": "Downloaded: {filename}",

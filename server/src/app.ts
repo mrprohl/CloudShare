@@ -59,7 +59,7 @@ import {
   smsNumberProblem,
 } from "./sms.js";
 import { isCloudShareShare, isRequestShare, revokeShare, tokenOf } from "./shares.js";
-import { defaultTemplates, render, templatesFor } from "./templates.js";
+import { defaultTemplates, render, smsFiles, templatesFor } from "./templates.js";
 import { clampInt, isEmailAddress } from "./limits.js";
 import { formatDate, locale, t, withRequestLanguage } from "./i18n.js";
 import { passwordProblem } from "./password.js";
@@ -735,7 +735,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         const number = smsNumber(target);
         if (!takeSmsQuota(user.oid)) throw new HttpError(429, t("server.smsDailyLimit", { max: config.smsMaxPerDay }));
         const password = await readSendPassword(ref.sendId);
-        const messageId = await sendSms(number, render(templates.sms_template, { password, sender_name: ref.senderName ?? "" }));
+        const messageId = await sendSms(number, render(templates.sms_template, { password, sender_name: ref.senderName ?? "", files: smsFiles(ref.fileNames ?? []) }));
         await recordDelivery(ref.tokens, { owner: user.oid, channel: "sms", to: maskPhone(number), at: Date.now(), messageId, status: "submitted" });
         await updatePasswordRef(ref.sendId, { sms: number });
         req.log.info({ user: user.upn, to: maskPhone(number), messageId }, "Password sent again by SMS");

@@ -4,12 +4,32 @@ import { checkPassword, GENERATED_LENGTH, generatePassword, PASSWORD_MIN_LENGTH 
 describe("generatePassword", () => {
   const samples = Array.from({ length: 300 }, () => generatePassword());
 
-  it("is pronounceable: WortWortSi12 – 12 characters, no special characters", () => {
+  /** The parts of a password: words "Fuvo"/"Ranto", the short syllable "Be"/"Bem" and the number. */
+  const parts = (pw: string) => pw.match(/[A-Z][a-z]+|[2-9]{2}/g) ?? [];
+  const WORD = /^[A-Z][aeiou][mnrst]?[a-z][aeiou]$/;
+  const SHORT = /^[A-Z][aeiou][mnrst]?$/;
+
+  it("is pronounceable: two words, a short syllable and two digits – 12 to 15 characters, no special characters", () => {
+    expect(GENERATED_LENGTH).toEqual({ min: 12, max: 15 });
     for (const pw of samples) {
-      expect(pw).toHaveLength(GENERATED_LENGTH);
-      expect(GENERATED_LENGTH).toBe(12);
-      expect(pw).toMatch(/^[A-Z][aeiou][a-z][aeiou][A-Z][aeiou][a-z][aeiou][A-Z][aeiou][2-9]{2}$/);
+      expect(pw.length).toBeGreaterThanOrEqual(GENERATED_LENGTH.min);
+      expect(pw.length).toBeLessThanOrEqual(GENERATED_LENGTH.max);
+      expect(pw).toMatch(/^[A-Za-z2-9]+$/);
+      const found = parts(pw);
+      expect(found.join("")).toBe(pw);
+      expect(found).toHaveLength(4);
+      expect(found.filter((p) => /^[2-9]{2}$/.test(p))).toHaveLength(1);
+      expect(found.filter((p) => WORD.test(p) && p.length >= 4)).toHaveLength(2);
+      expect(found.filter((p) => SHORT.test(p))).toHaveLength(1);
     }
+  });
+
+  it("varies: order of the parts, lengths and closed syllables differ", () => {
+    const digitsAt = new Set(samples.map((pw) => parts(pw).findIndex((p) => /^\d+$/.test(p))));
+    expect([...digitsAt].sort()).toEqual([0, 1, 2, 3]); // the number is not always at the end
+    expect(new Set(samples.map((pw) => pw.length)).size).toBeGreaterThanOrEqual(3);
+    expect(samples.some((pw) => /[A-Z][aeiou][mnrst][a-z][aeiou]/.test(pw))).toBe(true); // "Ranto"
+    expect(samples.some((pw) => /^[A-Z][aeiou][a-z][aeiou][A-Z]/.test(pw))).toBe(true); // "FuvoMo…"
   });
 
   it("avoids easily confused and awkward characters", () => {

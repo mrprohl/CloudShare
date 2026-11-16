@@ -10,11 +10,12 @@
  */
 import { readFileSync } from "node:fs";
 import { config } from "./config.js";
-import { texts } from "./i18n.js";
+import { t as translate, texts } from "./i18n.js";
 
 export const TEMPLATE_FIELDS = {
-  /** SMS with the password in plain text – {password} required; never the link or a file name. */
-  sms_template: ["password", "sender_name"],
+  /** SMS with the password in plain text – {password} required; {files} names the files (GSM, shortened), never the
+   *  link or the raw file name. */
+  sms_template: ["password", "sender_name", "files"],
   /** Subject of the password mail. */
   mail_password_subject: ["files", "subject", "sender_name"],
   /** Text above the card of the password mail (paragraphs separated by an empty line). */
@@ -47,6 +48,36 @@ export const isGsm = (text: string) => [...text].every((c) => GSM.includes(c));
 /** Length of an SMS text in GSM units (characters of the extension table count twice). */
 export const gsmLength = (text: string) => [...text].reduce((n, c) => n + ("^{}\\[~]|€".includes(c) ? 2 : 1), 0);
 
+/** Text in GSM characters: accents dropped where the alphabet lacks them, typographic quotes and dashes made plain. */
+export function toGsm(text: string): string {
+  const plain: Record<string, string> = { "„": '"', "“": '"', "”": '"', "‚": "'", "‘": "'", "’": "'", "–": "-", "—": "-", "…": "..." };
+  return [...text]
+    .map((c) => {
+      if (GSM.includes(c) && c !== "\n" && c !== "\r") return c;
+      if (plain[c]) return plain[c];
+      const stripped = c.normalize("NFD").replace(/[̀-ͯ]/g, "");
+      return stripped && isGsm(stripped) && stripped !== "\n" ? stripped : "_";
+    })
+    .join("");
+}
+
+/** At most SMS_NAME_MAX characters: start and end of the name (with its extension), "..." in between. */
+const SMS_NAME_MAX = 32;
+function shortName(name: string): string {
+  if (name.length <= SMS_NAME_MAX) return name;
+  const tail = 10;
+  return `${name.slice(0, SMS_NAME_MAX - tail - 3)}...${name.slice(-tail)}`;
+}
+
+/**
+ * {files} of the SMS: the first file name (GSM characters, shortened) and how many more – so a recipient with
+ * several SMS knows which password belongs to which link. Empty without file names.
+ */
+export function smsFiles(names: readonly string[]): string {
+  if (names.length === 0) return "";
+  return translate("mail.smsFiles", { count: names.length, name: shortName(toGsm(names[0])), more: names.length - 1 });
+}
+
 const placeholders = (text: string) => [...text.matchAll(/\{([a-z_]+)\}/g)].map((m) => m[1]);
 
 /** Checks one level of the file; drops fields that would leak something (e.g. {password} in a mail). */
@@ -74,7 +105,7 @@ function validateLevel(level: unknown, where: string, warn: (msg: string) => voi
         continue;
       }
       if (used.some((p) => p === "link" || p === "filename")) {
-        warn(`templates: ${where}.sms_template must not contain the link or a file name – ignored`);
+        warn(`templates: ${where}.sms_template must not contain the link or a file name ({filename} – use {files}) – ignored`);
         continue;
       }
       if (!isGsm(value)) warn(`templates: ${where}.sms_template has non-GSM characters – the SMS is limited to 70 characters`);
@@ -82,8 +113,10 @@ function validateLevel(level: unknown, where: string, warn: (msg: string) => voi
       if (!/(^|\n)\{password\}/.test(value)) {
         warn(`templates: ${where}.sms_template: put {password} on a line of its own ("…:\\n{password}") – phones may hyphenate it where they wrap the line`);
       }
-      // 12 characters for the password, about 25 for a sender name.
-      const estimate = gsmLength(value.replace("{password}", "x".repeat(12)).replace("{sender_name}", "x".repeat(25)));
+      // 12 characters for the password, about 25 for a sender name, up to 45 for the files.
+      const estimate = gsmLength(
+        value.replace("{password}", "x".repeat(12)).replace("{sender_name}", "x".repeat(25)).replace("{files}", "x".repeat(45)),
+      );
       if (estimate > 160) warn(`templates: ${where}.sms_template is about ${estimate} characters – billed as several SMS`);
     }
     const unknown = used.filter((p) => !allowed.includes(p));

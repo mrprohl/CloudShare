@@ -414,6 +414,8 @@
     "buttonFallback": "Falls der Button nicht funktioniert:",
     "files_one": "„{name}“",
     "files_other": "{count} Dateien",
+    "smsFiles_one": "\"{name}\"",
+    "smsFiles_other": "\"{name}\" und {more} weitere",
     "subjectLegacy": "Kennwort für: {subject}",
     "smsFailedSubject": "SMS nicht versendet – {subject}",
     "smsUndeliveredSubject": "SMS nicht zugestellt – {subject}",
@@ -440,7 +442,7 @@
     "noSubject": "(ohne Betreff)"
   },
   "templates": {
-    "sms_template": "Ihr Kennwort fuer die Dateien von {sender_name}:\n{password}",
+    "sms_template": "Kennwort fuer {files} von {sender_name}:\n{password}",
     "mail_password_subject": "Kennwort für {files}: {subject}",
     "mail_password_intro": "Guten Tag,\n\nfür die bereitgestellten Dateien aus der Nachricht „{subject}“ benötigen Sie ein Kennwort. Sie können es über den Button abrufen:",
     "download_notice_subject": "Heruntergeladen: {filename}",

@@ -79,7 +79,7 @@ three.
    Attachments above the threshold (default 5 MB) are marked **"Large"** and preselected; Outlook also shows a hint
    above the mail.
 2. Choose the password:
-   - **Random password** (default) – easy to read out, e.g. `KateGeteFi45`.
+   - **Random password** (default) – easy to read out, in varying patterns, e.g. `KateGeteFi45`, `47RantoBeKiwu`.
    - **Own password** – at least 12 characters, three of four character types.
    - **No password** – only for files and only if your Nextcloud allows links without a password. Anyone with the
      link can download the file while the link is valid; no password goes out, and that mail cannot get a

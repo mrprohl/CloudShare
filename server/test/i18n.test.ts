@@ -61,7 +61,9 @@ describe("language files", () => {
     const sms = loadLocale(lang).templates.sms_template;
     expect(sms).toContain("\n{password}"); // a line of its own: phones may hyphenate a wrapped password
     expect(isGsm(sms)).toBe(true);
-    expect(gsmLength(sms.replace("{password}", "x".repeat(12)).replace("{sender_name}", "x".repeat(25)))).toBeLessThanOrEqual(160);
+    const filled = sms.replace("{password}", "x".repeat(12)).replace("{sender_name}", "x".repeat(25)).replace("{files}", "x".repeat(45));
+    expect(gsmLength(filled)).toBeLessThanOrEqual(160);
+    expect(sms).toContain("{files}"); // which link the password belongs to
     expect(Object.keys(loadLocale(lang).templates).sort()).toEqual(Object.keys(TEMPLATE_FIELDS).sort());
   });
 });
