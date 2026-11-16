@@ -5,7 +5,7 @@
  *
  * The add-in follows the language of the Outlook client: every available language goes into the add-in files, the
  * add-in picks the one of Office.context.displayLanguage (English if there is none) and sends it with every request
- * (header X-CloudShare-Language), so the error messages it shows come in that language too. LANGUAGE (default "de")
+ * (header X-CloudShare-Language), so the error messages it shows come in that language too. LANGUAGE (default "en")
  * is the language of everything CloudShare sends itself (mails, SMS) and the first guess of the taskpane page.
  * Missing texts fall back to English, then to the key itself, so a partly translated file still works. Sections:
  *   addin      taskpane, Smart Alerts, info bar, link cards – injected into the add-in files at startup

@@ -148,7 +148,7 @@ export const config = {
    * Countries SMS may go to (ISO codes, calling codes or names, see countries.ts), e.g. "DE, AT, CH" or "DACH";
    * empty = all. Checked in the taskpane while the number is entered and again before every SMS.
    */
-  smsAllowedCountries: parseCountries(process.env.SMS_ALLOWED_COUNTRIES ?? "", process.env.LANGUAGE?.trim().toLowerCase() || "de"),
+  smsAllowedCountries: parseCountries(process.env.SMS_ALLOWED_COUNTRIES ?? "", process.env.LANGUAGE?.trim().toLowerCase() || "en"),
   /**
    * Regular expressions on the number in E.164 ("+491701234567"), checked after the countries: SMS_ALLOWED_NUMBERS
    * (empty = every number) must match, SMS_BLOCKED_NUMBERS must not. Mobile and landline numbers are allowed; the
@@ -201,7 +201,7 @@ export const config = {
    * Language of everything users and recipients see: locales/<LANGUAGE>.json (see i18n.ts, which reads LANGUAGE
    * itself). Dates in mails are shown in this time zone (the container's TZ).
    */
-  language: (process.env.LANGUAGE ?? "de").trim().toLowerCase() || "de",
+  language: (process.env.LANGUAGE ?? "en").trim().toLowerCase() || "en",
   timeZone: process.env.TZ || "Europe/Berlin",
 
   /**

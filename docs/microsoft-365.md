@@ -295,7 +295,7 @@ failed, retrying later`); everything else keeps working.
 
 ## 8. Errors and their causes
 
-Messages are quoted in English (`LANGUAGE=en`), the German text of the default installation in brackets.
+Messages are quoted in English (the default, `LANGUAGE=en`), the German text (`LANGUAGE=de`) in brackets.
 
 | Message in Outlook / log | Cause | Fix |
 |---|---|---|
