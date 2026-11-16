@@ -435,6 +435,10 @@ describe("password by SMS: the link of the Send is never sent", () => {
 describe("confidential messages", () => {
   const send = (payload: Record<string, unknown>) =>
     app.inject({ method: "POST", url: "/api/messages", headers: as("anna"), payload });
+  // The messages created here would show in anna's "Verlauf" in later tests: revoke them.
+  afterAll(async () => {
+    await app.inject({ method: "DELETE", url: "/api/shares/msg-send-msg", headers: as("anna") });
+  });
 
   it("stores the text only in a password-protected Send and attaches it to the mail's job", async () => {
     createMessageSend.mockClear();
