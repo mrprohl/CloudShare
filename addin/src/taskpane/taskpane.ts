@@ -20,7 +20,7 @@ import {
 import { checkPassword, generatePassword } from "../shared/password";
 import { inLanguage, languageChoices, locale, t } from "../shared/i18n";
 import { errorText } from "../shared/sso";
-import { filesCard, filesText, messageCard, messageText, requestCard, requestText } from "./mailCard";
+import { filesCard, filesText, messageCard, messageText, requestCard, requestText, type CardProof } from "./mailCard";
 import { initSettings, loadSettings, userSettings } from "./settings";
 
 // All visible texts come from locales/<language>.json (t(), see shared/i18n.ts) and follow Outlook's terminology
@@ -65,6 +65,8 @@ const messageDaysInput = $<HTMLInputElement>("message-days");
 const passwordToField = $<HTMLDivElement>("password-to-field");
 const recipientLanguageField = $<HTMLDivElement>("recipient-language-field");
 const recipientLanguageSelect = $<HTMLSelectElement>("recipient-language");
+const proofField = $<HTMLDivElement>("proof-field");
+const proofInput = $<HTMLInputElement>("proof");
 const channelSelect = $<HTMLSelectElement>("password-channel");
 const channelSmsOption = $<HTMLOptionElement>("channel-sms-option");
 const passwordSmsInput = $<HTMLInputElement>("password-sms");
@@ -649,7 +651,13 @@ interface UploadResult {
   noPassword?: boolean;
   fileName: string;
   size: number;
+  /** "Zustellnachweis": tracking ID of the mail's case (null: not ticked). */
+  proofId?: string | null;
 }
+
+/** "Zustellnachweis" in the card: the tracking ID; `gateway` – the recipient confirms their address first. */
+const cardProof = (proofId: string | null | undefined, gateway: boolean): CardProof | undefined =>
+  proofId ? { id: proofId, gateway } : undefined;
 
 /** Link "Ohne Kennwort"? */
 const isWithoutPassword = (result: { jobId: string | null; noPassword?: boolean }) =>
@@ -685,7 +693,7 @@ async function upload(blob: Blob, fileName: string, step: string): Promise<Uploa
     { method: "POST", body: JSON.stringify(await shareSettingsBody(step)) },
     await getToken(),
   );
-  await rememberShareChoice(result.jobId, isWithoutPassword(result));
+  await rememberShareChoice(result.jobId, isWithoutPassword(result), result.proofId);
   return result;
 }
 
@@ -729,7 +737,9 @@ async function shareSettingsBody(step: string) {
   const expireDays = Number(expireInput.value);
   const subject = await draftSubject();
   syncedSubject = subject;
-  if (withoutPassword()) return { noPassword: true, expireDays, jobId: (await readDraftState()).jobId, language: recipientLanguage(), subject };
+  if (withoutPassword()) {
+    return { noPassword: true, expireDays, jobId: (await readDraftState()).jobId, language: recipientLanguage(), subject, ...(await proofRequest()) };
+  }
   // An address or number typed just before the click (its "change" event may not have run yet) must reach the job.
   const wanted = channelTarget();
   const current = await readDraftState();
@@ -751,6 +761,8 @@ async function shareSettingsBody(step: string) {
     // Language of this step's password mail and SMS ("Sprache für die Empfänger").
     language: recipientLanguage(),
     subject,
+    // "Zustellnachweis" for this link (only when ticked).
+    ...(await proofRequest()),
   };
 }
 
@@ -769,6 +781,30 @@ function renderRecipientLanguages(selected: string) {
 /** The language the recipients get the link card, password mail and SMS in. */
 const recipientLanguage = () => recipientLanguageSelect.value || undefined;
 
+/** "Zustellnachweis" ticked (and offered by the server). */
+function proofWanted() {
+  return !proofField.hidden && proofInput.checked;
+}
+
+/**
+ * What a link request says about "Zustellnachweis": ticked, the case of this mail so far (its tracking ID) and the
+ * client – Outlook's host, platform and version for the record.
+ */
+async function proofRequest() {
+  if (!proofWanted()) return {};
+  const diagnostics = Office.context.diagnostics;
+  return {
+    proof: true,
+    proofId: (await readDraftState()).proofId,
+    client: { host: String(diagnostics?.host ?? ""), platform: String(diagnostics?.platform ?? ""), version: diagnostics?.version ?? "" },
+  };
+}
+
+proofInput.addEventListener("change", () => {
+  void updateDraftState({ proof: proofInput.checked });
+  renderValidity();
+});
+
 // A choice for this mail is kept with the draft: the pane opened again shows it, and new links follow it.
 recipientLanguageSelect.addEventListener("change", () => {
   renderValidity();
@@ -778,8 +814,12 @@ recipientLanguageSelect.addEventListener("change", () => {
 /** New ID for one click on "Als Link einfügen" / "Link zum Hochladen einfügen" / "Verlauf → Als Link einfügen". */
 const newStep = () => Math.random().toString(36).slice(2, 12);
 
-/** From the first link on, the choice (this password or none) applies to the whole mail. */
-async function rememberShareChoice(jobId: string | null, noPassword = jobId === null) {
+/**
+ * From the first link on, the choice (this password or none) applies to the whole mail. `proofId`: the link joined the
+ * mail's "Zustellnachweis" – later links with the box ticked join the same case.
+ */
+async function rememberShareChoice(jobId: string | null, noPassword = jobId === null, proofId?: string | null) {
+  if (proofId) await updateDraftState({ proofId });
   if (noPassword || jobId === null) {
     // Links without password. With the download confirmation the server keeps a job without password, which the
     // send handler arms like a password job (it only waits for the sent mail).
@@ -1049,7 +1089,8 @@ async function insertLinks(results: UploadResult[]) {
   // The card in the language chosen for the recipients (dates and sizes too).
   const [html, text] = inLanguage(recipientLanguage(), () => {
     const expire = formatDate(results[0].expireDate);
-    return [filesCard(files, expire, formatSize, withPassword), filesText(files, expire, formatSize, withPassword)];
+    const proof = cardProof(results.find((r) => r.proofId)?.proofId, true);
+    return [filesCard(files, expire, formatSize, withPassword, proof), filesText(files, expire, formatSize, withPassword, proof)];
   });
   await insertIntoBody(html, text, shareToken(results[0].shareUrl));
 }
@@ -1432,6 +1473,8 @@ function renderValidity() {
   if (!recipientLanguageField.hidden && recipientLanguageSelect.selectedOptions[0]) {
     parts.push(recipientLanguageSelect.selectedOptions[0].text);
   }
+  // "Zustellnachweis" only when ticked – the summary must not hide it.
+  if (proofWanted()) parts.push(t("proof.summary"));
   validitySummary.textContent = parts.join(" · ");
 }
 
@@ -1559,16 +1602,17 @@ async function insertRequest() {
   await runInsert(async () => {
     try {
       setStatus(t("request.creating"), "progress");
-      const result = await api<{ shareUrl: string; expireDate: string; jobId: string }>(
+      const result = await api<{ shareUrl: string; expireDate: string; jobId: string; proofId?: string | null }>(
         "/api/requests",
         { method: "POST", body: JSON.stringify(await shareSettingsBody(stepForClick())) },
         await getToken(),
       );
       // Same password and password mail as the files of this mail.
-      await rememberShareChoice(result.jobId);
+      await rememberShareChoice(result.jobId, undefined, result.proofId);
       const [html, text] = inLanguage(recipientLanguage(), () => {
         const expire = formatDate(result.expireDate);
-        return [requestCard(result.shareUrl, expire), requestText(result.shareUrl, expire)];
+        const proof = cardProof(result.proofId, true);
+        return [requestCard(result.shareUrl, expire, proof), requestText(result.shareUrl, expire, proof)];
       });
       await insertIntoBody(html, text, shareToken(result.shareUrl));
       setStatus(t("request.inserted"), "success");
@@ -1608,7 +1652,7 @@ async function insertMessage() {
   await runInsert(async () => {
     try {
       setStatus(t("message.creating"), "progress");
-      const result = await api<{ shareUrl: string; expireDate: string; jobId: string }>(
+      const result = await api<{ shareUrl: string; expireDate: string; jobId: string; proofId?: string | null }>(
         "/api/messages",
         {
           method: "POST",
@@ -1617,10 +1661,11 @@ async function insertMessage() {
         await getToken(),
       );
       // Same password and password mail as the files of this mail (one step).
-      await rememberShareChoice(result.jobId);
+      await rememberShareChoice(result.jobId, undefined, result.proofId);
       const [cardHtml, cardText] = inLanguage(recipientLanguage(), () => {
         const expire = formatDate(result.expireDate);
-        return [messageCard(result.shareUrl, expire), messageText(result.shareUrl, expire)];
+        const proof = cardProof(result.proofId, false);
+        return [messageCard(result.shareUrl, expire, proof), messageText(result.shareUrl, expire, proof)];
       });
       await insertIntoBody(cardHtml, cardText, shareToken(result.shareUrl));
       messageInput.value = "";
@@ -1736,6 +1781,8 @@ interface ShareItem {
   url: string | null;
   /** Message: the access ID in its link (…/#/send/<accessId>/…), to find it in a mail being read. */
   accessId?: string;
+  /** "Zustellnachweis": tracking ID of the mail's case – "Nachweis" opens its PDF. */
+  proofId?: string | null;
   /** Subject of the mail it went out with (title of the entry); null while unknown (not sent yet, older entries). */
   subject?: string | null;
   /** Graph ID of that mail in the user's own mailbox – a click on the subject opens it. */
@@ -1796,6 +1843,27 @@ const MESSAGE_ICON =
  * EWS ID Outlook opens (GET /api/shares/:id/mail – also after the mail was moved); displayMessageFormAsync reports a
  * failure (Mailbox 1.9), older clients get displayMessageForm.
  */
+/**
+ * "Nachweis": the PDF of the mail's delivery proof in the default browser – the server hands out a signed address that
+ * works for a few minutes (a download from the taskpane does not work in every Outlook).
+ */
+async function openProof(id: string, button: HTMLButtonElement) {
+  button.disabled = true;
+  try {
+    const { url } = await api<{ url: string }>(`/api/proofs/${encodeURIComponent(id)}/link`, { method: "POST" }, await getToken());
+    const ui = Office.context.ui as unknown as { openBrowserWindow?: (url: string) => void };
+    if (ui.openBrowserWindow && Office.context.requirements.isSetSupported("OpenBrowserWindowApi", "1.1")) {
+      ui.openBrowserWindow(url);
+    } else {
+      window.open(url, "_blank", "noopener");
+    }
+  } catch (err) {
+    setStatus(t("shares.proofFailed", { error: errorMessage(err) }), "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
 async function openSentMail(share: ShareItem) {
   try {
     const { ewsId } = await api<{ ewsId: string }>(`/api/shares/${encodeURIComponent(share.id)}/mail`, {}, await getToken());
@@ -1893,6 +1961,8 @@ const ICONS = {
       '<path d="M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l1-1"/>',
   ),
   revoke: icon('<circle cx="10" cy="10" r="6.5"/><path d="M5.4 5.4l9.2 9.2"/>'),
+  /** "Nachweis": a document with a seal (the PDF of the delivery proof). */
+  proof: icon('<path d="M11.5 3H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h3"/><path d="M11.5 3L15 6.5V9"/><path d="M8 7h3M8 10h2"/><circle cx="14" cy="13" r="2.5"/><path d="M12.8 15.2L12.5 18l1.5-.8 1.5.8-.3-2.8"/>'),
   /** Same drawing as the refresh button in the tab bar (taskpane.html). */
   refresh: icon('<path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11"/>'),
 } as const;
@@ -2061,10 +2131,12 @@ function shareRow(share: ShareItem): HTMLElement {
     `<button type="button" class="btn btn-subtle btn-icon copy">${ICONS.copy}</button>` +
     `<button type="button" class="btn btn-subtle btn-icon show-password" aria-expanded="false" hidden>${ICONS.password}</button>` +
     `<button type="button" class="btn btn-subtle btn-icon insert">${ICONS.insert}</button>` +
+    `<button type="button" class="btn btn-subtle btn-icon proof" hidden>${ICONS.proof}</button>` +
     `<button type="button" class="btn btn-subtle btn-icon btn-danger revoke">${ICONS.revoke}</button>` +
     `</div></div>` +
     `<div class="share-meta"><span class="share-period"></span> · <span class="share-password"></span></div>` +
     `<div class="share-meta share-unsent" hidden></div>` +
+    `<div class="share-meta share-proof" hidden></div>` +
     `<div class="share-state${state.done ? " done" : ""}">` +
     `<span class="dot-state" aria-hidden="true"></span><span class="state-text"></span></div>` +
     `<div class="password-panel" hidden></div></div>`;
@@ -2075,6 +2147,16 @@ function shareRow(share: ShareItem): HTMLElement {
   label(row.querySelector<HTMLButtonElement>(".copy")!, t("shares.copyLabel"));
   label(row.querySelector<HTMLButtonElement>(".insert")!, t("shares.insertLabel"));
   label(row.querySelector<HTMLButtonElement>(".revoke")!, t("shares.revokeLabel"));
+  // "Zustellnachweis": the tracking ID below the period, and "Nachweis" opens the PDF in the default browser.
+  if (share.proofId) {
+    const proofLine = row.querySelector<HTMLElement>(".share-proof")!;
+    proofLine.textContent = t("shares.proofLine", { id: share.proofId });
+    proofLine.hidden = false;
+    const proofButton = row.querySelector<HTMLButtonElement>(".proof")!;
+    label(proofButton, t("shares.proofLabel", { id: share.proofId }));
+    proofButton.hidden = false;
+    proofButton.addEventListener("click", () => void openProof(share.proofId!, proofButton));
+  }
   // Too long for the line: shortened in the middle ("cloudshare-icon-va…nten.png"), so the extension stays visible.
   const [start, end] = nameParts(share.name);
   const nameStart = document.createElement("span");
@@ -2249,6 +2331,7 @@ interface LinkAgainResult {
   noPassword?: boolean;
   fileName: string;
   size: number | null;
+  proofId?: string | null;
 }
 
 /**
@@ -2270,14 +2353,15 @@ async function linkAgain(share: ShareItem, button: HTMLButtonElement) {
       { method: "POST", body: JSON.stringify(await shareSettingsBody(stepForClick())) },
       await getToken(),
     );
-    await rememberShareChoice(result.jobId, isWithoutPassword(result));
+    await rememberShareChoice(result.jobId, isWithoutPassword(result), result.proofId);
     const withPassword = !isWithoutPassword(result);
     // The card in the language chosen for the recipients of this mail.
     const [html, text] = inLanguage(recipientLanguage(), () => {
       const expire = formatDate(result.expireDate);
-      if (result.kind === "request") return [requestCard(result.shareUrl, expire), requestText(result.shareUrl, expire)];
+      const proof = cardProof(result.proofId, true);
+      if (result.kind === "request") return [requestCard(result.shareUrl, expire, proof), requestText(result.shareUrl, expire, proof)];
       const files = [{ name: result.fileName, size: result.size, url: result.shareUrl }];
-      return [filesCard(files, expire, formatSize, withPassword), filesText(files, expire, formatSize, withPassword)];
+      return [filesCard(files, expire, formatSize, withPassword, proof), filesText(files, expire, formatSize, withPassword, proof)];
     });
     await insertIntoBody(html, text, shareToken(result.shareUrl));
     setStatus(
@@ -2415,6 +2499,11 @@ Office.onReady(async () => {
 
   const state = await readDraftState();
   expireInput.value = String(serverConfig.defaultExpireDays);
+  // "Zustellnachweis": offered only when the server has it (DELIVERY_PROOF); never ticked unless this mail has it.
+  proofField.hidden = !serverConfig.deliveryProof;
+  // The guide explains it only where it exists.
+  for (const id of ["help-proof", "help-shares-proof"]) $<HTMLElement>(id).hidden = !serverConfig.deliveryProof;
+  proofInput.checked = state.proof === true;
   applyLinkMax();
   maxAccessInput.max = String(serverConfig.sendMaxAccessLimit);
   for (const input of [passwordDaysInput, messageDaysInput]) {

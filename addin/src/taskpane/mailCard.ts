@@ -66,9 +66,22 @@ function frame(title: string, rows: string, note: string): string {
   );
 }
 
+/**
+ * "Zustellnachweis": the tracking ID of the mail's case; `gateway` – the link leads to the page where the recipient
+ * confirms their address first (files, upload links), not for a confidential message.
+ */
+export interface CardProof {
+  id: string;
+  gateway: boolean;
+}
+
+/** What the recipients learn about the delivery proof: the tracking ID and that they confirm their address. */
+const proofNote = (proof: CardProof | undefined) =>
+  proof ? t(proof.gateway ? "card.proof" : "card.proofMessage", { id: proof.id }) : "";
+
 /** "Gültig bis 28.11.2026 · Das Kennwort erhalten Sie in einer separaten Nachricht." */
-const cardNote = (expireDate: string, withPassword: boolean) =>
-  [t("card.validUntil", { date: expireDate }), withPassword ? t("card.passwordNote") : ""].filter(Boolean).join(" · ");
+const cardNote = (expireDate: string, withPassword: boolean, proof?: CardProof) =>
+  [t("card.validUntil", { date: expireDate }), withPassword ? t("card.passwordNote") : "", proofNote(proof)].filter(Boolean).join(" · ");
 
 /** Card for shared files: one row per file with type badge, name, size and a download button. */
 export function filesCard(
@@ -77,6 +90,7 @@ export function filesCard(
   formatSize: (bytes: number) => string,
   /** false for links "Ohne Kennwort" – then there is no password mail to point to. */
   withPassword = true,
+  proof?: CardProof,
 ): string {
   const rows = files
     .map(
@@ -95,25 +109,25 @@ export function filesCard(
         `</tr></table>`,
     )
     .join("");
-  return frame(t("card.filesTitle", { count: files.length }), rows, cardNote(expireDate, withPassword));
+  return frame(t("card.filesTitle", { count: files.length }), rows, cardNote(expireDate, withPassword, proof));
 }
 
 /** Card for an upload link ("Dateien von Empfängern erhalten"). */
-export function requestCard(url: string, expireDate: string): string {
+export function requestCard(url: string, expireDate: string, proof?: CardProof): string {
   const rows =
     `<div style="font-size:14px;line-height:20px;color:#424242;margin:0 0 12px;">` +
     `${escapeHtml(t("card.requestText"))}</div>` +
     button(url, t("card.upload"));
-  return frame(t("card.requestTitle"), rows, cardNote(expireDate, true));
+  return frame(t("card.requestTitle"), rows, cardNote(expireDate, true, proof));
 }
 
 /** Card for a confidential message: the text itself is not in the mail, only the password-protected link to it. */
-export function messageCard(url: string, expireDate: string): string {
+export function messageCard(url: string, expireDate: string, proof?: CardProof): string {
   const rows =
     `<div style="font-size:14px;line-height:20px;color:#424242;margin:0 0 12px;">` +
     `${escapeHtml(t("card.messageText"))}</div>` +
     button(url, t("card.messageOpen"));
-  return frame(t("card.messageTitle"), rows, cardNote(expireDate, true));
+  return frame(t("card.messageTitle"), rows, cardNote(expireDate, true, proof));
 }
 
 /** Plain-text versions for mails composed in text format. */
@@ -122,15 +136,17 @@ export function filesText(
   expireDate: string,
   formatSize: (bytes: number) => string,
   withPassword = true,
+  proof?: CardProof,
 ): string {
   const lines = files.map((f) => `- ${f.name}${f.size === null ? "" : ` (${formatSize(f.size)})`}: ${f.url}`);
-  return `\n${t("card.filesPlain", { date: expireDate })}\n${lines.join("\n")}\n` + (withPassword ? `${t("card.passwordNote")}\n` : "");
+  return `\n${t("card.filesPlain", { date: expireDate })}\n${lines.join("\n")}\n` + (withPassword ? `${t("card.passwordNote")}\n` : "") +
+    (proof ? `${proofNote(proof)}\n` : "");
 }
 
-export function messageText(url: string, expireDate: string): string {
-  return `\n${t("card.messagePlain", { date: expireDate })}\n${url}\n${t("card.passwordNote")}\n`;
+export function messageText(url: string, expireDate: string, proof?: CardProof): string {
+  return `\n${t("card.messagePlain", { date: expireDate })}\n${url}\n${t("card.passwordNote")}\n` + (proof ? `${proofNote(proof)}\n` : "");
 }
 
-export function requestText(url: string, expireDate: string): string {
-  return `\n${t("card.requestPlain", { date: expireDate })}\n${url}\n${t("card.passwordNote")}\n`;
+export function requestText(url: string, expireDate: string, proof?: CardProof): string {
+  return `\n${t("card.requestPlain", { date: expireDate })}\n${url}\n${t("card.passwordNote")}\n` + (proof ? `${proofNote(proof)}\n` : "");
 }

@@ -36,6 +36,8 @@ export interface ServerConfig {
   successMessageSeconds?: number;
   /** NEXTCLOUD_URL – "Nextcloud öffnen" in the account menu. */
   nextcloudUrl?: string;
+  /** "Zustellnachweis" offered in "Gültigkeit und Sprache" (DELIVERY_PROOF). */
+  deliveryProof?: boolean;
 }
 
 export type Channel = "recipients" | "mail" | "sms";
@@ -316,6 +318,9 @@ export interface DraftState {
    * deleted the links: password, job and tag are released. Drafts from before this field are never released.
    */
   links?: string[];
+  /** "Zustellnachweis" ticked for this mail, and the tracking ID of its case once a link joined it. */
+  proof?: boolean;
+  proofId?: string;
 }
 
 export async function readDraftState(): Promise<DraftState> {
@@ -360,8 +365,9 @@ export async function releaseDraftIfLinksGone(): Promise<boolean> {
     props.remove(JOB_PROPERTY);
     await officeAsync<void>((cb) => props.saveAsync(cb));
   }
-  // The other password recipient is a setting of the mail, not of the deleted links – keep it.
-  const fresh: DraftState = state.passwordTo ? { passwordTo: state.passwordTo } : {};
+  // The other password recipient and "Zustellnachweis" are settings of the mail, not of the deleted links – keep them
+  // (a new link opens a new case: the tracking ID of the deleted links is dropped).
+  const fresh: DraftState = { ...(state.passwordTo ? { passwordTo: state.passwordTo } : {}), ...(state.proof ? { proof: true } : {}) };
   await officeAsync<void>((cb) => composeItem().sessionData.setAsync(STATE_KEY, JSON.stringify(fresh), cb));
   return true;
 }

@@ -21,6 +21,7 @@ import { recordDelivery } from "./deliveries.js";
 import { registerNotices, type Notice } from "./notices.js";
 import { passwordMailHtml, smsProblemMailHtml } from "./passwordMail.js";
 import { registerPasswordRef } from "./passwordRefs.js";
+import { caseOfToken, recordMailSent } from "./proof.js";
 import { maskPhone, sendSms, smsEnabled, smsNumberProblem } from "./sms.js";
 import { PersistentMap } from "./db.js";
 import { defaultTemplates, render, smsFiles, templatesFor, type Templates } from "./templates.js";
@@ -444,6 +445,14 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
       }
       if (!sent) continue;
       const message = sent; // stays non-null inside the closures below
+      // "Zustellnachweis": the mail as Exchange sent it (Message-ID, sender, recipients) – in the case of its links.
+      recordMailSent([...jobTokens(job), ...(job.noticeShares ?? []).map((s) => s.token)], {
+        subject: message.subject,
+        messageId: message.messageId,
+        from: message.from,
+        ...message.recipients,
+        sentAt: message.sentAt,
+      });
       // Same sender as the main mail – for a shared mailbox the password mail is sent as / on behalf of it.
       // "Kennwort an andere Adresse": only that address gets the password, not the recipients of the mail.
       const recipients = job.passwordTo ? { to: [job.passwordTo], cc: [], bcc: [] } : message.recipients;
@@ -468,6 +477,8 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
               registeredAt: Date.now(),
               // The confirmation to the sender in the language of their add-in.
               language: armed.language,
+              // "Zustellnachweis": the confirmation names the case.
+              proofId: caseOfToken(s.token)?.id,
               ...(s.request ? { kind: "upload" as const, knownFiles: s.knownFiles ?? [] } : {}),
             },
           ]),
@@ -509,7 +520,8 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
                 subject: render(t.mail_password_subject, { files: label, subject: message.subject || files[0], sender_name: job.senderName ?? "" }),
                 html: passwordMailHtml({ fileNames: files, sendUrl: part.sendUrl, maxAccessCount: part.maxAccessCount,
                   subject: message.subject, expireDays: config.sendExpireDays, introTemplate: customIntro, senderName: job.senderName,
-                  expiresOn: part.sendExpiresAt ? formatDate(part.sendExpiresAt) : undefined, signature: job.signature }),
+                  expiresOn: part.sendExpiresAt ? formatDate(part.sendExpiresAt) : undefined, signature: job.signature,
+                  trackingId: caseOfToken(part.shares?.[0]?.token ?? "")?.id }),
               };
             });
           const tokens = (part.shares ?? []).map((s) => s.token);

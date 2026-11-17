@@ -22,6 +22,7 @@ import { PersistentMap } from "./db.js";
 import { mailDocument, paragraph, TEXT_STYLE } from "./mailLayout.js";
 import { renderHtml, render, templatesFor } from "./templates.js";
 import { settingsFor } from "./settings.js";
+import { proofOf } from "./proof.js";
 
 export interface Notice {
   /** Entra oid (Nextcloud credentials) and mail address of the sender (recipient of the confirmation). */
@@ -41,6 +42,8 @@ export interface Notice {
   knownFiles?: string[];
   /** Language of the sender's add-in when the mail was sent – the confirmation comes in it (else LANGUAGE). */
   language?: string;
+  /** "Zustellnachweis": tracking ID of the mail's case – the confirmation names it and the file's fingerprint. */
+  proofId?: string;
 }
 
 /** Is this kind of notice switched on (DOWNLOAD_NOTICE / UPLOAD_NOTICE)? */
@@ -127,7 +130,8 @@ export async function runNotices(log: Pick<FastifyBaseLogger, "info" | "warn">, 
                 title: t("mail.uploadedTitle", { count: received.length }),
                 files: shown,
                 button: { label: t("mail.uploadedButton"), url: `${config.nextcloudUrl}/index.php/apps/files/?dir=${encodeURIComponent(share.path)}` },
-                details: [more > 0 ? t("mail.uploadedMore", { count: more }) : "", t("mail.uploadedDetails", { date: formatDay(n.expireDate) })]
+                details: [more > 0 ? t("mail.uploadedMore", { count: more }) : "", t("mail.uploadedDetails", { date: formatDay(n.expireDate) }),
+                  n.proofId ? t("mail.trackingId", { id: n.proofId }) : ""]
                   .filter(Boolean)
                   .join(" · "),
               },
@@ -147,6 +151,7 @@ export async function runNotices(log: Pick<FastifyBaseLogger, "info" | "warn">, 
         appToken ??= await appGraphToken();
         // In the language of the sender's add-in when the mail was sent (texts, dates).
         const lastDownload = downloads.last;
+        const proof = n.proofId ? proofOf(token) : undefined;
         const { html, subject } = inSenderLanguage(n.language, () => {
           const texts = templatesFor({ upn: n.ownerUpn, department: n.department });
           const values = {
@@ -163,7 +168,11 @@ export async function runNotices(log: Pick<FastifyBaseLogger, "info" | "warn">, 
               accent: "success",
               title: t("mail.downloadedTitle"),
               files: [n.fileName],
-              details: t("mail.downloadedDetails", { time: values.downloaded_at, date: values.expires }),
+              details: [
+                t("mail.downloadedDetails", { time: values.downloaded_at, date: values.expires }),
+                proof ? t("mail.trackingId", { id: proof.id }) : "",
+                proof?.sha256 ? t("mail.fingerprint", { hash: proof.sha256 }) : "",
+              ].filter(Boolean).join(" · "),
             },
           });
           return { html, subject: render(texts.download_notice_subject, values) };

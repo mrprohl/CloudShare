@@ -1,3 +1,4 @@
+import type { Hash } from "node:crypto";
 import type { LoginFlow } from "./nextcloud.js";
 
 /**
@@ -13,6 +14,12 @@ export interface UploadState {
   size: number;
   totalChunks: number;
   received: Set<number>;
+  /** SHA-256 of the content, fed chunk by chunk in order ("Zustellnachweis"); `hashed` chunks so far. A chunk out of
+   *  order (not the client's way) leaves it incomplete – the case then records no fingerprint. */
+  hash: Hash;
+  hashed: number;
+  /** The finished fingerprint (hex) – a retried "complete" must not digest twice. */
+  sha256?: string;
   expiresAt: number;
 }
 

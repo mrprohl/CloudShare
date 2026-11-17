@@ -289,12 +289,18 @@ export class NextcloudClient {
    * Returns null if the activity app is not available.
    */
   async publicDownloads(fileId: number): Promise<{ count: number; last: string | null } | null> {
+    const times = await this.publicDownloadTimes(fileId);
+    return times && { count: times.length, last: times.filter(Boolean).at(-1) ?? null };
+  }
+
+  /** Times (ISO, oldest first) of the downloads through public links of a file – "Zustellnachweis" records each. */
+  async publicDownloadTimes(fileId: number): Promise<string[] | null> {
     const res = await this.request(
       "GET",
       `/ocs/v2.php/apps/activity/api/v2/activity/filter?format=json&object_type=files&object_id=${fileId}&limit=100`,
       { "OCS-APIRequest": "true", Accept: "application/json" },
     );
-    if (res.status === 304) return { count: 0, last: null }; // no activities at all
+    if (res.status === 304) return []; // no activities at all
     if (!res.ok) return null;
     const json = (await res.json().catch(() => null)) as {
       ocs?: { data?: Array<{ type?: string; subject?: string; datetime?: string }> };
@@ -302,8 +308,7 @@ export class NextcloudClient {
     // Type "public_links" only contains downloads through public links (files_sharing's "Downloads" provider).
     // The subject is localised ("…was downloaded" / "…wurde heruntergeladen"), so it must not be parsed.
     const downloads = (json?.ocs?.data ?? []).filter((a) => a.type === "public_links");
-    const last = downloads.map((a) => a.datetime ?? "").sort().pop() || null;
-    return { count: downloads.length, last };
+    return downloads.map((a) => a.datetime ?? "").sort();
   }
 
   /** Number of files in a folder (e.g. uploads received through an upload link). */

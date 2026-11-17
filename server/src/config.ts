@@ -177,6 +177,15 @@ export const config = {
    * the sender's own token when the mail is sent.)
    */
   smsNotice: envFlag("SMS_NOTICE", "DOWNLOAD_NOTICE"),
+  /**
+   * "Zustellnachweis" in the pane (proof.ts): per mail, when the sender ticks it – a case with tracking ID, a hash
+   * chained record of sending, password, downloads, a recipient confirming their address with a code before the link
+   * opens, and a PDF. The code mail goes out with the application permission Mail.Send, so unset it follows
+   * DOWNLOAD_NOTICE.
+   */
+  deliveryProof: envFlag("DELIVERY_PROOF", "DOWNLOAD_NOTICE"),
+  /** How long a case is kept after its last event (days; default three years, the regular limitation period). */
+  proofRetentionDays: number("PROOF_RETENTION_DAYS", 1095),
 
   /**
    * Defaults of the personal settings (⚙ in the add-in, settings.ts) – each user may change them for themselves:

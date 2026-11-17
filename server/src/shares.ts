@@ -7,6 +7,7 @@ import { HttpError } from "./auth.js";
 import { expireOnRevoke } from "./cleanup.js";
 import { config } from "./config.js";
 import { getCredentials, removeCredentials } from "./credentials.js";
+import { endLink } from "./proof.js";
 import type { UnsentLinks } from "./jobs.js";
 import { NextcloudClient, NOT_CONNECTED, type PublicShare } from "./nextcloud.js";
 import { forgetMessage, isMessageToken, messageFor } from "./history.js";
@@ -39,6 +40,7 @@ export async function revokeShare(
   log: Log,
 ): Promise<"deleted" | "scheduled" | "kept"> {
   await nc.deleteShare(share.id);
+  endLink(tokenOf(share.url), "revoked");
   for (const sendId of await forgetPasswordToken(tokenOf(share.url), owner)) {
     await deleteSend(sendId).catch((err) => log.warn({ err, owner }, "Send of a revoked link not deleted"));
   }
@@ -63,6 +65,7 @@ export async function revokeMessage(owner: string, token: string, log: Log): Pro
   const message = messageFor(token, owner);
   if (!message) return false;
   await deleteSend(message.sendId);
+  endLink(token, "revoked");
   for (const sendId of await forgetPasswordToken(token, owner)) {
     await deleteSend(sendId).catch((err) => log.warn({ err, owner }, "Send of a revoked message's password not deleted"));
   }

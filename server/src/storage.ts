@@ -1,7 +1,7 @@
 /**
  * AES-256-GCM sealing with CREDENTIAL_KEY for everything CloudShare keeps in DATA_DIR (the database rows of db.ts).
  */
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { config } from "./config.js";
 
@@ -31,4 +31,17 @@ export function unseal(sealed: Sealed, aad: string): string {
   decipher.setAAD(Buffer.from(aad));
   decipher.setAuthTag(Buffer.from(sealed.tag, "base64"));
   return Buffer.concat([decipher.update(Buffer.from(sealed.data, "base64")), decipher.final()]).toString("utf8");
+}
+
+/** Signature (HMAC-SHA256 with a key derived from CREDENTIAL_KEY) for values handed out and checked later. */
+export function sign(value: string): string {
+  return createHmac("sha256", createHmac("sha256", key).update("cloudshare-signature").digest()).update(value).digest("base64url");
+}
+
+/** Whether `signature` is sign(value) – compared in constant time. */
+export function signedBy(value: string, signature: unknown): boolean {
+  if (typeof signature !== "string") return false;
+  const expected = Buffer.from(sign(value));
+  const given = Buffer.from(signature);
+  return expected.length === given.length && timingSafeEqual(expected, given);
 }

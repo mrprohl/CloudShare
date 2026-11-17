@@ -80,6 +80,7 @@ const CONFIG = {
   messageMaxLength: 1000,
   sendExpireDays: 5,
   sendMaxExpireDays: 30,
+  deliveryProof: false, // DELIVERY_PROOF: the box "Zustellnachweis" is offered only when the server has it
 };
 
 /** Personal settings as the server starts every user (DEFAULT_* unset). */
@@ -160,7 +161,12 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
       return json({ shareUrl: `https://cloud.example.com/s/${id}`, expireDate: "2026-12-01", jobId, noPassword, fileName, size });
     }
     if (route_ === "POST /api/requests") {
-      return json({ shareUrl: "https://cloud.example.com/s/request", expireDate: "2026-12-01", jobId: "job-1" });
+      // "Zustellnachweis" ticked: the server answers with the gateway address and the tracking ID of the case.
+      const proof = JSON.parse(call.body!.toString()).proof === true;
+      return json({
+        shareUrl: proof ? "https://cloudshare.example.com/r/s/request" : "https://cloud.example.com/s/request",
+        expireDate: "2026-12-01", jobId: "job-1", proofId: proof ? "20261117-1146-7Q2F" : null,
+      });
     }
     if (route_ === "POST /api/messages") {
       return json({ shareUrl: "https://vault.example.com/#/send/msg/key123", expireDate: "2026-12-01", jobId: "job-1" });
@@ -1096,6 +1102,35 @@ test("Dateien von Empfängern erhalten inserts an upload link with the same pass
   await expect(page.locator("#status")).toContainText("Der Link zum Hochladen wurde eingefügt.");
   expect(JSON.parse(calls.find((c) => c.path === "/api/requests")!.body!.toString()).password).toBe(password);
   expect((await officeLog(page)).inserted[0].data).toContain("https://cloud.example.com/s/request");
+});
+
+test("Zustellnachweis: not offered without DELIVERY_PROOF on the server", async ({ page }) => {
+  // Without DELIVERY_PROOF on the server the box does not exist for the user.
+  await openTaskpane(page);
+  await page.click("#validity-toggle");
+  await expect(page.locator("#proof-field")).toBeHidden();
+});
+
+test("Zustellnachweis: ticked, it goes with the link request and the card names the tracking ID", async ({ page }) => {
+  const calls = await openTaskpane(page, { config: { deliveryProof: true } });
+  await expect(page.locator("#password")).not.toHaveValue("");
+  await chooseKind(page, "request");
+  await page.click("#validity-toggle");
+  await expect(page.locator("#proof-field")).toBeVisible();
+  await expect(page.locator("#proof")).not.toBeChecked();
+  await expect(page.locator("#validity-summary")).not.toContainText("Zustellnachweis");
+  await page.locator("#proof-field .checkbox").click();
+  await expect(page.locator("#proof")).toBeChecked();
+  await expect(page.locator("#validity-summary")).toContainText("· mit Zustellnachweis");
+  await expectAccessible(page);
+
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Der Link zum Hochladen wurde eingefügt.");
+  const body = JSON.parse(calls.find((c) => c.path === "/api/requests")!.body!.toString());
+  expect(body).toMatchObject({ proof: true, client: { host: expect.any(String) } });
+  const card = (await officeLog(page)).inserted[0].data as string;
+  expect(card).toContain("https://cloudshare.example.com/r/s/request"); // the gateway, not the Nextcloud link
+  expect(card).toContain("Zustellnachweis 20261117-1146-7Q2F");
 });
 
 test("Nachricht: inserts a card with the link, never the text, and shares the password step", async ({ page }) => {

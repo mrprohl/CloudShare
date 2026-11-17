@@ -60,6 +60,19 @@ export async function readSendPassword(id: string): Promise<string> {
   return password;
 }
 
+/**
+ * How often a Send was opened ("Zustellnachweis": the password link or a confidential message) – null when Vaultwarden
+ * no longer has it (deleted, expired).
+ */
+export async function sendAccessCount(id: string): Promise<number | null> {
+  try {
+    const send = await withUnlock(() => bw<{ accessCount?: number }>("GET", `/object/send/${encodeURIComponent(id)}`));
+    return typeof send?.accessCount === "number" ? send.accessCount : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Deletes a Send that is no longer needed (all links of its step were revoked). */
 export async function deleteSend(id: string): Promise<void> {
   await withUnlock(() => bw("DELETE", `/object/send/${encodeURIComponent(id)}`));

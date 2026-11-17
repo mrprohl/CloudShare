@@ -81,6 +81,8 @@ export interface SentMessage {
   id?: string;
   /** When it was sent (ISO) – shown in "Verlauf" with the recipients. */
   sentAt?: string;
+  /** Internet Message-ID ("<…@…>") – names the mail in Exchange's message trace ("Zustellnachweis"). */
+  messageId?: string;
 }
 
 type GraphRecipient = { emailAddress?: { address?: string } };
@@ -156,7 +158,7 @@ export async function findSentMessage(
     `$filter=${encodeURIComponent(`sentDateTime ge ${new Date(since).toISOString()}`)}`,
     `$orderby=${encodeURIComponent("sentDateTime desc")}`,
     `$top=25`,
-    `$select=${encodeURIComponent("subject,from,toRecipients,ccRecipients,bccRecipients,sentDateTime")}`,
+    `$select=${encodeURIComponent("subject,from,toRecipients,ccRecipients,bccRecipients,sentDateTime,internetMessageId")}`,
     `$expand=${encodeURIComponent(`singleValueExtendedProperties($filter=id eq '${customPropertiesId()}')`)}`,
   ].join("&");
   const res = await fetch(`https://graph.microsoft.com/v1.0/${root}/mailFolders/sentitems/messages?${query}`, {
@@ -171,6 +173,7 @@ export async function findSentMessage(
     value?: Array<{
       id?: string;
       sentDateTime?: string;
+      internetMessageId?: string;
       subject?: string;
       from?: GraphRecipient;
       toRecipients?: GraphRecipient[];
@@ -190,6 +193,7 @@ export async function findSentMessage(
     return {
       id: message.id,
       sentAt: message.sentDateTime,
+      messageId: message.internetMessageId,
       subject: message.subject ?? "",
       from: message.from?.emailAddress?.address ?? null,
       recipients: {
