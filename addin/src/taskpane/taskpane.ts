@@ -242,15 +242,13 @@ interface ConnectionStatus {
   passwordEnforced?: boolean;
 }
 
-/** Storage of the account (account menu): "12,3 GB von 50 GB frei", "12,3 GB frei" (no quota), "3,2 GB belegt" or "". */
+/** Storage of the account (account menu): "37,5 GB von 50 GB belegt" (quota), "12,3 GB frei" (free space only), "3,2 GB belegt". */
 function storageText(status: ConnectionStatus): string {
   const isBytes = (value: unknown): value is number => typeof value === "number" && value >= 0;
   if (isBytes(status.freeBytes) && isBytes(status.totalBytes)) {
-    // Short for the narrow bar: "12,5 / 50 GB frei" – the unit once when both use the same.
-    const total = formatSize(status.totalBytes);
-    const unit = total.slice(total.lastIndexOf(" "));
-    const free = formatSize(status.freeBytes);
-    return t("storage.freeOf", { free: free.endsWith(unit) ? free.slice(0, -unit.length) : free, total });
+    // As OneDrive and Outlook say it, and as the bar shows it: "37,5 GB von 50 GB belegt".
+    const used = isBytes(status.usedBytes) ? status.usedBytes : Math.max(0, status.totalBytes - status.freeBytes);
+    return t("storage.usedOf", { used: formatSize(used), total: formatSize(status.totalBytes) });
   }
   if (isBytes(status.freeBytes)) return t("storage.free", { free: formatSize(status.freeBytes) });
   if (isBytes(status.usedBytes)) return t("storage.used", { used: formatSize(status.usedBytes) });

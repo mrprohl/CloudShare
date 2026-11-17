@@ -25,7 +25,7 @@
     "account.signedIn": "Signed in as {name}",
     "disconnect.done": "The connection to Nextcloud has been removed.",
     "disconnect.failed": "The connection could not be removed: {error}",
-    "storage.freeOf": "{free} / {total} free",
+    "storage.usedOf": "{used} of {total} used",
     "storage.free": "{free} free",
     "storage.used": "{used} used",
     "unreachable": "CloudShare cannot be reached at the moment ({url}).",

@@ -26,7 +26,7 @@
     "account.signedIn": "Angemeldet als {name}",
     "disconnect.done": "Die Verbindung zu Nextcloud wurde getrennt.",
     "disconnect.failed": "Die Verbindung konnte nicht getrennt werden: {error}",
-    "storage.freeOf": "{free} / {total} frei",
+    "storage.usedOf": "{used} von {total} belegt",
     "storage.free": "{free} frei",
     "storage.used": "{used} belegt",
     "unreachable": "CloudShare ist derzeit nicht erreichbar ({url}).",
