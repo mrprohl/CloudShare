@@ -304,8 +304,8 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* Sensitivity label of a file ("Vertraulich"), with a lock when the label encrypts it. */
 .file-label { white-space: nowrap; }
 .file-label .label-lock { width: 12px; height: 12px; vertical-align: -2px; margin-right: 2px; }
-/* "Verschlüsselte Datei" in "Weitere Optionen": a framed note in the colours of an error message, the box inside. */
-.encrypted-field { padding: 8px 12px; border: 1px solid var(--danger-stroke); border-radius: 4px; background: var(--danger-bg); }
+/* "Verschlüsselte Datei" below the file list: a framed note in the colours of an error message, the box inside. */
+.encrypted-field { margin-top: 8px; padding: 8px 12px; border: 1px solid var(--danger-stroke); border-radius: 4px; background: var(--danger-bg); }
 .encrypted-title { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--danger-fg); margin: 0 0 2px; }
 .encrypted-title .icon { width: 16px; height: 16px; flex: none; }
 .encrypted-field .hint { margin: 0 0 4px; color: var(--fg1); }

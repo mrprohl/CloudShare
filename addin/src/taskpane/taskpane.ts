@@ -1511,7 +1511,7 @@ function insertReady(): boolean {
   if (!serverConfig) return false;
   const kind = selectedKind();
   if (kind === "files" && selectedFileCount() === 0) return false;
-  // An encrypted file among them: only after "Trotzdem als Link senden" (never with LABEL_ENCRYPTED=block).
+  // An encrypted file among them: only after "Trotzdem als Link senden" below the list (never with LABEL_ENCRYPTED=block).
   if (kind === "files" && !encryptedField.hidden && (encryptedConfirmRow.hidden || !encryptedConfirm.checked)) return false;
   if (kind === "message") {
     const text = messageInput.value.trim();
@@ -1536,6 +1536,8 @@ function renderValidity() {
   // "Kennwort abrufbar" / "Kennwort-Link gültig für" only for a password link: not without password, not by SMS (the
   // password is in the SMS itself and works as long as the link does).
   const passwordLink = !withoutPassword() && selectedChannel() !== "sms";
+  // "Zustellnachweis" only for files (offered with DELIVERY_PROOF) – not for a message or an upload link.
+  proofField.hidden = !serverConfig.deliveryProof || kind !== "files";
   expireField.hidden = kind === "message";
   expireHint.textContent = t(kind === "request" ? "expire.hintRequest" : "expire.hint");
   messageDaysField.hidden = kind !== "message";
@@ -1618,7 +1620,7 @@ async function labelsOfSelection(attachments: HTMLInputElement[], files: File[])
 
 /**
  * A protected (encrypted) file among the ticked ones: recipients outside the organisation can usually not open it,
- * whichever way it travels. "Weitere Optionen" opens with a note (#encrypted-field); LABEL_ENCRYPTED=warn needs
+ * whichever way it travels. A note right below the file list (#encrypted-field); LABEL_ENCRYPTED=warn needs
  * "Trotzdem als Link senden" ticked before inserting, block refuses, allow says nothing. `labels`: the ones just read
  * for inserting – otherwise those the list knows already (large attachments are only read when inserted).
  * Returns whether inserting may go on.
@@ -1634,7 +1636,6 @@ async function renderEncrypted(labels?: Array<{ name: string; label: FileLabel |
     // Other files: the confirmation was for those – ask again.
     encryptedConfirm.checked = false;
     encryptedShown = key;
-    if (encrypted.length > 0 && validitySection.hidden) validityToggle.click();
   }
   encryptedField.hidden = encrypted.length === 0;
   const names = encrypted.map((name) => `„${name}“`).join(", ");

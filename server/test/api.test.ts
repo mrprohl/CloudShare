@@ -45,6 +45,7 @@ vi.mock("../src/graph.js", async (importOriginal) => ({
   })),
   sendMail: vi.fn(async () => undefined),
   sendMailAsApp: vi.fn(async () => undefined),
+  fetchSensitivityLabels: vi.fn(async () => [{ id: "aaaaaaaa-0000-4000-8000-000000000002", name: "Vertraulich", rank: 4, protection: false }]),
   ewsIdFor: vi.fn(async (_token: string, id: string) => (id === "AAMk-gone" ? null : `ews-${id}`)),
   sentMailState: vi.fn(async (_token: string, id: string) => (id === "AAMk-deleted" ? "deleted" : "ok")),
 }));
@@ -1224,5 +1225,26 @@ describe("delivery proof (Zustellnachweis)", () => {
 
     const tampered = await app.inject({ method: "GET", url: path.replace(/until=\d+/, "until=99999999999999") });
     expect(tampered.statusCode).toBe(403);
+  });
+});
+
+describe("sensitivity labels (/api/labels)", () => {
+  it("returns the tenant's labels via Graph, kept per user and language", async () => {
+    const graph = await import("../src/graph.js");
+    const fetchLabels = vi.mocked(graph.fetchSensitivityLabels);
+    fetchLabels.mockClear();
+    const first = await app.inject({ method: "GET", url: "/api/labels", headers: { ...as("lena"), "x-cloudshare-language": "de" } });
+    expect(first.json()).toEqual({ labels: [{ id: "aaaaaaaa-0000-4000-8000-000000000002", name: "Vertraulich", rank: 4, protection: false }] });
+    await app.inject({ method: "GET", url: "/api/labels", headers: { ...as("lena"), "x-cloudshare-language": "de" } });
+    expect(fetchLabels).toHaveBeenCalledOnce();
+    expect(fetchLabels.mock.calls[0][1]).toBe("de");
+  });
+
+  it("without the permission: labels null (the pane uses Outlook's catalog)", async () => {
+    const graph = await import("../src/graph.js");
+    vi.mocked(graph.fetchSensitivityLabels).mockRejectedValueOnce(new Error("Graph sensitivityLabels failed (HTTP 403)"));
+    const res = await app.inject({ method: "GET", url: "/api/labels", headers: as("moritz") });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ labels: null });
   });
 });

@@ -9,7 +9,7 @@ import { existsSync } from "node:fs";
 import { appGraphToken, authenticate, HttpError, onBehalfOf, type User } from "./auth.js";
 import { config, SEND_DAYS_LIMIT } from "./config.js";
 import { getCredentials, removeCredentials, saveCredentials } from "./credentials.js";
-import { ewsIdFor, fetchProfile, GRAPH_PROFILE_SCOPES, GRAPH_SCOPES, sendMail, sendMailAsApp, sentMailState, type MailRecipients } from "./graph.js";
+import { ewsIdFor, fetchProfile, fetchSensitivityLabels, GRAPH_LABEL_SCOPES, GRAPH_PROFILE_SCOPES, GRAPH_SCOPES, sendMail, sendMailAsApp, sentMailState, type MailRecipients, type SensitivityLabel } from "./graph.js";
 import {
   addFileToJob,
   addNoticeShare,
@@ -545,6 +545,30 @@ export async function buildApp(options: { logger?: boolean } = {}) {
 
   /** The settings that apply, the defaults of the environment ("Zurücksetzen") and what the server offers at all. */
   const settingsResponse = (oid: string) => ({ settings: settingsFor(oid), defaults: defaultSettings(), available: availableSettings() });
+
+  /**
+   * The sensitivity labels published to the user (Purview, via Graph with InformationProtectionPolicy.Read): name in
+   * the add-in's language and priority – the pane names a shared file's label and finds the higher one. `labels: null`
+   * when the permission is not consented (or Graph fails): the pane then uses Outlook's own catalog. Kept an hour per
+   * user and language.
+   */
+  const labelCache = new Map<string, { at: number; labels: SensitivityLabel[] | null }>();
+  app.get("/api/labels", async (req) => {
+    const user = await authenticate(req);
+    const language = requestLanguageCode() ?? config.language;
+    const key = `${user.oid}|${language}`;
+    const cached = labelCache.get(key);
+    if (cached && Date.now() - cached.at < 60 * 60_000) return { labels: cached.labels };
+    const labels = await onBehalfOf(user, GRAPH_LABEL_SCOPES)
+      .then(({ token }) => fetchSensitivityLabels(token, language))
+      .catch((err) => {
+        req.log.info({ user: user.upn, err: (err as Error).message }, "Sensitivity labels not readable via Graph");
+        return null;
+      });
+    if (labelCache.size > 5000) labelCache.clear();
+    labelCache.set(key, { at: Date.now(), labels });
+    return { labels };
+  });
 
   app.get("/api/settings", async (req) => settingsResponse((await authenticate(req)).oid));
 

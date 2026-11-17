@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ewsIdFor, fetchProfile, findSentMessage, JOB_PROPERTY, sendMail, sentMailState } from "../src/graph.js";
+import { ewsIdFor, fetchProfile, fetchSensitivityLabels, findSentMessage, JOB_PROPERTY, sendMail, sentMailState } from "../src/graph.js";
 import { json, mockFetch } from "./helpers.js";
 
 const CUSTOM_PROPS_ID =
@@ -149,5 +149,35 @@ describe("sentMailState", () => {
   it("knows when Exchange no longer has the mail", async () => {
     mockFetch(json({ error: { code: "ErrorItemNotFound" } }, 404));
     expect(await sentMailState("token", "AAk-1")).toBe("gone");
+  });
+});
+
+describe("fetchSensitivityLabels", () => {
+  it("reads the user's labels with their priority, sublabels named with their parent, inactive ones left out", async () => {
+    const { call } = mockFetch(
+      json({
+        value: [
+          { id: "{AAAAAAAA-0000-4000-8000-000000000001}", name: "Öffentlich", sensitivity: 0, hasProtection: false, isActive: true },
+          { id: "aaaaaaaa-0000-4000-8000-000000000002", name: "Alle Mitarbeiter", sensitivity: 4, hasProtection: true, parent: { name: "Vertraulich" } },
+          { id: "aaaaaaaa-0000-4000-8000-000000000003", name: "Alt", sensitivity: 9, isActive: false },
+        ],
+        "@odata.nextLink": "https://graph.microsoft.com/v1.0/next",
+      }),
+      json({ value: [{ id: "aaaaaaaa-0000-4000-8000-000000000004", name: "Intern", sensitivity: 2 }] }),
+    );
+    const labels = await fetchSensitivityLabels("graph-token", "de");
+    expect(labels).toEqual([
+      { id: "aaaaaaaa-0000-4000-8000-000000000001", name: "Öffentlich", rank: 0, protection: false },
+      { id: "aaaaaaaa-0000-4000-8000-000000000002", name: "Vertraulich / Alle Mitarbeiter", rank: 4, protection: true },
+      { id: "aaaaaaaa-0000-4000-8000-000000000004", name: "Intern", rank: 2, protection: false },
+    ]);
+    expect(call(0).url).toBe("https://graph.microsoft.com/v1.0/me/security/informationProtection/sensitivityLabels");
+    expect((call(0).init.headers as Record<string, string>)["Accept-Language"]).toBe("de");
+    expect(call(1).url).toBe("https://graph.microsoft.com/v1.0/next");
+  });
+
+  it("fails on an error of Graph (missing permission) – the route then answers labels: null", async () => {
+    mockFetch(json({ error: { code: "Forbidden" } }, 403));
+    await expect(fetchSensitivityLabels("graph-token")).rejects.toThrow(/HTTP 403/);
   });
 });
