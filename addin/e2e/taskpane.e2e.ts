@@ -531,7 +531,7 @@ test("preselects large attachments and proposes a random password", async ({ pag
   await expect(page.locator("#max-access")).toHaveValue("3");
   await expect(page.locator("#expire")).toHaveValue("14");
   await expect(page.locator("#account")).toHaveText("max.mustermann");
-  await expect(page.locator("#account-storage")).toHaveText("12,5 / 50 GB frei"); // in the account menu
+  await expect(page.locator("#account-storage")).toHaveText("37,5 GB von 50 GB belegt"); // in the account menu
   // One button that says what it inserts; the rarely changed values collapsed behind a summary.
   await expect(page.locator("#kind-files")).toBeChecked();
   await expect(page.locator("#submit")).toHaveText("Datei als Link einfügen");
@@ -1247,7 +1247,7 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   const storage = page.locator("#account-storage");
   await expect(toggle).toHaveText("max.mustermann");
   await expect(menu).toBeHidden();
-  await expect(storage).toHaveText("12,5 / 50 GB frei");
+  await expect(storage).toHaveText("37,5 GB von 50 GB belegt");
   await expect(toggle).toHaveAttribute("title", "Angemeldet als max.mustermann");
   // What the menu holds: for screen readers only (the arrow shows it on screen).
   await expect(toggle).toHaveAccessibleDescription("Menü: Nextcloud öffnen, Einstellungen, Hilfe, Verbindung trennen");
@@ -1672,7 +1672,7 @@ test("a long account name at 320 px: shortened with \"…\" in the bar, whole in
   // In the menu the name is whole (wrapped if need be), above the storage.
   await toggle.click();
   await expect(page.locator("#account-menu-name")).toHaveText(name);
-  await expect(page.locator("#account-storage")).toHaveText("12,5 / 50 GB frei");
+  await expect(page.locator("#account-storage")).toHaveText("37,5 GB von 50 GB belegt");
   await expectNoHorizontalScroll(page);
 });
 
