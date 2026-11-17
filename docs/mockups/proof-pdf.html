@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Proof of delivery – PDF</title>
+<!-- First page of the PDF as server/src/proofPdf.ts writes it (pdf.ts: A4, Helvetica, Courier for hashes) with
+     example data and LANGUAGE=en. Sizes in pt as in the PDF, scaled to the page width. -->
+<style>
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: #e8e8e8; padding: 16px; }
+.page { width: 595pt; min-height: 600pt; margin: 0 auto; background: #fff; box-shadow: 0 1px 4px rgba(0,0,0,.25); padding: 42pt 42pt 30pt;
+  font-family: Helvetica, Arial, sans-serif; color: #000; font-size: 10pt; line-height: 1.35; }
+.t1 { font-size: 20pt; font-weight: bold; }
+.t2 { font-size: 12pt; font-weight: bold; margin-top: 4pt; }
+.intro { font-size: 9pt; color: #4d4d4d; margin-top: 6pt; }
+.ok { font-weight: bold; margin-top: 10pt; }
+.mono { font-family: "Courier New", Courier, monospace; }
+.grey7 { font-size: 7pt; color: #595959; }
+.h { font-size: 13pt; font-weight: bold; margin-top: 16pt; }
+.ev { border-top: 0.5pt solid #ccc; margin-top: 8pt; padding-top: 6pt; font-weight: bold; }
+.d { font-size: 9pt; padding-left: 14pt; }
+.m { font-size: 8pt; padding-left: 14pt; }
+.hash { font-size: 7pt; color: #737373; padding-left: 14pt; }
+.foot { font-size: 8pt; color: #737373; margin-top: 18pt; }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="t1">Proof of delivery</div>
+  <div class="t2">Case 20261117-1146-7Q2F</div>
+  <div class="intro">CloudShare’s record for the message from max.mustermann@example.com, started on 17 Nov 2026, 11:46:03.</div>
+  <div class="ok">Record unchanged: 9 entries, chained without gaps.</div>
+  <div class="mono grey7">Check value: 5c0e9b1f7a24d3e86b1f0c9a4d72e5b8a3f61c0d9e47b2a8f5c3d1e09b7a6f42c</div>
+
+  <div class="h">Events</div>
+  <div class="ev">1. 17 Nov 2026, 11:46:03 – Proof of delivery started</div>
+  <div class="d">Sender: max.mustermann@example.com</div>
+  <div class="d">Outlook: Outlook · PC · 16.0.18129.20000</div>
+  <div class="mono hash">Hash: 9f2c61e0b4a8d37c5e1f09a2b6d48c73e05f1a9b2c8d4e6f7a3b1c0d9e8f7a61</div>
+
+  <div class="ev">2. 17 Nov 2026, 11:46:41 – Link created: file</div>
+  <div class="d">Name: Angebot_2026-118.pdf</div>
+  <div class="d">Protection: password · Valid until: 2026-12-01 · Size: 2.5 MB (2,621,440 B)</div>
+  <div class="d">Password to: the recipients of the message · Password retrievable (times): 3</div>
+  <div class="mono m">SHA-256: 3a7bd3e2360a3d29eea436fcfb7e44c735d117c42d1c1835420b6b9942dd4f1b</div>
+  <div class="mono hash">Hash: 1b8e4c2a9f07d6e35b1c8a40f2e9d7c6b5a43e21f0d9c8b7a6e5d4c3b2a1f0e9</div>
+
+  <div class="ev">3. 17 Nov 2026, 11:47:20 – Message sent</div>
+  <div class="d">Subject: Quote 2026-118 · From: max.mustermann@example.com</div>
+  <div class="d">To: erika.beispiel@example.com · Sent: 17 Nov 2026, 11:47:12</div>
+  <div class="mono m">Message-ID: &lt;AM9PR04MB8423D1F2C3B4A5E6F7A8B9C0D1E2F3A4@AM9PR04MB8423.eurprd04.prod.outlook.com&gt;</div>
+  <div class="mono hash">Hash: c4d7e2a1b09f8e6d5c3b2a1f0e9d8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d</div>
+
+  <div class="ev">4. 17 Nov 2026, 11:47:21 – Password sent by email</div>
+  <div class="d">To: erika.beispiel@example.com</div>
+
+  <div class="ev">5. 17 Nov 2026, 14:02:37 – Code sent to recipient</div>
+  <div class="d">Email address: erika.beispiel@example.com · IP address: 203.0.113.24</div>
+
+  <div class="ev">6. 17 Nov 2026, 14:03:05 – Recipient confirmed</div>
+  <div class="d">Email address: erika.beispiel@example.com · IP address: 203.0.113.24</div>
+  <div class="d">Browser: Mozilla/5.0 (Windows NT 10.0; Win64; x64) … Edg/142.0</div>
+
+  <div class="ev">7. 17 Nov 2026, 14:10:00 – Password link opened</div>
+  <div class="d">Total accesses: 1</div>
+
+  <div class="ev">8. 17 Nov 2026, 14:10:00 – Downloaded</div>
+  <div class="d">Time according to Nextcloud: 17 Nov 2026, 14:03:31 · Concerns: Angebot_2026-118.pdf</div>
+  <div class="mono hash">Hash: 7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d1c0b9a8f7e6d</div>
+
+  <div class="foot">Proof of delivery 20261117-1146-7Q2F · page 1 of 2</div>
+</div>
+</body>
+</html>
