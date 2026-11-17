@@ -42,6 +42,12 @@ is "Datei als Link einfügen", "History" is "Verlauf".*
 The password never travels in the same mail as the link, and it is only sent once the mail with the link has really
 left the outbox.
 
+**With proof of delivery** (optional, ticked by the sender per mail): the link first leads to a CloudShare page – the
+recipient enters the address the mail went to, gets a six-digit code there and then goes on to the download. See
+[Proof of delivery](#proof-of-delivery-optional).
+
+![The two steps for the recipient: enter the email address the message went to, then the six-digit code; then the download opens](docs/images/proof-gateway.png)
+
 ## What the sender gets
 
 <img src="docs/images/sender-notices.png" alt="Two notes to the sender in the same layout as the password mail: Downloaded, with a green card for the file, the time of the first download and the validity; Text message not sent, with a red card for the three files, the masked number and the reason, and how to send the password again" width="420" align="right">
@@ -57,6 +63,11 @@ password (to the recipients), **green** – downloaded, **red** – a problem.
 - **Text message not sent / not delivered** (only with SMS; "not delivered", reported later by seven.io, only with
   `SMS_NOTICE=true`): the SMS with the password failed. The note contains neither the password nor a link to it –
   the password goes out no other way; send it again with **"Password"** (key icon) in "History".
+- **Proof of delivery** (only with `DELIVERY_PROOF`, ticked per mail): every step with date and time – link, sent mail
+  with Message-ID, password, code confirmation of the recipient, every download – hash-chained, as a PDF from "History"
+  ("Proof", document with a seal). The download confirmation then also names the tracking ID and the file's SHA-256.
+  <br>
+  <img src="docs/images/proof-pdf.png" alt="First page of the proof of delivery PDF: tracking ID, record unchanged, and the events from link created through message sent, password, recipient confirmed to downloaded, each with time and hash" width="420">
 
 <br clear="right">
 
@@ -556,7 +567,8 @@ $edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 $repo = (Get-Location).Path; $url = "file:///" + ($repo -replace '\\','/') + "/docs/mockups"
 $opts = "--headless=new", "--hide-scrollbars", "--user-data-dir=$env:TEMP\cloudshare-edge"
 foreach ($shot in @(("outlook-compose", "compose-send", "1440,1100"), ("mail-received", "mail-received", "760,706"),
-                    ("password-mail", "password-mail", "760,676"), ("sender-notices", "sender-notices", "760,942"))) {
+                    ("password-mail", "password-mail", "760,676"), ("sender-notices", "sender-notices", "760,942"),
+                    ("proof-gateway", "proof-gateway", "928,512"), ("proof-pdf", "proof-pdf", "860,934"))) {
   Start-Process -Wait $edge ($opts + "--window-size=$($shot[2])", "--screenshot=$repo\docs\images\$($shot[0]).png", "$url/$($shot[1]).html")
 }
 ```
