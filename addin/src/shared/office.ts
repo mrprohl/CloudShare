@@ -5,9 +5,16 @@ import { toSsoError } from "./sso";
 export const API_BASE = "%%PUBLIC_BASE_URL%%";
 
 export interface ServerConfig {
+  /** From this size (MB) CloudShare steps in when the mail goes outside the organisation (0 = every attachment). */
   thresholdMb: number;
+  /** The same when every recipient is internal (INTERNAL_DOMAINS) – also while there are no recipients yet. */
+  thresholdInternalMb?: number;
+  /** Domains that count as internal (and their subdomains); empty = the domain of the user's own address. */
+  internalDomains?: string[];
   /** enforce: large attachments only via CloudShare; suggest: prompt with "Send anyway". */
   attachmentPolicy: "enforce" | "suggest";
+  /** The same for mails whose recipients are all internal (unset: attachmentPolicy). */
+  attachmentPolicyInternal?: "enforce" | "suggest";
   defaultExpireDays: number;
   maxExpireDays: number;
   /** Longest validity of a link with password (as long as its password in Vaultwarden, at most 30); older servers: none. */
@@ -38,6 +45,10 @@ export interface ServerConfig {
   nextcloudUrl?: string;
   /** "Zustellnachweis" offered in "Gültigkeit und Sprache" (DELIVERY_PROOF). */
   deliveryProof?: boolean;
+  /** Sensitivity labels of shared files: the mail takes them over ("inherit"), is offered them ("suggest") or nothing. */
+  labelPolicy?: "inherit" | "suggest" | "off";
+  /** Files encrypted by a label: ask first ("warn"), refuse ("block") or share without a word ("allow"). */
+  labelEncrypted?: "warn" | "block" | "allow";
 }
 
 export type Channel = "recipients" | "mail" | "sms";
@@ -267,6 +278,58 @@ export const TASKPANE_COMMAND_ID = "cloudshareOpenPane";
 export const NOTIFICATION_ID = "cloudshare-large-attachment";
 
 export const composeItem = () => Office.context.mailbox.item as Office.MessageCompose;
+
+/** Addresses in To, Cc and Bcc of the draft (lower case); null if Outlook cannot tell. */
+export async function draftRecipients(): Promise<string[] | null> {
+  const item = composeItem() as unknown as Partial<Record<"to" | "cc" | "bcc", Office.Recipients>>;
+  try {
+    const lists = await Promise.all(
+      (["to", "cc", "bcc"] as const).map((field) => {
+        const recipients = item[field];
+        return recipients ? officeAsync<Office.EmailAddressDetails[]>((cb) => recipients.getAsync(cb)) : Promise.resolve([]);
+      }),
+    );
+    // No Array.prototype.flat: the send handler runs in classic Outlook's older JavaScript runtime.
+    return lists.reduce<string[]>((all, list) => all.concat(list.map((r) => (r.emailAddress ?? "").toLowerCase()).filter(Boolean)), []);
+  } catch {
+    return null;
+  }
+}
+
+/** Whether an address belongs to one of the domains (or a subdomain of one). */
+export function isInternalAddress(address: string, domains: string[]): boolean {
+  const domain = address.toLowerCase().split("@").pop() ?? "";
+  return domains.some((d) => domain === d || domain.endsWith(`.${d}`));
+}
+
+/** What applies to the attachments of a draft: from which size (MB) and how strictly. */
+export interface AttachmentRule {
+  mb: number;
+  policy: "enforce" | "suggest";
+}
+
+/**
+ * The rule for this draft: ATTACHMENT_THRESHOLD_MB and ATTACHMENT_POLICY as soon as one recipient is outside
+ * INTERNAL_DOMAINS (default: the domain of the user's own address), else ATTACHMENT_THRESHOLD_INTERNAL_MB and
+ * ATTACHMENT_POLICY_INTERNAL – also while no recipient is entered yet. If the recipients cannot be read, the external
+ * rule (the stricter assumption).
+ */
+export async function attachmentRule(config: ServerConfig): Promise<AttachmentRule> {
+  const external: AttachmentRule = { mb: config.thresholdMb, policy: config.attachmentPolicy };
+  const internal: AttachmentRule = {
+    mb: config.thresholdInternalMb ?? config.thresholdMb,
+    policy: config.attachmentPolicyInternal ?? config.attachmentPolicy,
+  };
+  if (internal.mb === external.mb && internal.policy === external.policy) return external;
+  const recipients = await draftRecipients();
+  if (recipients === null) return external;
+  const own = (Office.context.mailbox.userProfile?.emailAddress ?? "").toLowerCase().split("@").pop() ?? "";
+  const domains = config.internalDomains?.length ? config.internalDomains : own ? [own] : [];
+  return recipients.some((address) => !isInternalAddress(address, domains)) ? external : internal;
+}
+
+/** Only the size of attachmentRule (the taskpane preselects by it). */
+export const attachmentThreshold = async (config: ServerConfig) => (await attachmentRule(config)).mb;
 
 /** Real file attachments (no inline images, no attached mails/cloud links). */
 export async function getFileAttachments(): Promise<Office.AttachmentDetailsCompose[]> {

@@ -1,5 +1,6 @@
 import {
   api,
+  attachmentThreshold,
   API_BASE,
   ApiError,
   composeItem,
@@ -22,6 +23,7 @@ import { inLanguage, languageChoices, locale, t } from "../shared/i18n";
 import { errorText } from "../shared/sso";
 import { filesCard, filesText, messageCard, messageText, requestCard, requestText, type CardProof } from "./mailCard";
 import { initSettings, loadSettings, userSettings } from "./settings";
+import { labelCatalog, mailLabel, readFileLabel, setMailLabel, type FileLabel, type LabelDetails } from "./labels";
 
 // All visible texts come from locales/<language>.json (t(), see shared/i18n.ts) and follow Outlook's terminology
 // ("Nachricht"/"message", "Kennwort"/"password").
@@ -186,22 +188,23 @@ type StatusAction = { label: string; run: () => void };
 const retryAction = (): StatusAction => ({ label: t("retry"), run: () => location.reload() });
 
 let statusShown = 0;
-function setStatus(text: string, kind: StatusKind = "info", action?: StatusAction) {
+function setStatus(text: string, kind: StatusKind = "info", action?: StatusAction | StatusAction[]) {
   const shown = ++statusShown;
+  const actions = action ? (Array.isArray(action) ? action : [action]) : [];
   statusBar.hidden = !text;
   statusBar.className = `messagebar ${kind}`;
   // No timer for an empty message (setStatus("") only clears the bar), progress and a message with a button.
-  const seconds = text && kind !== "progress" && !action ? messageSeconds() : 0;
+  const seconds = text && kind !== "progress" && actions.length === 0 ? messageSeconds() : 0;
   statusBar.innerHTML = text
     ? `<svg class="icon" viewBox="0 0 16 16" aria-hidden="true">${seconds > 0 ? statusTimer(kind) : STATUS_CIRCLE + STATUS_GLYPHS[kind]}</svg><span></span>`
     : "";
   if (text) statusBar.querySelector("span")!.textContent = text;
-  if (text && action) {
+  for (const item of text ? actions : []) {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "link-button status-action";
-    button.textContent = action.label;
-    button.addEventListener("click", action.run);
+    button.textContent = item.label;
+    button.addEventListener("click", item.run);
     statusBar.querySelector("span")!.append(" ", button);
   }
   if (seconds > 0) {
@@ -437,10 +440,12 @@ const FILE_ICON =
   '<path d="M5.5 2.5h5.3l3.7 3.7v10.3a1 1 0 0 1-1 1h-8a1 1 0 0 1-1-1v-13a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor"/>' +
   '<path d="M10.5 2.5v4h4" fill="none" stroke="currentColor"/></svg>';
 
-/** One row in Outlook's list style: checkbox, file icon, name, size and an optional "Groß" badge. */
+/**
+ * One row in Outlook's list style: checkbox, file icon, name and an optional "Groß" badge; below the name the file's
+ * sensitivity label once it is known (showLabel) – no size.
+ */
 function fileRow(
   name: string,
-  size: number,
   value: string,
   checked: boolean,
   large: boolean,
@@ -451,7 +456,7 @@ function fileRow(
   row.className = "checkbox list-item";
   row.innerHTML =
     `<input type="checkbox" /><span class="box" aria-hidden="true"></span>${FILE_ICON}` +
-    `<span class="file-text"><span class="file-name"></span><span class="file-size"></span></span>` +
+    `<span class="file-text"><span class="file-name"></span><span class="file-meta" hidden></span></span>` +
     (large ? `<span class="badge"></span>` : "");
   const box = row.querySelector("input")!;
   box.value = value;
@@ -459,11 +464,10 @@ function fileRow(
   box.dataset.name = name;
   row.querySelector(".file-name")!.textContent = name;
   row.querySelector<HTMLElement>(".file-name")!.title = name;
-  row.querySelector(".file-size")!.textContent = formatSize(size);
   const badge = row.querySelector<HTMLElement>(".badge");
   if (badge) badge.textContent = t("files.large");
   // Own name for the checkbox: otherwise a remove button inside the label would become part of it.
-  box.setAttribute("aria-label", `${name}, ${formatSize(size)}`);
+  box.setAttribute("aria-label", name);
   if (onRemove) {
     const remove = document.createElement("button");
     remove.type = "button";
@@ -484,17 +488,77 @@ function fileRow(
   return row;
 }
 
+// --- Sensitivity labels (Microsoft Purview) -----------------------------------------------------------
+// labels.ts reads the label from the file; here it shows in the list, a protected file needs a confirmation, and the
+// mail gets the highest label of its files (LABEL_POLICY: inherit / suggest / off, LABEL_ENCRYPTED: warn / block / allow).
+
+const labelPolicy = () => serverConfig?.labelPolicy ?? "inherit";
+const encryptedPolicy = () => serverConfig?.labelEncrypted ?? "warn";
+/** Attachments up to this size are read for the list right away; larger ones when they are inserted. */
+const LABEL_PREVIEW_MAX = 50 * MB;
+
+let catalogPromise: Promise<LabelDetails[] | null> | undefined;
+const catalog = () => (catalogPromise ??= labelCatalog());
+/** Label per attachment ID or picked file – each file is read once. */
+const labelCache = new Map<string | File, Promise<FileLabel | null>>();
+function labelOf(key: string | File, name: string, content: () => Promise<Blob>): Promise<FileLabel | null> {
+  let label = labelCache.get(key);
+  if (!label) {
+    label = content().then((blob) => readFileLabel(blob, name)).catch(() => null);
+    labelCache.set(key, label);
+  }
+  return label;
+}
+
+/** The label's name from Outlook's catalog; without it (other organisation, no catalog) the general wording. */
+async function labelName(label: FileLabel): Promise<{ name: string; known?: LabelDetails }> {
+  const known = label.id ? (await catalog())?.find((l) => l.id === label.id) : undefined;
+  if (known) return { name: known.name, known };
+  return { name: t(label.id ? "labels.unknownName" : "labels.protected") };
+}
+
+const LOCK_ICON =
+  '<svg class="icon label-lock" viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="7" width="9" height="6.5" rx="1" ' +
+  'fill="none" stroke="currentColor"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" fill="none" stroke="currentColor"/></svg>';
+
+/** "Vertraulich" (a lock for an encrypted file) under the name of a row, once the label is known. */
+async function showLabel(row: HTMLElement, label: Promise<FileLabel | null>) {
+  const found = await label;
+  if (!found || !row.isConnected) return;
+  const { name } = await labelName(found);
+  const span = document.createElement("span");
+  span.className = "file-label";
+  span.innerHTML = found.encrypted ? LOCK_ICON : "";
+  span.append(name);
+  const meta = row.querySelector<HTMLElement>(".file-meta")!;
+  meta.append(span);
+  meta.hidden = false;
+  const box = row.querySelector("input")!;
+  box.setAttribute("aria-label", `${box.getAttribute("aria-label")}, ${found.encrypted ? t("labels.encryptedLabel", { name }) : name}`);
+}
+
 /** Ticked files (attachments and files from the computer) – the button says how many get a link. */
 const selectedFileCount = () =>
   attachmentList.querySelectorAll("input:checked").length + pickedList.querySelectorAll("input:checked").length;
 
+/** The size (MB) the list was last rendered with – a change of recipients re-renders only if it changes. */
+let shownThreshold: number | undefined;
+
 async function renderAttachments() {
   const attachments = await getFileAttachments();
-  const threshold = serverConfig.thresholdMb * MB;
+  // The size that applies to this draft – outside or inside the organisation (attachmentThreshold).
+  shownThreshold = await attachmentThreshold(serverConfig);
+  const threshold = shownThreshold * MB;
   // Large attachments are preselected.
-  attachmentList.replaceChildren(
-    ...attachments.map((a) => fileRow(a.name, a.size, a.id, a.size > threshold, a.size > threshold)),
-  );
+  // ATTACHMENT_THRESHOLD_MB=0: every attachment is preselected, and none is called "Groß".
+  const rows = attachments.map((a) => fileRow(a.name, a.id, a.size > threshold, a.size > threshold && threshold > 0));
+  attachmentList.replaceChildren(...rows);
+  // Their sensitivity label under the name (larger attachments are read only when they are inserted).
+  if (labelPolicy() !== "off") {
+    attachments.forEach((a, i) => {
+      if (a.size <= LABEL_PREVIEW_MAX) void showLabel(rows[i], labelOf(a.id, a.name, () => readAttachment(a.id)));
+    });
+  }
   noAttachments.hidden = attachments.length > 0 || pickedFiles.length > 0;
   renderSubmit();
 }
@@ -507,12 +571,16 @@ function renderPicked() {
   pickedRendered = pickedFiles;
   pickedList.replaceChildren(
     ...pickedFiles.map((file, i) =>
-      fileRow(file.name, file.size, String(i), !unticked.has(file), false, () => {
+      fileRow(file.name, String(i), !unticked.has(file), false, () => {
         pickedFiles = pickedFiles.filter((f) => f !== file);
         renderPicked();
       }),
     ),
   );
+  // Only a few small parts of a file are read for its label, so every size is fine.
+  if (labelPolicy() !== "off") {
+    pickedFiles.forEach((file, i) => void showLabel(pickedList.children[i] as HTMLElement, labelOf(file, file.name, async () => file)));
+  }
   noAttachments.hidden = attachmentList.childElementCount > 0 || pickedFiles.length > 0;
   renderSubmit();
 }
@@ -1525,7 +1593,74 @@ async function runInsert(work: () => Promise<void>) {
 
 // --- Files ---------------------------------------------------------------------------------
 
-async function insertFiles() {
+/** The labels of the files about to be shared (read now if the list did not show them yet). */
+async function labelsOfSelection(attachments: HTMLInputElement[], files: File[]) {
+  if (labelPolicy() === "off") return [];
+  return Promise.all([
+    ...attachments.map(async (box) => {
+      const name = box.dataset.name ?? t("files.attachment");
+      return { name, label: await labelOf(box.value, name, () => readAttachment(box.value)) };
+    }),
+    ...files.map(async (file) => ({ name: file.name, label: await labelOf(file, file.name, async () => file) })),
+  ]);
+}
+
+/**
+ * A protected (encrypted) file: recipients outside the organisation can usually not open it, whichever way it travels.
+ * LABEL_ENCRYPTED=warn asks first ("Trotzdem einfügen" / "Abbrechen"), block refuses, allow says nothing. Returns
+ * whether to go on.
+ */
+async function confirmEncrypted(labels: Array<{ name: string; label: FileLabel | null }>, confirmed: boolean): Promise<boolean> {
+  const encrypted = labels.filter((l) => l.label?.encrypted);
+  if (encrypted.length === 0 || encryptedPolicy() === "allow" || confirmed) return true;
+  const names = encrypted.map((l) => `„${l.name}“`).join(", ");
+  if (encryptedPolicy() === "block") {
+    setStatus(t("labels.blocked", { names, count: encrypted.length }), "error");
+    return false;
+  }
+  const first = encrypted[0].label!;
+  const text = first.id && encrypted.length === 1
+    ? t("labels.encrypted", { name: encrypted[0].name, label: (await labelName(first)).name })
+    : t("labels.encryptedUnknown", { names, count: encrypted.length });
+  setStatus(text, "error", [
+    { label: t("labels.insertAnyway"), run: () => void insertFiles(true) },
+    { label: t("labels.cancel"), run: () => setStatus("") },
+  ]);
+  return false;
+}
+
+/**
+ * After inserting: the mail gets the highest label of its files if its own is lower (never lowered) – LABEL_POLICY
+ * "inherit" sets it and says so, "suggest" offers "Übernehmen". Only labels of the user's own catalog (other
+ * organisations' labels and a missing catalog: nothing to set). Returns the sentence for the message, if any.
+ */
+async function labelForMail(labels: Array<{ name: string; label: FileLabel | null }>): Promise<{ text: string; apply?: () => Promise<void> } | null> {
+  const known = await catalog();
+  if (!known || labelPolicy() === "off") return null;
+  let best: { file: string; details: LabelDetails } | undefined;
+  for (const { name, label } of labels) {
+    const details = label?.id ? known.find((l) => l.id === label.id) : undefined;
+    if (details && (!best || details.rank > best.details.rank)) best = { file: name, details };
+  }
+  if (!best) return null;
+  const current = await mailLabel();
+  if (current === null) return null;
+  const currentRank = known.find((l) => l.id === current)?.rank ?? -1;
+  if (best.details.rank <= currentRank) return null;
+  const chosen = best;
+  const apply = () => setMailLabel(chosen.details.id);
+  if (labelPolicy() === "suggest") {
+    return { text: t("labels.suggest", { name: chosen.file, label: chosen.details.name }), apply };
+  }
+  try {
+    await apply();
+    return { text: t("labels.applied", { name: chosen.file, label: chosen.details.name }) };
+  } catch (err) {
+    return { text: t("labels.applyFailed", { error: errorMessage(err) }) };
+  }
+}
+
+async function insertFiles(encryptedConfirmed = false) {
   const selectedAttachments = Array.from(attachmentList.querySelectorAll<HTMLInputElement>("input:checked"));
   const selectedFiles = Array.from(pickedList.querySelectorAll<HTMLInputElement>("input:checked")).map(
     (box) => pickedFiles[Number(box.value)],
@@ -1537,6 +1672,10 @@ async function insertFiles() {
   if (problem) {
     return setStatus(problem, "error");
   }
+  // Sensitivity labels of the files: a protected one needs a confirmation first.
+  if (labelPolicy() !== "off") setStatus(t("labels.checking"), "progress");
+  const labels = await labelsOfSelection(selectedAttachments, selectedFiles);
+  if (!(await confirmEncrypted(labels, encryptedConfirmed))) return;
 
   await runInsert(async () => {
     const results: UploadResult[] = [];
@@ -1569,14 +1708,28 @@ async function insertFiles() {
         try {
           await insertLinks(results);
           if (!failed) {
+            // The mail gets the sensitivity of its files (or the offer to take it over).
+            const forMail = await labelForMail(labels).catch(() => null);
+            const apply = forMail?.apply;
             setStatus(
               sentences(
                 t("submit.inserted", { count: results.length }),
                 isWithoutPassword(results[0])
                   ? t("submit.noPassword", { count: results.length })
                   : t("submit.passwordFollows"),
+                ...(forMail ? [forMail.text] : []),
               ),
               "success",
+              apply
+                ? {
+                    label: t("labels.apply"),
+                    run: () =>
+                      void apply().then(
+                        () => setStatus(t("labels.appliedShort"), "success"),
+                        (err) => setStatus(t("labels.applyFailed", { error: errorMessage(err) }), "error"),
+                      ),
+                  }
+                : undefined,
             );
           }
         } catch (err) {
@@ -2503,6 +2656,7 @@ Office.onReady(async () => {
   proofField.hidden = !serverConfig.deliveryProof;
   // The guide explains it only where it exists.
   for (const id of ["help-proof", "help-shares-proof"]) $<HTMLElement>(id).hidden = !serverConfig.deliveryProof;
+  $<HTMLElement>("help-files-labels").hidden = serverConfig.labelPolicy === "off";
   proofInput.checked = state.proof === true;
   applyLinkMax();
   maxAccessInput.max = String(serverConfig.sendMaxAccessLimit);
@@ -2558,6 +2712,12 @@ Office.onReady(async () => {
   await renderAttachments().catch(() => undefined);
   composeItem().addHandlerAsync(Office.EventType.AttachmentsChanged, () => {
     renderAttachments().catch(() => undefined);
+  });
+  // Recipients decide which size applies: preselect again when it changes (internal ↔ external).
+  composeItem().addHandlerAsync(Office.EventType.RecipientsChanged, () => {
+    void attachmentThreshold(serverConfig).then((mb) => {
+      if (mb !== shownThreshold) renderAttachments().catch(() => undefined);
+    });
   });
 
   try {

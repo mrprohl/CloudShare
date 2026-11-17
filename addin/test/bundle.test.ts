@@ -37,6 +37,7 @@ describe("commands.js for the JavaScript-only runtime", () => {
   it("registers both handlers", () => {
     expect(code).toContain('"onMessageSendHandler"');
     expect(code).toContain('"onAttachmentsChangedHandler"');
+    expect(code).toContain('"onRecipientsChangedHandler"');
   });
 });
 

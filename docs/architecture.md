@@ -31,6 +31,7 @@ Outlook (classic on Windows / new Outlook / Outlook on the web)
   │                                            "History"; read mode (?view=read): the shares of
   │                                            the mail being read
   └─ Event handlers      addin/src/commands/   OnMessageAttachmentsChanged → info bar
+                                               OnMessageRecipientsChanged → same check (size inside / outside)
                                                OnMessageSend (Smart Alert) → attachment policy, arm password mail
         │  HTTPS + Office SSO token (Entra ID, audience api://<host>/<client-id>, scope access_as_user)
         ▼
@@ -445,7 +446,9 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   `https://<host>/r/s/<token>` instead of the Nextcloud link (the path still ends in `/s/<token>`, so the read mode
   and `releaseDraftIfLinksGone` find it). The page asks for the address; only one the mail went to (To, Cc, Bcc – a
   distribution list does not match) gets a six-digit code, sent from the sender's mailbox with the app token; the page
-  reads the same for any address, so it does not reveal the recipients. Ten minutes, five tries, three codes per
+  answers every address alike – the same text, the same limits (counted for every request), the same timing (the code
+  mail is not awaited) and one error text for a wrong, expired or never sent code – so trying does not reveal the
+  recipients; an address that is not one is recorded (`recipient.unknownAddress`). Ten minutes, five tries, three codes per
   address in 15 minutes, ten per link an hour. A right code records address, IP address (via Caddy, `trustProxy`) and
   browser, sets a signed cookie for this link until it expires and redirects (303) to Nextcloud – the Nextcloud
   password is still needed. Before the mail was found sent the page says so. Plain HTML forms, no script, own CSP.
@@ -454,6 +457,43 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   "Nachweis" in "Verlauf" asks `POST /api/proofs/:id/link` for an address signed with a key derived from
   `CREDENTIAL_KEY` and valid five minutes, and opens it in the default browser (`openBrowserWindow`) – the language
   of the add-in.
+
+### 2.13 Sensitivity labels
+
+Outlook carries the sensitivity label of an *attachment* over to the message; a file CloudShare shares as a link is no
+longer attached, so the add-in does it itself (`addin/src/taskpane/labels.ts`, nothing goes to the server):
+
+- **Reading the label** from the file, only small parts of it (`Blob.slice`): Office Open XML – the ZIP directory, then
+  `docMetadata/LabelInfo.xml` (`<clbl:label id enabled siteId removed>`) or the `MSIP_Label_<id>_Enabled` / `_SiteId`
+  properties in `docProps/custom.xml` (`DecompressionStream("deflate-raw")`, ZIP64 aware); compound files (encrypted
+  Office files and doc/xls/ppt) – FAT, directory and mini stream, the stream `LabelInfo` that Office keeps unencrypted
+  next to `EncryptedPackage`, else the `MSIP_Label_…` properties in `DocumentSummaryInformation`; PDF – the XMP
+  `MSIP_Label_…` entries in the first and last 2 MB; `.pfile`, `.ppdf` … by their extension (protected, label
+  unknown). Result `{ id, siteId, encrypted }`, cached per attachment / file (`labelOf`); attachments above 50 MB are
+  read only when inserted.
+- **Names and order** from `Office.context.sensitivityLabelsCatalog` (Mailbox 1.13, the labels published to the user,
+  in the policy's order = rank); a label not in the catalog (another organisation) shows as "Vertraulichkeitsbezeichnung".
+- **The mail's label** (`item.sensitivityLabel`): after inserting, the highest-ranked label of the files is set if the
+  mail's is lower – never lowered (`labelForMail`; `LABEL_POLICY=inherit`), or offered with "Übernehmen" (`suggest`).
+- **Encrypted files**: `confirmEncrypted` before any upload – `LABEL_ENCRYPTED=warn` (message with "Trotzdem
+  einfügen" / "Abbrechen"), `block`, `allow`.
+- No extra permission: the manifest already has `ReadWriteItem`.
+
+### 2.14 Attachments inside and outside the organisation
+
+Which attachments CloudShare steps in for, and how strictly, depends on the recipients (`attachmentRule` in
+`addin/src/shared/office.ts`, used by the info bar, the send handler and the preselection in the pane):
+
+- **External** – one recipient in To, Cc or Bcc outside `INTERNAL_DOMAINS` (comma-separated, subdomains included;
+  empty = the domain of the user's own address): `ATTACHMENT_THRESHOLD_MB` and `ATTACHMENT_POLICY`.
+- **Internal** – every recipient inside, and also while none is entered yet: `ATTACHMENT_THRESHOLD_INTERNAL_MB` and
+  `ATTACHMENT_POLICY_INTERNAL` (each unset = the external value). A distribution list counts by its own address –
+  Outlook does not reveal its members in a draft. Recipients that cannot be read: external (the stricter case).
+- **`0` = every attachment**: all preselected, no "Groß" badge, the info bar and the prompt name no size
+  (`notify.any`, `alert.enforceAny`, `alert.suggestAny`).
+- `OnMessageRecipientsChanged` (manifest 1.5.0.0, `onRecipientsChangedHandler` = the attachments handler) shows or
+  removes the info bar when recipients change; the pane re-preselects only when the size that applies changes
+  (`RecipientsChanged`, `shownThreshold`). The send handler checks with the recipients at that moment.
 
 ## 3. State and data
 

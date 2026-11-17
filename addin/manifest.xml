@@ -9,7 +9,7 @@
            xmlns:mailappor="http://schemas.microsoft.com/office/mailappversionoverrides/1.0"
            xsi:type="MailApp">
   <Id>8f3c2a71-5d4e-4b9a-9e2f-6c1d7a0b3e54</Id>
-  <Version>1.4.0.0</Version>
+  <Version>1.5.0.0</Version>
   <ProviderName>CloudShare</ProviderName>
   <DefaultLocale>%%LOCALE%%</DefaultLocale>
   <DisplayName DefaultValue="CloudShare"/>
@@ -115,6 +115,8 @@
             <ExtensionPoint xsi:type="LaunchEvent">
               <LaunchEvents>
                 <LaunchEvent Type="OnMessageAttachmentsChanged" FunctionName="onAttachmentsChangedHandler"/>
+                <!-- Recipients decide which size applies (ATTACHMENT_THRESHOLD_MB outside, _INTERNAL_MB inside the organisation). -->
+                <LaunchEvent Type="OnMessageRecipientsChanged" FunctionName="onRecipientsChangedHandler"/>
                 <!-- SoftBlock: a blocked mail cannot be sent ("enforce"); under ATTACHMENT_POLICY=suggest the handler
                      relaxes it to PromptUser ("Send anyway"). If the add-in cannot run, sending stays possible. -->
                 <LaunchEvent Type="OnMessageSend" FunctionName="onMessageSendHandler" SendMode="SoftBlock"/>

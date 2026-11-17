@@ -447,7 +447,11 @@ export async function buildApp(options: { logger?: boolean } = {}) {
   /** Public configuration for the taskpane and the Smart Alert. */
   app.get("/api/config", async () => ({
     thresholdMb: config.thresholdMb,
+    // Inside the organisation (INTERNAL_DOMAINS; empty: the user's own domain) a size of its own.
+    thresholdInternalMb: config.thresholdInternalMb,
+    internalDomains: config.internalDomains,
     attachmentPolicy: config.attachmentPolicy,
+    attachmentPolicyInternal: config.attachmentPolicyInternal,
     defaultExpireDays: config.defaultExpireDays,
     maxExpireDays: config.maxExpireDays,
     // Links with password last at most as long as their password in Vaultwarden.
@@ -473,6 +477,9 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     nextcloudUrl: config.nextcloudUrl,
     // "Zustellnachweis" in "Gültigkeit und Sprache" (DELIVERY_PROOF).
     deliveryProof: config.deliveryProof,
+    // Sensitivity labels of shared files (LABEL_POLICY, LABEL_ENCRYPTED).
+    labelPolicy: config.labelPolicy,
+    labelEncrypted: config.labelEncrypted,
   }));
 
   /**

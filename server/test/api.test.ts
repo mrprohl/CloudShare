@@ -1171,13 +1171,19 @@ describe("delivery proof (Zustellnachweis)", () => {
     // A recipient (any spelling): the code comes from the sender's mailbox.
     const asked = await app.inject({ method: "POST", url: "/r/s/proof-gw/code", ...form({ address: "Erika@Example.test" }) });
     expect(asked.statusCode).toBe(200);
-    expect(sendMailAsApp).toHaveBeenCalledOnce();
+    // The mail goes out after the answer (same timing for every address).
+    await vi.waitFor(() => expect(sendMailAsApp).toHaveBeenCalledOnce());
+    expect(asked.body.replaceAll("erika@example.test", "X")).toBe(stranger.body.replaceAll("mallory@example.test", "X"));
     const [, owner, to, subject] = sendMailAsApp.mock.calls[0];
     expect([owner, to]).toEqual(["oid-anna", "erika@example.test"]);
     const code = /(\d{6})/.exec(subject)![1];
 
     const wrong = await app.inject({ method: "POST", url: "/r/s/proof-gw/verify", ...form({ address: "erika@example.test", code: code === "000000" ? "111111" : "000000" }) });
     expect(wrong.statusCode).toBe(400);
+    // An address that never got a code gets exactly the same answer as a wrong code – nothing to learn by trying.
+    const strangerTry = await app.inject({ method: "POST", url: "/r/s/proof-gw/verify", ...form({ address: "mallory@example.test", code: "123456" }) });
+    expect(strangerTry.statusCode).toBe(400);
+    expect(strangerTry.body.replaceAll("mallory@example.test", "X")).toBe(wrong.body.replaceAll("erika@example.test", "X"));
     const right = await app.inject({
       method: "POST", url: "/r/s/proof-gw/verify", ...form({ address: "erika@example.test", code }),
       headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": "TestBrowser/1.0" },

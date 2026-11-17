@@ -48,6 +48,9 @@ interface Scenario {
   displayLanguage?: string;
   /** Personal settings stored on the server (GET /api/settings), on top of DEFAULT_SETTINGS. */
   settings?: Partial<typeof DEFAULT_SETTINGS>;
+  /** Sensitivity labels published to the user (Outlook's catalog) and the draft's own label (GUID). */
+  labels?: Array<{ id: string; name: string }>;
+  mailLabel?: string;
   /** Opened from a mail being read (taskpane.html?view=read) with this HTML body. */
   readBody?: string;
 }
@@ -81,6 +84,8 @@ const CONFIG = {
   sendExpireDays: 5,
   sendMaxExpireDays: 30,
   deliveryProof: false, // DELIVERY_PROOF: the box "Zustellnachweis" is offered only when the server has it
+  labelPolicy: "inherit", // LABEL_POLICY default
+  labelEncrypted: "warn", // LABEL_ENCRYPTED default
 };
 
 /** Personal settings as the server starts every user (DEFAULT_* unset). */
@@ -107,7 +112,7 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     (window as unknown as { __officeConfig: unknown }).__officeConfig = cfg;
   }, { attachments: scenario.attachments ?? [], theme: scenario.theme, bodyType: scenario.bodyType, tokenError: scenario.tokenError,
     cursorOutsideBody: scenario.cursorOutsideBody, bodyRejectsInsert: scenario.bodyRejectsInsert, readBody: scenario.readBody,
-    displayLanguage: scenario.displayLanguage });
+    displayLanguage: scenario.displayLanguage, labels: scenario.labels, mailLabel: scenario.mailLabel });
   await page.route("https://appsforoffice.microsoft.com/**", (route) =>
     route.fulfill({ contentType: "text/javascript", body: officeMock }),
   );
@@ -220,6 +225,7 @@ const officeLog = (page: Page) =>
     session: Record<string, string>;
     openedUrls: string[];
     openedMails: string[];
+    mailLabel?: string;
   } }).__officeLog);
 
 /** No serious or critical WCAG 2 A/AA violations in the current view. */
@@ -1887,4 +1893,88 @@ test.describe("README pictures (English)", () => {
     await expect(page.locator("#connect-view")).toBeVisible();
     await readmeShot(page, "connect");
   });
+});
+
+// --- Sensitivity labels (Microsoft Purview) ---------------------------------------------------------------
+
+/** A minimal Office file (ZIP, stored) with a sensitivity label in docProps/custom.xml – example IDs only. */
+function labelledDocx(labelId: string): string {
+  const custom =
+    '<?xml version="1.0" encoding="UTF-8"?><Properties xmlns:vt="http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes">' +
+    `<property name="MSIP_Label_${labelId}_Enabled"><vt:lpwstr>true</vt:lpwstr></property>` +
+    `<property name="MSIP_Label_${labelId}_SiteId"><vt:lpwstr>00000000-0000-0000-0000-0000000000aa</vt:lpwstr></property></Properties>`;
+  const name = Buffer.from("docProps/custom.xml");
+  const data = Buffer.from(custom);
+  const local = Buffer.alloc(30);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(20, 4);
+  local.writeUInt32LE(data.length, 18);
+  local.writeUInt32LE(data.length, 22);
+  local.writeUInt16LE(name.length, 26);
+  const central = Buffer.alloc(46);
+  central.writeUInt32LE(0x02014b50, 0);
+  central.writeUInt16LE(20, 6);
+  central.writeUInt32LE(data.length, 20);
+  central.writeUInt32LE(data.length, 24);
+  central.writeUInt16LE(name.length, 28);
+  central.writeUInt32LE(0, 42);
+  const dirOffset = local.length + name.length + data.length;
+  const dirSize = central.length + name.length;
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(dirSize, 12);
+  end.writeUInt32LE(dirOffset, 16);
+  return Buffer.concat([local, name, data, central, name, end]).toString("base64");
+}
+
+const LABELS = [
+  { id: "aaaaaaaa-0000-4000-8000-000000000001", name: "Öffentlich" },
+  { id: "aaaaaaaa-0000-4000-8000-000000000002", name: "Vertraulich" },
+];
+
+test("Labels: a labelled file shows its label, and the mail gets the same sensitivity", async ({ page }) => {
+  const content = labelledDocx(LABELS[1].id);
+  await openTaskpane(page, {
+    attachments: [{ id: "a1", name: "Angebot.docx", size: 2 * MiB, content }],
+    labels: LABELS,
+    mailLabel: LABELS[0].id,
+  });
+  const row = page.locator("#attachments .list-item").first();
+  await expect(row.locator(".file-label")).toHaveText("Vertraulich");
+  await expect(row.locator("input")).toHaveAttribute("aria-label", /Vertraulich$/);
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("„Angebot.docx“ ist als „Vertraulich“ gekennzeichnet – die Nachricht hat dieselbe Vertraulichkeit erhalten.");
+  expect((await officeLog(page)).mailLabel).toBe(LABELS[1].id);
+});
+
+test("Labels: never lowers the mail's label", async ({ page }) => {
+  await openTaskpane(page, {
+    attachments: [{ id: "a1", name: "Info.docx", size: 2 * MiB, content: labelledDocx(LABELS[0].id) }],
+    labels: LABELS,
+    mailLabel: LABELS[1].id,
+  });
+  await expect(page.locator("#attachments .file-label")).toHaveText("Öffentlich");
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
+  await expect(page.locator("#status")).not.toContainText("Vertraulichkeit");
+  expect((await officeLog(page)).mailLabel).toBeUndefined();
+});
+
+test("Labels: a protected file needs a confirmation before it is shared", async ({ page }) => {
+  const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pfile", 2 * MiB)] });
+  const row = page.locator("#attachments .list-item").first();
+  await expect(row.locator(".file-label")).toHaveText("Geschützt");
+  await expect(row.locator(".label-lock")).toHaveCount(1);
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("„Vertrag.pfile“ ist durch Microsoft Purview geschützt.");
+  await expectAccessible(page);
+  await page.locator("#status .status-action", { hasText: "Abbrechen" }).click();
+  expect(calls.some((c) => c.path === "/api/uploads")).toBe(false);
+
+  await page.click("#submit");
+  await page.locator("#status .status-action", { hasText: "Trotzdem einfügen" }).click();
+  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
+  expect(calls.some((c) => c.path === "/api/uploads")).toBe(true);
 });

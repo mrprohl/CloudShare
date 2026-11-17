@@ -285,8 +285,13 @@ deployed again.
 | `NEXTCLOUD_FOLDER` | `CloudShare` | Folder for uploaded files in each user's Nextcloud |
 | `NEXTCLOUD_REQUEST_FOLDER` | `CloudShare-File-Requests` | Folder for files received through upload links |
 | `CREDENTIAL_KEY` | – | Key for the stored Nextcloud app passwords (`openssl rand -base64 32`); changing it disconnects all users |
-| `ATTACHMENT_THRESHOLD_MB` | `5` | From this size CloudShare steps in (hint while writing, check on send) |
+| `ATTACHMENT_THRESHOLD_MB` | `5` | From this size CloudShare steps in **when a recipient is outside the organisation** (hint while writing, check on send; such attachments are preselected and marked "Large"). `0` = every attachment: all preselected, no "Large" mark, the texts name no size |
+| `ATTACHMENT_THRESHOLD_INTERNAL_MB` | like `ATTACHMENT_THRESHOLD_MB` | The same when **every recipient is internal** – also while no recipient is entered yet; e.g. `0` outside and `5` inside: every attachment to customers goes as a link, colleagues get attachments up to 5 MB as usual. Checked again when the recipients change and on send |
+| `INTERNAL_DOMAINS` | empty (the user's own domain) | Domains that count as internal, comma-separated, subdomains included, e.g. `example.com, example.de`. A distribution list counts by its own address (Outlook does not reveal its members while writing) |
 | `ATTACHMENT_POLICY` | `suggest` | `suggest`: ask once, "Send Anyway" possible · `enforce`: large attachments only via CloudShare |
+| `ATTACHMENT_POLICY_INTERNAL` | like `ATTACHMENT_POLICY` | The same for mails whose recipients are **all internal** (`INTERNAL_DOMAINS`), e.g. `enforce` outside and `suggest` inside |
+| `LABEL_POLICY` | `inherit` | Sensitivity labels (Microsoft Purview) of shared files: `inherit` – the message gets the highest label of its files (never lowered) and the pane says so · `suggest` – the pane only offers it ("Apply") · `off` – labels are ignored. The label shows under the file name; see [Sensitivity labels](#sensitivity-labels) |
+| `LABEL_ENCRYPTED` | `warn` | Files encrypted by their label (recipients outside the organisation can usually not open them): `warn` – a confirmation first ("Insert anyway" / "Cancel") · `block` – not shared as a link · `allow` – no question |
 | `SHARE_EXPIRE_DAYS` / `SHARE_MAX_EXPIRE_DAYS` | `14` / `90` | Link validity: default / maximum. A link with password lasts at most 30 days: only as long as its password in Vaultwarden, which keeps it until then so it can be sent again |
 | `SEND_MAX_ACCESS_COUNT` / `SEND_MAX_ACCESS_LIMIT` | `3` / `20` | How often the password link opens: default / maximum |
 | `SEND_EXPIRE_DAYS` / `SEND_MAX_EXPIRE_DAYS` | `5` / `30` | Days the password link and confidential messages stay available: default / maximum the sender may choose (at most 30 – Vaultwarden keeps Sends at most 31 days) |
@@ -398,6 +403,27 @@ default. Details: [architecture.md → 2.12](docs/architecture.md#212-delivery-p
   of proof; it is kept `PROOF_RETENTION_DAYS` (default three years) after its last event – add it to your record of
   processing activities. The page tells recipients what is recorded.
 - It is evidence that can be checked, not a qualified delivery service in the sense of eIDAS.
+
+### Sensitivity labels
+
+Files with a **sensitivity label** from Microsoft Purview (e.g. "Confidential") keep it when they travel as a link –
+but the label on the *attachment* is what Outlook normally carries over to the message. Once CloudShare takes the
+attachment out, the message would go without it. So CloudShare reads the label from the file itself, in the add-in
+(nothing is sent anywhere for it):
+
+- **In the file list** the label shows under the name ("Confidential", a lock if it encrypts the file; the list shows no sizes).
+- **When inserting** the message gets the highest label of its files if its own is lower – never lowered
+  (`LABEL_POLICY=inherit`); with `suggest` the pane only offers "Apply". Names come from Outlook's label catalog, so
+  they are the ones of your organisation in the user's language; a label of another organisation shows as
+  "Sensitivity label" and is not set on the message.
+  An **encrypting** label (e.g. "Highly confidential") encrypts the message itself once it is set – recipients without
+  rights then cannot read the message either, not only the file.
+- **Encrypted files** (a label with protection): recipients outside the organisation can usually not open them, link
+  or not. `LABEL_ENCRYPTED=warn` asks first, `block` refuses them, `allow` says nothing.
+- Recognised: Word, Excel, PowerPoint, Visio (also encrypted – the label is stored unencrypted next to the encrypted
+  content), the old binary Office formats, PDF; other files Purview protects (`.pfile`, `.ppdf` …) count as protected.
+  Needs Outlook with the sensitivity label API (Mailbox 1.13) for the names and to set the label; elsewhere the list
+  shows "Sensitivity label" and the warning still works.
 
 ### Text templates (optional)
 

@@ -1,5 +1,6 @@
 import {
   api,
+  attachmentRule,
   composeItem,
   getConfigCached,
   getFileAttachments,
@@ -95,8 +96,14 @@ function trace(step: string, detail?: string) {
 /** Custom Smart Alert buttons and sendModeOverride need Mailbox 1.14. */
 const supportsCustomAlert = () => Office.context.requirements.isSetSupported("Mailbox", "1.14");
 
-const largeAttachments = async (config: ServerConfig) =>
-  (await getFileAttachments()).filter((a) => a.size > config.thresholdMb * MB);
+/**
+ * Attachments above the size that applies to this draft (external or internal recipients, attachmentRule) – with that
+ * size, which the texts name (none at 0), and the policy that applies (enforce / suggest).
+ */
+const largeAttachments = async (config: ServerConfig) => {
+  const { mb, policy } = await attachmentRule(config);
+  return { mb, policy, large: (await getFileAttachments()).filter((a) => a.size > mb * MB) };
+};
 
 /**
  * OnMessageAttachmentsChanged: Outlook does not allow add-ins to open the taskpane themselves.
@@ -106,12 +113,14 @@ async function onAttachmentsChangedHandler(event: LaunchEvent) {
   const messages = composeItem().notificationMessages;
   try {
     const config = await getConfigCached();
-    const large = await largeAttachments(config);
+    const { mb, policy, large } = await largeAttachments(config);
     if (large.length > 0) {
-      const action = t(config.attachmentPolicy === "enforce" ? "notify.enforce" : "notify.suggest");
-      let message = t("notify.large", { count: large.length, name: large[0].name, mb: config.thresholdMb, action });
+      const action = t(policy === "enforce" ? "notify.enforce" : "notify.suggest");
+      // ATTACHMENT_THRESHOLD_MB=0: every attachment – the texts name no size.
+      const any = mb === 0;
+      let message = t(any ? "notify.any" : "notify.large", { count: large.length, name: large[0].name, mb, action });
       // Notification messages are limited to 150 characters.
-      if (message.length > 150) message = t("notify.largeShort", { mb: config.thresholdMb, action });
+      if (message.length > 150) message = t(any ? "notify.anyShort" : "notify.largeShort", { mb, action });
       if (message.length > 150) message = message.slice(0, 149) + "…";
       await officeAsync<void>((cb) =>
         messages.replaceAsync(
@@ -205,11 +214,13 @@ async function onMessageSendHandler(event: LaunchEvent) {
 
   let config: ServerConfig | undefined;
   let large: Office.AttachmentDetailsCompose[] = [];
+  let mb = 0;
+  let policy: "enforce" | "suggest" = "suggest";
   try {
     config = await getConfigCached();
     traceOn = config.trace === true;
     trace("config", config.attachmentPolicy);
-    large = await withTimeout(largeAttachments(config), TIMEOUTS.office, t("step.readAttachments"));
+    ({ mb, policy, large } = await withTimeout(largeAttachments(config), TIMEOUTS.office, t("step.readAttachments")));
   } catch {
     // No configuration known (server never reached) → no attachment check.
   }
@@ -218,11 +229,11 @@ async function onMessageSendHandler(event: LaunchEvent) {
   const names = shorten(large.map((a) => a.name).join(", "));
 
   // enforce: block first – the handler runs again on the next send attempt.
-  if (mustAct && config!.attachmentPolicy === "enforce") {
+  if (mustAct && policy === "enforce") {
     const options: CompletedOptions = {
       allowEvent: false,
       errorMessage:
-        t("alert.enforce", { mb: config!.thresholdMb, names }) +
+        t(mb === 0 ? "alert.enforceAny" : "alert.enforce", { mb, names }) +
         " " +
         (supportsCustomAlert() ? t("alert.chooseButton", { button: alertButton() }) : t("alert.useRibbon")),
     };
@@ -259,7 +270,7 @@ async function onMessageSendHandler(event: LaunchEvent) {
     if (supportsCustomAlert()) {
       event.completed({
         allowEvent: false,
-        errorMessage: t("alert.suggest", { mb: config!.thresholdMb, names }),
+        errorMessage: t(mb === 0 ? "alert.suggestAny" : "alert.suggest", { mb, names }),
         cancelLabel: alertButton(),
         commandId: TASKPANE_COMMAND_ID,
         sendModeOverride: Office.MailboxEnums.SendModeOverride.PromptUser,
@@ -287,6 +298,8 @@ function sendHandler(event: LaunchEvent) {
 
 function registerHandlers() {
   Office.actions.associate("onAttachmentsChangedHandler", onAttachmentsChangedHandler);
+  // Recipients changed: the size that applies may change (internal / external) – the same check of the attachments.
+  Office.actions.associate("onRecipientsChangedHandler", onAttachmentsChangedHandler);
   Office.actions.associate("onMessageSendHandler", sendHandler);
 }
 
