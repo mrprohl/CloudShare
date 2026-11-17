@@ -585,7 +585,7 @@ test("Sprache für die Empfänger: the card and the password mail in the chosen 
     settings: { recipientLanguage: "de" },
   });
   await expect(page.locator("#password")).not.toHaveValue("");
-  // In "Gültigkeit und Sprache": the summary names it, the field is behind the toggle.
+  // In "Weitere Optionen": the summary names it, the field is behind the toggle.
   await expect(page.locator("#validity-summary")).toContainText("· Deutsch");
   await page.click("#validity-toggle");
   const select = page.locator("#recipient-language");
@@ -1962,19 +1962,27 @@ test("Labels: never lowers the mail's label", async ({ page }) => {
   expect((await officeLog(page)).mailLabel).toBeUndefined();
 });
 
-test("Labels: a protected file needs a confirmation before it is shared", async ({ page }) => {
+test("Labels: a protected file shows a note under Weitere Optionen and needs a confirmation", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pfile", 2 * MiB)] });
   const row = page.locator("#attachments .list-item").first();
   await expect(row.locator(".file-label")).toHaveText("Geschützt");
   await expect(row.locator(".label-lock")).toHaveCount(1);
-  await page.click("#submit");
-  await expect(page.locator("#status")).toContainText("„Vertrag.pfile“ ist durch Microsoft Purview geschützt.");
+  // "Weitere Optionen" opens with the note; inserting only after "Trotzdem als Link senden".
+  await expect(page.locator("#validity-section")).toBeVisible();
+  await expect(page.locator("#encrypted-text")).toHaveText(
+    "„Vertrag.pfile“ ist verschlüsselt. Empfänger außerhalb Ihrer Organisation können sie meist nicht öffnen.");
+  await expect(page.locator("#submit")).toBeDisabled();
   await expectAccessible(page);
-  await page.locator("#status .status-action", { hasText: "Abbrechen" }).click();
+  // Unticking the file takes the note away.
+  await row.locator(".box").click();
+  await expect(page.locator("#encrypted-field")).toBeHidden();
+  await row.locator(".box").click();
+  await expect(page.locator("#encrypted-field")).toBeVisible();
   expect(calls.some((c) => c.path === "/api/uploads")).toBe(false);
 
+  await page.locator("#encrypted-confirm-row .box").click();
+  await expect(page.locator("#submit")).toBeEnabled();
   await page.click("#submit");
-  await page.locator("#status .status-action", { hasText: "Trotzdem einfügen" }).click();
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
   expect(calls.some((c) => c.path === "/api/uploads")).toBe(true);
 });

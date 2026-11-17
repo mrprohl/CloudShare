@@ -97,7 +97,7 @@ three.
      confidential message or upload link any more (the pane says so).
 3. **"Send the password to"**: the recipients of the mail (default), **another e-mail address** (e.g. a colleague),
    or a **phone number (SMS)** if SMS is set up – the password arrives as plain text, sent after the mail.
-4. **"Validity and language"** is collapsed and shows its values in one line, e.g. "Link 14 days · Password link 5
+4. **"More options"** is collapsed and shows its values in one line, e.g. "Link 14 days · Password link 5
    days, opens 3 times · English". Open it to change **"Language for the recipients"** (link card, password mail and SMS
    in that language; preselected in the settings), **"Link valid for"** (days the download link works – with a password at most 30, see below), **"Password can be opened"** (how
    often the password link opens) and **"Password link valid for"** (days the password can be fetched – default 5,
@@ -119,7 +119,7 @@ before sending, no password mail goes out and the password options are free agai
 **Confidential message** (**Message**): type a message instead of choosing a file – e.g. access data – and click
 **"Insert confidential message"**. The message does not go into the mail: it is stored encrypted in Vaultwarden as a Send
 protected with the chosen password, and the mail gets a card with **"Open message"**. The password reaches the
-recipients like for files. At most 1000 characters; under "Validity and language", **"Message valid for"** sets how long it can be
+recipients like for files. At most 1000 characters; under "More options", **"Message valid for"** sets how long it can be
 read (default 5 days, at most 30 – Vaultwarden's limit), then it is deleted.
 
 **Receiving files** (**Request**): **"Insert upload link"** inserts a link through which the recipients can upload
@@ -291,7 +291,7 @@ deployed again.
 | `ATTACHMENT_POLICY` | `suggest` | `suggest`: ask once, "Send Anyway" possible · `enforce`: large attachments only via CloudShare |
 | `ATTACHMENT_POLICY_INTERNAL` | like `ATTACHMENT_POLICY` | The same for mails whose recipients are **all internal** (`INTERNAL_DOMAINS`), e.g. `enforce` outside and `suggest` inside |
 | `LABEL_POLICY` | `inherit` | Sensitivity labels (Microsoft Purview) of shared files: `inherit` – the message gets the highest label of its files (never lowered) and the pane says so · `suggest` – the pane only offers it ("Apply") · `off` – labels are ignored. The label shows under the file name; see [Sensitivity labels](#sensitivity-labels) |
-| `LABEL_ENCRYPTED` | `warn` | Files encrypted by their label (recipients outside the organisation can usually not open them): `warn` – a confirmation first ("Insert anyway" / "Cancel") · `block` – not shared as a link · `allow` – no question |
+| `LABEL_ENCRYPTED` | `warn` | Files encrypted by their label (recipients outside the organisation can usually not open them): `warn` – a note under "More options", inserting only after "Send as a link anyway" is ticked · `block` – not shared as a link · `allow` – no question |
 | `SHARE_EXPIRE_DAYS` / `SHARE_MAX_EXPIRE_DAYS` | `14` / `90` | Link validity: default / maximum. A link with password lasts at most 30 days: only as long as its password in Vaultwarden, which keeps it until then so it can be sent again |
 | `SEND_MAX_ACCESS_COUNT` / `SEND_MAX_ACCESS_LIMIT` | `3` / `20` | How often the password link opens: default / maximum |
 | `SEND_EXPIRE_DAYS` / `SEND_MAX_EXPIRE_DAYS` | `5` / `30` | Days the password link and confidential messages stay available: default / maximum the sender may choose (at most 30 – Vaultwarden keeps Sends at most 31 days) |
@@ -385,7 +385,7 @@ corrected number) or as a password mail. Two kinds of failure:
 
 For mails where the sender may later have to show **that and when** recipients got something. On with
 `DELIVERY_PROOF=true` (unset it follows `DOWNLOAD_NOTICE`; it needs the same application permission `Mail.Send`).
-The sender ticks **"Proof of delivery"** under "Validity and language" before inserting the link – never ticked by
+The sender ticks **"Proof of delivery"** under "More options" before inserting the link – never ticked by
 default. Details: [architecture.md → 2.12](docs/architecture.md#212-delivery-proof-zustellnachweis).
 
 - **Tracking ID** per mail (e.g. `20261117-1146-7Q2F`) in the link card, the password mail, the download
@@ -419,7 +419,8 @@ attachment out, the message would go without it. So CloudShare reads the label f
   An **encrypting** label (e.g. "Highly confidential") encrypts the message itself once it is set – recipients without
   rights then cannot read the message either, not only the file.
 - **Encrypted files** (a label with protection): recipients outside the organisation can usually not open them, link
-  or not. `LABEL_ENCRYPTED=warn` asks first, `block` refuses them, `allow` says nothing.
+  or not. `LABEL_ENCRYPTED=warn`: "More options" opens with a note, and the files can be inserted only after "Send as a link
+  anyway" is ticked; `block`: the note says they cannot be sent as links (insert stays off); `allow`: nothing.
 - Recognised: Word, Excel, PowerPoint, Visio (also encrypted – the label is stored unencrypted next to the encrypted
   content), the old binary Office formats, PDF; other files Purview protects (`.pfile`, `.ppdf` …) count as protected.
   Needs Outlook with the sensitivity label API (Mailbox 1.13) for the names and to set the label; elsewhere the list

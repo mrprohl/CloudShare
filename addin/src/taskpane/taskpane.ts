@@ -69,6 +69,12 @@ const recipientLanguageField = $<HTMLDivElement>("recipient-language-field");
 const recipientLanguageSelect = $<HTMLSelectElement>("recipient-language");
 const proofField = $<HTMLDivElement>("proof-field");
 const proofInput = $<HTMLInputElement>("proof");
+const encryptedField = $<HTMLDivElement>("encrypted-field");
+const encryptedText = $<HTMLParagraphElement>("encrypted-text");
+const encryptedConfirm = $<HTMLInputElement>("encrypted-confirm");
+const encryptedConfirmRow = $<HTMLLabelElement>("encrypted-confirm-row");
+/** Names of the encrypted files the note was shown for ("" = none). */
+let encryptedShown = "";
 const channelSelect = $<HTMLSelectElement>("password-channel");
 const channelSmsOption = $<HTMLOptionElement>("channel-sms-option");
 const passwordSmsInput = $<HTMLInputElement>("password-sms");
@@ -535,6 +541,7 @@ async function showLabel(row: HTMLElement, label: Promise<FileLabel | null>) {
   meta.hidden = false;
   const box = row.querySelector("input")!;
   box.setAttribute("aria-label", `${box.getAttribute("aria-label")}, ${found.encrypted ? t("labels.encryptedLabel", { name }) : name}`);
+  if (found.encrypted) void renderEncrypted();
 }
 
 /** Ticked files (attachments and files from the computer) – the button says how many get a link. */
@@ -588,7 +595,8 @@ function renderPicked() {
 /** The files the rows of #picked currently show (their checkbox values are indexes into it). */
 let pickedRendered: File[] = [];
 
-for (const list of [attachmentList, pickedList]) list.addEventListener("change", () => renderSubmit());
+// Ticking another file may bring an encrypted one in or out (the note in "Weitere Optionen").
+for (const list of [attachmentList, pickedList]) list.addEventListener("change", () => void renderEncrypted());
 
 
 /**
@@ -1464,6 +1472,7 @@ for (const radio of kindRadios) radio.addEventListener("change", () => renderKin
  * always needs a password, so the option is not offered there (instead of an error after the click).
  */
 function renderKind() {
+  void renderEncrypted(); // the note is only about files
   const kind = selectedKind();
   filesSection.hidden = kind !== "files";
   messageSection.hidden = kind !== "message";
@@ -1502,6 +1511,8 @@ function insertReady(): boolean {
   if (!serverConfig) return false;
   const kind = selectedKind();
   if (kind === "files" && selectedFileCount() === 0) return false;
+  // An encrypted file among them: only after "Trotzdem als Link senden" (never with LABEL_ENCRYPTED=block).
+  if (kind === "files" && !encryptedField.hidden && (encryptedConfirmRow.hidden || !encryptedConfirm.checked)) return false;
   if (kind === "message") {
     const text = messageInput.value.trim();
     if (!text || text.length > messageMax()) return false;
@@ -1606,28 +1617,49 @@ async function labelsOfSelection(attachments: HTMLInputElement[], files: File[])
 }
 
 /**
- * A protected (encrypted) file: recipients outside the organisation can usually not open it, whichever way it travels.
- * LABEL_ENCRYPTED=warn asks first ("Trotzdem einfügen" / "Abbrechen"), block refuses, allow says nothing. Returns
- * whether to go on.
+ * A protected (encrypted) file among the ticked ones: recipients outside the organisation can usually not open it,
+ * whichever way it travels. "Weitere Optionen" opens with a note (#encrypted-field); LABEL_ENCRYPTED=warn needs
+ * "Trotzdem als Link senden" ticked before inserting, block refuses, allow says nothing. `labels`: the ones just read
+ * for inserting – otherwise those the list knows already (large attachments are only read when inserted).
+ * Returns whether inserting may go on.
  */
-async function confirmEncrypted(labels: Array<{ name: string; label: FileLabel | null }>, confirmed: boolean): Promise<boolean> {
-  const encrypted = labels.filter((l) => l.label?.encrypted);
-  if (encrypted.length === 0 || encryptedPolicy() === "allow" || confirmed) return true;
-  const names = encrypted.map((l) => `„${l.name}“`).join(", ");
-  if (encryptedPolicy() === "block") {
-    setStatus(t("labels.blocked", { names, count: encrypted.length }), "error");
-    return false;
+async function renderEncrypted(labels?: Array<{ name: string; label: FileLabel | null }>): Promise<boolean> {
+  let encrypted: string[] = [];
+  if (labelPolicy() !== "off" && encryptedPolicy() !== "allow" && selectedKind() === "files") {
+    const known = labels ?? (await knownSelectionLabels());
+    encrypted = known.filter((l) => l.label?.encrypted).map((l) => l.name);
   }
-  const first = encrypted[0].label!;
-  const text = first.id && encrypted.length === 1
-    ? t("labels.encrypted", { name: encrypted[0].name, label: (await labelName(first)).name })
-    : t("labels.encryptedUnknown", { names, count: encrypted.length });
-  setStatus(text, "error", [
-    { label: t("labels.insertAnyway"), run: () => void insertFiles(true) },
-    { label: t("labels.cancel"), run: () => setStatus("") },
-  ]);
-  return false;
+  const key = encrypted.join("|");
+  if (key !== encryptedShown) {
+    // Other files: the confirmation was for those – ask again.
+    encryptedConfirm.checked = false;
+    encryptedShown = key;
+    if (encrypted.length > 0 && validitySection.hidden) validityToggle.click();
+  }
+  encryptedField.hidden = encrypted.length === 0;
+  const names = encrypted.map((name) => `„${name}“`).join(", ");
+  const block = encryptedPolicy() === "block";
+  encryptedText.textContent = encrypted.length
+    ? t(block ? "labels.blockedNote" : "labels.encryptedNote", { names, count: encrypted.length })
+    : "";
+  encryptedConfirmRow.hidden = block;
+  renderSubmit();
+  return encrypted.length === 0 || (!block && encryptedConfirm.checked);
 }
+
+/** The labels of the ticked files that are known already (read for the list) – without reading anything new. */
+async function knownSelectionLabels() {
+  const boxes = [
+    ...Array.from(attachmentList.querySelectorAll<HTMLInputElement>("input:checked")).map((box) => ({ key: box.value as string | File, name: box.dataset.name ?? "" })),
+    ...Array.from(pickedList.querySelectorAll<HTMLInputElement>("input:checked")).map((box) => {
+      const file = pickedFiles[Number(box.value)];
+      return { key: file as string | File, name: file?.name ?? "" };
+    }),
+  ];
+  return Promise.all(boxes.filter((b) => labelCache.has(b.key)).map(async (b) => ({ name: b.name, label: await labelCache.get(b.key)! })));
+}
+
+encryptedConfirm.addEventListener("change", () => renderSubmit());
 
 /**
  * After inserting: the mail gets the highest label of its files if its own is lower (never lowered) – LABEL_POLICY
@@ -1660,7 +1692,7 @@ async function labelForMail(labels: Array<{ name: string; label: FileLabel | nul
   }
 }
 
-async function insertFiles(encryptedConfirmed = false) {
+async function insertFiles() {
   const selectedAttachments = Array.from(attachmentList.querySelectorAll<HTMLInputElement>("input:checked"));
   const selectedFiles = Array.from(pickedList.querySelectorAll<HTMLInputElement>("input:checked")).map(
     (box) => pickedFiles[Number(box.value)],
@@ -1675,7 +1707,10 @@ async function insertFiles(encryptedConfirmed = false) {
   // Sensitivity labels of the files: a protected one needs a confirmation first.
   if (labelPolicy() !== "off") setStatus(t("labels.checking"), "progress");
   const labels = await labelsOfSelection(selectedAttachments, selectedFiles);
-  if (!(await confirmEncrypted(labels, encryptedConfirmed))) return;
+  if (!(await renderEncrypted(labels))) {
+    encryptedConfirm.focus();
+    return setStatus(t(encryptedPolicy() === "block" ? "labels.blockedFirst" : "labels.confirmFirst"), "error");
+  }
 
   await runInsert(async () => {
     const results: UploadResult[] = [];
