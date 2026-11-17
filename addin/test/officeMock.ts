@@ -25,6 +25,8 @@ export interface OfficeState {
   notifications: { replaced: Array<Record<string, unknown>>; removed: string[] };
   /** HTML body of the draft. */
   body: string;
+  /** Recipients of the draft (To; Cc and Bcc stay empty). */
+  to: string[];
 }
 
 type Handler = (event: { completed: (options?: unknown) => void }) => Promise<void>;
@@ -54,6 +56,7 @@ export function installOfficeMock() {
     userEmail: "max@example.test",
     notifications: { replaced: [], removed: [] },
     body: "",
+    to: [],
   };
   const handlers: Record<string, Handler> = {};
 
@@ -92,6 +95,9 @@ export function installOfficeMock() {
       },
     },
     from: { getAsync: (cb: Callback) => cb(ok({ emailAddress: state.from })) },
+    to: { getAsync: (cb: Callback) => cb(ok(state.to.map((emailAddress) => ({ emailAddress })))) },
+    cc: { getAsync: (cb: Callback) => cb(ok([])) },
+    bcc: { getAsync: (cb: Callback) => cb(ok([])) },
   };
 
   (globalThis as Record<string, unknown>).Office = {
@@ -142,6 +148,7 @@ export function installOfficeMock() {
       userEmail: "max@example.test",
       notifications: { replaced: [], removed: [] },
       body: "",
+      to: [],
     });
   }
 

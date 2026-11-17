@@ -6,9 +6,9 @@ function required(name: string): string {
   return value;
 }
 
-function number(name: string, fallback: number): number {
+function number(name: string, fallback: number, allowZero = false): number {
   const value = Number(process.env[name] ?? fallback);
-  if (!Number.isFinite(value) || value <= 0) throw new Error(`Environment variable ${name} is invalid`);
+  if (!Number.isFinite(value) || value < 0 || (value === 0 && !allowZero)) throw new Error(`Environment variable ${name} is invalid`);
   return value;
 }
 
@@ -67,6 +67,8 @@ function oneOf<T extends string>(name: string, values: readonly T[], fallback: T
 
 export const ATTACHMENT_POLICIES = ["enforce", "suggest"] as const;
 export type AttachmentPolicy = (typeof ATTACHMENT_POLICIES)[number];
+export const LABEL_POLICIES = ["inherit", "suggest", "off"] as const;
+export const LABEL_ENCRYPTED = ["warn", "block", "allow"] as const;
 
 export const config = {
   port: number("PORT", 3000),
@@ -101,12 +103,27 @@ export const config = {
   credentialKey: required("CREDENTIAL_KEY"),
 
   /** From this size (per attachment) CloudShare suggests sending a link. No upper limit – the Nextcloud quota applies. */
-  thresholdMb: number("ATTACHMENT_THRESHOLD_MB", 5),
+  // When a recipient is outside the organisation (INTERNAL_DOMAINS). 0: every attachment (no "Groß" badge, texts without a size).
+  thresholdMb: number("ATTACHMENT_THRESHOLD_MB", 5, true),
+  // When every recipient is internal – also while none is entered yet. Unset: the same as ATTACHMENT_THRESHOLD_MB.
+  thresholdInternalMb: number("ATTACHMENT_THRESHOLD_INTERNAL_MB", Number(process.env.ATTACHMENT_THRESHOLD_MB ?? 5), true),
+  // Domains that count as internal (and their subdomains), e.g. "example.com, example.de"; empty = the user's own domain.
+  internalDomains: (process.env.INTERNAL_DOMAINS ?? "").split(/[\s,;]+/).map((d) => d.trim().toLowerCase().replace(/^@/, "")).filter(Boolean),
   /**
    * enforce: mails with attachments above the threshold can only be sent via CloudShare (no "Send anyway").
    * suggest: info bar and a prompt on send that offers "Send anyway".
    */
   attachmentPolicy: oneOf<AttachmentPolicy>("ATTACHMENT_POLICY", ATTACHMENT_POLICIES, "suggest"),
+  // The same for mails whose recipients are all internal (INTERNAL_DOMAINS). Unset: ATTACHMENT_POLICY.
+  attachmentPolicyInternal: oneOf<AttachmentPolicy>("ATTACHMENT_POLICY_INTERNAL", ATTACHMENT_POLICIES,
+    (process.env.ATTACHMENT_POLICY as AttachmentPolicy | undefined) ?? "suggest"),
+  /**
+   * Sensitivity labels (Microsoft Purview) of shared files, read by the add-in: the mail takes over the highest label of
+   * its files ("inherit"), the pane only offers it ("suggest") or labels are ignored ("off"). LABEL_ENCRYPTED: a file
+   * encrypted by its label is shared after a confirmation ("warn"), refused ("block") or shared without a word ("allow").
+   */
+  labelPolicy: oneOf("LABEL_POLICY", LABEL_POLICIES, "inherit"),
+  labelEncrypted: oneOf("LABEL_ENCRYPTED", LABEL_ENCRYPTED, "warn"),
   defaultExpireDays: number("SHARE_EXPIRE_DAYS", 14),
   maxExpireDays: number("SHARE_MAX_EXPIRE_DAYS", 90),
 

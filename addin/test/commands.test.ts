@@ -15,6 +15,12 @@ const small: Attachment = { id: "a2", name: "Notiz.txt", size: 10_000, attachmen
 
 interface Server {
   policy: "enforce" | "suggest";
+  /** ATTACHMENT_THRESHOLD_INTERNAL_MB and INTERNAL_DOMAINS (unset: as the server without them). */
+  internalPolicy?: "enforce" | "suggest";
+  internal?: number;
+  domains?: string[];
+  /** ATTACHMENT_THRESHOLD_MB (default 1 in these tests; 0 = every attachment). */
+  threshold?: number;
   reachable: boolean;
   armStatus: number;
   trace?: boolean;
@@ -30,7 +36,7 @@ function installFetch() {
       if (!server.reachable) throw new TypeError("Failed to fetch");
       if (url.endsWith("/api/config")) {
         return new Response(
-          JSON.stringify({ thresholdMb: 1, attachmentPolicy: server.policy, defaultExpireDays: 14, maxExpireDays: 90, chunkSize: 10 * MB, mailFooter: "", trace: server.trace === true }),
+          JSON.stringify({ thresholdMb: server.threshold ?? 1, thresholdInternalMb: server.internal, internalDomains: server.domains, attachmentPolicy: server.policy, attachmentPolicyInternal: server.internalPolicy, defaultExpireDays: 14, maxExpireDays: 90, chunkSize: 10 * MB, mailFooter: "", trace: server.trace === true }),
         );
       }
       if (url.includes("/arm")) {
@@ -79,6 +85,19 @@ describe("send – policy enforce", () => {
     expect(result.cancelLabel).toBe("CloudShare öffnen");
     expect(result.commandId).toBe("cloudshareOpenPane");
     expect(result.sendModeOverride).toBeUndefined(); // no "Send anyway"
+  });
+
+  it("ATTACHMENT_POLICY_INTERNAL: a mail to colleagues only gets the prompt with \"Send anyway\"", async () => {
+    server.internalPolicy = "suggest";
+    office.state.attachments = [big];
+    office.state.to = ["kollegin@example.test"]; // the user's own domain: internal
+    const internal = await send();
+    expect(internal.allowEvent).toBe(false);
+    expect(internal.sendModeOverride).toBe("promptUser"); // "Send anyway"
+    office.state.to.push("kunde@extern.example");
+    const external = await send();
+    expect(external.errorMessage).toMatch(/dürfen nur mit CloudShare/);
+    expect(external.sendModeOverride).toBeUndefined();
   });
 
   it("stays within Outlook's 500 characters for many long attachment names", async () => {
@@ -272,6 +291,39 @@ describe("info bar while composing", () => {
     await office.handlers.onAttachmentsChangedHandler({ completed });
     expect(completed).toHaveBeenCalledOnce();
   };
+
+  it("uses the internal size until a recipient outside the organisation is in the mail", async () => {
+    server.threshold = 0;
+    server.internal = 5;
+    server.domains = ["example.test"];
+    office.state.attachments = [small];
+    office.state.to = ["kollege@sub.example.test"]; // subdomain: internal
+    await changed();
+    expect(office.state.notifications.replaced).toHaveLength(0);
+    office.state.to.push("kunde@extern.example");
+    await changed();
+    expect(String(office.state.notifications.replaced[0].message)).toContain("„Notiz.txt“ ist angehängt");
+  });
+
+  it("without INTERNAL_DOMAINS the user's own domain is internal; no recipients yet: the internal size", async () => {
+    server.threshold = 0;
+    server.internal = 5;
+    office.state.attachments = [small];
+    await changed();
+    expect(office.state.notifications.replaced).toHaveLength(0);
+    office.state.to = ["anna@example.test"]; // the user is max@example.test
+    await changed();
+    expect(office.state.notifications.replaced).toHaveLength(0);
+  });
+
+  it("with ATTACHMENT_THRESHOLD_MB=0 offers it for every attachment, without a size", async () => {
+    server.threshold = 0;
+    office.state.attachments = [small];
+    await changed();
+    const [bar] = office.state.notifications.replaced;
+    expect(String(bar.message)).toContain("„Notiz.txt“ ist angehängt");
+    expect(String(bar.message)).not.toContain("MB");
+  });
 
   it("offers CloudShare for large attachments", async () => {
     office.state.attachments = [big];

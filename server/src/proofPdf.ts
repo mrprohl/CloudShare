@@ -92,6 +92,8 @@ function describe(e: ProofEvent, c: ProofCase): { label: string; details: Array<
       return { label: t("mail.proof.event.filesReceived"), details: [[t("mail.proof.field.files"), list(d.files)], ...about] };
     case "recipient.codeSent":
     case "recipient.codeFailed":
+    case "recipient.unknownAddress":
+    case "recipient.codeNotSent":
     case "recipient.verified":
     case "link.opened":
       return {

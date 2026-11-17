@@ -47,7 +47,12 @@
       // Outlook's display language: German, below /en/ English (README pictures), or the scenario's.
       displayLanguage: cfg.displayLanguage || (location.pathname.indexOf("/en/") === 0 ? "en-GB" : "de-DE"),
       officeTheme: cfg.theme ? { bodyBackgroundColor: cfg.theme } : undefined,
-      requirements: { isSetSupported: (name) => name === "OpenBrowserWindowApi" },
+      // Mailbox 1.13 (sensitivity labels) only in a scenario with labels.
+      requirements: { isSetSupported: (name) => name === "OpenBrowserWindowApi" || (name === "Mailbox" && Boolean(cfg.labels)) },
+      // The labels published to the user (Outlook's catalog), in the policy's order.
+      sensitivityLabelsCatalog: cfg.labels
+        ? { getIsEnabledAsync(cb) { cb(ok(true)); }, getAsync(cb) { cb(ok(cfg.labels)); } }
+        : undefined,
       ui: { openBrowserWindow: (url) => log.openedUrls.push(url) },
       // Kept in sessionStorage like Outlook keeps them in the mailbox: they survive a reload of the pane (language).
       roamingSettings: {
@@ -77,6 +82,11 @@
           getAttachmentContentAsync(id, cb) {
             const attachment = attachments.find((a) => a.id === id);
             cb(attachment ? ok({ format: "base64", content: attachment.content }) : failed("unknown attachment"));
+          },
+          // The mail's sensitivity label (GUID) – set by the pane when a shared file has a higher one.
+          sensitivityLabel: {
+            getAsync(cb) { cb(ok(log.mailLabel !== undefined ? log.mailLabel : cfg.mailLabel || "")); },
+            setAsync(label, cb) { log.mailLabel = typeof label === "string" ? label : label.id; cb(ok()); },
           },
           // Subject of the draft ("Verlauf" shows it until the mail is sent).
           subject: { getAsync(cb) { cb(ok(cfg.subject === undefined ? "Unterlagen Neubau" : cfg.subject)); } },

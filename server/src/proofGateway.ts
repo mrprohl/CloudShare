@@ -162,13 +162,17 @@ export async function requestCode(token: string, rawAddress: unknown, visitor: V
   if (!validAddress(address)) {
     return inRecipientLanguage(c.language, () => ({ status: 400, html: addressForm(token, t("mail.proof.gateway.invalidAddress")) }));
   }
-  if (!c.recipients?.includes(address)) {
-    // Not a recipient: no mail – but the same answer, so the page does not tell who the recipients are.
-    return inRecipientLanguage(c.language, () => ({ status: 200, html: codeForm(token, address) }));
-  }
+  // Every address is answered the same way – page, limits, timing –, so nobody can find out by trying which addresses
+  // the mail went to. Only a recipient gets a mail; the limits count every request, recipient or not.
   const key = `${token}|${address}`;
   if (recent(key, 15 * MINUTE, now).length >= CODES_PER_ADDRESS || recent(token, 60 * MINUTE, now).length >= CODES_PER_LINK) {
     return inRecipientLanguage(c.language, () => ({ status: 429, html: codeForm(token, address, t("mail.proof.gateway.tooMany")) }));
+  }
+  sentTimes.get(key)!.push(now);
+  sentTimes.get(token)!.push(now);
+  if (!c.recipients?.includes(address)) {
+    addEvent(c.id, "recipient.unknownAddress", { links: [token], address, ip: visitor.ip });
+    return inRecipientLanguage(c.language, () => ({ status: 200, html: codeForm(token, address) }));
   }
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
   const { subject, html } = inRecipientLanguage(c.language, () => ({
@@ -183,10 +187,11 @@ export async function requestCode(token: string, rawAddress: unknown, visitor: V
       },
     }),
   }));
-  await sendMailAsApp(await appGraphToken(), c.owner, address, subject, html);
   pending.set(key, { hash: hashCode(code), expiresAt: now + CODE_TTL, tries: 0 });
-  sentTimes.get(key)!.push(now);
-  sentTimes.get(token)!.push(now);
+  // Not awaited: the answer must not take longer for a recipient than for anyone else (the mail goes out meanwhile).
+  void appGraphToken()
+    .then((token_) => sendMailAsApp(token_, c.owner, address, subject, html))
+    .catch((err) => addEvent(c.id, "recipient.codeNotSent", { links: [token], address, error: String((err as Error).message).slice(0, 200) }));
   addEvent(c.id, "recipient.codeSent", { links: [token], address, ip: visitor.ip });
   return inRecipientLanguage(c.language, () => ({ status: 200, html: codeForm(token, address) }));
 }
@@ -201,14 +206,14 @@ export function verifyCode(token: string, rawAddress: unknown, rawCode: unknown,
   const key = `${token}|${address}`;
   const entry = pending.get(key);
   return inRecipientLanguage(c.language, () => {
-    if (!entry || entry.expiresAt < now || entry.tries >= MAX_TRIES) {
-      pending.delete(key);
-      return { status: 400, html: addressForm(token, t("mail.proof.gateway.codeExpired")) };
-    }
-    if (hashCode(code) !== entry.hash) {
-      entry.tries++;
+    // One answer for every failure – wrong code, expired, too many tries, or an address that never got a code – so the
+    // page does not tell whether the address is a recipient.
+    const valid = entry && entry.expiresAt >= now && entry.tries < MAX_TRIES;
+    if (!entry || !valid || hashCode(code) !== entry.hash) {
+      if (entry) entry.tries++;
+      if (entry && entry.tries >= MAX_TRIES) pending.delete(key);
       addEvent(c.id, "recipient.codeFailed", { links: [token], address, ip: visitor.ip });
-      return { status: 400, html: codeForm(token, address, t("mail.proof.gateway.wrongCode")) };
+      return { status: 400, html: codeForm(token, address, t("mail.proof.gateway.codeInvalid")) };
     }
     pending.delete(key);
     addEvent(c.id, "recipient.verified", { links: [token], address, ip: visitor.ip, userAgent: visitor.userAgent.slice(0, 300) });
