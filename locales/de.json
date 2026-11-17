@@ -197,6 +197,7 @@
     "proof.label": "Zustellnachweis",
     "proof.hint": "Protokolliert Versand, Kennwort und Abrufe für einen späteren Nachweis. Die Empfänger bestätigen vor dem Öffnen ihre E-Mail-Adresse mit einem Code.",
     "proof.summary": "mit Zustellnachweis",
+    "proof.summaryOff": "ohne Zustellnachweis",
     "channel.recipients": "Empfänger der Nachricht",
     "channel.mail": "Andere E-Mail-Adresse",
     "channel.sms": "Rufnummer (SMS)",

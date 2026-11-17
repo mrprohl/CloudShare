@@ -386,7 +386,7 @@ corrected number) or as a password mail. Two kinds of failure:
 For mails where the sender may later have to show **that and when** recipients got something. On with
 `DELIVERY_PROOF=true` (unset it follows `DOWNLOAD_NOTICE`; it needs the same application permission `Mail.Send`).
 The sender ticks **"Proof of delivery"** under "More options" before inserting the link – never ticked by
-default. Details: [architecture.md → 2.12](docs/architecture.md#212-delivery-proof-zustellnachweis).
+default. The collapsed line of "More options" says "with" or "without proof of delivery". Details: [architecture.md → 2.12](docs/architecture.md#212-delivery-proof-zustellnachweis).
 
 - **Tracking ID** per mail (e.g. `20261117-1146-7Q2F`) in the link card, the password mail, the download
   confirmation and "History".
