@@ -602,6 +602,10 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   language). Accessibility is tested with axe (WCAG 2 A/AA) in CI.
 - Layout and labels must survive longer translations: buttons and labels wrap or are short, the full text is in
   `title`/`aria-label`.
+- **Account menu** (`#account-toggle` at the bottom left – the only thing in the bar): its head `.account-menu-head`
+  shows the whole account name and the storage – a bar `#storage-meter` with the used share of the quota (red from
+  90 %, hidden without a quota) and the text (`storageText`: "12,5 / 50 GB frei", or what Nextcloud knows); then the
+  entries below.
 - **Open Nextcloud** ("Nextcloud öffnen", first entry of the account menu, `#nextcloud-open`): opens `NEXTCLOUD_URL`
   (sent in `/api/config` as `nextcloudUrl`) in the default browser (`openBrowserWindow`, in the browser a new tab) – the
   browser's own Nextcloud session or a sign-in there; the app password of the connection never leaves the server.

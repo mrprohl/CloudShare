@@ -37,6 +37,9 @@ const accountText = $<HTMLElement>("account");
 const accountToggle = $<HTMLButtonElement>("account-toggle");
 const accountMenu = $<HTMLDivElement>("account-menu");
 const accountStorage = $<HTMLParagraphElement>("account-storage");
+const accountMenuName = $<HTMLParagraphElement>("account-menu-name");
+const storageMeter = $<HTMLDivElement>("storage-meter");
+const storageMeterFill = $<HTMLDivElement>("storage-meter-fill");
 const disconnectButton = $<HTMLButtonElement>("disconnect");
 const disconnectText = $<HTMLSpanElement>("disconnect-text");
 const nextcloudOpen = $<HTMLButtonElement>("nextcloud-open");
@@ -258,14 +261,24 @@ function showConnection(status: ConnectionStatus) {
   connectView.hidden = status.connected;
   sendView.hidden = !status.connected;
   connectHint.hidden = true;
-  // The bottom bar shows the Nextcloud account (menu: settings, help, disconnect) and its storage on the right.
+  // The bottom bar shows the Nextcloud account; its menu the whole name, the storage and the entries.
   accountText.textContent = status.loginName ?? "";
   // The bar may cut a long name short: hovering shows it whole.
-  // That it opens a menu shows the arrow; screen readers hear what it holds (aria-description).
+  // That it opens a menu shows the arrow; screen readers hear what it holds (aria-describedby).
   accountToggle.title = status.loginName ? t("account.signedIn", { name: status.loginName }) : "";
   const storage = storageText(status);
+  // The menu head: the whole name, the storage as a bar (with a quota) and as text.
+  accountMenuName.textContent = status.loginName ?? "";
   accountStorage.textContent = storage;
   accountStorage.hidden = !storage;
+  const isBytes = (value: unknown): value is number => typeof value === "number" && value >= 0;
+  const share =
+    isBytes(status.freeBytes) && isBytes(status.totalBytes) && status.totalBytes > 0
+      ? Math.min(1, Math.max(0, 1 - status.freeBytes / status.totalBytes))
+      : null;
+  storageMeter.hidden = share === null;
+  storageMeterFill.style.width = `${Math.round((share ?? 0) * 100)}%`;
+  storageMeter.classList.toggle("full", (share ?? 0) >= 0.9);
   // "Nextcloud öffnen": the address of the Nextcloud CloudShare uses (from /api/config).
   nextcloudOpen.hidden = !serverConfig?.nextcloudUrl;
   nextcloudOpen.title = serverConfig?.nextcloudUrl ?? "";
@@ -2041,6 +2054,7 @@ function shareRow(share: ShareItem): HTMLElement {
   row.dataset.id = share.id; // reading a mail, a link can be in both lists
   const state = shareState(share);
   row.innerHTML =
+    // The kind at a glance: a document, the upload arrow, the envelope with a lock.
     (share.kind === "request" ? REQUEST_ICON : share.kind === "message" ? MESSAGE_ICON : FILE_ICON) +
     `<div class="share-body">` +
     `<div class="share-head"><div class="share-name"></div>` +
@@ -2101,16 +2115,16 @@ function shareRow(share: ShareItem): HTMLElement {
     }
     // The tooltip only says when and to whom it went.
     if (sent.length) title.title = sent.filter(Boolean).join("\n");
-    // What went out, as a label like "Groß" at the attachments: "Datei" before the file name, "Dateianforderung" and
-    // "Vertrauliche Nachricht" (in colour, so it stands out) on their own.
+    // What went out, in plain text (the symbol on the left shows the kind): the file name, or "Dateianforderung" /
+    // "Vertrauliche Nachricht".
     const item = document.createElement("div");
     item.className = "share-item";
-    const kind = document.createElement("span");
-    kind.className = `badge kind-${share.kind}`;
-    kind.textContent = t(`shares.kind.${share.kind}`);
-    item.append(kind);
     name.replaceWith(title);
-    if (share.kind === "file") item.append(name);
+    if (share.kind === "file") {
+      item.append(name);
+    } else {
+      item.textContent = t(`shares.kind.${share.kind}`);
+    }
     row.querySelector(".share-head")!.after(item);
   }
 

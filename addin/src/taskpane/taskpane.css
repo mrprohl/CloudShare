@@ -36,10 +36,6 @@
   --success-bg: #f1faf1;
   --success-stroke: #9fd89f;
   --success-fg: #0e700e;
-  /* Confidential message (label in "Verlauf"): Fluent "grape". */
-  --grape-bg: #f6f0fa;
-  --grape-stroke: #d7c1ec;
-  --grape-fg: #6b2a99;
   --shadow: 0 0 2px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.14);
 }
 
@@ -73,9 +69,6 @@
   --success-bg: #052505;
   --success-stroke: #107c10;
   --success-fg: #54b054;
-  --grape-bg: #2b1a38;
-  --grape-stroke: #5c2e80;
-  --grape-fg: #c9a6eb;
 }
 
 /* Before Office reports its theme, follow the system setting. */
@@ -175,8 +168,17 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .account-menu-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 /* "Verbindung trennen" after the first click: "Wirklich trennen?" in red until the second click (or 4 s). */
 .account-menu-item.confirm, .account-menu-item.confirm .icon { color: var(--danger-fg); }
-/* Storage of the account, quiet on the right of the bar. */
-.account-storage { flex: none; margin: 0; padding: 0 4px; color: var(--fg2); white-space: nowrap; }
+/*
+ * Head of the menu, set apart by a line: the account (whole, even when the bar cuts it short) and its storage – a thin
+ * bar filled with the used share of the quota (red from 90 %), then the text.
+ */
+.account-menu-head { padding: 8px 12px 10px; margin: -4px -4px 4px; border-bottom: 1px solid var(--stroke2); }
+.account-menu-name { margin: 0; font-weight: 600; color: var(--fg1); overflow-wrap: anywhere; }
+.storage-meter { height: 4px; margin: 8px 0 4px; border-radius: 2px; background: var(--stroke2); overflow: hidden; }
+.storage-meter-fill { height: 100%; border-radius: 2px; background: var(--brand-bg); }
+.storage-meter.full .storage-meter-fill { background: var(--danger-fg); }
+.account-storage { margin: 2px 0 0; color: var(--fg2); }
+.storage-meter:not([hidden]) + .account-storage { margin-top: 0; }
 
 .empty-state { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 40px 24px; text-align: center; }
 .empty-icon { width: 48px; height: 48px; color: var(--brand-fg); }
@@ -447,7 +449,8 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
   padding: 10px 0;
   border-bottom: 1px solid var(--stroke2);
 }
-.share .file-icon { margin-top: 2px; }
+/* The symbol of an entry (document, upload arrow, envelope) in a 24 px box, so all texts start in one line. */
+.share .file-icon { box-sizing: border-box; width: 24px; height: 24px; padding: 2px; margin-top: 0; }
 .share-body { flex: 1; min-width: 0; }
 .share-head { display: flex; align-items: center; gap: 4px; min-height: 28px; margin-top: -4px; }
 /* Name shortened in the middle: the start takes the "…", the end (extension) always stays – see nameParts. */
@@ -468,11 +471,7 @@ button.share-title { cursor: pointer; }
 button.share-title:hover { color: var(--brand-fg); text-decoration: underline; text-underline-offset: 2px; }
 button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 2px; }
 .share-item { display: flex; align-items: center; min-width: 0; margin: 2px 0; font-size: 13px; line-height: 18px; color: var(--fg2); }
-.share-item .share-name { font-weight: 400; }
-/* What went out: "Datei" quiet, "Dateianforderung" brand blue (like "Groß"), "Vertrauliche Nachricht" grape. */
-.share-item .badge { height: 18px; margin-right: 6px; line-height: 16px; white-space: nowrap; }
-.share-item .badge.kind-file { border-color: var(--stroke2); background: var(--bg3); color: var(--fg2); }
-.share-item .badge.kind-message { border-color: var(--grape-stroke); background: var(--grape-bg); color: var(--grape-fg); font-weight: 600; }
+.share-item .share-name { font-weight: 400; flex: 0 1 auto; }
 .share-meta { font-size: 12px; line-height: 16px; color: var(--fg3); }
 .share-password.failed { color: var(--danger-fg); }
 .share-unsent { color: var(--fg2); font-weight: 600; }

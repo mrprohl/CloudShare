@@ -13,6 +13,8 @@ describe("password mail", () => {
     expect(html).toMatch(/<a href="https:\/\/vault\.example\.test\/#\/send\/abc\/key"[^>]*>Kennwort anzeigen<\/a>/);
     expect(html).toContain("bis zu 3 Abrufe · läuft nach 7 Tagen ab");
     expect(html).toContain("Falls der Button nicht funktioniert"); // plain link for clients without buttons
+    // Fits files, upload links and messages alike – no "Download-Link".
+    expect(html).toContain("Geben Sie das Kennwort ein, wenn Sie den Link öffnen.");
   });
 
   it("uses only inline styles and tables (mail-client safe)", () => {
@@ -26,6 +28,7 @@ describe("password mail", () => {
     expect(html).toContain("die folgenden Freigaben");
     expect(html).toContain(">ZIP<");
     expect(html).toContain("&#8593;"); // upload link: arrow badge instead of a file type
+    expect(html).toContain("Geben Sie das Kennwort ein, wenn Sie einen der Links öffnen.");
   });
 
   it("escapes file names, subject and link", () => {
