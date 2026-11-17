@@ -422,7 +422,8 @@ changed fields are stored; a new default reaches everyone else.
 
 ### 2.12 Delivery proof ("Zustellnachweis")
 
-Optional per mail, never by default: the sender ticks **"Zustellnachweis"** in "Weitere Optionen" (the collapsed
+Optional per mail, for files only (the box is hidden for "Nachricht" and "Anfordern"), never by default: the sender
+ticks **"Zustellnachweis"** in "Weitere Optionen" (the collapsed
 summary says "mit / ohne Zustellnachweis" wherever it is offered; `#proof`,
 offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it needs the same application permission
 `Mail.Send`). It is evidence that can be checked, not a qualified delivery service in the sense of eIDAS.
@@ -472,12 +473,14 @@ longer attached, so the add-in does it itself (`addin/src/taskpane/labels.ts`, n
   `MSIP_Label_…` entries in the first and last 2 MB; `.pfile`, `.ppdf` … by their extension (protected, label
   unknown). Result `{ id, siteId, encrypted }`, cached per attachment / file (`labelOf`); attachments above 50 MB are
   read only when inserted.
-- **Names and order** from `Office.context.sensitivityLabelsCatalog` (Mailbox 1.13, the labels published to the user,
-  in the policy's order = rank); a label not in the catalog (another organisation) shows as "Vertraulichkeitsbezeichnung".
+- **Names and priority** first from the tenant: `GET /api/labels` (Graph, delegated `InformationProtectionPolicy.Read`,
+  optional) gives each label's name in the add-in's language and Purview's own priority (`sensitivity` = rank); without
+  the permission `Office.context.sensitivityLabelsCatalog` (Mailbox 1.13, its order taken as the rank). A label in
+  neither (another organisation) shows as "Vertraulichkeitsbezeichnung" (`labelCatalog` in `labels.ts`).
 - **The mail's label** (`item.sensitivityLabel`): after inserting, the highest-ranked label of the files is set if the
   mail's is lower – never lowered (`labelForMail`; `LABEL_POLICY=inherit`), or offered with "Übernehmen" (`suggest`).
-- **Encrypted files** (`renderEncrypted`): as soon as a ticked file is known to be encrypted, "Weitere Optionen" opens
-  with a note (`#encrypted-field`); `LABEL_ENCRYPTED=warn` – the insert button stays off until "Trotzdem als Link senden"
+- **Encrypted files** (`renderEncrypted`): as soon as a ticked file is known to be encrypted, a note appears right
+  below the file list (`#encrypted-field`); `LABEL_ENCRYPTED=warn` – the insert button stays off until "Trotzdem als Link senden"
   is ticked (`insertReady`), `block` – it stays off, `allow` – no note. Large attachments are read only when inserted;
   then the same check runs before any upload.
 - No extra permission: the manifest already has `ReadWriteItem`.
@@ -541,6 +544,7 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `GET/POST /api/trace` | Diagnostics of the send handler, only with `CLIENT_TRACE=true` (no login) |
 | `GET /api/profile` | Sender's Microsoft 365 profile (the server reads it itself for templates and signature) |
 | `GET/PUT/DELETE /api/settings` | Personal settings (2.11): `{ settings, defaults, available }`; `PUT` changes single fields, `DELETE` resets |
+| `GET /api/labels` | Sensitivity labels published to the user (Graph `/me/security/informationProtection/sensitivityLabels`, delegated `InformationProtectionPolicy.Read`): `{ labels: [{ id, name, rank, protection }] }` in the add-in's language, kept an hour per user; `labels: null` without the permission (2.13) |
 | `GET /api/nextcloud/status` | Connected?, storage (free/used/total), `passwordEnforced` |
 | `POST /api/nextcloud/connect`, `…/connect/:id/poll`, `DELETE /api/nextcloud/connection` | Login Flow v2, disconnect |
 | `POST /api/uploads`, `PUT …/:id/chunks/:n`, `POST …/:id/complete`, `DELETE …/:id` | Chunked upload, share link |

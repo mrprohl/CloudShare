@@ -14,6 +14,8 @@
  * very large files cost little. Anything unreadable simply counts as "no label".
  */
 
+import { api, getToken } from "../shared/office";
+
 export interface FileLabel {
   /** Label GUID (lower case, no braces); null when only "protected" is known. */
   id: string | null;
@@ -287,8 +289,29 @@ export interface LabelDetails {
   rank: number;
 }
 
-/** The labels published to the user (Outlook's catalog, in the policy's order), or null where Outlook has none. */
+/**
+ * The labels published to the user: from the tenant via the server (Graph, InformationProtectionPolicy.Read – names in
+ * the add-in's language and Purview's own priority), else Outlook's catalog (its order taken as the priority); null if
+ * neither is available.
+ */
 export async function labelCatalog(): Promise<LabelDetails[] | null> {
+  const fromTenant = await tenantLabels();
+  if (fromTenant?.length) return fromTenant;
+  return outlookCatalog();
+}
+
+/** The labels from /api/labels (null: not consented, Graph failed, server unreachable). */
+async function tenantLabels(): Promise<LabelDetails[] | null> {
+  try {
+    const { labels } = await api<{ labels: LabelDetails[] | null }>("/api/labels", {}, await getToken());
+    return labels;
+  } catch {
+    return null;
+  }
+}
+
+/** Outlook's own catalog (Mailbox 1.13), in the policy's order. */
+async function outlookCatalog(): Promise<LabelDetails[] | null> {
   try {
     if (!Office.context.requirements.isSetSupported("Mailbox", "1.13")) return null;
     const catalog = (Office.context as unknown as { sensitivityLabelsCatalog?: CatalogApi }).sensitivityLabelsCatalog;

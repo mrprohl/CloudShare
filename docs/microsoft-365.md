@@ -99,6 +99,7 @@ Outlook ──Office SSO──► token for "api://cloudshare.example.com/<clien
 | `Mail.Read.Shared` | the same for shared mailboxes the user sends from |
 | `Mail.Send` | send the password mail as the sender |
 | `Mail.Send.Shared` | send it from the shared mailbox the mail came from |
+| `InformationProtectionPolicy.Read` | *optional:* the names and the priority of the sensitivity labels published to the user (a shared file's label in the pane, which label is higher). Without it the pane uses Outlook's own label catalog – names may then be missing in some Outlook versions |
 
 Then **Grant admin consent for \<organisation\>** (*Administratorzustimmung für … erteilen*). Every line must show a
 green tick ("Granted"). Delegated permissions never exceed the user's own rights: `.Shared` only reaches mailboxes

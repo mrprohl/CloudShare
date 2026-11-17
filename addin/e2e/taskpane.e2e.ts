@@ -50,6 +50,8 @@ interface Scenario {
   settings?: Partial<typeof DEFAULT_SETTINGS>;
   /** Sensitivity labels published to the user (Outlook's catalog) and the draft's own label (GUID). */
   labels?: Array<{ id: string; name: string }>;
+  /** The labels /api/labels returns (Graph, InformationProtectionPolicy.Read); unset: null (not consented). */
+  tenantLabels?: Array<{ id: string; name: string; rank: number }>;
   mailLabel?: string;
   /** Opened from a mail being read (taskpane.html?view=read) with this HTML body. */
   readBody?: string;
@@ -126,6 +128,8 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     const route_ = `${call.method} ${call.path}`;
 
+    // The tenant's sensitivity labels (Graph) – null like a server without the permission.
+    if (route_ === "GET /api/labels") return json({ labels: scenario.tenantLabels ?? null });
     if (route_ === "GET /api/config") {
       return scenario.config === "down" ? json({ error: "down" }, 503) : json({ ...CONFIG, ...scenario.config });
     }
@@ -161,9 +165,15 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     if (/^POST \/api\/uploads\/u\d+\/complete$/.test(route_)) {
       const id = call.path.split("/")[3];
       const { fileName, size } = uploads.get(id)!;
-      const noPassword = JSON.parse(call.body!.toString()).noPassword === true;
+      const request = JSON.parse(call.body!.toString());
+      const noPassword = request.noPassword === true;
       const jobId = noPassword ? (scenario.noticeJob ? "notice-1" : null) : "job-1";
-      return json({ shareUrl: `https://cloud.example.com/s/${id}`, expireDate: "2026-12-01", jobId, noPassword, fileName, size });
+      // "Zustellnachweis" ticked: the gateway address and the tracking ID of the case.
+      const proof = request.proof === true;
+      return json({
+        shareUrl: proof ? `https://cloudshare.example.com/r/s/${id}` : `https://cloud.example.com/s/${id}`,
+        expireDate: "2026-12-01", jobId, noPassword, fileName, size, proofId: proof ? "20261117-1146-7Q2F" : null,
+      });
     }
     if (route_ === "POST /api/requests") {
       // "Zustellnachweis" ticked: the server answers with the gateway address and the tracking ID of the case.
@@ -1117,11 +1127,17 @@ test("Zustellnachweis: not offered without DELIVERY_PROOF on the server", async 
   await expect(page.locator("#proof-field")).toBeHidden();
 });
 
-test("Zustellnachweis: ticked, it goes with the link request and the card names the tracking ID", async ({ page }) => {
-  const calls = await openTaskpane(page, { config: { deliveryProof: true } });
+test("Zustellnachweis: only for files; ticked, it goes with the upload and the card names the tracking ID", async ({ page }) => {
+  const calls = await openTaskpane(page, { attachments: [attachment("a1", "Plan.pdf", 2 * MiB)], config: { deliveryProof: true } });
   await expect(page.locator("#password")).not.toHaveValue("");
-  await chooseKind(page, "request");
   await page.click("#validity-toggle");
+  // Not for a message or an upload link.
+  for (const kind of ["message", "request"] as const) {
+    await chooseKind(page, kind);
+    await expect(page.locator("#proof-field")).toBeHidden();
+    await expect(page.locator("#validity-summary")).not.toContainText("Zustellnachweis");
+  }
+  await chooseKind(page, "files");
   await expect(page.locator("#proof-field")).toBeVisible();
   await expect(page.locator("#proof")).not.toBeChecked();
   await expect(page.locator("#validity-summary")).toContainText("· ohne Zustellnachweis");
@@ -1131,11 +1147,11 @@ test("Zustellnachweis: ticked, it goes with the link request and the card names 
   await expectAccessible(page);
 
   await page.click("#submit");
-  await expect(page.locator("#status")).toContainText("Der Link zum Hochladen wurde eingefügt.");
-  const body = JSON.parse(calls.find((c) => c.path === "/api/requests")!.body!.toString());
+  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
+  const body = JSON.parse(calls.find((c) => c.path.endsWith("/complete"))!.body!.toString());
   expect(body).toMatchObject({ proof: true, client: { host: expect.any(String) } });
   const card = (await officeLog(page)).inserted[0].data as string;
-  expect(card).toContain("https://cloudshare.example.com/r/s/request"); // the gateway, not the Nextcloud link
+  expect(card).toContain("https://cloudshare.example.com/r/s/u"); // the gateway, not the Nextcloud link
   expect(card).toContain("Zustellnachweis 20261117-1146-7Q2F");
 });
 
@@ -1929,6 +1945,8 @@ function labelledDocx(labelId: string): string {
   return Buffer.concat([local, name, data, central, name, end]).toString("base64");
 }
 
+const LABEL_IDS = { internal: "aaaaaaaa-0000-4000-8000-000000000005", confidential: "aaaaaaaa-0000-4000-8000-000000000006" };
+
 const LABELS = [
   { id: "aaaaaaaa-0000-4000-8000-000000000001", name: "Öffentlich" },
   { id: "aaaaaaaa-0000-4000-8000-000000000002", name: "Vertraulich" },
@@ -1962,13 +1980,13 @@ test("Labels: never lowers the mail's label", async ({ page }) => {
   expect((await officeLog(page)).mailLabel).toBeUndefined();
 });
 
-test("Labels: a protected file shows a note under Weitere Optionen and needs a confirmation", async ({ page }) => {
+test("Labels: a protected file shows a note below the list and needs a confirmation", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pfile", 2 * MiB)] });
   const row = page.locator("#attachments .list-item").first();
   await expect(row.locator(".file-label")).toHaveText("Geschützt");
   await expect(row.locator(".label-lock")).toHaveCount(1);
-  // "Weitere Optionen" opens with the note; inserting only after "Trotzdem als Link senden".
-  await expect(page.locator("#validity-section")).toBeVisible();
+  // A note right below the list; inserting only after "Trotzdem als Link senden".
+  await expect(page.locator("#validity-section")).toBeHidden(); // "Weitere Optionen" stays as it was
   await expect(page.locator("#encrypted-text")).toHaveText(
     "„Vertrag.pfile“ ist verschlüsselt. Empfänger außerhalb Ihrer Organisation können sie meist nicht öffnen.");
   await expect(page.locator("#submit")).toBeDisabled();
@@ -1986,4 +2004,21 @@ test("Labels: a protected file shows a note under Weitere Optionen and needs a c
   await page.click("#submit");
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
   expect(calls.some((c) => c.path === "/api/uploads")).toBe(true);
+});
+
+test("Labels: without Outlook's catalog the names and priority come from the tenant (Graph)", async ({ page }) => {
+  // Purview's own priority: "Vertraulich" (rank 5) above "Intern" (rank 2), whatever order the list has.
+  const tenantLabels = [
+    { id: LABEL_IDS.confidential, name: "Vertraulich", rank: 5 },
+    { id: LABEL_IDS.internal, name: "Intern", rank: 2 },
+  ];
+  await openTaskpane(page, {
+    attachments: [{ id: "a1", name: "Angebot.docx", size: 2 * MiB, content: labelledDocx(LABEL_IDS.confidential) }],
+    tenantLabels,
+    mailLabel: LABEL_IDS.internal,
+  });
+  await expect(page.locator("#attachments .file-label")).toHaveText("Vertraulich");
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("„Angebot.docx“ ist als „Vertraulich“ gekennzeichnet");
+  expect((await officeLog(page)).mailLabel).toBe(LABEL_IDS.confidential);
 });

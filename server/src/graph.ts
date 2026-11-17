@@ -243,3 +243,50 @@ export async function sentMailState(graphToken: string, immutableId: string): Pr
   }
   return "ok";
 }
+
+/**
+ * Delegated permission for the sensitivity labels published to the user (Microsoft Purview) – optional: without admin
+ * consent the add-in falls back to Outlook's own label catalog.
+ */
+export const GRAPH_LABEL_SCOPES = ["https://graph.microsoft.com/InformationProtectionPolicy.Read"];
+
+export interface SensitivityLabel {
+  /** GUID, lower case without braces. */
+  id: string;
+  name: string;
+  /** Priority in the label policy (Purview "sensitivity"): higher is more sensitive. */
+  rank: number;
+  /** The label encrypts what it is applied to. */
+  protection: boolean;
+}
+
+/**
+ * The sensitivity labels the user may apply, with their names in `language` and their priority – for the label of a
+ * shared file and which one is higher. Sublabels come with their parent's name ("Vertraulich / Alle Mitarbeiter").
+ */
+export async function fetchSensitivityLabels(graphToken: string, language?: string): Promise<SensitivityLabel[]> {
+  const labels: SensitivityLabel[] = [];
+  type GraphLabel = { id?: string; name?: string; sensitivity?: number; hasProtection?: boolean; isActive?: boolean; parent?: { name?: string } | null };
+  let url: string | undefined = "https://graph.microsoft.com/v1.0/me/security/informationProtection/sensitivityLabels";
+  for (let page = 0; url && page < 10; page++) {
+    const res: Response = await fetch(url, {
+      headers: { Authorization: `Bearer ${graphToken}`, ...(language ? { "Accept-Language": language } : {}) },
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new HttpError(502, `Graph sensitivityLabels failed (HTTP ${res.status}): ${text.slice(0, 300)}`);
+    }
+    const json = (await res.json()) as { value?: GraphLabel[]; "@odata.nextLink"?: string };
+    for (const label of json.value ?? []) {
+      if (!label.id || !label.name || label.isActive === false) continue;
+      labels.push({
+        id: label.id.replace(/[{}]/g, "").toLowerCase(),
+        name: label.parent?.name ? `${label.parent.name} / ${label.name}` : label.name,
+        rank: typeof label.sensitivity === "number" ? label.sensitivity : labels.length,
+        protection: label.hasProtection === true,
+      });
+    }
+    url = json["@odata.nextLink"];
+  }
+  return labels;
+}
