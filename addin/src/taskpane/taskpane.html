@@ -244,6 +244,22 @@
                 </label>
                 <p class="hint" id="proof-hint">%%t:addin.proof.hint%%</p>
               </div>
+
+              <!-- A ticked file is encrypted by its sensitivity label (LABEL_ENCRYPTED warn / block, taskpane.ts
+                   renderEncrypted): the section opens with this note; with "warn" the box must be ticked before
+                   the files can be inserted, with "block" they cannot be. -->
+              <div class="field encrypted-field" id="encrypted-field" hidden>
+                <p class="label encrypted-title">
+                  <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 14.6 13.5H1.4Z" fill="none" stroke="currentColor" stroke-linejoin="round"/><path d="M8 6.2v3.6M8 11.6v.3" stroke="currentColor" stroke-linecap="round"/></svg>
+                  <span>%%t:addin.labels.encryptedTitle%%</span>
+                </p>
+                <p class="hint" id="encrypted-text"></p>
+                <label class="checkbox" id="encrypted-confirm-row">
+                  <input type="checkbox" id="encrypted-confirm" aria-describedby="encrypted-text" />
+                  <span class="box" aria-hidden="true"></span>
+                  <span class="checkbox-text">%%t:addin.labels.sendAnyway%%</span>
+                </label>
+              </div>
             </div>
           </div>
         </div>

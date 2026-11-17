@@ -87,7 +87,7 @@ every language ([2.8](#28-languages)). So one image serves every installation an
 The "Send" tab starts with a switch for **what** goes into the mail – **Files**, **Message** (a confidential message) or
 **Request** (an upload link) – and shows only that part; the one button in the footer names what it inserts ("Insert 2
 files as links", "Insert confidential message", "Insert upload link"). Password, "Send the password to" and the collapsed
-"Validity and language" (one-line summary of the values for the chosen kind and the language for the recipients) apply to all three. "No password" is offered for files
+"More options" (one-line summary of the values for the chosen kind and the language for the recipients) apply to all three. "No password" is offered for files
 only; a mail already fixed to links without password disables the button for the other two and says why. Files
 dragged onto the pane switch it to "Files".
 
@@ -262,7 +262,7 @@ Two kinds of language:
   server returns to the add-in.
 - **`LANGUAGE`** (default `en`) is the first guess of the taskpane page, the preselected language for the recipients
   and the fallback for notes to the sender whose add-in language is unknown.
-- **"Language for the recipients"** (`#recipient-language` in "Validity and language", preselected from the personal
+- **"Language for the recipients"** (`#recipient-language` in "More options", preselected from the personal
   setting `recipientLanguage`, kept per draft in `DraftState.recipientLanguage`): the link card is rendered in it
   (`inLanguage` in `addin/src/shared/i18n.ts`), and every link request carries it as `language`. The server keeps it
   per step (`SeparatePart.language`, the first link of a step decides) and writes the step's password mail and SMS in
@@ -422,7 +422,7 @@ changed fields are stored; a new default reaches everyone else.
 
 ### 2.12 Delivery proof ("Zustellnachweis")
 
-Optional per mail, never by default: the sender ticks **"Zustellnachweis"** in "Gültigkeit und Sprache" (`#proof`,
+Optional per mail, never by default: the sender ticks **"Zustellnachweis"** in "Weitere Optionen" (`#proof`,
 offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it needs the same application permission
 `Mail.Send`). It is evidence that can be checked, not a qualified delivery service in the sense of eIDAS.
 
@@ -475,8 +475,10 @@ longer attached, so the add-in does it itself (`addin/src/taskpane/labels.ts`, n
   in the policy's order = rank); a label not in the catalog (another organisation) shows as "Vertraulichkeitsbezeichnung".
 - **The mail's label** (`item.sensitivityLabel`): after inserting, the highest-ranked label of the files is set if the
   mail's is lower – never lowered (`labelForMail`; `LABEL_POLICY=inherit`), or offered with "Übernehmen" (`suggest`).
-- **Encrypted files**: `confirmEncrypted` before any upload – `LABEL_ENCRYPTED=warn` (message with "Trotzdem
-  einfügen" / "Abbrechen"), `block`, `allow`.
+- **Encrypted files** (`renderEncrypted`): as soon as a ticked file is known to be encrypted, "Weitere Optionen" opens
+  with a note (`#encrypted-field`); `LABEL_ENCRYPTED=warn` – the insert button stays off until "Trotzdem als Link senden"
+  is ticked (`insertReady`), `block` – it stays off, `allow` – no note. Large attachments are read only when inserted;
+  then the same check runs before any upload.
 - No extra permission: the manifest already has `ReadWriteItem`.
 
 ### 2.14 Attachments inside and outside the organisation
