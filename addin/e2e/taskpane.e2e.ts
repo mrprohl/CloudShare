@@ -1124,7 +1124,7 @@ test("Zustellnachweis: ticked, it goes with the link request and the card names 
   await page.click("#validity-toggle");
   await expect(page.locator("#proof-field")).toBeVisible();
   await expect(page.locator("#proof")).not.toBeChecked();
-  await expect(page.locator("#validity-summary")).not.toContainText("Zustellnachweis");
+  await expect(page.locator("#validity-summary")).toContainText("· ohne Zustellnachweis");
   await page.locator("#proof-field .checkbox").click();
   await expect(page.locator("#proof")).toBeChecked();
   await expect(page.locator("#validity-summary")).toContainText("· mit Zustellnachweis");

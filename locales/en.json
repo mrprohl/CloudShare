@@ -196,6 +196,7 @@
     "proof.label": "Proof of delivery",
     "proof.hint": "Records sending, password and every access for later proof. Before opening, the recipients confirm their email address with a code.",
     "proof.summary": "with proof of delivery",
+    "proof.summaryOff": "without proof of delivery",
     "channel.recipients": "Recipients of the message",
     "channel.mail": "Another email address",
     "channel.sms": "Phone number (text message)",

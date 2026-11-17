@@ -422,7 +422,8 @@ changed fields are stored; a new default reaches everyone else.
 
 ### 2.12 Delivery proof ("Zustellnachweis")
 
-Optional per mail, never by default: the sender ticks **"Zustellnachweis"** in "Weitere Optionen" (`#proof`,
+Optional per mail, never by default: the sender ticks **"Zustellnachweis"** in "Weitere Optionen" (the collapsed
+summary says "mit / ohne Zustellnachweis" wherever it is offered; `#proof`,
 offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it needs the same application permission
 `Mail.Send`). It is evidence that can be checked, not a qualified delivery service in the sense of eIDAS.
 

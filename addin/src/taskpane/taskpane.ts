@@ -1552,8 +1552,8 @@ function renderValidity() {
   if (!recipientLanguageField.hidden && recipientLanguageSelect.selectedOptions[0]) {
     parts.push(recipientLanguageSelect.selectedOptions[0].text);
   }
-  // "Zustellnachweis" only when ticked – the summary must not hide it.
-  if (proofWanted()) parts.push(t("proof.summary"));
+  // "Zustellnachweis" where the server offers it: with or without, so the collapsed line always says which.
+  if (!proofField.hidden) parts.push(t(proofInput.checked ? "proof.summary" : "proof.summaryOff"));
   validitySummary.textContent = parts.join(" · ");
 }
 
@@ -2693,6 +2693,7 @@ Office.onReady(async () => {
   for (const id of ["help-proof", "help-shares-proof"]) $<HTMLElement>(id).hidden = !serverConfig.deliveryProof;
   $<HTMLElement>("help-files-labels").hidden = serverConfig.labelPolicy === "off";
   proofInput.checked = state.proof === true;
+  renderValidity(); // the summary says "mit / ohne Zustellnachweis"
   applyLinkMax();
   maxAccessInput.max = String(serverConfig.sendMaxAccessLimit);
   for (const input of [passwordDaysInput, messageDaysInput]) {
