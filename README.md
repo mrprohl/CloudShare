@@ -123,7 +123,8 @@ Confidential messages and upload links always have a password, so "No password" 
 **"History"** lists everything you sent with CloudShare that is still valid – links and confidential messages,
 newest first. Each entry is titled with the **subject of its mail** – hovering it shows when and to whom it went (To, Cc),
 a click opens that mail in Outlook (only mails
-of your own mailbox) –, below it a label for what went out – "File" with the file name, "File request" or "Confidential message" (in colour)
+of your own mailbox) –, below it what went out – the file name, "File request" or "Confidential message" (the symbol on the left shows the
+kind: a document, an upload arrow, an envelope with a lock)
 –, then one short line each for
 the period ("10.11. – 24.11.2026"), the password (with / without, or how it went out: "Password by text message to …
 – delivered") and the downloads (or received files; Vaultwarden does not report whether a message was opened). A
@@ -133,7 +134,7 @@ while the pane is open ("(No subject yet)" until then); entries from before subj
 unknown)". It
 loads when you open the tab and again when you come back to
 the pane; **Refresh** (⟳ in the tab bar) reloads it at any time. Expired links are not listed. At the bottom, as in
-"Send": the account menu ("Open Nextcloud" – your Nextcloud in the browser –, "Settings", "Help", "Disconnect" – the latter takes a second click) and the free space. A link is created when it is inserted;
+"Send": the account, as a menu – at the top the whole account name and its storage (a bar filled with the used share when there is a quota), then "Open Nextcloud" (your Nextcloud in the browser), "Settings", "Help" and "Disconnect" (takes a second click). A link is created when it is inserted;
 until its mail has been sent it says **"Not sent"**. If the mail is never sent (draft discarded), CloudShare revokes
 the link after 7 days – unless it was already downloaded (opened by yourself, or the mail went out from an Outlook
 without CloudShare): then it says **"Password not sent yet."** and stays until you revoke it.

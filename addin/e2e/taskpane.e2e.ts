@@ -531,7 +531,7 @@ test("preselects large attachments and proposes a random password", async ({ pag
   await expect(page.locator("#max-access")).toHaveValue("3");
   await expect(page.locator("#expire")).toHaveValue("14");
   await expect(page.locator("#account")).toHaveText("max.mustermann");
-  await expect(page.locator("#account-storage")).toHaveText("12,5 / 50 GB frei"); // on the right of the bottom bar
+  await expect(page.locator("#account-storage")).toHaveText("12,5 / 50 GB frei"); // in the account menu
   // One button that says what it inserts; the rarely changed values collapsed behind a summary.
   await expect(page.locator("#kind-files")).toBeChecked();
   await expect(page.locator("#submit")).toHaveText("Datei als Link einfügen");
@@ -1241,8 +1241,7 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   await refresh.click();
   await expect.poll(loads).toBe(before + 1);
   await expect(refresh).toBeEnabled();
-  // One quiet bottom bar for every tab: the account as a menu (like the menus of Outlook and OneDrive), the storage
-  // on the right.
+  // One quiet bottom bar for every tab: only the account, as a menu (like the menus of Outlook and OneDrive).
   const toggle = page.locator("#account-toggle");
   const menu = page.locator("#account-menu");
   const storage = page.locator("#account-storage");
@@ -1252,10 +1251,8 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   await expect(toggle).toHaveAttribute("title", "Angemeldet als max.mustermann");
   // What the menu holds: for screen readers only (the arrow shows it on screen).
   await expect(toggle).toHaveAccessibleDescription("Menü: Nextcloud öffnen, Einstellungen, Hilfe, Verbindung trennen");
-  const [toggleBox, storageBox, barBox] = await Promise.all([toggle, storage, page.locator(".account-bar")].map((l) => l.boundingBox()));
-  expect(Math.abs(toggleBox!.y + toggleBox!.height / 2 - (storageBox!.y + storageBox!.height / 2))).toBeLessThan(2); // one line
-  expect(storageBox!.x).toBeGreaterThan(toggleBox!.x + toggleBox!.width);
-  expect(barBox!.x + barBox!.width - (storageBox!.x + storageBox!.width)).toBeLessThan(16); // at the far right
+  const toggleBox = (await toggle.boundingBox())!;
+  await expect(storage).toBeHidden(); // the storage is in the menu now, nothing else in the bar
   await expect(page.locator(".account-bar")).toHaveCount(1);
   // The menu opens above the bar: each entry with an icon; Escape closes it, focus back on the account.
   await toggle.click();
@@ -1265,6 +1262,12 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   await expect(page.locator("#account-menu button svg")).toHaveCount(4);
   await expect(page.locator("#nextcloud-open")).toBeFocused(); // the first entry
   await expect(page.locator("#nextcloud-open")).toHaveAttribute("title", "https://cloud.example.com");
+  // At the top, set apart: the whole name, a bar filled with the used share (37,5 of 50 GB = 75 %) and the text.
+  await expect(page.locator("#account-menu-name")).toHaveText("max.mustermann");
+  await expect(storage).toBeVisible();
+  await expect(page.locator("#storage-meter")).toBeVisible();
+  await expect(page.locator("#storage-meter-fill")).toHaveAttribute("style", "width: 75%;");
+  expect((await page.locator(".account-menu-head").boundingBox())!.y).toBeLessThan((await page.locator("#nextcloud-open").boundingBox())!.y);
   expect((await menu.boundingBox())!.y + (await menu.boundingBox())!.height).toBeLessThanOrEqual(toggleBox!.y);
   await expectAccessible(page);
   await page.keyboard.press("Escape");
@@ -1475,8 +1478,9 @@ test("Verlauf: the subject is the title and opens the mail; confidential message
     "Gesendet am 16.11.2026, 10:04 Uhr an erika@example.com, max@example.com\nCc: chef@example.com",
   );
   await expect(rows.nth(0).locator(".share-title")).toHaveAttribute("aria-label", "Unterlagen Neubau, Nachricht öffnen");
-  // Below the subject what went out: the label "Datei" and the file name.
-  await expect(rows.nth(0).locator(".share-item .badge")).toHaveText("Datei");
+  // Below the subject what went out, in plain text: the file name (the document symbol on the left shows the kind).
+  await expect(rows.nth(0).locator(".share-item")).toHaveText("Präsentation.pptx");
+  await expect(rows.nth(0).locator(".badge")).toHaveCount(0);
   await expect(rows.nth(0).locator(".share-item .share-name")).toHaveAttribute("title", "Präsentation.pptx");
   await expect(rows.nth(1).locator(".share-title")).toHaveText("(Kein Betreff)");
   await expect(rows.nth(1).locator("button.share-title")).toHaveCount(0);
@@ -1493,7 +1497,6 @@ test("Verlauf: the subject is the title and opens the mail; confidential message
   const msg = rows.nth(2);
   await expect(msg.locator(".share-title")).toHaveText("Zugangsdaten");
   await expect(msg.locator(".share-item")).toHaveText("Vertrauliche Nachricht"); // only the label, in colour
-  await expect(msg.locator(".share-item .badge")).toHaveClass(/kind-message/);
   await expect(msg.locator(".show-password")).toBeVisible();
   await expect(msg.locator(".copy")).toBeHidden();
   await expect(msg.locator(".insert")).toBeHidden();
@@ -1546,7 +1549,7 @@ test("reading a mail: tabs 'Nachricht' and 'Verlauf', nothing to insert", async 
   // "Verlauf": every valid link, those of this mail included (Alt.zip has expired).
   await page.click("#tab-shares");
   await expect(page.locator("#panel-mail")).toBeHidden();
-  await expect(page.locator("#shares .share .share-item")).toHaveText(["DateiPräsentation.pptx", "DateiAngebot.pdf", "Dateianforderung"]);
+  await expect(page.locator("#shares .share .share-item")).toHaveText(["Präsentation.pptx", "Angebot.pdf", "Dateianforderung"]);
   await expectAccessible(page);
 
   // Revoked in one list, gone from both.
@@ -1656,7 +1659,7 @@ test("Nextcloud öffnen opens the user's Nextcloud in the browser", async ({ pag
   expect((await officeLog(page)).openedUrls).toEqual(["https://cloud.example.com"]);
 });
 
-test("a long account name at 320 px: shortened with \"…\", the storage stays whole, the tooltip names it", async ({ page }) => {
+test("a long account name at 320 px: shortened with \"…\" in the bar, whole in the tooltip and the menu", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   const name = "philipp.rohlmann.mit.einem.sehr.langen.namen@verwaltung.example.com";
   await openTaskpane(page, { loginName: name });
@@ -1666,9 +1669,10 @@ test("a long account name at 320 px: shortened with \"…\", the storage stays w
   await expect(toggle).toHaveAttribute("title", `Angemeldet als ${name}`);
   const shown = page.locator("#account");
   expect(await shown.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(true); // cut short with "…"
-  const storage = page.locator("#account-storage");
-  await expect(storage).toHaveText("12,5 / 50 GB frei");
-  expect(await storage.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true); // whole
+  // In the menu the name is whole (wrapped if need be), above the storage.
+  await toggle.click();
+  await expect(page.locator("#account-menu-name")).toHaveText(name);
+  await expect(page.locator("#account-storage")).toHaveText("12,5 / 50 GB frei");
   await expectNoHorizontalScroll(page);
 });
 

@@ -449,6 +449,13 @@
             <span id="account-menu-description" hidden>%%t:addin.account.menu%%</span>
             <!-- Like the menus of Outlook and OneDrive: icon and text per entry. -->
             <div id="account-menu" class="account-menu" hidden>
+              <!-- The account and its storage, set apart at the top (like the profile menus of Outlook and OneDrive): the
+                   bar fills with the used share of the quota; without a quota only the text ("1 KB belegt"). -->
+              <div class="account-menu-head">
+                <p class="account-menu-name" id="account-menu-name"></p>
+                <div class="storage-meter" id="storage-meter" aria-hidden="true" hidden><div class="storage-meter-fill" id="storage-meter-fill"></div></div>
+                <p class="caption account-storage" id="account-storage"></p>
+              </div>
               <!-- The user's Nextcloud in the browser (NEXTCLOUD_URL; the browser's own session or single sign-on). -->
               <button type="button" id="nextcloud-open" class="account-menu-item" hidden>
                 <svg class="icon" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2"
@@ -486,7 +493,6 @@
               </button>
             </div>
           </div>
-          <p class="caption account-storage" id="account-storage"></p>
         </footer>
       </section>
     </main>

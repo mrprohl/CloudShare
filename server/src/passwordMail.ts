@@ -46,7 +46,7 @@ export function passwordMailHtml(mail: PasswordMailContent): string {
       title: t("mail.cardTitle", { count }),
       files: mail.fileNames,
       button: { label: t("mail.showPassword"), url: mail.sendUrl },
-      details: [accessText(mail.maxAccessCount), expiry, t("mail.enterPassword")].join(" · "),
+      details: [accessText(mail.maxAccessCount), expiry, t("mail.enterPassword", { count })].join(" · "),
     },
     // The plain link as well – some mail clients block buttons or show them without colours.
     after:
