@@ -53,9 +53,9 @@ export function parseLabelInfo(xml: string): Pick<FileLabel, "id" | "siteId"> | 
  */
 export function parseMsipProperties(text: string): Pick<FileLabel, "id" | "siteId"> | null {
   for (const match of text.matchAll(new RegExp(`MSIP_Label_(${GUID})_Enabled`, "g"))) {
-    // The value follows within a few characters: "…_Enabled"><vt:lpwstr>true<", "…_Enabled>true<", "…_Enabled\0…true".
+    // The value is the first true/false after the name: "…_Enabled"><vt:lpwstr>true<", "…_Enabled>true<", "…\0…true".
     const after = text.slice(match.index! + match[0].length, match.index! + match[0].length + 120);
-    if (/^[^A-Za-z]*false/i.test(after.replace(/<[^>]*>/g, ""))) continue;
+    if (/\b(true|false)\b/i.exec(after)?.[1].toLowerCase() === "false") continue;
     const id = match[1].toLowerCase();
     const site = new RegExp(`MSIP_Label_${id}_SiteId[^0-9a-fA-F]{0,60}(${GUID})`, "i").exec(text)?.[1];
     return { id, siteId: cleanGuid(site) };

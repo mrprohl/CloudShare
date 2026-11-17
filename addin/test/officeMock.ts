@@ -148,6 +148,7 @@ export function installOfficeMock() {
       userEmail: "max@example.test",
       notifications: { replaced: [], removed: [] },
       body: "",
+      to: [],
     });
   }
 
