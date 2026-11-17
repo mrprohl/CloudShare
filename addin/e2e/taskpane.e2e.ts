@@ -1974,13 +1974,14 @@ test("Labels: a protected file shows a note under Weitere Optionen and needs a c
   await expect(page.locator("#submit")).toBeDisabled();
   await expectAccessible(page);
   // Unticking the file takes the note away.
-  await row.locator("input").uncheck();
+  await row.locator(".file-name").click(); // the row is a label: a click on the name toggles the box
   await expect(page.locator("#encrypted-field")).toBeHidden();
-  await row.locator("input").check();
+  await row.locator(".file-name").click();
   await expect(page.locator("#encrypted-field")).toBeVisible();
   expect(calls.some((c) => c.path === "/api/uploads")).toBe(false);
 
-  await page.locator("#encrypted-confirm").check();
+  await page.locator("#encrypted-confirm-row .checkbox-text").click();
+  await expect(page.locator("#encrypted-confirm")).toBeChecked();
   await expect(page.locator("#submit")).toBeEnabled();
   await page.click("#submit");
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
