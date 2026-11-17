@@ -431,7 +431,7 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   Outlook's host, platform and version), so all links of the mail share one case. The link card, the password mail,
   the download confirmation and "Verlauf" name it.
 - **Events, hash-chained**: `case.opened`, `link.created` (name, size, **SHA-256 of the content** – computed while the
-  chunks pass through, `UploadState.hash`; protection, expiry, password ways), `mail.sent` (subject, **Internet
+  chunks pass through, `UploadState.hash`; protection, expiry, password ways), `message.sent` (subject, **Internet
   Message-ID** for Exchange's message trace, From, To, Cc, Bcc, time – `recordMailSent` from the job watcher),
   `password.sent` / `sms.status` (`recordDelivery`, `updateSmsStatus`), `password.fetched` and `message.opened`
   (access count of the Vaultwarden Send went up), `download` (every download time Nextcloud's activity reports),

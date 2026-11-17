@@ -1194,7 +1194,7 @@ describe("delivery proof (Zustellnachweis)", () => {
     expect(forged.statusCode).toBe(200);
 
     const types = caseById(proofId)!.events.map((e) => e.type);
-    expect(types).toEqual(expect.arrayContaining(["mail.sent", "recipient.codeSent", "recipient.codeFailed", "recipient.verified", "link.opened"]));
+    expect(types).toEqual(expect.arrayContaining(["message.sent", "recipient.codeSent", "recipient.codeFailed", "recipient.verified", "link.opened"]));
     expect(caseById(proofId)!.events.find((e) => e.type === "recipient.verified")!.data).toMatchObject({
       address: "erika@example.test", userAgent: "TestBrowser/1.0",
     });

@@ -56,7 +56,7 @@ describe("delivery proof – case and chain", () => {
     // Recorded once even if the job retries; recipients in lower case (they confirm their address against them).
     recordMailSent(["same-1"], { subject: "Angebot", messageId: "<m1@example.test>", from: "anna@example.test", to: ["Erika@Example.test"], cc: [], bcc: [] });
     const c = caseById(first!)!;
-    expect(c.events.filter((e) => e.type === "mail.sent")).toHaveLength(1);
+    expect(c.events.filter((e) => e.type === "message.sent")).toHaveLength(1);
     expect(c.recipients).toEqual(["erika@example.test", "x@example.test"]);
     // A new mail with the box ticked gets its own case.
     expect(caseForLink(true, first, "oid-anna", "anna@example.test", {}, {})).not.toBe(first);

@@ -61,7 +61,7 @@ function describe(e: ProofEvent, c: ProofCase): { label: string; details: Array<
         mono: typeof d.sha256 === "string" ? [[t("mail.proof.field.sha256"), d.sha256]] : undefined,
       };
     }
-    case "mail.sent":
+    case "message.sent":
       return {
         label: t("mail.proof.event.mailSent"),
         details: [

@@ -6,7 +6,7 @@
  *
  *   case.opened       who, from which client (Outlook host, platform, version)
  *   link.created      what went out (file name, size, SHA-256 of the content), protection, expiry, password ways
- *   mail.sent         subject, Message-ID, sender, To/Cc (number of Bcc), time – from "Sent Items"
+ *   message.sent         subject, Message-ID, sender, To/Cc (number of Bcc), time – from "Sent Items"
  *   password.sent     way and recipient (SMS masked), also when sent again
  *   sms.status        delivery report of seven.io
  *   password.fetched  the password link was opened (Vaultwarden's access count went up)
@@ -232,7 +232,7 @@ export function recordMailSent(
     const all = [...mail.to, ...mail.cc, ...mail.bcc].map((a) => a.toLowerCase());
     c.recipients = [...new Set([...(c.recipients ?? []), ...all])];
     cases.save(id);
-    addEvent(id, "mail.sent", {
+    addEvent(id, "message.sent", {
       subject: mail.subject,
       messageId: mail.messageId ?? null,
       from: mail.from,
