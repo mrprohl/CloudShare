@@ -419,6 +419,42 @@ on the account), "Zurücksetzen" keeps them open with the defaults in sight:
 the organisation switched off, and the SMS rules (countries, allowed and blocked numbers) apply regardless. Only
 changed fields are stored; a new default reaches everyone else.
 
+### 2.12 Delivery proof ("Zustellnachweis")
+
+Optional per mail, never by default: the sender ticks **"Zustellnachweis"** in "Gültigkeit und Sprache" (`#proof`,
+offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it needs the same application permission
+`Mail.Send`). It is evidence that can be checked, not a qualified delivery service in the sense of eIDAS.
+
+- **Case and tracking ID** (`server/src/proof.ts`, store `proofs`, `retention: false`): the first link with the box
+  ticked opens a case named like `20261117-1146-7Q2F` (date, time, four characters without look-alikes); the add-in
+  keeps it in `DraftState.proofId` and sends it with the next links (`proofRequest`: `proof`, `proofId`, `client` –
+  Outlook's host, platform and version), so all links of the mail share one case. The link card, the password mail,
+  the download confirmation and "Verlauf" name it.
+- **Events, hash-chained**: `case.opened`, `link.created` (name, size, **SHA-256 of the content** – computed while the
+  chunks pass through, `UploadState.hash`; protection, expiry, password ways), `message.sent` (subject, **Internet
+  Message-ID** for Exchange's message trace, From, To, Cc, Bcc, time – `recordMailSent` from the job watcher),
+  `password.sent` / `sms.status` (`recordDelivery`, `updateSmsStatus`), `password.fetched` and `message.opened`
+  (access count of the Vaultwarden Send went up), `download` (every download time Nextcloud's activity reports),
+  `files.received`, `recipient.codeSent` / `codeFailed` / `verified`, `link.opened`, `link.revoked` / `expired` /
+  `gone`. Every event stores `sha256(previous hash + canonical JSON of time, type, data)`; `verifyCase` re-computes
+  the chain and the PDF says whether it is intact or from which entry on it was changed.
+- **Watcher** (`proofWatcher.ts`, every 10 minutes): downloads, received files, Send access counts, links gone or
+  expired; a case is done when all its links ended (or two days after the last expiry) and is then only kept –
+  `PROOF_RETENTION_DAYS` after its last event (default 1095 = three years, the regular limitation period).
+- **Recipient confirms their address** (`proofGateway.ts`): file and upload links of a case go into the mail as
+  `https://<host>/r/s/<token>` instead of the Nextcloud link (the path still ends in `/s/<token>`, so the read mode
+  and `releaseDraftIfLinksGone` find it). The page asks for the address; only one the mail went to (To, Cc, Bcc – a
+  distribution list does not match) gets a six-digit code, sent from the sender's mailbox with the app token; the page
+  reads the same for any address, so it does not reveal the recipients. Ten minutes, five tries, three codes per
+  address in 15 minutes, ten per link an hour. A right code records address, IP address (via Caddy, `trustProxy`) and
+  browser, sets a signed cookie for this link until it expires and redirects (303) to Nextcloud – the Nextcloud
+  password is still needed. Before the mail was found sent the page says so. Plain HTML forms, no script, own CSP.
+  A confidential message has no gateway (its link holds the key CloudShare does not keep); its openings are counted.
+- **PDF** (`proofPdf.ts`, `pdf.ts` – a small writer of its own, no dependency, standard fonts in WinAnsi):
+  "Nachweis" in "Verlauf" asks `POST /api/proofs/:id/link` for an address signed with a key derived from
+  `CREDENTIAL_KEY` and valid five minutes, and opens it in the default browser (`openBrowserWindow`) – the language
+  of the add-in.
+
 ## 3. State and data
 
 | Where | What | Lifetime |
@@ -472,6 +508,8 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `GET /api/shares/:id/mail` | "History": the sent mail of an entry as the EWS ID Outlook opens (`displayMessageFormAsync`) – the immutable Graph ID kept at sending, translated now with `translateExchangeIds` (User.Read), so it follows a moved mail; 404 if none is known or it is gone – also when it lies in Deleted Items or, after emptying them, in Recoverable Items (`sentMailState`, Mail.Read), where Outlook would still open it |
 | `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send), `passwordTo` or `passwordSms` until the password went out; `subject`: the draft's subject changed (the pane checks it every 4 s while open) – "History" shows it for the mail's links until the sent mail is found (`updateDraftSubject`) |
 | `POST /api/jobs/:id/arm` | Arm the password mail (send handler); also reads the sender's name and department for the templates |
+| `POST /api/proofs/:id/link`, `GET /proof/:id.pdf?until=…&lang=…&sig=…` | "Zustellnachweis" (2.12): a signed PDF address valid 5 minutes (owner only), opened in the default browser; the PDF itself needs no login – the HMAC signature (key from `CREDENTIAL_KEY`) binds case, end and language |
+| `GET /r/s/:token`, `POST /r/s/:token/code`, `POST /r/s/:token/verify` | Gateway of a link with "Zustellnachweis" (no login): the recipient enters their address, gets a six-digit code (only addresses the mail went to; the page reads the same for any address), confirms it and goes on to Nextcloud; a signed cookie per link lets the same browser come back; every step is recorded |
 | `GET/POST /webhooks/seven?token=…` | seven.io delivery reports (no login, secret `SEVEN_WEBHOOK_SECRET`) |
 
 Rate limit: `RATE_LIMIT_PER_MINUTE` per user (`oid`, otherwise client address); Nextcloud login, upload links and

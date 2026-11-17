@@ -4,6 +4,7 @@
  * Stored in the database (db.ts, store "deliveries"); entries are dropped after DELIVERY_TTL.
  */
 import { PersistentMap } from "./db.js";
+import { eventForTokens } from "./proof.js";
 import type { SmsStatus } from "./sms.js";
 
 export interface Delivery {
@@ -31,6 +32,8 @@ function prune() {
 export async function recordDelivery(tokens: string[], delivery: Delivery): Promise<void> {
   prune();
   for (const token of tokens) deliveries.set(token, { ...delivery });
+  // "Zustellnachweis": how and to whom the password went (SMS: the masked number), in the case of the links.
+  eventForTokens(tokens, "password.sent", { channel: delivery.channel, to: delivery.to, status: delivery.status ?? null }, delivery.at);
 }
 
 export const deliveryFor = (token: string, owner: string) => {
@@ -49,15 +52,19 @@ export async function updateSmsStatus(
 ): Promise<{ known: boolean; failedTokens: string[] }> {
   let known = false;
   const failedTokens: string[] = [];
+  const changed: string[] = [];
   for (const [token, d] of deliveries) {
     if (d.messageId !== messageId) continue;
     known = true;
     // A final state is not overwritten by a late intermediate report.
     if (d.status === "delivered" || d.status === "failed") continue;
+    if (d.status === status) continue; // the same report again
     d.status = status;
+    changed.push(token);
     if (status === "delivered") d.deliveredAt = at;
     if (status === "failed") failedTokens.push(token);
     deliveries.save(token);
   }
+  if (changed.length) eventForTokens(changed, "sms.status", { status, messageId }, at);
   return { known, failedTokens };
 }

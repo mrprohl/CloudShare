@@ -30,6 +30,8 @@ export interface PasswordMailContent {
   senderName?: string;
   /** The sender's signature (HTML from signature.ts, already safe) – below the card, so recipients see who sent it. */
   signature?: string;
+  /** "Zustellnachweis": the tracking ID of the mail's case, named in the card. */
+  trackingId?: string;
 }
 
 export function passwordMailHtml(mail: PasswordMailContent): string {
@@ -46,7 +48,8 @@ export function passwordMailHtml(mail: PasswordMailContent): string {
       title: t("mail.cardTitle", { count }),
       files: mail.fileNames,
       button: { label: t("mail.showPassword"), url: mail.sendUrl },
-      details: [accessText(mail.maxAccessCount), expiry, t("mail.enterPassword", { count })].join(" · "),
+      details: [accessText(mail.maxAccessCount), expiry, t("mail.enterPassword", { count }),
+        mail.trackingId ? t("mail.trackingId", { id: mail.trackingId }) : ""].filter(Boolean).join(" · "),
     },
     // The plain link as well – some mail clients block buttons or show them without colours.
     after:

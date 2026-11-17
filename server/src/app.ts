@@ -1,8 +1,8 @@
 import rateLimit from "@fastify/rate-limit";
 import fastifyStatic from "@fastify/static";
-import Fastify, { type FastifyBaseLogger, type FastifyRequest } from "fastify";
+import Fastify, { type FastifyBaseLogger, type FastifyReply, type FastifyRequest } from "fastify";
 import { decodeJwt } from "jose";
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
@@ -68,6 +68,10 @@ import { passwordProblem } from "./password.js";
 import { signatureHtml } from "./signature.js";
 import { availableSettings, defaultSettings, parseSettings, resetSettings, saveSettings, settingsFor } from "./settings.js";
 import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } from "./store.js";
+import { addLink, caseById, caseFor, caseForLink, caseOfToken, gatewayUrl, linkUrlFor, type ProofLink } from "./proof.js";
+import { gatewayCsp, openGateway, requestCode, verifyCode, type GatewayResult, type Visitor } from "./proofGateway.js";
+import { proofPdf } from "./proofPdf.js";
+import { sign, signedBy } from "./storage.js";
 import {
   createMessageSend,
   createPasswordSend,
@@ -117,6 +121,48 @@ interface ShareRequest {
   language?: unknown;
   /** Subject of the draft the link goes into – "Verlauf" shows it until the mail is sent. */
   subject?: unknown;
+  /** "Zustellnachweis" ticked for this link (true), the tracking ID of the mail's case so far, and the client. */
+  proof?: unknown;
+  proofId?: unknown;
+  client?: unknown;
+}
+
+/** The way a password goes, as the case records it: "recipients", "mail:<address>", "sms:<masked number>". */
+const wayOf = (d: Delivery | undefined) =>
+  !d ? [] : d.channel === "recipients" ? ["recipients"] : [`${d.channel}:${d.channel === "sms" ? maskPhone(d.to) : d.to}`];
+
+/** The Send with the password of the step a link joined (its access count is watched for the case). */
+function stepSendId(jobId: string | null, token: string): string | undefined {
+  const job = jobId ? getJob(jobId) : undefined;
+  return job?.separate?.find((part) => part.shares?.some((s) => s.token === token))?.sendId ?? job?.sendId;
+}
+
+/**
+ * "Zustellnachweis" for a new link, if the sender ticked it (and DELIVERY_PROOF is on): the link joins the mail's case
+ * – or opens one – with what went out and how it is protected. Returns the tracking ID and, for a Nextcloud link, the
+ * gateway address that goes into the mail instead (the recipient confirms their address there first).
+ */
+function recordProofLink(
+  user: User,
+  body: ShareRequest | undefined,
+  link: ProofLink & { token: string; jobId: string | null; size?: number; protection: "password" | "none"; delivery?: Delivery; maxAccess?: number },
+): { proofId?: string; gateway?: string } {
+  if (!config.deliveryProof) return {};
+  const id = caseForLink(body?.proof, body?.proofId, user.oid, user.upn, body?.client, {
+    recipients: knownLanguage(body?.language),
+    sender: requestLanguageCode(),
+  });
+  if (!id) return {};
+  const { token, jobId, size, protection, delivery, maxAccess, ...stored } = link;
+  addLink(id, token, { ...stored, createdAt: Date.now() }, protection === "password" ? stepSendId(jobId, token) : undefined, {
+    size,
+    sha256: stored.sha256,
+    protection,
+    passwordWays: wayOf(delivery),
+    maxAccess,
+    language: knownLanguage(body?.language) ?? null,
+  });
+  return { proofId: id, gateway: stored.url ? gatewayUrl(token) : undefined };
 }
 
 /** The way the password of a new link goes out (see ShareRequest), checked like PATCH /api/jobs/:id does. */
@@ -239,8 +285,9 @@ async function attachToJob(
  * Links "Ohne Kennwort": with the download confirmation switched on they join a job that has no password – it only
  * waits for the sent mail (subject, recipients). Otherwise no job at all (null).
  */
-async function attachNoticeJob(user: User, requestedJobId: unknown, share: StepShare): Promise<string | null> {
-  if (!settingsFor(user.oid).downloadNotice) return null; // switched off on the server or by the user
+async function attachNoticeJob(user: User, requestedJobId: unknown, share: StepShare, proof = false): Promise<string | null> {
+  // Switched off on the server or by the user – unless "Zustellnachweis" needs the sent mail (recipients, Message-ID).
+  if (!settingsFor(user.oid).downloadNotice && !(proof && config.deliveryProof)) return null;
   const id = typeof requestedJobId === "string" ? requestedJobId : undefined;
   const existing = id ? getJob(id) : undefined;
   if (id && existing && existing.owner === user.oid && !existing.dispatched && existing.noPassword) {
@@ -424,6 +471,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     successMessageSeconds: config.successMessageSeconds,
     // "Nextcloud öffnen" in the account menu.
     nextcloudUrl: config.nextcloudUrl,
+    // "Zustellnachweis" in "Gültigkeit und Sprache" (DELIVERY_PROOF).
+    deliveryProof: config.deliveryProof,
   }));
 
   /**
@@ -604,6 +653,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       size,
       totalChunks,
       received: new Set(),
+      hash: createHash("sha256"),
+      hashed: 0,
       expiresAt: Date.now() + UPLOAD_TTL,
     });
     return { uploadId, chunkSize: config.chunkSizeBytes, totalChunks };
@@ -621,6 +672,11 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     const nc = nextcloudFor(user);
     await nc.putChunk(upload.uid, req.params.id, index, upload.target, req.body);
     upload.received.add(index);
+    // Fingerprint for "Zustellnachweis": the client sends the chunks in order; a repeated chunk changes nothing.
+    if (index === upload.hashed + 1) {
+      upload.hash.update(req.body);
+      upload.hashed = index;
+    }
     return { received: upload.received.size, totalChunks: upload.totalChunks };
   });
 
@@ -645,6 +701,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const { password, expireDate, passwordLink } = shareSettings(req.body, !noPassword);
       const delivery = noPassword ? undefined : deliveryFrom(req.body);
 
+      // The fingerprint of the content – complete only if every chunk arrived in order.
+      const sha256 = upload.hashed === upload.totalChunks ? (upload.sha256 ??= upload.hash.digest("hex")) : undefined;
       const nc = nextcloudFor(user);
       await nc.finishUpload(upload.uid, req.params.id, upload.target, upload.size);
       uploads.delete(req.params.id);
@@ -654,10 +712,15 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const share = shareInfo(shareUrl, upload.fileName, expireDate);
       rememberDraftSubject(user, req.body, share);
       const jobId = noPassword
-        ? await attachNoticeJob(user, req.body?.jobId, share)
+        ? await attachNoticeJob(user, req.body?.jobId, share, req.body?.proof === true)
         : await attachToJob(user, req.body?.jobId, upload.fileName, password, passwordLink, req.body?.step, share, delivery, knownLanguage(req.body?.language));
-      req.log.info({ user: user.upn, file: upload.fileName, noPassword }, "Share created");
-      return { shareUrl, expireDate, jobId, noPassword, fileName: upload.fileName, size: upload.size };
+      const proof = recordProofLink(user, req.body, {
+        token: share.token, jobId, url: shareUrl, kind: "file", name: upload.fileName, expireDate, size: upload.size, sha256,
+        protection: noPassword ? "none" : "password", delivery, maxAccess: noPassword ? undefined : passwordLink.maxAccess,
+      });
+      req.log.info({ user: user.upn, file: upload.fileName, noPassword, proof: proof.proofId }, "Share created");
+      return { shareUrl: proof.gateway ?? shareUrl, expireDate, jobId, noPassword, fileName: upload.fileName, size: upload.size,
+        proofId: proof.proofId ?? null };
     },
   );
 
@@ -683,8 +746,12 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     rememberDraftSubject(user, req.body, share);
     const jobId = await attachToJob(user, req.body?.jobId, uploadLinkItem(language), password, passwordLink, req.body?.step,
       share, delivery, language);
-    req.log.info({ user: user.upn, folder: folder.join("/") }, "Upload link created");
-    return { shareUrl, expireDate, jobId };
+    const proof = recordProofLink(user, req.body, {
+      token: share.token, jobId, url: shareUrl, kind: "request", name: uploadLinkItem(), expireDate, knownFiles: [],
+      protection: "password", delivery, maxAccess: passwordLink.maxAccess,
+    });
+    req.log.info({ user: user.upn, folder: folder.join("/"), proof: proof.proofId }, "Upload link created");
+    return { shareUrl: proof.gateway ?? shareUrl, expireDate, jobId, proofId: proof.proofId ?? null };
   });
 
   // --- Confidential message ("Vertrauliche Nachricht") ---------------------------
@@ -720,8 +787,15 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       : undefined;
     rememberDraftSubject(user, req.body, share);
     const jobId = await attachToJob(user, req.body?.jobId, item, password, link, req.body?.step, share, delivery, knownLanguage(req.body?.language));
-    req.log.info({ user: user.upn, days, length: text.length }, "Confidential message created");
-    return { shareUrl: send.url, expireDate, jobId };
+    // No gateway for a message: its link holds the key, which CloudShare does not keep – openings are counted instead.
+    const proof: { proofId?: string } = share
+      ? recordProofLink(user, req.body, {
+          token: share.token, jobId, kind: "message", name: item, expireDate, protection: "password", delivery,
+          maxAccess: link.maxAccess,
+        })
+      : {};
+    req.log.info({ user: user.upn, days, length: text.length, proof: proof.proofId }, "Confidential message created");
+    return { shareUrl: send.url, expireDate, jobId, proofId: proof.proofId ?? null };
   });
 
   // --- History ("Verlauf") ------------------------------------------------
@@ -765,7 +839,10 @@ export async function buildApp(options: { logger?: boolean } = {}) {
           id: s.id,
           kind: request ? "request" : "file",
           name: request ? t("server.requestLabel") : segments[segments.length - 1],
-          url: s.url,
+          // A link with "Zustellnachweis" is copied as its gateway address, like it went into the mail.
+          url: linkUrlFor(token, s.url),
+          // Tracking ID of its case ("Nachweis" in the list), if it has one.
+          proofId: caseOfToken(token)?.id ?? null,
           sharedAt: s.sharedAt,
           expiration: s.expiration,
           protected: s.hasPassword,
@@ -793,6 +870,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       name: t("server.messageItem"),
       url: null,
       accessId: m.accessId,
+      proofId: caseOfToken(m.token)?.id ?? null,
       sharedAt: m.createdAt,
       expiration: new Date(m.expiresAt).toISOString().slice(0, 10),
       protected: true,
@@ -959,7 +1037,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const html = inRecipientLanguage(ref.language, () =>
         passwordMailHtml({ fileNames: ref.fileNames, sendUrl: send.url, maxAccessCount: ref.maxAccessCount, subject: ref.subject,
           expireDays: config.sendExpireDays, introTemplate: customIntro, senderName: ref.senderName, expiresOn: formatDate(send.expiresAt),
-          signature: signatureHtml(settingsFor(user.oid).signature, profile) }));
+          signature: signatureHtml(settingsFor(user.oid).signature, profile),
+          trackingId: caseOfToken(ref.tokens[0] ?? "")?.id }));
       const { token } = await onBehalfOf(user, GRAPH_SCOPES);
       for (const recipients of mails) await sendMail(token, recipients, subject, html, ref.from);
 
@@ -1005,10 +1084,18 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const info = shareInfo(shareUrl, request ? uploadLinkItem() : fileName, expireDate, knownFiles);
       rememberDraftSubject(user, req.body, info);
       const jobId = noPassword
-        ? await attachNoticeJob(user, req.body?.jobId, info)
+        ? await attachNoticeJob(user, req.body?.jobId, info, req.body?.proof === true)
         : await attachToJob(user, req.body?.jobId, request ? uploadLinkItem(knownLanguage(req.body?.language)) : fileName, password, passwordLink, req.body?.step, info, delivery, knownLanguage(req.body?.language));
-      req.log.info({ user: user.upn, path: share.path, noPassword }, "Share linked again");
-      return { kind: request ? "request" : "file", shareUrl, expireDate, jobId, noPassword, fileName, size: share.size };
+      // The fingerprint of a file linked again: the one recorded when it was uploaded, if a case knows it.
+      const earlier = caseOfToken(tokenOf(share.url))?.links?.[tokenOf(share.url)]?.sha256;
+      const proof = recordProofLink(user, req.body, {
+        token: info.token, jobId, url: shareUrl, kind: request ? "request" : "file", name: request ? uploadLinkItem() : fileName,
+        expireDate, size: request ? undefined : (share.size ?? undefined), sha256: request ? undefined : earlier, knownFiles,
+        protection: noPassword ? "none" : "password", delivery, maxAccess: noPassword ? undefined : passwordLink.maxAccess,
+      });
+      req.log.info({ user: user.upn, path: share.path, noPassword, proof: proof.proofId }, "Share linked again");
+      return { kind: request ? "request" : "file", shareUrl: proof.gateway ?? shareUrl, expireDate, jobId, noPassword, fileName,
+        size: share.size, proofId: proof.proofId ?? null };
     },
   );
 
@@ -1112,6 +1199,78 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     req.log.info({ user: user.upn, jobId: req.params.id, mailbox }, "Password mail armed");
     return { ok: true };
   });
+
+  // --- "Zustellnachweis" ---------------------------------------------------------
+
+  /** The recipient's browser for the record: its address (behind Caddy) and its user agent. */
+  const visitorOf = (req: FastifyRequest): Visitor => ({ ip: req.ip, userAgent: String(req.headers["user-agent"] ?? "") });
+
+  /** A gateway page, or on to the Nextcloud link (with the cookie of a confirmed recipient). */
+  const sendGateway = (reply: FastifyReply, result: GatewayResult) => {
+    reply.header("Cache-Control", "no-store").header("Content-Security-Policy", gatewayCsp());
+    if (result.cookie) reply.header("Set-Cookie", result.cookie);
+    if (result.redirect) return reply.redirect(result.redirect, 303);
+    return reply.status(result.status).type("text/html; charset=utf-8").send(result.html);
+  };
+
+  /**
+   * The link in a mail with "Zustellnachweis": the recipient confirms their address with a code (proofGateway.ts) and
+   * then goes on to the Nextcloud link. No login – the code is the check.
+   */
+  app.get<{ Params: { token: string } }>("/r/s/:token", async (req, reply) =>
+    sendGateway(reply, openGateway(req.params.token, req.headers.cookie, visitorOf(req))));
+
+  app.post<{ Params: { token: string }; Body: { address?: unknown } }>(
+    "/r/s/:token/code",
+    { config: { rateLimit: strictLimit } },
+    async (req, reply) => sendGateway(reply, await requestCode(req.params.token, req.body?.address, visitorOf(req))),
+  );
+
+  app.post<{ Params: { token: string }; Body: { address?: unknown; code?: unknown } }>(
+    "/r/s/:token/verify",
+    { config: { rateLimit: strictLimit } },
+    async (req, reply) => sendGateway(reply, verifyCode(req.params.token, req.body?.address, req.body?.code, visitorOf(req))),
+  );
+
+  /** How long the address of a proof PDF works – it is opened in the default browser right away. */
+  const PDF_LINK_TTL = 5 * 60_000;
+  const pdfSigned = (id: string, until: string, lang: string) => `proof-pdf|${id}|${until}|${lang}`;
+
+  /**
+   * "Nachweis" in "Verlauf": a short-lived signed address of the case's PDF, which the pane opens in the default
+   * browser (a download from the taskpane does not work in every Outlook). In the language of the add-in.
+   */
+  app.post<{ Params: { id: string } }>("/api/proofs/:id/link", { config: { rateLimit: strictLimit } }, async (req) => {
+    const user = await authenticate(req);
+    const c = caseFor(req.params.id, user.oid);
+    if (!c) throw new HttpError(404, t("server.proofNotFound"));
+    const until = String(Date.now() + PDF_LINK_TTL);
+    const lang = requestLanguageCode() ?? "";
+    const query = new URLSearchParams({ until, lang, sig: sign(pdfSigned(c.id, until, lang)) });
+    return { url: `${config.publicBaseUrl}/proof/${encodeURIComponent(c.id)}.pdf?${query}` };
+  });
+
+  app.get<{ Params: { file: string }; Querystring: { until?: string; lang?: string; sig?: string } }>(
+    "/proof/:file",
+    async (req, reply) => {
+      const id = req.params.file.replace(/\.pdf$/, "");
+      const { until = "", lang = "", sig } = req.query;
+      // The signature binds ID, end and language: only the sender's pane can have asked for this address.
+      if (!signedBy(pdfSigned(id, until, lang), sig) || Number(until) < Date.now()) {
+        return reply.status(403).type("text/plain; charset=utf-8").send(t("server.proofLinkExpired"));
+      }
+      const found = caseById(id);
+      if (!found) return reply.status(404).type("text/plain; charset=utf-8").send(t("server.proofNotFound"));
+      const pdf = proofPdf(found, knownLanguage(lang));
+      const name = `${tIn(knownLanguage(lang), "mail.proof.fileName")}-${found.id}.pdf`;
+      req.log.info({ user: found.ownerUpn, case: found.id }, "Delivery proof PDF downloaded");
+      return reply
+        .header("Cache-Control", "no-store")
+        .header("Content-Disposition", `attachment; filename="${name.replace(/[^\w.-]/g, "_")}"`)
+        .type("application/pdf")
+        .send(pdf);
+    },
+  );
 
   return app;
 }

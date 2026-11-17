@@ -233,6 +233,17 @@
                 </div>
                 <p class="hint" id="recipient-language-hint">%%t:addin.recipientLanguage.hint%%</p>
               </div>
+
+              <!-- "Zustellnachweis" (DELIVERY_PROOF on the server, otherwise hidden): never ticked by default; once a link of
+                   the mail has it, the mail keeps its tracking ID (taskpane.ts proofRequest; named in the summary). -->
+              <div class="field" id="proof-field" hidden>
+                <label class="checkbox">
+                  <input type="checkbox" id="proof" aria-describedby="proof-hint" />
+                  <span class="box" aria-hidden="true"></span>
+                  <span class="checkbox-text">%%t:addin.proof.label%%</span>
+                </label>
+                <p class="hint" id="proof-hint">%%t:addin.proof.hint%%</p>
+              </div>
             </div>
           </div>
         </div>
@@ -378,6 +389,13 @@
               <p>%%t:addin.help.request.text%%</p>
             </details>
 
+            <!-- "Zustellnachweis": how it works, for the sender – shown only with DELIVERY_PROOF (taskpane.ts). -->
+            <details class="help-section" id="help-proof" hidden>
+              <summary>%%t:addin.help.proof.title%%</summary>
+              <p>%%t:addin.help.proof.text%%</p>
+              <p>%%t:addin.help.proof.recipient%%</p>
+            </details>
+
             <details class="help-section">
               <summary>%%t:addin.help.shares.title%%</summary>
               <p>%%t:addin.help.shares.text%%</p>
@@ -385,6 +403,7 @@
                 <li><span class="help-icon" data-icon="copy"></span>%%t:addin.help.shares.copy%%</li>
                 <li><span class="help-icon" data-icon="password"></span>%%t:addin.help.shares.password%%</li>
                 <li><span class="help-icon" data-icon="insert"></span>%%t:addin.help.shares.insert%%</li>
+                <li id="help-shares-proof" hidden><span class="help-icon" data-icon="proof"></span>%%t:addin.help.shares.proof%%</li>
                 <li><span class="help-icon danger" data-icon="revoke"></span>%%t:addin.help.shares.revoke%%</li>
               </ul>
               <ul class="help-icons">

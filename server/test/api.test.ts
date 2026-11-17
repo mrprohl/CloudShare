@@ -1108,3 +1108,115 @@ describe("personal settings (/api/settings)", () => {
     expect(res.json().settings).toMatchObject({ channels: ["recipients"], defaultChannel: "recipients" });
   });
 });
+
+describe("delivery proof (Zustellnachweis)", () => {
+  const form = (fields: Record<string, string>) => ({
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    payload: new URLSearchParams(fields).toString(),
+  });
+
+  it("records the file with its fingerprint and puts the gateway into the mail", async () => {
+    nc.createPublicShare.mockResolvedValue("https://cloud.example.test/s/proof-file");
+    const { body } = await startUpload("anna", "Angebot.pdf", 100);
+    const content = Buffer.from("y".repeat(100));
+    await putChunk("anna", body.uploadId, 1, content);
+    const res = await complete("anna", body.uploadId, { proof: true, client: { host: "Outlook", platform: "PC" } });
+    expect(res.statusCode).toBe(200);
+    const { shareUrl, proofId } = res.json();
+    expect(shareUrl).toBe("https://cloudshare.example.test/r/s/proof-file");
+    expect(proofId).toMatch(/^\d{8}-\d{4}-[2-9A-HJ-NP-Z]{4}$/);
+
+    const { caseById } = await import("../src/proof.js");
+    const created = caseById(proofId)!.events.find((e) => e.type === "link.created")!;
+    const { createHash } = await import("node:crypto");
+    expect(created.data).toMatchObject({
+      token: "proof-file", name: "Angebot.pdf", size: 100, protection: "password",
+      sha256: createHash("sha256").update(content).digest("hex"),
+    });
+    expect(caseById(proofId)!.events[0].data).toMatchObject({ client: { host: "Outlook", platform: "PC" } });
+  });
+
+  it("without the box ticked: the Nextcloud link as before, no case", async () => {
+    nc.createPublicShare.mockResolvedValue("https://cloud.example.test/s/no-proof");
+    const { body } = await startUpload("anna");
+    await putChunk("anna", body.uploadId, 1);
+    const res = await complete("anna", body.uploadId);
+    expect(res.json()).toMatchObject({ shareUrl: "https://cloud.example.test/s/no-proof", proofId: null });
+  });
+
+  it("lets only a recipient of the sent mail confirm their address with a code, then opens the link", async () => {
+    nc.createPublicShare.mockResolvedValue("https://cloud.example.test/s/proof-gw");
+    const { body } = await startUpload("anna");
+    await putChunk("anna", body.uploadId, 1);
+    const { proofId } = (await complete("anna", body.uploadId, { proof: true })).json();
+    const sendMailAsApp = vi.mocked((await import("../src/graph.js")).sendMailAsApp);
+    sendMailAsApp.mockClear();
+
+    // Before the mail was sent: nobody can get a code yet.
+    const early = await app.inject({ method: "GET", url: "/r/s/proof-gw" });
+    expect(early.statusCode).toBe(409);
+    expect(early.headers["content-security-policy"]).toContain("default-src 'none'");
+
+    const { recordMailSent, caseById } = await import("../src/proof.js");
+    recordMailSent(["proof-gw"], { subject: "Unterlagen", messageId: "<m@example.test>", from: "anna@example.test", to: ["erika@example.test"], cc: [], bcc: [] });
+    const page = await app.inject({ method: "GET", url: "/r/s/proof-gw" });
+    expect(page.statusCode).toBe(200);
+    expect(page.body).toContain('action="/r/s/proof-gw/code"');
+
+    // Not a recipient: the same answer, but no mail.
+    const stranger = await app.inject({ method: "POST", url: "/r/s/proof-gw/code", ...form({ address: "mallory@example.test" }) });
+    expect(stranger.statusCode).toBe(200);
+    expect(sendMailAsApp).not.toHaveBeenCalled();
+
+    // A recipient (any spelling): the code comes from the sender's mailbox.
+    const asked = await app.inject({ method: "POST", url: "/r/s/proof-gw/code", ...form({ address: "Erika@Example.test" }) });
+    expect(asked.statusCode).toBe(200);
+    expect(sendMailAsApp).toHaveBeenCalledOnce();
+    const [, owner, to, subject] = sendMailAsApp.mock.calls[0];
+    expect([owner, to]).toEqual(["oid-anna", "erika@example.test"]);
+    const code = /(\d{6})/.exec(subject)![1];
+
+    const wrong = await app.inject({ method: "POST", url: "/r/s/proof-gw/verify", ...form({ address: "erika@example.test", code: code === "000000" ? "111111" : "000000" }) });
+    expect(wrong.statusCode).toBe(400);
+    const right = await app.inject({
+      method: "POST", url: "/r/s/proof-gw/verify", ...form({ address: "erika@example.test", code }),
+      headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": "TestBrowser/1.0" },
+    });
+    expect(right.statusCode).toBe(303);
+    expect(right.headers.location).toBe("https://cloud.example.test/s/proof-gw");
+    const cookie = String(right.headers["set-cookie"]).split(";")[0];
+    expect(String(right.headers["set-cookie"])).toContain("HttpOnly");
+
+    // The same browser comes back: straight on, recorded again. A forged cookie gets the form.
+    const again = await app.inject({ method: "GET", url: "/r/s/proof-gw", headers: { cookie } });
+    expect(again.statusCode).toBe(303);
+    const forged = await app.inject({ method: "GET", url: "/r/s/proof-gw", headers: { cookie: `${cookie.slice(0, -2)}xx` } });
+    expect(forged.statusCode).toBe(200);
+
+    const types = caseById(proofId)!.events.map((e) => e.type);
+    expect(types).toEqual(expect.arrayContaining(["message.sent", "recipient.codeSent", "recipient.codeFailed", "recipient.verified", "link.opened"]));
+    expect(caseById(proofId)!.events.find((e) => e.type === "recipient.verified")!.data).toMatchObject({
+      address: "erika@example.test", userAgent: "TestBrowser/1.0",
+    });
+  });
+
+  it("hands the PDF only to the owner, through a signed address that expires", async () => {
+    nc.createPublicShare.mockResolvedValue("https://cloud.example.test/s/proof-pdf");
+    const { body } = await startUpload("anna");
+    await putChunk("anna", body.uploadId, 1);
+    const { proofId } = (await complete("anna", body.uploadId, { proof: true })).json();
+
+    expect((await app.inject({ method: "POST", url: `/api/proofs/${proofId}/link`, headers: as("bernd") })).statusCode).toBe(404);
+    const { url } = (await app.inject({ method: "POST", url: `/api/proofs/${proofId}/link`, headers: as("anna") })).json();
+    expect(url.startsWith(`https://cloudshare.example.test/proof/${proofId}.pdf?`)).toBe(true);
+    const path = url.replace("https://cloudshare.example.test", "");
+    const pdf = await app.inject({ method: "GET", url: path });
+    expect(pdf.statusCode).toBe(200);
+    expect(pdf.headers["content-type"]).toBe("application/pdf");
+    expect(pdf.rawPayload.subarray(0, 8).toString("latin1")).toBe("%PDF-1.4");
+    expect(pdf.headers["content-disposition"]).toContain(`${proofId}.pdf`);
+
+    const tampered = await app.inject({ method: "GET", url: path.replace(/until=\d+/, "until=99999999999999") });
+    expect(tampered.statusCode).toBe(403);
+  });
+});

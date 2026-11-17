@@ -291,6 +291,8 @@ deployed again.
 | `DEFAULT_DOWNLOAD_NOTICE` / `DEFAULT_UPLOAD_NOTICE` / `DEFAULT_SMS_NOTICE` | `true` | Personal settings, starting value of the notices – only where `DOWNLOAD_NOTICE` / `UPLOAD_NOTICE` / `SMS_NOTICE` are on |
 | `DEFAULT_LANGUAGE` | `auto` | Personal settings, starting value of the add-in language: `auto` (as in Outlook) or a language code |
 | `SMS_NOTICE` | like `DOWNLOAD_NOTICE` | `true`: note to the sender when seven.io reports a password SMS as not delivered later (same application permission `Mail.Send`; unset it follows `DOWNLOAD_NOTICE`, which switched it before). A note about an SMS seven.io refuses right away needs no switch |
+| `DELIVERY_PROOF` | like `DOWNLOAD_NOTICE` | `true`: offers "Zustellnachweis" (proof of delivery) in the pane – per mail, never ticked by default; see [Proof of delivery](#proof-of-delivery-optional). The code mail to the recipients needs the application permission `Mail.Send` |
+| `PROOF_RETENTION_DAYS` | `1095` | Days a proof of delivery is kept after its last event (three years, the regular limitation period) – independent of `DATA_RETENTION_DAYS` |
 | `CLEANUP_AFTER_DAYS` | `0` | Uploaded files go to the Nextcloud trash this many days after their link expired or was revoked; `off` = never. Received files are never deleted |
 | `DATA_RETENTION_DAYS` | `365` | Entries in `/data/cloudshare.db` not changed for this many days are deleted (daily, then the file is shrunk); `off` = never. A safety net – entries normally leave on their own (jobs after 7 days, links' data when they expire, SMS states after 120 days). Nextcloud connections and the cleanup list are never affected. At least `SHARE_MAX_EXPIRE_DAYS` |
 | `MAIL_FOOTER` | empty | Signature of the password mails for users without an own one (settings), filled from the sender's Microsoft 365 profile, e.g. `'{displayName} · {department}\n{company} · Tel. {phone} · {email}'` – recipients see who the password comes from; placeholders and rules in `cloudshare.env.example`. Empty = no signature (`setup.sh`: Enter). The link card in the message carries none |
@@ -362,6 +364,29 @@ corrected number) or as a password mail. Two kinds of failure:
   only with the delivery reports of step 3): "History" shows "not delivered". The note needs CloudShare's own
   app permission (`SMS_NOTICE=true`, application permission `Mail.Send` as for the download confirmation), because
   no user is signed in at that moment; without it only "History" shows it.
+
+### Proof of delivery (optional)
+
+For mails where the sender may later have to show **that and when** recipients got something. On with
+`DELIVERY_PROOF=true` (unset it follows `DOWNLOAD_NOTICE`; it needs the same application permission `Mail.Send`).
+The sender ticks **"Proof of delivery"** under "Validity and language" before inserting the link – never ticked by
+default. Details: [architecture.md → 2.12](docs/architecture.md#212-delivery-proof-zustellnachweis).
+
+- **Tracking ID** per mail (e.g. `20261117-1146-7Q2F`) in the link card, the password mail, the download
+  confirmation and "History".
+- **Record** with date and time of every step: link created (name, size, **SHA-256 fingerprint** of the file), the
+  mail as Exchange sent it (subject, **Message-ID** – findable in the Exchange message trace – sender, To, Cc, Bcc),
+  the password (way, recipient, SMS delivery report), every opening of the password link, every download, files
+  received, revoked or expired links. Each entry carries the hash of the one before, so a change afterwards shows.
+- **Recipients confirm their address**: the link in the mail leads to a CloudShare page first; the recipient enters
+  the address the mail went to and gets a six-digit code from the sender's mailbox; with it the browser goes on to
+  Nextcloud (the password is still needed). Address, time, IP address and browser are recorded. Only addresses the
+  mail went to get a code – **a distribution list does not work**, recipients use their own address from the mail.
+- **PDF**: "Proof" (document with a seal) in "History" opens it in the default browser.
+- **Privacy**: the record holds personal data of the recipients (address, IP address, browser, times) for the purpose
+  of proof; it is kept `PROOF_RETENTION_DAYS` (default three years) after its last event – add it to your record of
+  processing activities. The page tells recipients what is recorded.
+- It is evidence that can be checked, not a qualified delivery service in the sense of eIDAS.
 
 ### Text templates (optional)
 
