@@ -178,6 +178,7 @@ export async function requestCode(token: string, rawAddress: unknown, visitor: V
       card: {
         accent: "brand",
         title: code,
+        files: [],
         details: t("mail.proof.codeMail.details", { minutes: CODE_TTL / MINUTE, id: c.id }),
       },
     }),

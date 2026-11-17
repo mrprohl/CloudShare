@@ -1208,7 +1208,7 @@ describe("delivery proof (Zustellnachweis)", () => {
 
     expect((await app.inject({ method: "POST", url: `/api/proofs/${proofId}/link`, headers: as("bernd") })).statusCode).toBe(404);
     const { url } = (await app.inject({ method: "POST", url: `/api/proofs/${proofId}/link`, headers: as("anna") })).json();
-    expect(url).toMatch(new RegExp(`^https://cloudshare\.example\.test/proof/${proofId}\.pdf\?`));
+    expect(url.startsWith(`https://cloudshare.example.test/proof/${proofId}.pdf?`)).toBe(true);
     const path = url.replace("https://cloudshare.example.test", "");
     const pdf = await app.inject({ method: "GET", url: path });
     expect(pdf.statusCode).toBe(200);

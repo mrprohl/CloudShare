@@ -18,7 +18,7 @@
  * breaks the chain, which verifyCase() and the PDF show. Cases are kept PROOF_RETENTION_DAYS after their last event
  * (default 3 years), independent of DATA_RETENTION_DAYS. Store "proofs" in the database (sealed like everything).
  */
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomInt } from "node:crypto";
 import { config } from "./config.js";
 import { PersistentMap } from "./db.js";
 
@@ -95,7 +95,7 @@ export function newTrackingId(now = new Date()): string {
   }).formatToParts(now);
   const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "00";
   const alphabet = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
-  const random = [...randomBytes(4)].map((b) => alphabet[b % alphabet.length]).join("");
+  const random = Array.from({ length: 4 }, () => alphabet[randomInt(alphabet.length)]).join("");
   const id = `${get("year")}${get("month")}${get("day")}-${get("hour").replace("24", "00")}${get("minute")}-${random}`;
   return cases.has(id) ? newTrackingId(now) : id;
 }

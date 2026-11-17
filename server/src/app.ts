@@ -1090,7 +1090,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const earlier = caseOfToken(tokenOf(share.url))?.links?.[tokenOf(share.url)]?.sha256;
       const proof = recordProofLink(user, req.body, {
         token: info.token, jobId, url: shareUrl, kind: request ? "request" : "file", name: request ? uploadLinkItem() : fileName,
-        expireDate, size: request ? undefined : share.size, sha256: request ? undefined : earlier, knownFiles,
+        expireDate, size: request ? undefined : (share.size ?? undefined), sha256: request ? undefined : earlier, knownFiles,
         protection: noPassword ? "none" : "password", delivery, maxAccess: noPassword ? undefined : passwordLink.maxAccess,
       });
       req.log.info({ user: user.upn, path: share.path, noPassword, proof: proof.proofId }, "Share linked again");

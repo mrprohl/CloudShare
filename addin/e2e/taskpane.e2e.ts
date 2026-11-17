@@ -1643,7 +1643,8 @@ test("Hilfe: \"Hilfe\" in the account menu opens the guide in place of the tab, 
   await expect(page.locator("#panel-send")).toBeHidden();
   const help = page.locator("#panel-help");
   await expect(help).not.toContainText("help."); // every text exists in the language file
-  const sections = help.locator("details");
+  // "Zustellnachweis" only where the server offers it (DELIVERY_PROOF) – hidden here.
+  const sections = help.locator("details:not([hidden])");
   await expect(sections).toHaveCount(8);
   // The most common task is open, the rest closed until needed.
   await expect(sections.nth(1).locator("summary")).toHaveText("Große Dateien senden");
