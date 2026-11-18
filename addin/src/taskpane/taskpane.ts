@@ -2666,7 +2666,10 @@ function shareRow(share: ShareItem): HTMLElement {
   // A message: no download state (Vaultwarden does not report it), no link to copy or insert again (no key kept).
   if (share.kind === "message") {
     // No download state – only when it ends.
-    row.querySelector<HTMLElement>(".state-text")!.textContent = "";
+    const stateText = row.querySelector<HTMLElement>(".state-text")!;
+    stateText.textContent = "";
+    stateText.hidden = true; // no empty gap before "Endet …"
+    row.querySelector<HTMLElement>(".share-ends")!.style.marginLeft = "0";
     const ends = row.querySelector<HTMLElement>(".share-ends")!;
     ends.textContent = share.expiration ? t("shares.endsOnly", { date: formatDate(`${share.expiration}T12:00:00`) }) : "";
     row.querySelector<HTMLElement>(".share-state")!.hidden = !share.expiration;
