@@ -43,7 +43,7 @@ export interface ServerConfig {
   successMessageSeconds?: number;
   /** NEXTCLOUD_URL – "Nextcloud öffnen" in the account menu. */
   nextcloudUrl?: string;
-  /** "Zustellnachweis" offered in "Weitere Optionen" (DELIVERY_PROOF). */
+  /** "Zustellnachweis" offered under "Empfänger" (DELIVERY_PROOF). */
   deliveryProof?: boolean;
   /** Sensitivity labels of shared files: the mail takes them over ("inherit"), is offered them ("suggest") or nothing. */
   labelPolicy?: "inherit" | "suggest" | "off";

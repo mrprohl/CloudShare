@@ -86,8 +86,8 @@ every language ([2.8](#28-languages)). So one image serves every installation an
 
 The "Send" tab starts with a switch for **what** goes into the mail – **Files**, **Message** (a confidential message) or
 **Request** (an upload link) – and shows only that part; the one button in the footer names what it inserts ("Insert 2
-files as links", "Insert confidential message", "Insert upload link"). Password, "Send the password to" and the collapsed
-"More options" (one-line summary of the values for the chosen kind and the language for the recipients) apply to all three. "No password" is offered for files
+files as links", "Insert confidential message", "Insert upload link"). Password, the block "Empfänger" ("Kennwort an", "Sprache", for files the switch "Zustellnachweis") and the collapsed
+"Gültigkeit" (one-line summary of the times for the chosen kind) apply to all three. "No password" is offered for files
 only; a mail already fixed to links without password disables the button for the other two and says why. Files
 dragged onto the pane switch it to "Files".
 
@@ -183,7 +183,7 @@ wins) – Nextcloud's housekeeping deletes expired shares, so the date could not
 
 ### 2.5 Password channel: recipients, another address or SMS
 
-"Send the password to" (a select) in the taskpane decides **per insertion** where the password goes: every link carries
+"Kennwort an" (a select under "Empfänger") in the taskpane decides **per insertion** where the password goes: every link carries
 its way in its request (`passwordTo` – `""` = the recipients – or `passwordSms`, `deliveryFrom` in `app.ts`), and the
 step collects the ways of its links (`SeparatePart.deliveries`). A step with links for the recipients and one of the
 same password by SMS sends one password mail and one SMS; each way exactly once, also after an error in another one
@@ -262,7 +262,7 @@ Two kinds of language:
   server returns to the add-in.
 - **`LANGUAGE`** (default `en`) is the first guess of the taskpane page, the preselected language for the recipients
   and the fallback for notes to the sender whose add-in language is unknown.
-- **"Language for the recipients"** (`#recipient-language` in "More options", preselected from the personal
+- **"Language for the recipients"** (`#recipient-language` under "Empfänger", preselected from the personal
   setting `recipientLanguage`, kept per draft in `DraftState.recipientLanguage`): the link card is rendered in it
   (`inLanguage` in `addin/src/shared/i18n.ts`), and every link request carries it as `language`. The server keeps it
   per step (`SeparatePart.language`, the first link of a step decides) and writes the step's password mail and SMS in
@@ -423,8 +423,7 @@ changed fields are stored; a new default reaches everyone else.
 ### 2.12 Delivery proof ("Zustellnachweis")
 
 Optional per mail, for files only (the box is hidden for "Nachricht" and "Anfordern"), never by default: the sender
-ticks **"Zustellnachweis"** in "Weitere Optionen" (the collapsed
-summary says "mit / ohne Zustellnachweis" wherever it is offered; `#proof`,
+switches on **"Zustellnachweis"** under "Empfänger" (a switch, `#proof` with `role="switch"`,
 offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it needs the same application permission
 `Mail.Send`). It is evidence that can be checked, not a qualified delivery service in the sense of eIDAS.
 
