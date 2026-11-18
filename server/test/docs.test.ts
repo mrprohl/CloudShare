@@ -203,4 +203,28 @@ describe("documentation", () => {
       expect(helpKeys.filter((key) => !texts[key]?.trim()), `${file}: empty help texts`).toEqual([]);
     }
   });
+
+  it("names every entry of the account menu and every choice of the panes in the help, in every language", () => {
+    const html = read("addin/src/taskpane/taskpane.html");
+    // The account menu – every entry in the paragraph that describes it: "Nextcloud öffnen", "Zustellnachweise", …
+    const menu = [...html.matchAll(/class="account-menu-item"[^>]*>[\s\S]*?<span>%%t:addin\.([\w.]+)%%<\/span>/g)].map((m) => m[1]);
+    expect(menu.length).toBeGreaterThan(3);
+    for (const file of readdirSync(path.join(repo, "locales")).filter((f) => f.endsWith(".json"))) {
+      const texts = (JSON.parse(read(`locales/${file}`)) as { addin: Record<string, string> }).addin;
+      const paragraph = (texts["help.shares.account"] ?? "").toLowerCase();
+      expect(menu.filter((key) => !paragraph.includes(texts[key].toLowerCase())), `${file}: help.shares.account misses menu entries`).toEqual([]);
+    }
+    const keys = [
+      // The switches Dateien / Nachricht / Anfordern and Alle / Abgerufen / Ausstehend, and the switch "Zustellnachweis".
+      ...[...html.matchAll(/name="(?:kind|proof-filter)"[^>]*\/>\s*<span>%%t:addin\.([\w.]+)%%<\/span>/g)].map((m) => m[1]),
+      ...[...html.matchAll(/class="switch-text">%%t:addin\.([\w.]+)%%/g)].map((m) => m[1]),
+    ];
+    expect(keys.length).toBeGreaterThan(5);
+    for (const file of readdirSync(path.join(repo, "locales")).filter((f) => f.endsWith(".json"))) {
+      const texts = (JSON.parse(read(`locales/${file}`)) as { addin: Record<string, string> }).addin;
+      const help = Object.entries(texts).filter(([key]) => key.startsWith("help.")).map(([, text]) => text).join("\n").toLowerCase();
+      const missing = keys.filter((key) => texts[key] && !help.includes(texts[key].toLowerCase())).map((key) => `${key} ("${texts[key]}")`);
+      expect(missing, `${file}: the help does not mention these – explain them there`).toEqual([]);
+    }
+  });
 });

@@ -167,6 +167,29 @@ function recordProofLink(
   return { proofId: id, gateway: stored.url ? gatewayUrl(token) : undefined };
 }
 
+/**
+ * Links with "Zustellnachweis" and links without one never share a mail: their password would go out together – the
+ * password of the proof's files would reach the recipients before they confirmed their address. Which kind the mail's
+ * job holds so far: "proof", "plain", or null (no link yet, not the user's, already sent).
+ */
+function proofKindOf(jobId: unknown, owner: string): "proof" | "plain" | "mixed" | null {
+  const job = typeof jobId === "string" ? getJob(jobId) : undefined;
+  if (!job || job.owner !== owner || job.dispatched) return null;
+  const tokens = (job.separate ?? []).flatMap((part) => (part.shares ?? []).map((s) => s.token));
+  if (tokens.length === 0) return null;
+  const proof = tokens.map((token) => Boolean(caseOfToken(token)?.links?.[token]));
+  return proof.every(Boolean) ? "proof" : proof.some(Boolean) ? "mixed" : "plain";
+}
+
+/** Refuses a link that would mix "Zustellnachweis" and no proof in one mail (409 PROOF_MIX). */
+function assertNoProofMix(body: ShareRequest & { jobId?: unknown } | undefined, owner: string, withProof: boolean) {
+  const kind = proofKindOf(body?.jobId, owner);
+  if (kind === null) return;
+  if (kind === "mixed" || (kind === "proof") !== withProof) {
+    throw new HttpError(409, t(kind === "proof" ? "server.proofMixNeedsProof" : "server.proofMixNoProof"), "PROOF_MIX");
+  }
+}
+
 /** The way the password of a new link goes out (see ShareRequest), checked like PATCH /api/jobs/:id does. */
 function deliveryFrom(body: ShareRequest | undefined): Delivery | undefined {
   if (!body || (body.passwordTo === undefined && body.passwordSms === undefined)) return undefined;
@@ -791,6 +814,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const upload = ownUpload(req.params.id, user);
       if (upload.received.size !== upload.totalChunks) throw new HttpError(409, t("server.missingChunks"));
 
+      assertNoProofMix(req.body, user.oid, config.deliveryProof && req.body?.proof === true);
       // "Ohne Kennwort": plain public link – no Vaultwarden Send, no password job, no password mail.
       const noPassword = req.body?.noPassword === true;
       const { password, expireDate, passwordLink } = shareSettings(req.body, !noPassword);
@@ -827,6 +851,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
 
   app.post<{ Body: ShareRequest & { jobId?: string } }>("/api/requests", { config: { rateLimit: strictLimit } }, async (req) => {
     const user = await authenticate(req);
+    assertNoProofMix(req.body, user.oid, false); // an upload link never has a proof
     const { password, expireDate, passwordLink } = shareSettings(req.body);
     const delivery = deliveryFrom(req.body);
 
@@ -861,6 +886,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     if (!text || text.length > MESSAGE_MAX_LENGTH) {
       throw new HttpError(400, t("server.messageInvalid", { max: MESSAGE_MAX_LENGTH }));
     }
+    assertNoProofMix(req.body, user.oid, false); // a confidential message has no gateway
     const { password, passwordLink } = shareSettings(req.body);
     const delivery = deliveryFrom(req.body);
     const days = clampInt(req.body?.messageDays, config.sendExpireDays, 1, config.sendMaxExpireDays);
@@ -1182,6 +1208,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       if (!share || !isCloudShareShare(share)) throw new HttpError(404, t("server.shareNotFound"));
 
       const request = isRequestShare(share);
+      assertNoProofMix(req.body, user.oid, !request && config.deliveryProof && req.body?.proof === true);
       const noPassword = req.body?.noPassword === true;
       if (request && noPassword) throw new HttpError(400, t("server.requestNeedsPassword"));
       const { password, expireDate, passwordLink } = shareSettings(req.body, !noPassword);
@@ -1284,6 +1311,9 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     const job = getJob(req.params.id);
     if (!job || job.owner !== user.oid) throw new HttpError(404, t("server.jobNotFound"));
     if (job.dispatched) return { ok: true, alreadySent: true };
+    // Before sending: a mail that mixes links with and without "Zustellnachweis" is held back (the send handler shows
+    // the reason) – the proof's password would otherwise go out with the others.
+    if (proofKindOf(req.params.id, user.oid) === "mixed") throw new HttpError(409, t("server.proofMixSend"), "PROOF_MIX");
 
     // Set by the add-in only if the "From" field differs from the user's own mailbox (shared mailbox, on behalf).
     const from = req.body?.from;

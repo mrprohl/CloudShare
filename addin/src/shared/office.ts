@@ -386,6 +386,11 @@ export interface DraftState {
   /** "Zustellnachweis" ticked for this mail, and the tracking ID of its case once a link joined it. */
   proof?: boolean;
   proofId?: string;
+  /**
+   * Fixed by the first link: the mail holds links with "Zustellnachweis" (true) or without (false) – never both, or the
+   * proof's password would go out before the confirmation. Dropped with the links (releaseDraftIfLinksGone).
+   */
+  proofMail?: boolean;
 }
 
 export async function readDraftState(): Promise<DraftState> {

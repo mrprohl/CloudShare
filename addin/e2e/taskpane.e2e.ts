@@ -1081,7 +1081,7 @@ test("Ohne Kennwort: plain link, no password mail, upload links stay protected",
   expect(log.inserted[0].data).toContain("https://cloud.example.com/s/u1");
   expect(log.inserted[0].data).not.toContain("Kennwort");
   expect(log.customProps.cloudshareJob).toBeUndefined(); // nothing for the send handler to arm
-  expect(JSON.parse(log.session["cloudshare-state"])).toEqual({ noPassword: true, links: ["u1"] });
+  expect(JSON.parse(log.session["cloudshare-state"])).toEqual({ noPassword: true, links: ["u1"], proofMail: false });
 
   // The whole mail stays without password; an upload link would need one – said before any click.
   await expect(page.locator("#mode-random")).toBeDisabled();
@@ -1173,6 +1173,27 @@ test("Zustellnachweis: only for files; ticked, it goes with the upload and the c
   // The password comes after the confirmation – no "separate message" with the link mail.
   expect(card).toContain("Das Kennwort erhalten Sie, nachdem Sie Ihre E-Mail-Adresse bestätigt haben.");
   expect(card).not.toContain("separaten Nachricht");
+
+  // From now on this mail takes only files with a proof: no confidential message, no upload link, the switch fixed on.
+  await expect(page.locator("#proof")).toBeChecked();
+  await expect(page.locator("#proof")).toBeDisabled();
+  await expect(page.locator("#proof-hint")).toContainText("Diese Nachricht hat einen Zustellnachweis");
+  await expect(page.locator('input[name="kind"][value="message"]')).toBeDisabled();
+  await expect(page.locator('input[name="kind"][value="request"]')).toBeDisabled();
+  expect(JSON.parse((await officeLog(page)).session["cloudshare-state"])).toMatchObject({ proofMail: true });
+});
+
+test("Zustellnachweis: after a link without it, the mail takes no proof (never mixed in one mail)", async ({ page }) => {
+  await openTaskpane(page, { attachments: [attachment("a1", "Plan.pdf", 2 * MiB)], config: { deliveryProof: true } });
+  await expect(page.locator("#password")).not.toHaveValue("");
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
+  await expect(page.locator("#proof")).not.toBeChecked();
+  await expect(page.locator("#proof")).toBeDisabled();
+  await expect(page.locator("#proof-hint")).toContainText("schon Links ohne Zustellnachweis");
+  // A message or an upload link is still fine here.
+  await expect(page.locator('input[name="kind"][value="message"]')).toBeEnabled();
+  await expectAccessible(page);
 });
 
 test("Nachricht: inserts a card with the link, never the text, and shares the password step", async ({ page }) => {
@@ -1272,7 +1293,7 @@ test("Ohne Kennwort with download confirmation: the draft is tagged so the confi
   await expect(page.locator("#status")).toContainText("ohne Kennwort abrufbar");
   const log = await officeLog(page);
   expect(log.customProps.cloudshareJob).toBe("notice-1");
-  expect(JSON.parse(log.session["cloudshare-state"])).toEqual({ noPassword: true, jobId: "notice-1", links: ["u1"] });
+  expect(JSON.parse(log.session["cloudshare-state"])).toEqual({ noPassword: true, jobId: "notice-1", links: ["u1"], proofMail: false });
   expect(log.inserted[0].data).not.toContain("Kennwort");
   await expect(page.locator("#mode-random")).toBeDisabled();
 });

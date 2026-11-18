@@ -442,6 +442,11 @@ default, offered for "Files" only (not for a confidential message or an upload l
   got. The code mail has a button "Confirm address" that fills in the code – one click confirms; opening the link
   alone confirms nothing, so mail scanners that follow links do no harm. Phones offer the code from the mail; spaces
   and hyphens in the code do not matter.
+- **One mail, one kind**: a mail with a proof of delivery takes only files with a proof – no confidential message, no
+  upload link, no file without a proof (they have no confirmation page, and their password would reach the recipients
+  before the confirmation). A mail with links without a proof takes no proof. The pane offers only what fits (the switch
+  is fixed after the first link, "Message" and "Request" are greyed out); the server refuses a mix when inserting and
+  when sending (409 `PROOF_MIX`).
 - **Guessing**: after five addresses that are no recipients within an hour, the page takes no code requests for that
   link for an hour (the answer still reads the same) and the sender gets one mail with the attempts (time, address,
   IP address); it is in the record too.

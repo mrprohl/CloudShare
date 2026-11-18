@@ -261,6 +261,9 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .switch input:checked + .switch-track { background: var(--brand-bg); border-color: var(--brand-bg); }
 .switch input:checked + .switch-track .switch-thumb { transform: translateX(20px); background: #fff; }
 .switch input:focus-visible + .switch-track { outline: 2px solid var(--fg1); outline-offset: 2px; }
+/* Fixed for this mail (it has links with or without a proof already): greyed out like Outlook's locked switches. */
+.switch input:disabled, .switch:has(input:disabled) { cursor: not-allowed; }
+.switch input:disabled + .switch-track { opacity: .5; }
 .switch-field .hint { margin-top: 2px; }
 /* "Kennwort senden an": native select in the look of the inputs, own chevron (follows the theme colours). */
 .select-wrap { position: relative; }
@@ -545,6 +548,8 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
   background: var(--brand-tint-bg); border-color: var(--brand-tint-stroke); color: var(--brand-tint-fg); font-weight: 600;
 }
 .segment input:focus-visible + span { outline: 2px solid var(--focus); outline-offset: 1px; }
+/* Not possible in this mail (e.g. a message with "Zustellnachweis"): greyed out, the reason in the tooltip. */
+.segment input:disabled + span { color: var(--fg3); background: transparent; cursor: not-allowed; }
 
 /* --- Gültigkeit (collapsed, summary below the title) ------------------------------------- */
 .validity { margin-top: 4px; }

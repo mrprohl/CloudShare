@@ -119,6 +119,7 @@ describe("delivery proof – PDF", () => {
     expect(pdf).toContain("Protokoll unverändert: 3 Einträge");
     expect(pdf).toContain("Angebot \\(final\\).pdf");
     expect(pdf).toContain("ef".repeat(16)); // the fingerprint (wrapped lines keep it in pieces)
+    expect(pdf).toContain("Angebot \\(final\\).pdf SHA-256:"); // it names its file
     expect(pdf).toContain("<abc@example.test>");
     expect(pdf).toContain("SMS an +49 170 \x95\x95\x95\x95 67");
     expect(proofPdf(caseById(id)!, "en").toString("latin1")).toContain(`(Case ${id})`);

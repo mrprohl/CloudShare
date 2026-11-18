@@ -58,7 +58,8 @@ function describe(e: ProofEvent, c: ProofCase): { label: string; details: Array<
       return {
         label: t(`mail.proof.event.linkCreated.${text(d.kind) || "file"}`),
         details,
-        mono: typeof d.sha256 === "string" ? [[t("mail.proof.field.sha256"), d.sha256]] : undefined,
+        // The fingerprint names its file: "Angebot.zip SHA-256: 3a7b…".
+        mono: typeof d.sha256 === "string" ? [[t("mail.proof.field.sha256", { name: text(d.name) }), d.sha256]] : undefined,
       };
     }
     case "message.sent":

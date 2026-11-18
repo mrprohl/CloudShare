@@ -69,6 +69,7 @@ const recipientLanguageField = $<HTMLDivElement>("recipient-language-field");
 const recipientLanguageSelect = $<HTMLSelectElement>("recipient-language");
 const proofField = $<HTMLDivElement>("proof-field");
 const proofInput = $<HTMLInputElement>("proof");
+const proofHint = $<HTMLParagraphElement>("proof-hint");
 const encryptedField = $<HTMLDivElement>("encrypted-field");
 const encryptedText = $<HTMLParagraphElement>("encrypted-text");
 const encryptedConfirm = $<HTMLInputElement>("encrypted-confirm");
@@ -866,6 +867,25 @@ function renderRecipientLanguages(selected: string) {
 /** The language the recipients get the link card, password mail and SMS in. */
 const recipientLanguage = () => recipientLanguageSelect.value || undefined;
 
+/**
+ * One mail, one kind: with "Zustellnachweis" only files with a proof, without it no proof – the proof's password would
+ * otherwise go out with the others before the recipient confirmed (the server refuses a mix too, PROOF_MIX). `undefined`:
+ * no link yet, everything open.
+ */
+function applyProofLock(proofMail: boolean | undefined) {
+  const locked = proofMail !== undefined && serverConfig?.deliveryProof === true;
+  if (locked) proofInput.checked = proofMail;
+  proofInput.disabled = locked;
+  proofHint.textContent = t(!locked ? "proof.hint" : proofMail ? "proof.lockedOn" : "proof.lockedOff");
+  // With a proof: no confidential message, no upload link in this mail (they have no confirmation page).
+  for (const radio of kindRadios) {
+    const blocked = locked && proofMail === true && radio.value !== "files";
+    radio.disabled = blocked;
+    radio.closest<HTMLElement>(".segment")!.title = blocked ? t("proof.kindBlocked") : "";
+  }
+  if (locked && proofMail && selectedKind() !== "files") selectKind("files");
+}
+
 /** "Zustellnachweis" ticked (and offered by the server). */
 function proofWanted() {
   return !proofField.hidden && proofInput.checked;
@@ -905,6 +925,10 @@ const newStep = () => Math.random().toString(36).slice(2, 12);
  */
 async function rememberShareChoice(jobId: string | null, noPassword = jobId === null, proofId?: string | null) {
   if (proofId) await updateDraftState({ proofId });
+  // The first link fixes whether the mail has a proof of delivery – the pane offers only the same from now on.
+  const draft = await readDraftState();
+  if (draft.proofMail === undefined) await updateDraftState({ proofMail: Boolean(proofId) });
+  applyProofLock(draft.proofMail ?? Boolean(proofId));
   if (noPassword || jobId === null) {
     // Links without password. With the download confirmation the server keeps a job without password, which the
     // send handler arms like a password job (it only waits for the sent mail).
@@ -1344,6 +1368,7 @@ function lockNoPassword() {
 
 /** Password options as for a new mail (after all CloudShare links were deleted from it). */
 function unlockPassword() {
+  applyProofLock(undefined);
   modeRandom.disabled = false;
   modeOwn.disabled = false;
   modeNone.disabled = false;
@@ -2897,6 +2922,7 @@ Office.onReady(async () => {
   for (const id of ["help-proof", "help-shares-proof"]) $<HTMLElement>(id).hidden = !serverConfig.deliveryProof;
   $<HTMLElement>("help-files-labels").hidden = serverConfig.labelPolicy === "off";
   proofInput.checked = state.proof === true;
+  applyProofLock(state.proofMail);
   applyLinkMax();
   maxAccessInput.max = String(serverConfig.sendMaxAccessLimit);
   for (const input of [passwordDaysInput, messageDaysInput]) {
