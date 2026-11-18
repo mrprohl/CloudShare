@@ -696,7 +696,8 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
 - Application ID URI `api://cloudshare.example.com/<client-id>` (must match the manifest's `<Resource>`), scope
   `access_as_user` (admins and users), authorized client `ea5a67f6-b6f3-4338-b240-c655ddc3cc8e` (Microsoft Office).
 - Delegated Graph permissions `openid`, `profile`, `offline_access`, `User.Read`, `Mail.Read`, `Mail.Read.Shared`,
-  `Mail.Send`, `Mail.Send.Shared` with **admin consent**; client secret → `ENTRA_CLIENT_SECRET` (renew before expiry).
+  `Mail.Send`, `Mail.Send.Shared` with **admin consent**, optionally `InformationProtectionPolicy.Read` (label names; all of
+  them also listed in the manifest's `<WebApplicationInfo><Scopes>`); client secret → `ENTRA_CLIENT_SECRET` (renew before expiry).
 - Add-in: admin center → *Integrated apps* → manifest URL `https://cloudshare.example.com/manifest.xml`.
 - Only for the download confirmation: application permission `Mail.Send`, **restricted** to the CloudShare users with
   Exchange Online RBAC for applications.
