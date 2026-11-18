@@ -80,8 +80,11 @@ const proofNote = (proof: CardProof | undefined) =>
   proof ? t(proof.gateway ? "card.proof" : "card.proofMessage", { id: proof.id }) : "";
 
 /** "Gültig bis 28.11.2026 · Das Kennwort erhalten Sie in einer separaten Nachricht." */
+/** With a delivery proof the password comes only after the recipient confirmed their address (the gateway). */
+const passwordNote = (proof?: CardProof) => t(proof?.gateway ? "card.proofPassword" : "card.passwordNote");
+
 const cardNote = (expireDate: string, withPassword: boolean, proof?: CardProof) =>
-  [t("card.validUntil", { date: expireDate }), withPassword ? t("card.passwordNote") : "", proofNote(proof)].filter(Boolean).join(" · ");
+  [t("card.validUntil", { date: expireDate }), withPassword ? passwordNote(proof) : "", proofNote(proof)].filter(Boolean).join(" · ");
 
 /** Card for shared files: one row per file with type badge, name, size and a download button. */
 export function filesCard(
@@ -139,7 +142,7 @@ export function filesText(
   proof?: CardProof,
 ): string {
   const lines = files.map((f) => `- ${f.name}${f.size === null ? "" : ` (${formatSize(f.size)})`}: ${f.url}`);
-  return `\n${t("card.filesPlain", { date: expireDate })}\n${lines.join("\n")}\n` + (withPassword ? `${t("card.passwordNote")}\n` : "") +
+  return `\n${t("card.filesPlain", { date: expireDate })}\n${lines.join("\n")}\n` + (withPassword ? `${passwordNote(proof)}\n` : "") +
     (proof ? `${proofNote(proof)}\n` : "");
 }
 
@@ -148,5 +151,5 @@ export function messageText(url: string, expireDate: string, proof?: CardProof):
 }
 
 export function requestText(url: string, expireDate: string, proof?: CardProof): string {
-  return `\n${t("card.requestPlain", { date: expireDate })}\n${url}\n${t("card.passwordNote")}\n` + (proof ? `${proofNote(proof)}\n` : "");
+  return `\n${t("card.requestPlain", { date: expireDate })}\n${url}\n${passwordNote(proof)}\n` + (proof ? `${proofNote(proof)}\n` : "");
 }

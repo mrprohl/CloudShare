@@ -13,6 +13,7 @@ import { NextcloudClient, NOT_CONNECTED } from "./nextcloud.js";
 import { addEvent, endLink, openCases, saveCase, type ProofCase } from "./proof.js";
 import { tokenOf } from "./shares.js";
 import { sendAccessCount } from "./vaultwarden.js";
+import { sendDownloadProof, sendFinalProof } from "./proofMail.js";
 
 const INTERVAL = 10 * 60_000;
 const DAY = 86_400_000;
@@ -44,7 +45,7 @@ async function watchSends(c: ProofCase, now: number) {
 }
 
 /** Downloads and received files of the Nextcloud links of the owner's cases; links gone or expired are ended. */
-async function watchLinks(owner: string, items: ProofCase[], now: number) {
+async function watchLinks(owner: string, items: ProofCase[], now: number, log?: Log) {
   const creds = getCredentials(owner);
   if (!creds) return;
   const nc = new NextcloudClient(creds, () => removeCredentials(owner));
@@ -66,6 +67,15 @@ async function watchLinks(owner: string, items: ProofCase[], now: number) {
         c.seenDownloads[token] = [...seen, ...fresh];
         saveCase(c.id);
         for (const time of fresh) addEvent(c.id, "download", { links: [token], name: link.name, downloadedAt: time }, now);
+        // The first download of the case: the sender gets the PDF (instead of the plain download confirmation).
+        if (!c.downloadMailSent) {
+          await sendDownloadProof(c, link.name, Date.parse(fresh[0]) || now)
+            .then(() => {
+              c.downloadMailSent = true;
+              saveCase(c.id);
+            })
+            .catch((err) => log?.warn({ err, case: c.id }, "Delivery proof: PDF after the download not sent, retrying later"));
+        }
       } else {
         uid ??= (await nc.userInfo()).id;
         const files = await nc.listFiles(uid, share.path.split("/").filter(Boolean));
@@ -80,6 +90,12 @@ async function watchLinks(owner: string, items: ProofCase[], now: number) {
   }
 }
 
+/** Brings one case up to date right away (before its PDF is made) – downloads, received files, openings. */
+export async function refreshCase(c: ProofCase, log: Log, now = Date.now()): Promise<void> {
+  await watchLinks(c.owner, [c], now, log).catch((err) => log.warn({ err, case: c.id }, "Delivery proof: links not checked"));
+  await watchSends(c, now).catch((err) => log.warn({ err, case: c.id }, "Delivery proof: Sends not checked"));
+}
+
 /** One pass (exported for tests; normally driven by startProofWatcher). */
 export async function runProofWatch(log: Log, now = Date.now()) {
   const open = openCases().filter((c) => !c.done);
@@ -87,7 +103,7 @@ export async function runProofWatch(log: Log, now = Date.now()) {
   for (const c of open) byOwner.set(c.owner, [...(byOwner.get(c.owner) ?? []), c]);
   for (const [owner, items] of byOwner) {
     try {
-      await watchLinks(owner, items, now);
+      await watchLinks(owner, items, now, log);
     } catch (err) {
       if (!(err instanceof HttpError && err.code === NOT_CONNECTED)) {
         log.warn({ err, user: items[0].ownerUpn }, "Delivery proof: links not checked, retrying later");
@@ -99,6 +115,16 @@ export async function runProofWatch(log: Log, now = Date.now()) {
       const links = Object.entries(c.links ?? {});
       const lastExpiry = Math.max(0, ...links.map(([, l]) => endOfDay(l.expireDate)));
       if (links.length && (links.every(([t]) => c.ended?.includes(t)) || lastExpiry + 2 * DAY < now)) {
+        // The complete PDF to the sender – before the case is done, so a failed mail is tried again next pass.
+        if (!c.finalMailSent) {
+          try {
+            await sendFinalProof(c);
+            c.finalMailSent = true;
+          } catch (err) {
+            log.warn({ err, case: c.id }, "Delivery proof: final PDF not sent, retrying later");
+            continue;
+          }
+        }
         c.done = true;
         saveCase(c.id);
       }

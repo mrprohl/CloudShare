@@ -1148,6 +1148,9 @@ test("Zustellnachweis: only for files; ticked, it goes with the upload and the c
   const card = (await officeLog(page)).inserted[0].data as string;
   expect(card).toContain("https://cloudshare.example.com/r/s/u"); // the gateway, not the Nextcloud link
   expect(card).toContain("Zustellnachweis 20261117-1146-7Q2F");
+  // The password comes after the confirmation – no "separate message" with the link mail.
+  expect(card).toContain("Das Kennwort erhalten Sie, nachdem Sie Ihre E-Mail-Adresse bestätigt haben.");
+  expect(card).not.toContain("separaten Nachricht");
 });
 
 test("Nachricht: inserts a card with the link, never the text, and shares the password step", async ({ page }) => {

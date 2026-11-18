@@ -21,7 +21,11 @@ import { recordDelivery } from "./deliveries.js";
 import { registerNotices, type Notice } from "./notices.js";
 import { passwordMailHtml, smsProblemMailHtml } from "./passwordMail.js";
 import { registerPasswordRef } from "./passwordRefs.js";
-import { caseOfToken, recordMailSent } from "./proof.js";
+import { caseOfToken, eventForTokens, recordMailSent } from "./proof.js";
+
+/** All links of a step go through the gateway of a delivery proof (file and upload links of a case). */
+const isDeferredStep = (shares: StepShare[]) =>
+  shares.length > 0 && shares.every((s) => Boolean(caseOfToken(s.token)?.links?.[s.token]?.url));
 import { maskPhone, sendSms, smsEnabled, smsNumberProblem } from "./sms.js";
 import { PersistentMap } from "./db.js";
 import { defaultTemplates, render, smsFiles, templatesFor, type Templates } from "./templates.js";
@@ -526,6 +530,10 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
             });
           const tokens = (part.shares ?? []).map((s) => s.token);
           const ways = partDeliveries(job, part);
+          // "Zustellnachweis": every link of the step leads through the gateway – the password goes out only after a
+          // recipient confirmed their address there (proofPassword.ts), so the mail and the password do not arrive together.
+          const deferred = config.deliveryProof && isDeferredStep(part.shares ?? []);
+          if (deferred) eventForTokens(tokens, "password.deferred", { ways: ways.map(deliveryKey) });
 
           // Every way of the step once: password mail to the recipients or another address, SMS to a number. SMS last –
           // "Verlauf" shows the last delivery, and an SMS has a status to follow. A way already sent (before an
@@ -533,6 +541,7 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
           for (const way of [...ways].sort((a, b) => Number(a.channel === "sms") - Number(b.channel === "sms"))) {
             const key = deliveryKey(way);
             if (part.sentWays?.includes(key)) continue;
+            if (deferred) continue;
             if (way.channel === "sms") {
               if (part.sendId) await sendStepBySms(job, part, way.to, t, tokens, armed.graphToken, sender, message.subject, log, armed.language);
             } else {
@@ -570,6 +579,9 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
               maxAccessCount: part.maxAccessCount,
               senderName: job.senderName,
               department: job.department,
+              ...(deferred
+                ? { deferred: true, toRecipients: ways.some((w) => w.channel === "recipients"), signature: job.signature }
+                : {}),
             }).catch((err) => log.warn({ err, user: job.ownerUpn }, "Password entry for resending not recorded"));
           }
         }

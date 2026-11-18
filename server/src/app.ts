@@ -71,6 +71,7 @@ import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } f
 import { addLink, caseById, caseFor, caseForLink, caseOfToken, gatewayUrl, linkUrlFor, type ProofLink } from "./proof.js";
 import { gatewayCsp, openGateway, requestCode, verifyCode, type GatewayResult, type Visitor } from "./proofGateway.js";
 import { proofPdf } from "./proofPdf.js";
+import { refreshCase } from "./proofWatcher.js";
 import { sign, signedBy } from "./storage.js";
 import {
   createMessageSend,
@@ -1260,7 +1261,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
   app.post<{ Params: { token: string }; Body: { address?: unknown; code?: unknown } }>(
     "/r/s/:token/verify",
     { config: { rateLimit: strictLimit } },
-    async (req, reply) => sendGateway(reply, verifyCode(req.params.token, req.body?.address, req.body?.code, visitorOf(req))),
+    async (req, reply) => sendGateway(reply, await verifyCode(req.params.token, req.body?.address, req.body?.code, visitorOf(req))),
   );
 
   /** How long the address of a proof PDF works – it is opened in the default browser right away. */
@@ -1292,6 +1293,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       }
       const found = caseById(id);
       if (!found) return reply.status(404).type("text/plain; charset=utf-8").send(t("server.proofNotFound"));
+      // Up to date: downloads and openings since the last pass of the watcher (every 10 minutes).
+      await refreshCase(found, req.log);
       const pdf = proofPdf(found, knownLanguage(lang));
       const name = `${tIn(knownLanguage(lang), "mail.proof.fileName")}-${found.id}.pdf`;
       req.log.info({ user: found.ownerUpn, case: found.id }, "Delivery proof PDF downloaded");
