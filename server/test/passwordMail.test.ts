@@ -105,17 +105,27 @@ describe("password mail – limits and the mail after the confirmation", () => {
       .toContain("Der Knopf funktioniert nur einmal und bis 25.11.2026");
   });
 
-  it("right after the confirmation: says so and lists the steps back on the page", () => {
+  it("right after the confirmation: two numbered steps in the card, each with its button and plain link", () => {
     const html = passwordMailHtml({
       ...base, fileNames: ["Angebot.zip"], subject: "Unterlagen", senderName: "Anna Muster", maxAccessCount: 3,
-      expiresOn: "25.11.2026", afterConfirmation: { kind: "file", url: "https://cloudshare.example.test/r/s/tok" },
+      expiresOn: "25.11.2026", trackingId: "20261118-1932-DHLB", sendUrl: "https://vault.example.test/#/send/abc/key",
+      afterConfirmation: { kind: "file", url: "https://cloudshare.example.test/r/s/tok" },
     });
     expect(html).toContain("Sie haben eben Ihre E-Mail-Adresse bestätigt. Hier ist das Kennwort für „Angebot.zip“ aus der Nachricht „Unterlagen“ von Anna Muster.");
-    expect(html).toContain("<ol");
-    expect(html).toContain("Klicken Sie auf „Zum Download“ – hier unten oder auf der geöffneten Seite.");
-    // The button leads to the gateway (confirmed browser: straight on; anyone else: the code again), never to Nextcloud.
-    expect(html).toContain('<a href="https://cloudshare.example.test/r/s/tok"');
+    expect(html).toContain("Kennwort und Download");
+    // Step 1 first, then step 2 – the password link never stands below the download.
+    const password = html.indexOf("Kennwort anzeigen und notieren");
+    const download = html.indexOf("Datei herunterladen – dort das Kennwort eingeben");
+    expect(password).toBeGreaterThan(0);
+    expect(download).toBeGreaterThan(password);
+    // Each step: its button and its address as plain text (the download to the gateway, never to Nextcloud).
+    expect(html.match(/https:\/\/vault\.example\.test\/#\/send\/abc\/key/g)).toHaveLength(3); // href of button, href and text of the link
+    expect(html.match(/https:\/\/cloudshare\.example\.test\/r\/s\/tok/g)).toHaveLength(3);
+    expect(html.indexOf("https://cloudshare.example.test/r/s/tok")).toBeGreaterThan(download);
     expect(html).toContain(">Zum Download</a>");
-    expect(html).not.toContain("wenn Sie den Link öffnen"); // the page says where to enter it
+    expect(html).toContain("Kennwort-Link: 3-mal, bis 25.11.2026 · Vorgang 20261118-1932-DHLB");
+    expect(html).not.toContain("Falls der Button nicht funktioniert");
+    expect(html).not.toContain("<ol");
   });
+
 });

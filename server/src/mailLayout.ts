@@ -3,8 +3,8 @@
  * and the notes about a password SMS to the sender. Same look as the link card the taskpane inserts
  * (addin/src/taskpane/mailCard.ts – keep colours and spacing in sync):
  *
- *   text paragraphs · one white card (accent on the left, title, file rows with type badges, at most one button,
- *   a small detail line) · optional text below · grey line "sent automatically by CloudShare"
+ *   text paragraphs · one white card (accent on the left, title, file rows with type badges, at most one button or
+ *   numbered steps each with its button and plain link, a small detail line) · optional text below · grey line "sent automatically by CloudShare"
  *
  * The colour of the accent tells the kind: brand blue (password), green (downloaded), red (problem). Tables and inline
  * styles only, so it renders in classic Outlook, Outlook on the web, Gmail and on phones.
@@ -57,6 +57,11 @@ export interface MailCard {
   /** A short value shown large under the title (the six-digit code of the delivery proof). */
   highlight?: string;
   button?: { label: string; url: string };
+  /**
+   * Numbered steps instead of the one button (the password mail after the delivery proof's confirmation): each with
+   * its text, its button and, right below, the same address as plain text for clients that hide buttons.
+   */
+  steps?: { text: string; button: { label: string; url: string } }[];
   /** Small grey line at the bottom of the card (validity, accesses, number …). */
   details?: string;
 }
@@ -70,12 +75,22 @@ export function mailCard(card: MailCard): string {
         `line-height:20px;font-weight:600;color:#242424;word-break:break-all;">${escapeHtml(name)}</td></tr>`,
     )
     .join("");
-  const button = card.button
-    ? `<div style="margin:14px 0 0;">` +
-      `<a href="${escapeHtml(card.button.url)}" style="display:inline-block;background:${BRAND};border:1px solid ${BRAND};` +
-      `border-radius:4px;color:#ffffff;font-family:${FONT};font-size:13px;font-weight:600;line-height:18px;` +
-      `padding:6px 14px;text-decoration:none;white-space:nowrap;">${escapeHtml(card.button.label)}</a></div>`
-    : "";
+  const button = card.button ? `<div style="margin:14px 0 0;">${buttonLink(card.button)}</div>` : "";
+  const steps = (card.steps ?? [])
+    .map(
+      (step, i) =>
+        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:14px 0 0;width:100%;"><tr>` +
+        `<td width="24" valign="top" style="width:24px;padding:0 10px 0 0;">` +
+        `<div style="width:24px;height:24px;line-height:24px;border-radius:12px;background:${BRAND};color:#ffffff;` +
+        `font-family:${FONT};font-size:12px;font-weight:700;text-align:center;">${i + 1}</div></td>` +
+        `<td valign="top" style="font-family:${FONT};">` +
+        `<div style="font-size:14px;line-height:24px;font-weight:600;color:#242424;margin:0 0 6px;">${escapeHtml(step.text)}</div>` +
+        buttonLink(step.button) +
+        `<div style="font-size:12px;line-height:16px;margin:6px 0 0;word-break:break-all;">` +
+        `<a href="${escapeHtml(step.button.url)}" style="color:${BRAND};">${escapeHtml(step.button.url)}</a></div>` +
+        `</td></tr></table>`,
+    )
+    .join("");
   const details = card.details
     ? `<div style="font-size:12px;line-height:16px;color:#616161;margin:10px 0 0;">${escapeHtml(card.details)}</div>`
     : "";
@@ -92,8 +107,18 @@ export function mailCard(card: MailCard): string {
       : "") +
     (rows ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">${rows}</table>` : "") +
     button +
+    steps +
     details +
     `</td></tr></table>`
+  );
+}
+
+/** A button as a link (the card's button and the buttons of its steps). */
+function buttonLink(button: { label: string; url: string }): string {
+  return (
+    `<a href="${escapeHtml(button.url)}" style="display:inline-block;background:${BRAND};border:1px solid ${BRAND};` +
+    `border-radius:4px;color:#ffffff;font-family:${FONT};font-size:13px;font-weight:600;line-height:18px;` +
+    `padding:6px 14px;text-decoration:none;white-space:nowrap;">${escapeHtml(button.label)}</a>`
   );
 }
 

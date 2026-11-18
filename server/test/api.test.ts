@@ -1363,3 +1363,21 @@ describe("delivery proof – the list for the search (GET /api/proofs)", () => {
       .some((p: { id: string }) => p.id === proofId)).toBe(false);
   });
 });
+
+describe("delivery proof – the pages carry the organisation", () => {
+  it("shows the CloudShare logo with the organisation, and website, imprint and privacy links", async () => {
+    const { config } = await import("../src/config.js");
+    Object.assign(config, { companyName: "Example GmbH", companyWebsiteUrl: "https://www.example.com", imprintUrl: "https://www.example.com/imprint", privacyUrl: "" });
+    try {
+      const page = await app.inject({ method: "GET", url: "/r/s/unknown-token" });
+      expect(page.body).toContain('<img src="/assets/icon-64.png"');
+      expect(page.body).toContain('<span class="brand-company">Example GmbH</span>');
+      expect(page.body).toContain('<a href="https://www.example.com" rel="noopener">example.com</a>');
+      expect(page.body).toContain(">Impressum</a>");
+      expect(page.body).not.toContain("Datenschutz</a>"); // no PRIVACY_URL: no link
+      expect(page.headers["content-security-policy"]).toContain("img-src 'self' data:");
+    } finally {
+      Object.assign(config, { companyName: "", companyWebsiteUrl: "", imprintUrl: "", privacyUrl: "" });
+    }
+  });
+});
