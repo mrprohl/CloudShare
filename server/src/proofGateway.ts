@@ -19,6 +19,8 @@ import { sendMailAsApp } from "./graph.js";
 import { inRecipientLanguage, mailLanguage, t } from "./i18n.js";
 import { escapeHtml, mailDocument, paragraph } from "./mailLayout.js";
 import { addEvent, caseOfToken, type ProofCase, type ProofLink } from "./proof.js";
+import { sendLockNotice } from "./proofMail.js";
+import { releasePassword, type ReleasedPassword } from "./proofPassword.js";
 import { sign, signedBy } from "./storage.js";
 
 const MINUTE = 60_000;
@@ -27,6 +29,9 @@ const MAX_TRIES = 5;
 /** Codes per address and link in 15 minutes, and per link in an hour (no mail flood from the sender's mailbox). */
 const CODES_PER_ADDRESS = 3;
 const CODES_PER_LINK = 10;
+/** Addresses that are no recipients, per link in an hour, before the link takes no code requests for an hour. */
+const UNKNOWN_PER_LINK = 5;
+const LOCK_TIME = 60 * MINUTE;
 
 interface PendingCode {
   hash: string;
@@ -38,6 +43,9 @@ interface PendingCode {
 const pending = new Map<string, PendingCode>();
 /** When codes were sent, per token|address and per token – for the limits above. */
 const sentTimes = new Map<string, number[]>();
+/** Requests for addresses that are no recipients, per link (time, address, IP) – and links locked until when. */
+const unknownTries = new Map<string, Array<{ at: number; address: string; ip: string }>>();
+const lockedUntil = new Map<string, number>();
 
 const hashCode = (code: string) => createHash("sha256").update(code).digest("hex");
 const normalize = (address: unknown) => (typeof address === "string" ? address.trim().toLowerCase() : "");
@@ -108,7 +116,7 @@ main{max-width:440px;margin:48px auto;padding:0 16px}.card{background:var(--card
 h1{font-size:20px;font-weight:600;margin:0 0 12px}p{margin:0 0 12px}.small{font-size:12px;color:var(--fg2)}.error{color:var(--danger);font-weight:600}
 label{display:block;font-weight:600;margin:16px 0 4px}input{width:100%;font:inherit;padding:7px 10px;border:1px solid var(--stroke);border-bottom-color:var(--fg2);border-radius:4px;background:var(--card);color:var(--fg)}
 input:focus{outline:2px solid var(--brand);outline-offset:-1px}button{margin-top:16px;font:inherit;font-weight:600;color:#fff;background:var(--brand);border:0;border-radius:4px;padding:8px 20px;cursor:pointer}
-button:hover{background:var(--brand-hover)}.code{letter-spacing:.3em;font-size:18px}
+button:hover{background:var(--brand-hover)}a.button{display:inline-block;margin-top:4px;font-weight:600;color:#fff;background:var(--brand);border-radius:4px;padding:8px 20px;text-decoration:none}a.button:hover{background:var(--brand-hover)}ol{margin:0 0 12px;padding-left:20px}li{margin:0 0 8px}.code{letter-spacing:.3em;font-size:18px}
 </style></head><body><main><div class="card"><h1>${escapeHtml(title)}</h1>${body}</div>
 <p class="small" style="margin-top:12px">${escapeHtml(t("mail.proof.gateway.privacy"))}</p></main></body></html>`;
 
@@ -164,6 +172,10 @@ export async function requestCode(token: string, rawAddress: unknown, visitor: V
   }
   // Every address is answered the same way – page, limits, timing –, so nobody can find out by trying which addresses
   // the mail went to. Only a recipient gets a mail; the limits count every request, recipient or not.
+  // Locked after too many addresses that are no recipients: the same answer, nothing sent (nothing to learn by trying).
+  if ((lockedUntil.get(token) ?? 0) > now) {
+    return inRecipientLanguage(c.language, () => ({ status: 200, html: codeForm(token, address) }));
+  }
   const key = `${token}|${address}`;
   if (recent(key, 15 * MINUTE, now).length >= CODES_PER_ADDRESS || recent(token, 60 * MINUTE, now).length >= CODES_PER_LINK) {
     return inRecipientLanguage(c.language, () => ({ status: 429, html: codeForm(token, address, t("mail.proof.gateway.tooMany")) }));
@@ -172,6 +184,16 @@ export async function requestCode(token: string, rawAddress: unknown, visitor: V
   sentTimes.get(token)!.push(now);
   if (!c.recipients?.includes(address)) {
     addEvent(c.id, "recipient.unknownAddress", { links: [token], address, ip: visitor.ip });
+    const tries = (unknownTries.get(token) ?? []).filter((x) => now - x.at < 60 * MINUTE);
+    tries.push({ at: now, address, ip: visitor.ip });
+    unknownTries.set(token, tries);
+    if (tries.length >= UNKNOWN_PER_LINK) {
+      // Somebody is guessing: no code requests for this link for an hour; the sender is told once (with the attempts).
+      lockedUntil.set(token, now + LOCK_TIME);
+      unknownTries.delete(token);
+      addEvent(c.id, "gateway.locked", { links: [token], attempts: tries.length, until: new Date(now + LOCK_TIME).toISOString() });
+      void sendLockNotice(c, link.name, tries).catch(() => undefined);
+    }
     return inRecipientLanguage(c.language, () => ({ status: 200, html: codeForm(token, address) }));
   }
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
@@ -196,8 +218,11 @@ export async function requestCode(token: string, rawAddress: unknown, visitor: V
   return inRecipientLanguage(c.language, () => ({ status: 200, html: codeForm(token, address) }));
 }
 
-/** POST /r/s/:token/verify – a right code confirms the address (recorded) and leads on to the link. */
-export function verifyCode(token: string, rawAddress: unknown, rawCode: unknown, visitor: Visitor, now = Date.now()): GatewayResult {
+/**
+ * POST /r/s/:token/verify – a right code confirms the address (recorded). A password held back for the link goes out
+ * now (proofPassword.ts) and the page says what to do next, with the way on to the link; without one, straight on.
+ */
+export async function verifyCode(token: string, rawAddress: unknown, rawCode: unknown, visitor: Visitor, now = Date.now()): Promise<GatewayResult> {
   const found = linkOf(token);
   if (!found) return inRecipientLanguage(undefined, unavailable);
   const { c, link } = found;
@@ -205,7 +230,7 @@ export function verifyCode(token: string, rawAddress: unknown, rawCode: unknown,
   const code = typeof rawCode === "string" ? rawCode.replace(/\s/g, "") : "";
   const key = `${token}|${address}`;
   const entry = pending.get(key);
-  return inRecipientLanguage(c.language, () => {
+  const checked = inRecipientLanguage(c.language, (): GatewayResult | null => {
     // One answer for every failure – wrong code, expired, too many tries, or an address that never got a code – so the
     // page does not tell whether the address is a recipient.
     const valid = entry && entry.expiresAt >= now && entry.tries < MAX_TRIES;
@@ -217,12 +242,46 @@ export function verifyCode(token: string, rawAddress: unknown, rawCode: unknown,
     }
     pending.delete(key);
     addEvent(c.id, "recipient.verified", { links: [token], address, ip: visitor.ip, userAgent: visitor.userAgent.slice(0, 300) });
-    return { status: 303, redirect: link.url, cookie: confirmationCookie(token, address, link) };
+    return null;
   });
+  if (checked) return checked;
+  const cookie = confirmationCookie(token, address, link);
+  let released: ReleasedPassword | null;
+  try {
+    released = await releasePassword(c, token, address);
+  } catch {
+    // The password could not go out now (Vaultwarden, Graph): the recipient is told to ask the sender.
+    return inRecipientLanguage(c.language, () => ({ status: 200, cookie, html: confirmedPage(link, null, true) }));
+  }
+  if (!released) return { status: 303, redirect: link.url, cookie };
+  return inRecipientLanguage(c.language, () => ({ status: 200, cookie, html: confirmedPage(link, released, false) }));
+}
+
+/** After the confirmation: where the password went and how to go on – numbered steps and the way to the link. */
+function confirmedPage(link: ProofLink, released: ReleasedPassword | null, failed: boolean): string {
+  const button = t(link.kind === "request" ? "mail.proof.gateway.upload" : "mail.proof.gateway.download");
+  const steps: string[] = [];
+  if (failed) steps.push(t("mail.proof.gateway.passwordFailed"));
+  if (released?.mailTo) {
+    steps.push(released.subject
+      ? t("mail.proof.gateway.stepMail", { address: released.mailTo, subject: released.subject })
+      : t("mail.proof.gateway.stepMailBefore", { address: released.mailTo }));
+    steps.push(t("mail.proof.gateway.stepShow"));
+  }
+  if (released?.others?.length) steps.push(t("mail.proof.gateway.stepOther", { to: released.others.join(", ") }));
+  if (released?.sms) steps.push(t("mail.proof.gateway.stepSms", { to: released.sms }));
+  steps.push(t("mail.proof.gateway.stepOpen", { button }));
+  return page(
+    t("mail.proof.gateway.confirmedTitle"),
+    `<p>${escapeHtml(t("mail.proof.gateway.next"))}</p><ol>${steps.map((s) => `<li>${escapeHtml(s)}</li>`).join("")}</ol>` +
+      `<p><a class="button" href="${escapeHtml(link.url!)}">${escapeHtml(button)}</a></p>`,
+  );
 }
 
 /** Tests only. */
 export const resetGateway = () => {
   pending.clear();
+  unknownTries.clear();
+  lockedUntil.clear();
   sentTimes.clear();
 };

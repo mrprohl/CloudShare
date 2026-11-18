@@ -145,6 +145,11 @@ export async function runNotices(log: Pick<FastifyBaseLogger, "info" | "warn">, 
           continue;
         }
 
+        // A link with "Zustellnachweis": the sender gets the PDF after the first download instead (proofWatcher.ts).
+        if (n.proofId && config.deliveryProof) {
+          notices.delete(token);
+          continue;
+        }
         const downloads = await nc.publicDownloads(share.fileId);
         // Only downloads after the password went out (earlier links of the same file do not count).
         if (!downloads?.last || Date.parse(downloads.last) < n.registeredAt - 60_000) continue;

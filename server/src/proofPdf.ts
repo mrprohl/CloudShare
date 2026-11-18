@@ -105,6 +105,18 @@ function describe(e: ProofEvent, c: ProofCase): { label: string; details: Array<
           ...about,
         ],
       };
+    case "password.deferred":
+      return {
+        label: t("mail.proof.event.passwordDeferred"),
+        details: [[t("mail.proof.field.passwordWays"), (Array.isArray(d.ways) ? d.ways : []).map(way).join(", ")], ...about],
+      };
+    case "gateway.locked":
+      return {
+        label: t("mail.proof.event.gatewayLocked"),
+        details: [[t("mail.proof.field.attempts"), text(d.attempts)], [t("mail.proof.field.lockedUntil"), isoTime(d.until)], ...about],
+      };
+    case "proof.sent":
+      return { label: t(d.reason === "final" ? "mail.proof.event.proofSentFinal" : "mail.proof.event.proofSentDownload"), details: [] };
     case "link.revoked":
     case "link.expired":
     case "link.gone":

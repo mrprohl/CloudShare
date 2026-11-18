@@ -127,12 +127,40 @@ export async function sendMail(
  * Sends a mail as `userId` (oid or UPN) with CloudShare's own app token – the download confirmation to the sender.
  * Not saved in "Sent Items"; needs the application permission Mail.Send.
  */
-export async function sendMailAsApp(appToken: string, userId: string, to: string, subject: string, html: string) {
+/** A file sent with a mail (the PDF of a delivery proof). */
+export interface MailAttachment {
+  name: string;
+  contentType: string;
+  content: Buffer;
+}
+
+export async function sendMailAsApp(
+  appToken: string,
+  userId: string,
+  to: string,
+  subject: string,
+  html: string,
+  attachments: MailAttachment[] = [],
+) {
   const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(userId)}/sendMail`, {
     method: "POST",
     headers: { Authorization: `Bearer ${appToken}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      message: { subject, body: { contentType: "HTML", content: html }, toRecipients: toGraph([to]) },
+      message: {
+        subject,
+        body: { contentType: "HTML", content: html },
+        toRecipients: toGraph([to]),
+        ...(attachments.length
+          ? {
+              attachments: attachments.map((a) => ({
+                "@odata.type": "#microsoft.graph.fileAttachment",
+                name: a.name,
+                contentType: a.contentType,
+                contentBytes: a.content.toString("base64"),
+              })),
+            }
+          : {}),
+      },
       saveToSentItems: false,
     }),
   });

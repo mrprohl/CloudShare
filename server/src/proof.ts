@@ -81,6 +81,11 @@ export interface ProofCase {
   ended?: string[];
   /** Nothing left to watch (all links ended or expired) – the case is only kept. */
   done?: boolean;
+  /** The sender got the PDF after the first download / at the end (proofMail.ts). */
+  downloadMailSent?: boolean;
+  finalMailSent?: boolean;
+  /** Held-back passwords already released per Send ID (proofPassword.ts): addresses mailed, other addresses, SMS. */
+  released?: Record<string, { mailed: string[]; others?: boolean; sms?: boolean }>;
 }
 
 const cases = new PersistentMap<ProofCase>("proofs", { retention: false });

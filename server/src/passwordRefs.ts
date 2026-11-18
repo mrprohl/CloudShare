@@ -40,6 +40,14 @@ export interface PasswordRef {
   language?: string;
   /** Language of the sender's add-in when the mail was sent – a later note about an undelivered SMS comes in it. */
   senderLanguage?: string;
+  /**
+   * "Zustellnachweis": the password was held back when the mail was sent – it goes out only after a recipient confirmed
+   * their address at the gateway (proofPassword.ts). `toRecipients`: one of its ways was the recipients of the mail
+   * (each confirmed recipient gets their own password mail); `signature`: the sender's signature fixed when arming.
+   */
+  deferred?: boolean;
+  toRecipients?: boolean;
+  signature?: string;
 }
 
 const refs = new PersistentMap<PasswordRef>("password-refs");

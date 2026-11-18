@@ -43,10 +43,11 @@ The password never travels in the same mail as the link, and it is only sent onc
 left the outbox.
 
 **With proof of delivery** (optional, ticked by the sender per mail): the link first leads to a CloudShare page – the
-recipient enters the address the mail went to, gets a six-digit code there and then goes on to the download. See
+recipient enters the address the mail went to, gets a six-digit code there, and only then gets the password and goes
+on to the download. See
 [Proof of delivery](#proof-of-delivery-optional).
 
-![The two steps for the recipient: enter the email address the message went to, then the six-digit code; then the download opens](docs/images/proof-gateway.png)
+![The three steps for the recipient: enter the email address the message went to, then the six-digit code; then the confirmation with the next steps – the password mail goes out only now – and the way to the download](docs/images/proof-gateway.png)
 
 ## What the sender gets
 
@@ -396,11 +397,22 @@ default, offered for "Files" only (not for a confidential message or an upload l
   mail as Exchange sent it (subject, **Message-ID** – findable in the Exchange message trace – sender, To, Cc, Bcc),
   the password (way, recipient, SMS delivery report), every opening of the password link, every download, files
   received, revoked or expired links. Each entry carries the hash of the one before, so a change afterwards shows.
+- **No password mail with the link mail**: for links with proof of delivery the password is held back. Only after a
+  recipient confirmed their address with the code does the password go out – a password mail to exactly that address
+  (every recipient confirms for themselves), to another address or by SMS (once, after the first confirmation). The
+  page then says what to do next ("We have just sent you the password … · click „Show password“ · click „To the
+  download“ here") and leads on to the link; the link card says the password comes after the confirmation.
 - **Recipients confirm their address**: the link in the mail leads to a CloudShare page first; the recipient enters
   the address the mail went to and gets a six-digit code from the sender's mailbox; with it the browser goes on to
   Nextcloud (the password is still needed). Address, time, IP address and browser are recorded. Only addresses the
   mail went to get a code – **a distribution list does not work**, recipients use their own address from the mail.
-- **PDF**: "Proof" (document with a seal) in "History" opens it in the default browser.
+- **PDF**: "Proof" (document with a seal) in "History" opens it in the default browser – brought up to date right
+  before (downloads are otherwise collected every 10 minutes). The sender also gets it **by mail**: after the first
+  download (this mail replaces the plain download confirmation for such links) and once more, complete, when all links
+  expired or were revoked. Downloads come from Nextcloud's activity – the Activity app must be enabled.
+- **Guessing**: after five addresses that are no recipients within an hour, the page takes no code requests for that
+  link for an hour (the answer still reads the same) and the sender gets one mail with the attempts (time, address,
+  IP address); it is in the record too.
 - **Privacy**: the record holds personal data of the recipients (address, IP address, browser, times) for the purpose
   of proof; it is kept `PROOF_RETENTION_DAYS` (default three years) after its last event – add it to your record of
   processing activities. The page tells recipients what is recorded.
@@ -599,7 +611,7 @@ $repo = (Get-Location).Path; $url = "file:///" + ($repo -replace '\\','/') + "/d
 $opts = "--headless=new", "--hide-scrollbars", "--user-data-dir=$env:TEMP\cloudshare-edge"
 foreach ($shot in @(("outlook-compose", "compose-send", "1440,1100"), ("mail-received", "mail-received", "760,706"),
                     ("password-mail", "password-mail", "760,676"), ("sender-notices", "sender-notices", "760,942"),
-                    ("proof-gateway", "proof-gateway", "928,512"), ("proof-pdf", "proof-pdf", "860,934"))) {
+                    ("proof-gateway", "proof-gateway", "1390,524"), ("proof-pdf", "proof-pdf", "860,934"))) {
   Start-Process -Wait $edge ($opts + "--window-size=$($shot[2])", "--screenshot=$repo\docs\images\$($shot[0]).png", "$url/$($shot[1]).html")
 }
 ```

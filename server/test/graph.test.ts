@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { ewsIdFor, fetchProfile, fetchSensitivityLabels, findSentMessage, JOB_PROPERTY, sendMail, sentMailState } from "../src/graph.js";
+import { ewsIdFor, fetchProfile, fetchSensitivityLabels, findSentMessage, JOB_PROPERTY, sendMail, sendMailAsApp, sentMailState } from "../src/graph.js";
 import { json, mockFetch } from "./helpers.js";
 
 const CUSTOM_PROPS_ID =
@@ -179,5 +179,19 @@ describe("fetchSensitivityLabels", () => {
   it("fails on an error of Graph (missing permission) – the route then answers labels: null", async () => {
     mockFetch(json({ error: { code: "Forbidden" } }, 403));
     await expect(fetchSensitivityLabels("graph-token")).rejects.toThrow(/HTTP 403/);
+  });
+});
+
+describe("sendMailAsApp", () => {
+  it("attaches files (the PDF of a delivery proof) in Base64", async () => {
+    const { call } = mockFetch(new Response(null, { status: 202 }));
+    await sendMailAsApp("app-token", "oid-anna", "anna@example.test", "Betreff", "<p>x</p>", [
+      { name: "Zustellnachweis-1.pdf", contentType: "application/pdf", content: Buffer.from("%PDF-1.4") },
+    ]);
+    const body = JSON.parse(String(call(0).init.body));
+    expect(body.message.attachments).toEqual([
+      { "@odata.type": "#microsoft.graph.fileAttachment", name: "Zustellnachweis-1.pdf", contentType: "application/pdf", contentBytes: Buffer.from("%PDF-1.4").toString("base64") },
+    ]);
+    expect(body.saveToSentItems).toBe(false);
   });
 });

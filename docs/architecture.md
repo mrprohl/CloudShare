@@ -454,6 +454,19 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   browser, sets a signed cookie for this link until it expires and redirects (303) to Nextcloud – the Nextcloud
   password is still needed. Before the mail was found sent the page says so. Plain HTML forms, no script, own CSP.
   A confidential message has no gateway (its link holds the key CloudShare does not keep); its openings are counted.
+- **Password after the confirmation** (`proofPassword.ts`): a step whose links all go through the gateway
+  (`isDeferredStep` in `jobs.ts`) sends no password when the mail is sent (`password.deferred`); its `PasswordRef` is
+  `deferred` with `toRecipients` and the signature. After a right code `releasePassword` sends what is still held
+  back – a password mail (new Send with the same password, app token, as the mailbox the mail came from) to the
+  confirmed address, to other addresses once, the SMS once (`ProofCase.released`) – and the gateway shows the next
+  steps with a link on instead of redirecting at once. The link card says so (`card.proofPassword`).
+- **Mails to the sender** (`proofMail.ts`, app token, PDF attached via `sendMailAsApp` attachments): after the first
+  download (`downloadMailSent`; `notices.ts` skips its download confirmation for links of a case) and when the case is
+  done (`finalMailSent`, retried until it went out); `proof.sent` records each. `GET /proof/:id.pdf` first runs
+  `refreshCase`, so the PDF has downloads since the last pass.
+- **Guessing** (`proofGateway.ts`): five addresses that are no recipients for a link within an hour lock its code
+  requests for an hour (same answer, nothing sent; `gateway.locked`) and mail the sender the attempts once
+  (`sendLockNotice`). In memory, like the codes.
 - **PDF** (`proofPdf.ts`, `pdf.ts` – a small writer of its own, no dependency, standard fonts in WinAnsi):
   "Nachweis" in "Verlauf" asks `POST /api/proofs/:id/link` for an address signed with a key derived from
   `CREDENTIAL_KEY` and valid five minutes, and opens it in the default browser (`openBrowserWindow`) – the language

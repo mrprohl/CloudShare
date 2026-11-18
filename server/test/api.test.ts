@@ -62,6 +62,7 @@ vi.mock("../src/vaultwarden.js", () => ({
   MESSAGE_MAX_LENGTH: 1000,
   setSendMaxAccess: vi.fn(async () => undefined),
   setSendExpiry: vi.fn(async () => undefined),
+  sendAccessCount: vi.fn(async () => null),
   initVault: vi.fn(),
 }));
 vi.mock("../src/nextcloud.js", async (importOriginal) => {
@@ -1246,5 +1247,93 @@ describe("sensitivity labels (/api/labels)", () => {
     const res = await app.inject({ method: "GET", url: "/api/labels", headers: as("moritz") });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ labels: null });
+  });
+});
+
+describe("delivery proof – guessing addresses", () => {
+  const form = (fields: Record<string, string>) => ({
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    payload: new URLSearchParams(fields).toString(),
+  });
+
+  it("locks code requests of a link for an hour after five addresses that are no recipients, and tells the sender", async () => {
+    nc.createPublicShare.mockResolvedValue("https://cloud.example.test/s/proof-guess");
+    const { body } = await startUpload("anna");
+    await putChunk("anna", body.uploadId, 1);
+    const { proofId } = (await complete("anna", body.uploadId, { proof: true })).json();
+    const { recordMailSent, caseById } = await import("../src/proof.js");
+    recordMailSent(["proof-guess"], { subject: "Angebot", messageId: "<g@example.test>", from: "anna@example.test", to: ["erika@example.test"], cc: [], bcc: [] });
+    const sendMailAsApp = vi.mocked((await import("../src/graph.js")).sendMailAsApp);
+    sendMailAsApp.mockClear();
+
+    for (let i = 1; i <= 5; i++) {
+      const res = await app.inject({ method: "POST", url: "/r/s/proof-guess/code", ...form({ address: `rate${i}@example.test` }) });
+      expect(res.statusCode).toBe(200);
+    }
+    // The sender is told once, with the attempts; nobody else got a mail.
+    await vi.waitFor(() => expect(sendMailAsApp).toHaveBeenCalledOnce());
+    const [, owner, to, subject, html] = sendMailAsApp.mock.calls[0];
+    expect([owner, to]).toEqual(["oid-anna", "anna@example.test"]);
+    expect(subject).toContain("auffällige Code-Anforderungen");
+    expect(html).toContain("rate5@example.test");
+
+    // Locked: even the real recipient gets the same page and no code for now.
+    const locked = await app.inject({ method: "POST", url: "/r/s/proof-guess/code", ...form({ address: "erika@example.test" }) });
+    expect(locked.statusCode).toBe(200);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(sendMailAsApp).toHaveBeenCalledOnce();
+    expect(caseById(proofId)!.events.map((e) => e.type)).toContain("gateway.locked");
+  });
+});
+
+describe("delivery proof – password after the confirmation", () => {
+  const form = (fields: Record<string, string>) => ({
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    payload: new URLSearchParams(fields).toString(),
+  });
+
+  it("mails the held-back password only to the confirmed recipient, once, and shows the next steps", async () => {
+    nc.createPublicShare.mockResolvedValue("https://cloud.example.test/s/proof-pw");
+    const { body } = await startUpload("anna", "Angebot.pdf");
+    await putChunk("anna", body.uploadId, 1);
+    const { proofId } = (await complete("anna", body.uploadId, { proof: true })).json();
+    const { recordMailSent, caseById } = await import("../src/proof.js");
+    recordMailSent(["proof-pw"], { subject: "Angebot", messageId: "<p@example.test>", from: "anna@example.test", to: ["erika@example.test", "bernd@example.test"], cc: [], bcc: [] });
+    // What the job watcher stores when it holds the password back (jobs.ts, PasswordRef.deferred).
+    const { registerPasswordRef } = await import("../src/passwordRefs.js");
+    await registerPasswordRef({
+      owner: "oid-anna", ownerUpn: "anna@example.test", sendId: "send-held", tokens: ["proof-pw"], fileNames: ["Angebot.pdf"],
+      keepUntil: Date.now() + 7 * DAY, subject: "Angebot", recipients: { to: ["erika@example.test", "bernd@example.test"], cc: [], bcc: [] },
+      maxAccessCount: 3, deferred: true, toRecipients: true,
+    });
+    const sendMailAsApp = vi.mocked((await import("../src/graph.js")).sendMailAsApp);
+
+    const confirm = async (address: string) => {
+      sendMailAsApp.mockClear();
+      await app.inject({ method: "POST", url: "/r/s/proof-pw/code", remoteAddress: "192.0.2.10", ...form({ address }) });
+      await vi.waitFor(() => expect(sendMailAsApp).toHaveBeenCalledOnce());
+      const code = /(\d{6})/.exec(String(sendMailAsApp.mock.calls[0][3]))![1];
+      sendMailAsApp.mockClear();
+      return app.inject({ method: "POST", url: "/r/s/proof-pw/verify", remoteAddress: "192.0.2.10", ...form({ address, code }) });
+    };
+
+    const page = await confirm("erika@example.test");
+    expect(page.statusCode).toBe(200);
+    expect(page.body).toContain("So geht es weiter");
+    expect(page.body).toContain("an erika@example.test gesendet");
+    expect(page.body).toContain('href="https://cloud.example.test/s/proof-pw"');
+    expect(String(page.headers["set-cookie"])).toContain("HttpOnly");
+    // The password mail went to her only – not to every recipient of the mail.
+    expect(sendMailAsApp).toHaveBeenCalledOnce();
+    expect(sendMailAsApp.mock.calls[0][2]).toBe("erika@example.test");
+    expect(String(sendMailAsApp.mock.calls[0][4])).toContain("Kennwort anzeigen");
+
+    // Confirming again (another browser): no second password mail.
+    const again = await confirm("erika@example.test");
+    expect(again.body).toContain("bereits an erika@example.test gesendet");
+    expect(sendMailAsApp).not.toHaveBeenCalled();
+
+    const types = caseById(proofId)!.events.map((e) => e.type);
+    expect(types).toEqual(expect.arrayContaining(["recipient.verified", "password.sent"]));
   });
 });
