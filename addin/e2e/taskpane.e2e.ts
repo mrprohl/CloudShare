@@ -1321,7 +1321,7 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(menu).toBeVisible();
   await expect(page.locator("#account-menu button:visible")).toHaveText(["Nextcloud öffnen", "Einstellungen", "Hilfe", "Verbindung trennen"]);
-  await expect(page.locator("#account-menu button svg")).toHaveCount(4);
+  await expect(page.locator("#account-menu button:visible svg")).toHaveCount(4);
   await expect(page.locator("#nextcloud-open")).toBeFocused(); // the first entry
   await expect(page.locator("#nextcloud-open")).toHaveAttribute("title", "https://cloud.example.com");
   // At the top, set apart: the whole name, a bar filled with the used share (37,5 of 50 GB = 75 %) and the text.
