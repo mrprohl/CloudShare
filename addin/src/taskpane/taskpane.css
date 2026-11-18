@@ -501,6 +501,10 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 /* "Zustellnachweis": a small seal after the file name – a click opens the PDF, the tracking ID is in its tooltip. */
 .share-item .proof-seal { flex: none; width: 22px; height: 22px; min-width: 0; padding: 1px; margin-left: 4px; color: var(--fg2); }
 .share-item .proof-seal .icon { width: 16px; height: 16px; }
+/* "Zustellnachweise" (account menu): the search field and one entry per proof, the seal on the left opens the PDF. */
+.proofs-search { display: block; width: 100%; margin: 4px 0 12px; }
+.proof-entry .proof-seal { flex: none; width: 28px; height: 28px; min-width: 0; padding: 4px; color: var(--fg2); }
+.proof-entry .proof-seal .icon { width: 20px; height: 20px; }
 .share-meta { font-size: 12px; line-height: 16px; color: var(--fg3); }
 .share-password.failed { color: var(--danger-fg); }
 .share-unsent { color: var(--fg2); font-weight: 600; }

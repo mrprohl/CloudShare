@@ -107,6 +107,12 @@ const panelSettings = $<HTMLElement>("panel-settings");
 const settingsClose = $<HTMLButtonElement>("settings-close");
 /** "Einstellungen" in the account menu. */
 const settingsOpen = $<HTMLButtonElement>("settings-open");
+const panelProofs = $<HTMLElement>("panel-proofs");
+const proofsOpen = $<HTMLButtonElement>("proofs-open");
+const proofsClose = $<HTMLButtonElement>("proofs-close");
+const proofsSearch = $<HTMLInputElement>("proofs-search");
+const proofsList = $<HTMLDivElement>("proofs-list");
+const proofsEmpty = $<HTMLParagraphElement>("proofs-empty");
 const mailShares = $<HTMLDivElement>("mail-shares");
 const mailNone = $<HTMLParagraphElement>("mail-none");
 const sharesList = $<HTMLDivElement>("shares");
@@ -1881,13 +1887,14 @@ function selectTab(tab: Tab, load = true) {
 }
 
 /** What covers the current tab: the user guide or the settings (both in the account menu), or nothing. */
-type Overlay = "help" | "settings" | null;
+type Overlay = "help" | "settings" | "proofs" | null;
 
 /** Shows the guide or the settings in place of the current tab; closed, that tab shows again. */
 function showOverlay(overlay: Overlay) {
   helpToggle.setAttribute("aria-expanded", String(overlay === "help"));
   panelHelp.hidden = overlay !== "help";
   panelSettings.hidden = overlay !== "settings";
+  panelProofs.hidden = overlay !== "proofs";
   panelSend.hidden = overlay !== null || currentTab !== "send";
   panelMail.hidden = overlay !== null || currentTab !== "mail";
   panelShares.hidden = overlay !== null || currentTab !== "shares";
@@ -1945,6 +1952,86 @@ function closeSettings() {
   accountToggle.focus();
 }
 settingsClose.addEventListener("click", closeSettings);
+
+// --- "Zustellnachweise" (account menu) ---------------------------------------------------------------------------
+// Every delivery proof of the user, newest first – also those whose links expired long ago, which "Verlauf" no longer
+// lists. Searched here (tracking ID, subject, recipients, file names); the seal opens the signed PDF.
+
+interface ProofItem {
+  id: string;
+  createdAt: number;
+  subject: string | null;
+  sentAt: number | null;
+  recipients: string[];
+  files: string[];
+  downloads: number;
+  confirmed: number;
+  done: boolean;
+}
+
+let proofItems: ProofItem[] = [];
+
+function proofRow(p: ProofItem): HTMLElement {
+  const row = document.createElement("div");
+  row.className = "share proof-entry";
+  const seal = document.createElement("button");
+  seal.type = "button";
+  seal.className = "btn btn-subtle btn-icon proof-seal";
+  seal.innerHTML = ICONS.proof;
+  seal.title = t("shares.proofLabel", { id: p.id });
+  seal.setAttribute("aria-label", seal.title);
+  seal.addEventListener("click", () => void openProof(p.id, seal));
+  const body = document.createElement("div");
+  body.className = "share-body";
+  const line = (text: string, className = "share-meta") => {
+    const el = document.createElement("div");
+    el.className = className;
+    el.textContent = text;
+    return el;
+  };
+  body.append(
+    line(p.subject || t("shares.noSubject"), "share-title"),
+    line(p.sentAt
+      ? t("proofs.sentTo", { date: formatDate(p.sentAt), to: p.recipients.join(", ") || "–" })
+      : t("proofs.notSent", { date: formatDate(p.createdAt) })),
+    line([p.files.join(", "), p.downloads > 0 ? t("proofs.downloaded", { count: p.downloads }) : t("proofs.notDownloaded")]
+      .filter(Boolean).join(" · ")),
+    line(`${t("proofs.case", { id: p.id })} · ${t(p.done ? "proofs.done" : "proofs.running")}`),
+  );
+  row.append(seal, body);
+  return row;
+}
+
+/** The list for the search: tracking ID, subject, recipients and file names, case-insensitive. */
+function renderProofs() {
+  const query = proofsSearch.value.trim().toLowerCase();
+  const hits = proofItems.filter((p) => !query || [p.id, p.subject ?? "", ...p.recipients, ...p.files].some((s) => s.toLowerCase().includes(query)));
+  proofsList.replaceChildren(...hits.map(proofRow));
+  proofsEmpty.hidden = hits.length > 0;
+  proofsEmpty.textContent = proofItems.length ? t("proofs.noMatch") : t("proofs.none");
+}
+
+async function openProofs() {
+  showAccountMenu(false);
+  showOverlay("proofs");
+  proofsSearch.focus();
+  proofsList.replaceChildren();
+  proofsEmpty.hidden = false;
+  proofsEmpty.textContent = t("proofs.loading");
+  try {
+    proofItems = await api<ProofItem[]>("/api/proofs", {}, await getToken());
+    renderProofs();
+  } catch (err) {
+    proofsEmpty.textContent = t("proofs.failed", { error: errorMessage(err) });
+  }
+}
+
+proofsOpen.addEventListener("click", () => void openProofs());
+proofsSearch.addEventListener("input", renderProofs);
+proofsClose.addEventListener("click", () => {
+  showOverlay(null);
+  accountToggle.focus();
+});
 refreshSharesButton.addEventListener("click", () => {
   refreshSharesButton.disabled = true;
   refreshSharesButton.setAttribute("aria-busy", "true");
@@ -2689,6 +2776,8 @@ Office.onReady(async () => {
   } catch {
     // e.g. sign-in not possible yet – the connection check below reports that
   }
+  // "Zustellnachweise" in the account menu – also while reading a mail – only where the server has the delivery proof.
+  proofsOpen.hidden = !serverConfig.deliveryProof;
   if (readMode) return startReadView();
 
   const state = await readDraftState();

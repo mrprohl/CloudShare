@@ -442,7 +442,7 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   the chain and the PDF says whether it is intact or from which entry on it was changed.
 - **Watcher** (`proofWatcher.ts`, every 10 minutes): downloads, received files, Send access counts, links gone or
   expired; a case is done when all its links ended (or two days after the last expiry) and is then only kept –
-  `PROOF_RETENTION_DAYS` after its last event (default 1095 = three years, the regular limitation period).
+  `PROOF_RETENTION_MONTHS` after its last event (calendar months, default 36 = three years, the regular limitation period).
 - **Recipient confirms their address** (`proofGateway.ts`): file and upload links of a case go into the mail as
   `https://<host>/r/s/<token>` instead of the Nextcloud link (the path still ends in `/s/<token>`, so the read mode
   and `releaseDraftIfLinksGone` find it). The page asks for the address; only one the mail went to (To, Cc, Bcc – a
@@ -580,6 +580,7 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `GET /api/shares/:id/mail` | "History": the sent mail of an entry as the EWS ID Outlook opens (`displayMessageFormAsync`) – the immutable Graph ID kept at sending, translated now with `translateExchangeIds` (User.Read), so it follows a moved mail; 404 if none is known or it is gone – also when it lies in Deleted Items or, after emptying them, in Recoverable Items (`sentMailState`, Mail.Read), where Outlook would still open it |
 | `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send), `passwordTo` or `passwordSms` until the password went out; `subject`: the draft's subject changed (the pane checks it every 4 s while open) – "History" shows it for the mail's links until the sent mail is found (`updateDraftSubject`) |
 | `POST /api/jobs/:id/arm` | Arm the password mail (send handler); also reads the sender's name and department for the templates |
+| `GET /api/proofs` | "Zustellnachweise" (account menu): every case of the user, newest first, also finished ones – `{ id, createdAt, subject, sentAt, recipients, files, downloads, confirmed, done }`; the pane searches in it |
 | `POST /api/proofs/:id/link`, `GET /proof/:id.pdf?until=…&lang=…&sig=…` | "Zustellnachweis" (2.12): a signed PDF address valid 5 minutes (owner only), opened in the default browser; the PDF itself needs no login – the HMAC signature (key from `CREDENTIAL_KEY`) binds case, end and language |
 | `GET /r/s/:token`, `POST /r/s/:token/code`, `POST /r/s/:token/verify` | Gateway of a link with "Zustellnachweis" (no login): the recipient enters their address, gets a six-digit code (only addresses the mail went to; the page reads the same for any address), confirms it and goes on to Nextcloud; a signed cookie per link lets the same browser come back; every step is recorded |
 | `GET/POST /webhooks/seven?token=…` | seven.io delivery reports (no login, secret `SEVEN_WEBHOOK_SECRET`) |
@@ -719,6 +720,10 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
 - **Open Nextcloud** ("Nextcloud öffnen", first entry of the account menu, `#nextcloud-open`): opens `NEXTCLOUD_URL`
   (sent in `/api/config` as `nextcloudUrl`) in the default browser (`openBrowserWindow`, in the browser a new tab) – the
   browser's own Nextcloud session or a sign-in there; the app password of the connection never leaves the server.
+- **Proofs of delivery** ("Zustellnachweise", second entry, `#proofs-open`, only with `DELIVERY_PROOF`): shown in place of
+  the tab like the settings (`#panel-proofs`); loads `GET /api/proofs` (every case of the user, finished ones too) and
+  filters it while typing over tracking ID, subject, recipients and file names (`renderProofs`); the seal of an entry
+  opens its signed PDF like the seal in "Verlauf".
 - **Help** ("Hilfe" in the account menu of the bottom bar, `#help-toggle`; `#panel-help` in `taskpane.html`, shown in place of the
   current tab, closed by "×" or a tab): a user guide for everyday users – short `<details>`
   sections (getting started, sending files, password and channel, confidential message, receiving files, "History",

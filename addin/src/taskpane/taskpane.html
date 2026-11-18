@@ -275,6 +275,24 @@
         </div>
 
         <!-- Personal settings (gear in the account line): in place of the current tab like the guide (settings.ts). -->
+        <!-- "Zustellnachweise" (account menu): search field and the list of every delivery proof (GET /api/proofs). -->
+        <section id="panel-proofs" class="panel" aria-labelledby="proofs-heading" hidden>
+          <div class="content help proofs">
+            <div class="help-header">
+              <h2 class="subtitle" id="proofs-heading">%%t:addin.proofs.heading%%</h2>
+              <button type="button" id="proofs-close" class="btn btn-icon btn-subtle" title="%%t:addin.proofs.close%%" aria-label="%%t:addin.proofs.close%%">
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M5.5 5.5l9 9m0-9-9 9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+            <input type="search" id="proofs-search" class="input proofs-search" placeholder="%%t:addin.proofs.searchPlaceholder%%"
+              aria-label="%%t:addin.proofs.searchLabel%%" aria-controls="proofs-list" />
+            <p class="caption proofs-empty" id="proofs-empty" role="status" hidden></p>
+            <div id="proofs-list" class="proofs-list"></div>
+          </div>
+        </section>
+
         <section id="panel-settings" class="panel" aria-labelledby="settings-heading" hidden>
           <div class="content help settings">
             <div class="help-header">
@@ -416,6 +434,7 @@
               <summary>%%t:addin.help.proof.title%%</summary>
               <p>%%t:addin.help.proof.text%%</p>
               <p>%%t:addin.help.proof.recipient%%</p>
+              <p>%%t:addin.help.proof.find%%</p>
             </details>
 
             <details class="help-section">
@@ -505,6 +524,12 @@
                   <path d="M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l1-1"/>
                 </svg>
                 <span>%%t:addin.nextcloud.open%%</span>
+              </button>
+              <!-- "Zustellnachweise": every delivery proof, searchable – also when "Verlauf" no longer lists the link
+                   (DELIVERY_PROOF only; proofs.ts). Shown in place of the current tab like the settings. -->
+              <button type="button" id="proofs-open" class="account-menu-item" aria-controls="panel-proofs" hidden>
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.5 3H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h3"/><path d="M11.5 3L15 6.5V9"/><path d="M8 7h3M8 10h2"/><circle cx="14" cy="13" r="2.5"/><path d="M12.8 15.2L12.5 18l1.5-.8 1.5.8-.3-2.8"/></svg>
+                <span>%%t:addin.proofs.open%%</span>
               </button>
               <!-- Personal settings: shown in place of the current tab like the guide (settings.ts). -->
               <button type="button" id="settings-open" class="account-menu-item" aria-controls="panel-settings">
