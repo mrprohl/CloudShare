@@ -17,7 +17,8 @@ import { appGraphToken } from "./auth.js";
 import { config } from "./config.js";
 import { sendMailAsApp } from "./graph.js";
 import { inRecipientLanguage, mailLanguage, t } from "./i18n.js";
-import { escapeHtml, mailDocument, paragraph } from "./mailLayout.js";
+import { escapeHtml, mailDocument, paragraph, TEXT_STYLE } from "./mailLayout.js";
+import { passwordRefFor } from "./passwordRefs.js";
 import { addEvent, caseOfToken, type ProofCase, type ProofLink } from "./proof.js";
 import { sendLockNotice } from "./proofMail.js";
 import { releasePassword, type ReleasedPassword } from "./proofPassword.js";
@@ -161,6 +162,39 @@ export function openGateway(token: string, cookieHeader: string | undefined, vis
   });
 }
 
+/**
+ * The mail with the code: who sent what and why the address is confirmed, the code large, the next steps (where the
+ * password will come from, what the link then does) and that it can be ignored if nobody asked for it.
+ */
+function codeMail(c: ProofCase, token: string, link: ProofLink, code: string): { subject: string; html: string } {
+  const ref = passwordRefFor(token, c.owner);
+  const sender = ref?.senderName || c.ownerUpn;
+  const steps = [t("mail.proof.codeMail.step1")];
+  if (ref?.deferred) {
+    if (ref.toRecipients) steps.push(t("mail.proof.codeMail.step2Mail"));
+    else if (ref.sms) steps.push(t("mail.proof.codeMail.step2Sms"));
+    else if (ref.otherTo?.length) steps.push(t("mail.proof.codeMail.step2Other", { to: ref.otherTo.join(", ") }));
+    steps.push(t(link.kind === "request" ? "mail.proof.codeMail.step3Upload" : "mail.proof.codeMail.step3Download"));
+  } else {
+    steps.push(t("mail.proof.codeMail.step3Open"));
+  }
+  const list = `<ol style="${TEXT_STYLE}padding-left:20px;">${steps.map((s) => `<li style="margin:0 0 4px;">${escapeHtml(s)}</li>`).join("")}</ol>`;
+  return {
+    subject: t("mail.proof.codeMail.subject", { name: link.name }),
+    html: mailDocument({
+      opening: paragraph(t("mail.greeting")) + paragraph(t("mail.proof.codeMail.text", { sender, name: link.name })),
+      card: {
+        accent: "brand",
+        title: t("mail.proof.codeMail.title"),
+        highlight: code,
+        files: [],
+        details: t("mail.proof.codeMail.details", { minutes: CODE_TTL / MINUTE, id: c.id }),
+      },
+      after: paragraph(t("mail.proof.codeMail.next")) + list + paragraph(t("mail.proof.codeMail.ignore")),
+    }),
+  };
+}
+
 /** POST /r/s/:token/code – sends a code if the address is a recipient; the page reads the same either way. */
 export async function requestCode(token: string, rawAddress: unknown, visitor: Visitor, now = Date.now()): Promise<GatewayResult> {
   const found = linkOf(token);
@@ -197,18 +231,7 @@ export async function requestCode(token: string, rawAddress: unknown, visitor: V
     return inRecipientLanguage(c.language, () => ({ status: 200, html: codeForm(token, address) }));
   }
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
-  const { subject, html } = inRecipientLanguage(c.language, () => ({
-    subject: t("mail.proof.codeMail.subject", { code }),
-    html: mailDocument({
-      opening: paragraph(t("mail.proof.codeMail.text", { name: link.name })),
-      card: {
-        accent: "brand",
-        title: code,
-        files: [],
-        details: t("mail.proof.codeMail.details", { minutes: CODE_TTL / MINUTE, id: c.id }),
-      },
-    }),
-  }));
+  const { subject, html } = inRecipientLanguage(c.language, () => codeMail(c, token, link, code));
   pending.set(key, { hash: hashCode(code), expiresAt: now + CODE_TTL, tries: 0 });
   // Not awaited: the answer must not take longer for a recipient than for anyone else (the mail goes out meanwhile).
   void appGraphToken()

@@ -54,6 +54,8 @@ export interface MailCard {
   title: string;
   /** One row per file (upload link, confidential message) with its type badge. */
   files: string[];
+  /** A short value shown large under the title (the six-digit code of the delivery proof). */
+  highlight?: string;
   button?: { label: string; url: string };
   /** Small grey line at the bottom of the card (validity, accesses, number …). */
   details?: string;
@@ -84,6 +86,10 @@ export function mailCard(card: MailCard): string {
     `border-radius:6px;padding:14px 16px;font-family:${FONT};color:#242424;">` +
     `<div style="font-size:15px;line-height:20px;font-weight:600;color:#242424;margin:0 0 8px;">` +
     `${escapeHtml(card.title)}</div>` +
+    (card.highlight
+      ? `<div style="font-family:Consolas,'Courier New',monospace;font-size:28px;line-height:36px;font-weight:700;` +
+        `letter-spacing:6px;color:#242424;margin:0 0 4px;">${escapeHtml(card.highlight)}</div>`
+      : "") +
     (rows ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">${rows}</table>` : "") +
     button +
     details +

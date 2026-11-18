@@ -401,9 +401,12 @@ default, offered for "Files" only (not for a confidential message or an upload l
   recipient confirmed their address with the code does the password go out – a password mail to exactly that address
   (every recipient confirms for themselves), to another address or by SMS (once, after the first confirmation). The
   page then says what to do next ("We have just sent you the password … · click „Show password“ · click „To the
-  download“ here") and leads on to the link; the link card says the password comes after the confirmation.
+  download“ here") and leads on to the link; the link card says the password comes after the confirmation. The
+  password mail has a button "To the download" as well – it leads back to that page, never straight to Nextcloud: the
+  confirmed browser goes right on, a forwarded mail or another device is asked for the code again.
 - **Recipients confirm their address**: the link in the mail leads to a CloudShare page first; the recipient enters
-  the address the mail went to and gets a six-digit code from the sender's mailbox; with it the browser goes on to
+  the address the mail went to and gets a six-digit code from the sender's mailbox (the mail explains who sent
+  what, shows the code large, the next steps, and that it can be ignored if nobody asked for it); with it the browser goes on to
   Nextcloud (the password is still needed). Address, time, IP address and browser are recorded. Only addresses the
   mail went to get a code – **a distribution list does not work**, recipients use their own address from the mail.
 - **PDF**: the small seal next to the file name in "History" (the tracking ID in its tooltip) opens it in the default browser – brought up to date right
@@ -610,7 +613,7 @@ $edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 $repo = (Get-Location).Path; $url = "file:///" + ($repo -replace '\\','/') + "/docs/mockups"
 $opts = "--headless=new", "--hide-scrollbars", "--user-data-dir=$env:TEMP\cloudshare-edge"
 foreach ($shot in @(("outlook-compose", "compose-send", "1440,1100"), ("mail-received", "mail-received", "760,706"),
-                    ("password-mail", "password-mail", "760,676"), ("sender-notices", "sender-notices", "760,942"),
+                    ("password-mail", "password-mail", "760,692"), ("sender-notices", "sender-notices", "760,942"),
                     ("proof-gateway", "proof-gateway", "1390,524"), ("proof-pdf", "proof-pdf", "860,934"))) {
   Start-Process -Wait $edge ($opts + "--window-size=$($shot[2])", "--screenshot=$repo\docs\images\$($shot[0]).png", "$url/$($shot[1]).html")
 }
