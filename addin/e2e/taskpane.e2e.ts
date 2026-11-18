@@ -779,7 +779,7 @@ test("Kennwort per SMS: number required, normalized to E.164 and stored on the j
   await expect(page.locator("#password-sms")).toBeVisible();
   // Both ways of writing a number are accepted – both are shown as examples.
   await expect(page.locator("#password-sms")).toHaveAttribute("placeholder", "0170 1234567 oder +49 170 1234567");
-  await expect(page.locator("#password-to-hint")).toContainText("in einer SMS an diese Nummer");
+  await expect(page.locator("#password-to-hint")).toContainText("per SMS an diese Nummer");
 
   // No number yet: the button stays greyed out, as in Outlook.
   await expect(page.locator("#submit")).toBeDisabled();
@@ -1228,7 +1228,7 @@ test("Kennwort per SMS: no password-link settings – the password is in the SMS
   await page.selectOption("#password-channel", "sms");
   await expect(page.locator("#max-access-field")).toBeHidden();
   await expect(page.locator("#password-days-field")).toBeHidden();
-  await expect(page.locator("#password-to-hint")).toContainText("gilt, solange der Link gültig ist");
+  await expect(page.locator("#password-to-hint")).toContainText("per SMS an diese Nummer");
   await page.fill("#password-sms", "0170 1234567");
   await page.locator("#password-sms").blur();
   await page.click("#submit");
