@@ -806,7 +806,8 @@ test("Kennwort per SMS: numbers of other countries and service numbers are refus
     config: { smsEnabled: true, smsCountryCodes: ["49", "43", "41"], smsCountries: "Deutschland, Österreich und Schweiz" },
   });
   await page.selectOption("#password-channel", "sms");
-  await expect(page.locator("#password-to-hint")).toContainText("Möglich sind Rufnummern aus Deutschland, Österreich und Schweiz.");
+  // The hint stays short – the countries are named when a number from elsewhere is entered.
+  await expect(page.locator("#password-to-hint")).toHaveText("Das Kennwort geht nach dem Senden per SMS an diese Nummer, die Empfänger erhalten keine Kennwort-Nachricht.");
 
   await page.fill("#password-sms", "+44 7700 900123");
   await page.press("#password-sms", "Tab");

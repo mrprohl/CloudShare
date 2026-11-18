@@ -206,7 +206,7 @@
     "channel.smsPlaceholder": "0170 1234567 oder +49 170 1234567",
     "channel.smsLabel": "Rufnummer für das Kennwort",
     "channel.hintMail": "Nur diese Adresse erhält das Kennwort – die Empfänger der Nachricht nicht.",
-    "channel.hintSms": "Das Kennwort steht nach dem Senden direkt in einer SMS an diese Nummer und gilt, solange der Link gültig ist. Die Empfänger erhalten keine Kennwort-Nachricht.",
+    "channel.hintSms": "Das Kennwort geht nach dem Senden per SMS an diese Nummer, die Empfänger erhalten keine Kennwort-Nachricht.",
     "channel.savedSms": "Das Kennwort geht nach dem Senden per SMS an {to}.",
     "channel.savedMail": "Das Kennwort wird nur an {to} geschickt.",
     "channel.savedRecipients": "Das Kennwort geht an die Empfänger der Nachricht.",

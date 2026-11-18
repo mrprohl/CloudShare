@@ -337,7 +337,11 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 }
 
 /* --- Message bar --------------------------------------------------------------- */
+/* Stays in sight at the top while the pane is scrolled (e.g. after a click on the button at its bottom). */
 .messagebar {
+  position: sticky;
+  top: 8px;
+  z-index: 10;
   display: flex;
   align-items: flex-start;
   gap: 8px;

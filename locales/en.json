@@ -205,7 +205,7 @@
     "channel.smsPlaceholder": "07700 900123 or +44 7700 900123",
     "channel.smsLabel": "Phone number for the password",
     "channel.hintMail": "Only this address gets the password – not the recipients of the message.",
-    "channel.hintSms": "After sending, the password is in a text message to this number and works as long as the link does. The recipients get no password message.",
+    "channel.hintSms": "After sending, the password goes to this number by text message; the recipients get no password message.",
     "channel.savedSms": "After sending, the password goes to {to} by text message.",
     "channel.savedMail": "The password is only sent to {to}.",
     "channel.savedRecipients": "The password goes to the recipients of the message.",

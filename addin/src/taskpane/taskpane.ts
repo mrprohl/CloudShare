@@ -974,7 +974,7 @@ const selectedChannel = (): Channel => {
 };
 
 const channelHint = (channel: Channel) =>
-  channel === "mail" ? t("channel.hintMail") : channel === "sms" ? t("channel.hintSms") + smsCountriesHint() : "";
+  channel === "mail" ? t("channel.hintMail") : channel === "sms" ? t("channel.hintSms") : "";
 
 function showChannel(channel: Channel) {
   channelSelect.value = channel;
