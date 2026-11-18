@@ -1105,7 +1105,9 @@ function settingsProblem(kind: "file" | "request" | "message"): string | null {
   return null;
 }
 
-const formatDate = (isoDate: string) => new Date(isoDate).toLocaleDateString(locale());
+/** Every date in the pane and the cards: day and month with two digits and the full year ("02.12.2026"). */
+const DATE_FORMAT = { day: "2-digit", month: "2-digit", year: "numeric" } as const;
+const formatDate = (when: string | number) => new Date(when).toLocaleDateString(locale(), DATE_FORMAT);
 
 /** Empty paragraph after an inserted card, so the cursor ends up below it (see insertIntoBody). */
 const AFTER_CARD = "<p style=\"margin:0;\"><br></p>";
@@ -1999,6 +2001,16 @@ interface ShareItem {
 }
 
 /** "Kennwort per SMS an +49 170 •••• 78 – zugestellt am 16.11.2026, 14:05" for the "Verlauf" list. */
+/** The way in a few words for the line ("Kennwort per Mail", "Kennwort per SMS – zugestellt"); the rest in the tooltip. */
+function passwordShort(p: NonNullable<ShareItem["password"]>): string {
+  if (p.channel === "mail") return t("shares.passwordMailShort");
+  const status =
+    p.status === "delivered" ? t("shares.smsDelivered")
+    : p.status === "failed" ? t(p.refused ? "shares.smsFailed" : "shares.smsUndelivered")
+    : t("shares.smsSubmitted");
+  return t("shares.passwordSmsShort", { status });
+}
+
 function passwordText(p: NonNullable<ShareItem["password"]>): string {
   if (p.channel === "mail") return t("shares.passwordMail", { to: p.to });
   const status =
@@ -2066,7 +2078,7 @@ async function openSentMail(share: ShareItem) {
 function formatDateTime(when: string | number): string {
   const d = new Date(when);
   return t("shares.dateTime", {
-    date: d.toLocaleDateString(locale(), { day: "2-digit", month: "2-digit", year: "numeric" }),
+    date: d.toLocaleDateString(locale(), DATE_FORMAT),
     time: d.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" }),
   });
 }
@@ -2106,9 +2118,8 @@ const isValid = (share: ShareItem) => share.expiration === null || share.expirat
 /** Start of a link's period, without the year if it ends in the same year: "15.11." (de) / "15/11" (en-GB). */
 function shortDate(sharedAt: number, expiration: string): string {
   const from = new Date(sharedAt);
-  return from.getFullYear() === Number(expiration.slice(0, 4))
-    ? from.toLocaleDateString(locale(), { day: "2-digit", month: "2-digit" })
-    : from.toLocaleDateString(locale());
+  void expiration; // always with the year now (dd.mm.yyyy)
+  return formatDate(from.getTime());
 }
 
 /** Copies text; the async clipboard API is not available in every Outlook version. */
@@ -2315,12 +2326,10 @@ function shareRow(share: ShareItem): HTMLElement {
     `<button type="button" class="btn btn-subtle btn-icon copy">${ICONS.copy}</button>` +
     `<button type="button" class="btn btn-subtle btn-icon show-password" aria-expanded="false" hidden>${ICONS.password}</button>` +
     `<button type="button" class="btn btn-subtle btn-icon insert">${ICONS.insert}</button>` +
-    `<button type="button" class="btn btn-subtle btn-icon proof" hidden>${ICONS.proof}</button>` +
     `<button type="button" class="btn btn-subtle btn-icon btn-danger revoke">${ICONS.revoke}</button>` +
     `</div></div>` +
     `<div class="share-meta"><span class="share-period"></span> · <span class="share-password"></span></div>` +
     `<div class="share-meta share-unsent" hidden></div>` +
-    `<div class="share-meta share-proof" hidden></div>` +
     `<div class="share-state${state.done ? " done" : ""}">` +
     `<span class="dot-state" aria-hidden="true"></span><span class="state-text"></span></div>` +
     `<div class="password-panel" hidden></div></div>`;
@@ -2331,16 +2340,6 @@ function shareRow(share: ShareItem): HTMLElement {
   label(row.querySelector<HTMLButtonElement>(".copy")!, t("shares.copyLabel"));
   label(row.querySelector<HTMLButtonElement>(".insert")!, t("shares.insertLabel"));
   label(row.querySelector<HTMLButtonElement>(".revoke")!, t("shares.revokeLabel"));
-  // "Zustellnachweis": the tracking ID below the period, and "Nachweis" opens the PDF in the default browser.
-  if (share.proofId) {
-    const proofLine = row.querySelector<HTMLElement>(".share-proof")!;
-    proofLine.textContent = t("shares.proofLine", { id: share.proofId });
-    proofLine.hidden = false;
-    const proofButton = row.querySelector<HTMLButtonElement>(".proof")!;
-    label(proofButton, t("shares.proofLabel", { id: share.proofId }));
-    proofButton.hidden = false;
-    proofButton.addEventListener("click", () => void openProof(share.proofId!, proofButton));
-  }
   // Too long for the line: shortened in the middle ("cloudshare-icon-va…nten.png"), so the extension stays visible.
   const [start, end] = nameParts(share.name);
   const nameStart = document.createElement("span");
@@ -2389,22 +2388,33 @@ function shareRow(share: ShareItem): HTMLElement {
     } else {
       item.textContent = t(`shares.kind.${share.kind}`);
     }
+    // "Zustellnachweis": a small seal after it – the tracking ID in its tooltip, a click opens the PDF ("Nachweis").
+    if (share.proofId) {
+      const seal = document.createElement("button");
+      seal.type = "button";
+      seal.className = "btn btn-subtle btn-icon proof-seal";
+      seal.innerHTML = ICONS.proof;
+      label(seal, t("shares.proofLabel", { id: share.proofId }));
+      seal.addEventListener("click", () => void openProof(share.proofId!, seal));
+      item.append(seal);
+    }
     row.querySelector(".share-head")!.after(item);
   }
 
   // "15.11. – 29.11.2026 · Kennwort per SMS an +49 170 •••• 72 – übermittelt": the word "Kennwort" only once.
   const period = row.querySelector<HTMLElement>(".share-period")!;
-  const sharedOn = new Date(share.sharedAt).toLocaleDateString(locale());
+  const sharedOn = formatDate(share.sharedAt);
   period.textContent = share.expiration
-    ? t("shares.period", { from: shortDate(share.sharedAt, share.expiration), until: formatDate(share.expiration) })
+    ? t("shares.period", { from: shortDate(share.sharedAt, share.expiration), until: formatDate(`${share.expiration}T12:00:00`) })
     : t("shares.since", { from: sharedOn });
   period.title = [t("shares.sharedOn", { date: sharedOn }), share.expiration ? t("shares.validUntil", { date: formatDate(share.expiration) }) : ""]
     .filter(Boolean)
     .join(", ");
   const passwordLine = row.querySelector<HTMLElement>(".share-password")!;
   passwordLine.textContent = share.password
-    ? passwordText(share.password)
+    ? passwordShort(share.password)
     : t(share.protected === false ? "shares.withoutPassword" : "shares.withPassword");
+  passwordLine.title = share.password ? passwordText(share.password) : "";
   passwordLine.classList.toggle("failed", share.password?.status === "failed");
 
   row.querySelector<HTMLElement>(".state-text")!.textContent = state.text;
@@ -2419,7 +2429,7 @@ function shareRow(share: ShareItem): HTMLElement {
     line.textContent = share.downloads?.count
       ? t("shares.unsentDownloaded")
       : share.revokeAt
-        ? t("shares.unsentRevoke", { date: new Date(share.revokeAt).toLocaleDateString(locale()) })
+        ? t("shares.unsentRevoke", { date: formatDate(share.revokeAt) })
         : t("shares.unsent");
     line.hidden = false;
   }

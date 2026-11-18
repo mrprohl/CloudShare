@@ -211,7 +211,15 @@ export const locale = () => {
 };
 
 /** Date in the language's format and the configured time zone ("19.11.2026"). */
-export const formatDate = (ms: number) => new Date(ms).toLocaleDateString(locale(), { timeZone: config.timeZone });
+export const formatDate = (ms: number) =>
+  new Date(ms).toLocaleDateString(locale(), { timeZone: config.timeZone, day: "2-digit", month: "2-digit", year: "numeric" });
+
+/** Date and time ("18.11.2026, 15:58 Uhr" – the wording of "mail.dateTime") in the configured time zone. */
+export const formatDateTime = (ms: number) =>
+  t("mail.dateTime", {
+    date: formatDate(ms),
+    time: new Date(ms).toLocaleTimeString(locale(), { timeZone: config.timeZone, hour: "2-digit", minute: "2-digit" }),
+  });
 
 /** Picks the plural form for `count`, then fills {name} placeholders (unknown ones stay visible). */
 export function format(texts: Section, key: string, vars: Record<string, string | number> = {}): string {

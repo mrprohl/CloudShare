@@ -468,7 +468,7 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   requests for an hour (same answer, nothing sent; `gateway.locked`) and mail the sender the attempts once
   (`sendLockNotice`). In memory, like the codes.
 - **PDF** (`proofPdf.ts`, `pdf.ts` – a small writer of its own, no dependency, standard fonts in WinAnsi):
-  "Nachweis" in "Verlauf" asks `POST /api/proofs/:id/link` for an address signed with a key derived from
+  the seal next to the file name in "Verlauf" (`.proof-seal`) asks `POST /api/proofs/:id/link` for an address signed with a key derived from
   `CREDENTIAL_KEY` and valid five minutes, and opens it in the default browser (`openBrowserWindow`) – the language
   of the add-in.
 

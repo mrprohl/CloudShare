@@ -15,7 +15,7 @@ import type { FastifyBaseLogger } from "fastify";
 import { appGraphToken, HttpError } from "./auth.js";
 import { config } from "./config.js";
 import { getCredentials, removeCredentials } from "./credentials.js";
-import { inSenderLanguage, locale, t } from "./i18n.js";
+import { formatDate, formatDateTime, inSenderLanguage, t } from "./i18n.js";
 import { sendMailAsApp } from "./graph.js";
 import { NextcloudClient, NOT_CONNECTED } from "./nextcloud.js";
 import { PersistentMap } from "./db.js";
@@ -72,15 +72,9 @@ export async function registerNotices(entries: Array<[string, Notice]>): Promise
 export const pendingNotices = () => [...notices.entries()];
 
 const tokenOf = (url: string) => url.replace(/\/+$/, "").split("/").pop() ?? "";
-const formatDay = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString(locale(), { timeZone: config.timeZone });
-/** "16.11.2026, 00:42 Uhr" / "16 Nov 2026, 00:42" – the wording from "mail.dateTime". */
-const formatTime = (iso: string) => {
-  const d = new Date(iso);
-  return t("mail.dateTime", {
-    date: d.toLocaleDateString(locale(), { timeZone: config.timeZone, dateStyle: "medium" }),
-    time: d.toLocaleTimeString(locale(), { timeZone: config.timeZone, timeStyle: "short" }),
-  });
-};
+const formatDay = (iso: string) => formatDate(Date.parse(`${iso}T12:00:00Z`));
+/** "16.11.2026, 00:42 Uhr" / "16/11/2026, 00:42" – the wording from "mail.dateTime". */
+const formatTime = (iso: string) => formatDateTime(Date.parse(iso));
 
 /** One pass (exported for tests; normally driven by startNotices). */
 export async function runNotices(log: Pick<FastifyBaseLogger, "info" | "warn">, now = Date.now()) {

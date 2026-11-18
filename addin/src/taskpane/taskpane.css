@@ -498,6 +498,9 @@ button.share-title:hover { color: var(--brand-fg); text-decoration: underline; t
 button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 2px; }
 .share-item { display: flex; align-items: center; min-width: 0; margin: 2px 0; font-size: 13px; line-height: 18px; color: var(--fg2); }
 .share-item .share-name { font-weight: 400; flex: 0 1 auto; }
+/* "Zustellnachweis": a small seal after the file name – a click opens the PDF, the tracking ID is in its tooltip. */
+.share-item .proof-seal { flex: none; width: 22px; height: 22px; min-width: 0; padding: 1px; margin-left: 4px; color: var(--fg2); }
+.share-item .proof-seal .icon { width: 16px; height: 16px; }
 .share-meta { font-size: 12px; line-height: 16px; color: var(--fg3); }
 .share-password.failed { color: var(--danger-fg); }
 .share-unsent { color: var(--fg2); font-weight: 600; }

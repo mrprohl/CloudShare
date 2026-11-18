@@ -3,12 +3,11 @@
  * date and time and its hash, and whether the chain is intact. In the language of the sender's add-in.
  */
 import { config } from "./config.js";
-import { inSenderLanguage, locale, t } from "./i18n.js";
+import { formatDate, formatDateTime, inSenderLanguage, locale, t } from "./i18n.js";
 import { pdfDocument, type PdfLine } from "./pdf.js";
 import { verifyCase, type ProofCase, type ProofEvent } from "./proof.js";
 
-const time = (ms: number) =>
-  new Date(ms).toLocaleString(locale(), { timeZone: config.timeZone, dateStyle: "medium", timeStyle: "medium" });
+const time = (ms: number) => formatDateTime(ms);
 
 const isoTime = (iso: unknown) => (typeof iso === "string" && Number.isFinite(Date.parse(iso)) ? time(Date.parse(iso)) : "");
 
@@ -50,7 +49,7 @@ function describe(e: ProofEvent, c: ProofCase): { label: string; details: Array<
       const details: Array<[string, string]> = [
         [t("mail.proof.field.name"), text(d.name)],
         [t("mail.proof.field.protection"), t(d.protection === "none" ? "mail.proof.protection.none" : "mail.proof.protection.password")],
-        [t("mail.proof.field.expires"), text(d.expireDate)],
+        [t("mail.proof.field.expires"), typeof d.expireDate === "string" ? formatDate(Date.parse(`${d.expireDate}T12:00:00Z`)) : ""],
       ];
       if (typeof d.size === "number") details.push([t("mail.proof.field.size"), size(d.size)]);
       if (Array.isArray(d.passwordWays) && d.passwordWays.length) details.push([t("mail.proof.field.passwordWays"), d.passwordWays.map(way).join(", ")]);

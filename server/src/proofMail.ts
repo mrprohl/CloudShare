@@ -8,9 +8,8 @@
  *   locked   – the gateway refused code requests for a while: too many addresses that are no recipients (proofGateway.ts).
  */
 import { appGraphToken } from "./auth.js";
-import { config } from "./config.js";
 import { sendMailAsApp } from "./graph.js";
-import { inSenderLanguage, locale, t } from "./i18n.js";
+import { formatDateTime, inSenderLanguage, t } from "./i18n.js";
 import { mailDocument, paragraph } from "./mailLayout.js";
 import { addEvent, type ProofCase } from "./proof.js";
 import { proofPdf } from "./proofPdf.js";
@@ -19,8 +18,7 @@ import { proofPdf } from "./proofPdf.js";
 export const caseSubject = (c: ProofCase) =>
   String([...c.events].reverse().find((e) => e.type === "message.sent")?.data.subject ?? "");
 
-const time = (ms: number) =>
-  new Date(ms).toLocaleString(locale(), { timeZone: config.timeZone, dateStyle: "medium", timeStyle: "short" });
+const time = (ms: number) => formatDateTime(ms);
 
 /** The PDF as an attachment ("Zustellnachweis-20261117-1146-7Q2F.pdf"). */
 const pdfAttachment = (c: ProofCase) => ({

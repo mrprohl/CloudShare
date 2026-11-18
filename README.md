@@ -406,7 +406,7 @@ default, offered for "Files" only (not for a confidential message or an upload l
   the address the mail went to and gets a six-digit code from the sender's mailbox; with it the browser goes on to
   Nextcloud (the password is still needed). Address, time, IP address and browser are recorded. Only addresses the
   mail went to get a code – **a distribution list does not work**, recipients use their own address from the mail.
-- **PDF**: "Proof" (document with a seal) in "History" opens it in the default browser – brought up to date right
+- **PDF**: the small seal next to the file name in "History" (the tracking ID in its tooltip) opens it in the default browser – brought up to date right
   before (downloads are otherwise collected every 10 minutes). The sender also gets it **by mail**: after the first
   download (this mail replaces the plain download confirmation for such links) and once more, complete, when all links
   expired or were revoked. Downloads come from Nextcloud's activity – the Activity app must be enabled.
