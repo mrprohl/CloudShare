@@ -1058,11 +1058,11 @@ describe("personal settings (/api/settings)", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       settings: {
-        downloadNotice: true, uploadNotice: true, smsNotice: true, channels: ["recipients", "mail", "sms"], defaultChannel: "recipients",
+        downloadNotice: true, uploadNotice: true, smsNotice: true, proofReminder: true, channels: ["recipients", "mail", "sms"], defaultChannel: "recipients",
         language: "auto", recipientLanguage: "de", signature: null, // recipients: LANGUAGE (de in the tests)
       },
       defaults: expect.objectContaining({ channels: ["recipients", "mail", "sms"], language: "auto" }),
-      available: { downloadNotice: true, uploadNotice: true, smsNotice: true, channels: ["recipients", "mail", "sms"], languages: ["de", "en"] },
+      available: { downloadNotice: true, uploadNotice: true, smsNotice: true, proofReminder: true, channels: ["recipients", "mail", "sms"], languages: ["de", "en"] },
     });
   });
 

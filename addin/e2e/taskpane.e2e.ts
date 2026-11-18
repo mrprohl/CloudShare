@@ -1723,13 +1723,14 @@ test("Hilfe: \"Hilfe\" in the account menu opens the guide in place of the tab, 
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await expect(page.locator("#account-toggle")).toBeFocused();
 
-  // Opened from "Verlauf": a click on a tab closes it as well.
+  // Opened from "Verlauf": back leads to "Verlauf" again (the tabs are hidden while the guide is open).
   await page.click("#tab-shares");
   await openHelp(page);
   await expect(page.locator("#panel-shares")).toBeHidden();
-  await page.click("#tab-send");
+  await expect(page.locator("#tab-send")).toBeHidden();
+  await page.click("#help-close");
   await expect(page.locator("#panel-help")).toBeHidden();
-  await expect(page.locator("#panel-send")).toBeVisible();
+  await expect(page.locator("#panel-shares")).toBeVisible();
 });
 
 test("Nextcloud öffnen opens the user's Nextcloud in the browser", async ({ page }) => {
@@ -2132,7 +2133,7 @@ test("Zustellnachweise: every proof in the account menu, filtered and searched, 
     "https://cloudshare.example.com/proof/20261118-1646-CBMH.pdf?until=1&lang=de&sig=x");
   // The seal tells the state by its colour (and its tooltip).
   await expect(entries.nth(0).locator(".proof-seal")).toHaveClass(/state-fetched/);
-  await expect(entries.nth(1).locator(".proof-seal")).toHaveAttribute("title", "Zustellnachweis 20261112-0931-XK7P – gesendet, noch nicht abgerufen");
+  await expect(entries.nth(1).locator(".proof-seal")).toHaveAttribute("title", "Zustellnachweis 20261112-0931-XK7P als PDF öffnen – gesendet, noch nicht abgerufen");
   await expectAccessible(page);
 
   // Filter chips: only the ones not fetched, then all again.
