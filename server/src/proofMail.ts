@@ -12,7 +12,7 @@ import { sendMailAsApp } from "./graph.js";
 import { formatDateTime, inSenderLanguage, t } from "./i18n.js";
 import { mailDocument, paragraph } from "./mailLayout.js";
 import { addEvent, type ProofCase } from "./proof.js";
-import { proofPdf } from "./proofPdf.js";
+import { signedProofPdf } from "./proofPdf.js";
 
 /** Subject of the mail the case belongs to (the last one recorded as sent). */
 export const caseSubject = (c: ProofCase) =>
@@ -20,11 +20,11 @@ export const caseSubject = (c: ProofCase) =>
 
 const time = (ms: number) => formatDateTime(ms);
 
-/** The PDF as an attachment ("Zustellnachweis-20261117-1146-7Q2F.pdf"). */
-const pdfAttachment = (c: ProofCase) => ({
-  name: `${t("mail.proof.fileName")}-${c.id}.pdf`.replace(/[^\w.-]/g, "_"),
+/** The signed PDF as an attachment ("Zustellnachweis-20261117-1146-7Q2F.pdf"). */
+const pdfAttachment = async (c: ProofCase) => ({
+  name: inSenderLanguage(c.senderLanguage, () => `${t("mail.proof.fileName")}-${c.id}.pdf`.replace(/[^\w.-]/g, "_")),
   contentType: "application/pdf",
-  content: proofPdf(c, c.senderLanguage),
+  content: await signedProofPdf(c, c.senderLanguage),
 });
 
 /** The first download of `name` at `at`: a green card, the PDF attached. */
@@ -37,10 +37,9 @@ export async function sendDownloadProof(c: ProofCase, name: string, at: number):
         opening: paragraph(t("mail.proof.downloadMail.text", { name, subject })),
         card: { accent: "success", title: t("mail.proof.downloadMail.title"), files: [name], details: t("mail.proof.downloadMail.details", { time: time(at), id: c.id }) },
       }),
-      attachment: pdfAttachment(c),
     };
   });
-  await sendMailAsApp(await appGraphToken(), c.owner, c.ownerUpn, mail.subject, mail.html, [mail.attachment]);
+  await sendMailAsApp(await appGraphToken(), c.owner, c.ownerUpn, mail.subject, mail.html, [await pdfAttachment(c)]);
   addEvent(c.id, "proof.sent", { reason: "download" });
 }
 
@@ -55,10 +54,9 @@ export async function sendFinalProof(c: ProofCase): Promise<void> {
         opening: paragraph(t("mail.proof.finalMail.text", { subject })),
         card: { accent: "brand", title: t("mail.proof.finalMail.title"), files: names, details: t("mail.proof.finalMail.details", { count: c.events.length, id: c.id }) },
       }),
-      attachment: pdfAttachment(c),
     };
   });
-  await sendMailAsApp(await appGraphToken(), c.owner, c.ownerUpn, mail.subject, mail.html, [mail.attachment]);
+  await sendMailAsApp(await appGraphToken(), c.owner, c.ownerUpn, mail.subject, mail.html, [await pdfAttachment(c)]);
   addEvent(c.id, "proof.sent", { reason: "final" });
 }
 

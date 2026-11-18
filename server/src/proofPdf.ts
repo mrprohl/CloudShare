@@ -5,6 +5,7 @@
 import { config } from "./config.js";
 import { formatDate, formatDateTime, inSenderLanguage, locale, t } from "./i18n.js";
 import { pdfDocument, type PdfLine } from "./pdf.js";
+import { signPdf } from "./pdfSign.js";
 import { verifyCase, type ProofCase, type ProofEvent } from "./proof.js";
 
 const time = (ms: number) => formatDateTime(ms);
@@ -126,7 +127,7 @@ function describe(e: ProofEvent, c: ProofCase): { label: string; details: Array<
 }
 
 /** The PDF of a case in `language` (the sender's add-in; else LANGUAGE). */
-export function proofPdf(c: ProofCase, language: string | undefined, now = new Date()): Buffer {
+export function proofPdf(c: ProofCase, language: string | undefined, now = new Date(), signed = false): Buffer {
   return inSenderLanguage(language, () => {
     const check = verifyCase(c);
     const lines: PdfLine[] = [
@@ -160,6 +161,21 @@ export function proofPdf(c: ProofCase, language: string | undefined, now = new D
       author: c.ownerUpn,
       created: now,
       footer: (page, pages) => t("mail.proof.footer", { id: c.id, page, pages }),
+      ...(signed ? { signature: { name: "CloudShare", reason: t("mail.proof.documentTitle", { id: c.id }) } } : {}),
     });
   });
+}
+
+/**
+ * The PDF signed (pdfSign.ts): any change afterwards shows in the reader. If signing fails, the PDF without a
+ * signature field rather than none.
+ */
+export async function signedProofPdf(c: ProofCase, language: string | undefined, log?: { warn: (o: object, m: string) => void }): Promise<Buffer> {
+  const now = new Date();
+  try {
+    return await signPdf(proofPdf(c, language, now, true));
+  } catch (err) {
+    log?.warn({ err, case: c.id }, "Delivery proof PDF not signed");
+    return proofPdf(c, language, now);
+  }
 }

@@ -203,6 +203,19 @@ export const config = {
   deliveryProof: envFlag("DELIVERY_PROOF", "DOWNLOAD_NOTICE"),
   /** How long a case is kept after its last event (days; default three years, the regular limitation period). */
   proofRetentionDays: number("PROOF_RETENTION_DAYS", 1095),
+  /**
+   * Signature of the proof PDF (pdfSign.ts): PEM files of an own certificate and key (e.g. from a CA trusted by Adobe);
+   * without them CloudShare makes a certificate itself (CN PROOF_SIGN_NAME, O PROOF_SIGN_ORGANIZATION). PROOF_TSA_URL:
+   * RFC 3161 time stamp authority for the signature ("off" = none) – only a hash leaves the server.
+   */
+  proofSignCertFile: process.env.PROOF_SIGN_CERT_FILE ?? "",
+  proofSignKeyFile: process.env.PROOF_SIGN_KEY_FILE ?? "",
+  proofSignName: process.env.PROOF_SIGN_NAME?.trim() || "CloudShare Zustellnachweis",
+  proofSignOrganization: process.env.PROOF_SIGN_ORGANIZATION?.trim() ?? "",
+  proofTsaUrl: (() => {
+    const url = (process.env.PROOF_TSA_URL ?? "http://timestamp.digicert.com").trim();
+    return url.toLowerCase() === "off" ? "" : url;
+  })(),
 
   /**
    * Defaults of the personal settings (⚙ in the add-in, settings.ts) – each user may change them for themselves:

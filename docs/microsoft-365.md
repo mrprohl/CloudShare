@@ -15,7 +15,7 @@ settings, and *Global Administrator* or *Exchange Administrator* for deploying t
 2. [App registration in Entra ID](#2-app-registration-in-entra-id)
 3. [Deploying the add-in](#3-deploying-the-add-in)
 4. [Exchange Online](#4-exchange-online)
-5. [Optional: application permission for the download confirmation](#5-optional-application-permission-for-the-download-confirmation)
+5. [Optional: application permission for notices and the delivery proof](#5-optional-application-permission-for-notices-and-the-delivery-proof)
 6. [Checking the setup](#6-checking-the-setup)
 7. [Maintenance](#7-maintenance)
 8. [Errors and their causes](#8-errors-and-their-causes)
@@ -197,13 +197,20 @@ Notes:
   because CloudShare serves `https://cloudshare.example.com/.well-known/microsoft-officeaddins-allowed.json` – nothing
   to configure, but proxies must not block that path.
 
-## 5. Optional: application permission for the download confirmation
+## 5. Optional: application permission for notices and the delivery proof
 
-Only for `DOWNLOAD_NOTICE=true`, `UPLOAD_NOTICE=true` and `SMS_NOTICE=true`: these mails are sent days later, when the
-user's delegated token has long expired, so CloudShare uses its own **application** permission `Mail.Send` (download
-confirmation, files received through an upload link, password SMS reported as not delivered – without it, only
-"History" shows these). CloudShare only ever sends such a mail as the user who shared the link, to that user (or to
-the shared mailbox the original mail came from). Only `Mail.Send` is needed: nothing is read with this permission –
+For `DOWNLOAD_NOTICE=true`, `UPLOAD_NOTICE=true`, `SMS_NOTICE=true` and `DELIVERY_PROOF=true` (unset it follows
+`DOWNLOAD_NOTICE`): these mails are sent later, when the user's delegated token has long expired, so CloudShare uses
+its own **application** permission `Mail.Send`:
+
+- **Notices to the sender** – download confirmation, files received through an upload link, password SMS reported
+  as not delivered (without the permission only "History" shows these); with the delivery proof also the signed PDF
+  after the first download and at the end, and the note when code requests were locked. Sent as the user who shared
+  the link, to that user.
+- **Delivery proof to the recipients** – the confirmation code, and the password mail after a recipient confirmed
+  their address. The code goes out as the user who shared the link; the password mail as the mailbox the original
+  mail came from (the user's own, or a shared mailbox they sent from), to the recipient who confirmed (or the other
+  password address). Only `Mail.Send` is needed: nothing is read with this permission –
 subject and recipients were taken from *Sent Items* with the delegated token when the mail was sent, downloads and
 uploads come from Nextcloud. There is no application version of `Mail.Send.Shared`, and none is needed.
 
@@ -215,7 +222,7 @@ and sends the password with the user's own token, as the user or the shared mail
 | `Mail.Send` | Token | When | For |
 |---|---|---|---|
 | delegated | the user's, when "Send" is pressed | seconds to minutes later | password mail, sending it again |
-| application | CloudShare's own | days later, the user's token has expired | download confirmation, files received, SMS not delivered |
+| application | CloudShare's own | later, the user's token has expired | download confirmation, files received, SMS not delivered; delivery proof: code, password after the confirmation, PDF, lock note |
 
 The permission belongs to the registration CloudShare signs in with: **`CloudShare Server`** from step 2 (its client
 ID is `ENTRA_CLIENT_ID`) – not the registration "CloudShare" that *Integrated apps* creates. Choose **one** of two ways:
@@ -223,8 +230,11 @@ ID is `ENTRA_CLIENT_ID`) – not the registration "CloudShare" that *Integrated 
 ### Way A (recommended): only the CloudShare users – Exchange RBAC for applications
 
 Exchange grants `Mail.Send` to the app, limited to the members of one group. **No** application permission is entered
-in Entra. The hints are always sent from the mailbox of the user who shared the link (never from a shared mailbox),
-so the group holds the **users** – shared mailboxes need not be in it.
+in Entra. The notices are sent from the mailbox of the user who shared the link, so the group holds the **users**.
+With the delivery proof, the password mail after a confirmation comes from the mailbox the original mail was sent
+from: if users send mails with a delivery proof **from shared mailboxes**, add those shared mailboxes to the group
+too – otherwise the password mail fails with `ErrorAccessDenied` (the recipient's page then says the password could
+not be sent).
 
 1. A mail-enabled security group (or distribution group) with the CloudShare users, e.g. "CloudShare users".
 2. Note two IDs of `CloudShare Server`: the *Application (client) ID* (= `ENTRA_CLIENT_ID`) and the *Object ID* of the
@@ -268,7 +278,8 @@ way A later by doing its steps 1–5 (step 4 removes this row again).
 
 ### Then
 
-Set `DOWNLOAD_NOTICE=true`, `UPLOAD_NOTICE=true` and/or `SMS_NOTICE=true` in `env/cloudshare.env` and update the stack.
+Set `DOWNLOAD_NOTICE=true`, `UPLOAD_NOTICE=true`, `SMS_NOTICE=true` and/or `DELIVERY_PROOF=true` in
+`env/cloudshare.env` and update the stack.
 Without the permission these mails fail with a warning in the log (`Note about an undelivered SMS not sent`, `… check
 failed, retrying later`); everything else keeps working.
 
@@ -283,6 +294,12 @@ failed, retrying later`); everything else keeps working.
 4. Send the mail to yourself or a colleague → the password mail follows within about a minute. The server log shows
    `Password mail sent` (`docker logs cloudshare 2>&1 | grep "Password mail"`).
 5. Open the sent mail in *Sent Items* → **CloudShare** → the pane lists its link under *In this message*.
+6. With `DELIVERY_PROOF`: switch on *Proof of delivery* under *Recipients*, send a file to a second address of yours →
+   no password mail arrives with the mail. Open the link, confirm the address with the code → the password mail
+   arrives, *To the download* leads on. In *History* the seal next to the file name opens the PDF; Adobe Reader shows
+   it as signed and unchanged (signer "unknown" with the certificate CloudShare made itself).
+7. With `InformationProtectionPolicy.Read` (2.4): attach a labelled Office file → its label name shows under it in
+   the pane.
 
 ## 7. Maintenance
 
@@ -293,6 +310,7 @@ failed, retrying later`); everything else keeps working.
 | Switching to another app registration | – | set it up completely (2.1–2.5, and 2.6 / 2.7 / 5 if used) → `ENTRA_CLIENT_ID` and `ENTRA_CLIENT_SECRET` → update the stack → check the manifest (3) → remove the add-in in *Integrated apps* and deploy it again → only then delete the old registration. Users keep their Nextcloud connection (stored per user, not per app). Until Outlook has the new manifest, sign-in in the pane fails – plan a quiet time |
 | New Graph permission in a CloudShare release | per release notes | add it (2.4), grant admin consent |
 | Users leave the CloudShare group | – | with 2.6 / 5 the access ends automatically |
+| Certificate that signs the proof PDF | own one before it expires; the self-made one lasts ten years | PEM files under `env/config` → `PROOF_SIGN_CERT_FILE`, `PROOF_SIGN_KEY_FILE` → update the stack; PDFs signed before stay valid |
 
 ## 8. Errors and their causes
 
@@ -311,5 +329,8 @@ Messages are quoted in English (the default, `LANGUAGE=en`), the German text (`L
 | Sign-in error `AADSTS50105` | user not assigned while *Assignment required* is on | 2.6 |
 | No password mail, log `Graph sendMail failed (HTTP 403)` for a shared mailbox | no *Send As* / *Send on Behalf* right | 4 |
 | Download confirmation fails with `ErrorAccessDenied` | application permission missing or RBAC scope does not contain the sender | 5 |
+| Delivery proof: recipients get no code, or the page says the password could not be sent; log `Graph sendMail (app) failed (HTTP 403)` | application `Mail.Send` missing, or the sender's mailbox (or the shared mailbox the mail came from) is outside the RBAC scope | 5 |
+| Label names missing in the pane ("Sensitivity label"), log `Sensitivity labels not readable via Graph` | `InformationProtectionPolicy.Read` not added or no admin consent – Outlook's own catalog is used instead | 2.4 |
+| Proof PDF not signed, log `Delivery proof PDF not signed` | `PROOF_SIGN_CERT_FILE` / `PROOF_SIGN_KEY_FILE` not readable or not matching | check the paths under `/config` and that key and certificate belong together |
 | Pane: sign-in error right after a new deployment, `ENTRA_CLIENT_ID` shows the ID of a registration **without** client secret | the registration Microsoft 365 created for the deployment was taken instead of the one of step 2 | use the client ID of 2.1 (the registration with the secret); see the notes of 3 |
 | The CloudShare button does not appear | deployment still in progress (up to 24 h), user not assigned, or an old Outlook cache | admin center → *Integrated apps*; classic Outlook: clear `%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\` |
