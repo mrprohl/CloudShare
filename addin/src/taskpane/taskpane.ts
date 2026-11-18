@@ -595,7 +595,7 @@ function renderPicked() {
 /** The files the rows of #picked currently show (their checkbox values are indexes into it). */
 let pickedRendered: File[] = [];
 
-// Ticking another file may bring an encrypted one in or out (the note in "Weitere Optionen").
+// Ticking another file may bring an encrypted one in or out (the note below the list).
 for (const list of [attachmentList, pickedList]) list.addEventListener("change", () => void renderEncrypted());
 
 
@@ -1529,7 +1529,8 @@ passwordInput.addEventListener("input", () => renderSubmit());
 passwordToInput.addEventListener("input", () => renderSubmit());
 passwordSmsInput.addEventListener("input", () => renderSubmit());
 
-/** "Gültigkeit": only the fields of the chosen kind, collapsed behind a one-line summary of the values. */
+/** "Gültigkeit": only the fields of the chosen kind, collapsed behind a one-line summary of the times (language and
+ *  "Zustellnachweis" are in sight under "Empfänger"). */
 function renderValidity() {
   if (!serverConfig) return;
   const kind = selectedKind();
@@ -1550,12 +1551,6 @@ function renderValidity() {
     const days = Math.min(sendDays(passwordDaysInput).value, lifetime);
     parts.push(t("validity.password", { count: days, times: timesText(maxAccessValue()) }));
   }
-  // "Sprache für die Empfänger" (in this section): its name, while there is a choice.
-  if (!recipientLanguageField.hidden && recipientLanguageSelect.selectedOptions[0]) {
-    parts.push(recipientLanguageSelect.selectedOptions[0].text);
-  }
-  // "Zustellnachweis" where the server offers it: with or without, so the collapsed line always says which.
-  if (!proofField.hidden) parts.push(t(proofInput.checked ? "proof.summary" : "proof.summaryOff"));
   validitySummary.textContent = parts.join(" · ");
 }
 
@@ -2694,7 +2689,6 @@ Office.onReady(async () => {
   for (const id of ["help-proof", "help-shares-proof"]) $<HTMLElement>(id).hidden = !serverConfig.deliveryProof;
   $<HTMLElement>("help-files-labels").hidden = serverConfig.labelPolicy === "off";
   proofInput.checked = state.proof === true;
-  renderValidity(); // the summary says "mit / ohne Zustellnachweis"
   applyLinkMax();
   maxAccessInput.max = String(serverConfig.sendMaxAccessLimit);
   for (const input of [passwordDaysInput, messageDaysInput]) {

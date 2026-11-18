@@ -95,11 +95,13 @@ three.
    - **No password** – only for files and only if your Nextcloud allows links without a password. Anyone with the
      link can download the file while the link is valid; no password goes out, and that mail cannot get a
      confidential message or upload link any more (the pane says so).
-3. **"Send the password to"**: the recipients of the mail (default), **another e-mail address** (e.g. a colleague),
-   or a **phone number (SMS)** if SMS is set up – the password arrives as plain text, sent after the mail.
-4. **"More options"** is collapsed and shows its values in one line, e.g. "Link 14 days · Password link 5
-   days, opens 3 times · English". Open it to change **"Language for the recipients"** (link card, password mail and SMS
-   in that language; preselected in the settings), **"Link valid for"** (days the download link works – with a password at most 30, see below), **"Password can be opened"** (how
+3. **"Recipients"**, always in sight: **"Password to"** – the recipients of the mail (default), **another e-mail address** (e.g. a colleague),
+   or a **phone number (SMS)** if SMS is set up – the password arrives as plain text, sent after the mail; **"Language"**
+   – link card, password mail and SMS in that language (preselected in the settings); and for files, if offered, the
+   switch **"Proof of delivery"**.
+4. **"Validity"** is collapsed and shows its values in one line, e.g. "Link 14 days · Password link 5
+   days, opens 3 times". Open it to change
+   **"Link valid for"** (days the download link works – with a password at most 30, see below), **"Password can be opened"** (how
    often the password link opens) and **"Password link valid for"** (days the password can be fetched – default 5,
    at most 30). With SMS the two password-link settings disappear: the password is in the SMS itself and works as
    long as the link does.
@@ -119,7 +121,7 @@ before sending, no password mail goes out and the password options are free agai
 **Confidential message** (**Message**): type a message instead of choosing a file – e.g. access data – and click
 **"Insert confidential message"**. The message does not go into the mail: it is stored encrypted in Vaultwarden as a Send
 protected with the chosen password, and the mail gets a card with **"Open message"**. The password reaches the
-recipients like for files. At most 1000 characters; under "More options", **"Message valid for"** sets how long it can be
+recipients like for files. At most 1000 characters; under "Validity", **"Message valid for"** sets how long it can be
 read (default 5 days, at most 30 – Vaultwarden's limit), then it is deleted.
 
 **Receiving files** (**Request**): **"Insert upload link"** inserts a link through which the recipients can upload
@@ -321,7 +323,7 @@ deployed again.
 
 ### Password by SMS (optional)
 
-The password can go out as an SMS instead of a password mail ("Send the password to" → **Phone number (SMS)**). It
+The password can go out as an SMS instead of a password mail ("Password to" → **Phone number (SMS)**). It
 is sent after the mail, through [seven.io](https://www.seven.io); without `SEVEN_API_KEY` the option is not offered.
 
 1. **seven.io:** create an account with prepaid credit, create an API key (*Developer → API Keys*) and choose the
@@ -366,7 +368,7 @@ is sent after the mail, through [seven.io](https://www.seven.io); without `SEVEN
    `https://cloudshare.example.com/webhooks/seven?token=<SEVEN_WEBHOOK_SECRET>` for the event `dlr`. Without it the
    SMS still goes out, but "History" only shows "submitted" instead of "delivered on …" / "not delivered".
 4. **Check:** `curl -s https://cloudshare.example.com/api/config` contains `"smsEnabled":true`; after reloading the
-   pane, "Send the password to" offers **Phone number (SMS)**. Send a test mail with your own number –
+   pane, "Password to" offers **Phone number (SMS)**. Send a test mail with your own number –
    `docker logs cloudshare 2>&1 | grep -i sms` shows the SMS and, with the webhook, `SMS delivery report`.
 
 **If an SMS fails, the password goes out no other way** – CloudShare never sends it on its own by mail. The sender
@@ -385,8 +387,8 @@ corrected number) or as a password mail. Two kinds of failure:
 
 For mails where the sender may later have to show **that and when** recipients got something. On with
 `DELIVERY_PROOF=true` (unset it follows `DOWNLOAD_NOTICE`; it needs the same application permission `Mail.Send`).
-The sender ticks **"Proof of delivery"** under "More options" before inserting files as a link – never ticked by
-default, offered for "Files" only (not for a confidential message or an upload link). The collapsed line of "More options" says "with" or "without proof of delivery". Details: [architecture.md → 2.12](docs/architecture.md#212-delivery-proof-zustellnachweis).
+The sender switches on **"Proof of delivery"** under "Recipients" before inserting files as a link – never on by
+default, offered for "Files" only (not for a confidential message or an upload link). Details: [architecture.md → 2.12](docs/architecture.md#212-delivery-proof-zustellnachweis).
 
 - **Tracking ID** per mail (e.g. `20261117-1146-7Q2F`) in the link card, the password mail, the download
   confirmation and "History".

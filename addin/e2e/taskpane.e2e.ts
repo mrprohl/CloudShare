@@ -561,7 +561,7 @@ test("preselects large attachments and proposes a random password", async ({ pag
   await expect(page.locator("#submit")).toHaveText("2 Dateien als Link einfügen");
   await rows.nth(1).locator(".file-name").click();
   await expect(page.locator("#validity-section")).toBeHidden();
-  await expect(page.locator("#validity-summary")).toHaveText("Link 14 Tage · Kennwort-Link 5 Tage, 3-mal abrufbar · Deutsch");
+  await expect(page.locator("#validity-summary")).toHaveText("Link 14 Tage · Kennwort-Link 5 Tage, 3-mal abrufbar");
   await expect(page.locator('#password-channel option[value="sms"]')).toHaveCount(1);
 
   await expectAccessible(page);
@@ -595,15 +595,12 @@ test("Sprache für die Empfänger: the card and the password mail in the chosen 
     settings: { recipientLanguage: "de" },
   });
   await expect(page.locator("#password")).not.toHaveValue("");
-  // In "Weitere Optionen": the summary names it, the field is behind the toggle.
-  await expect(page.locator("#validity-summary")).toContainText("· Deutsch");
-  await page.click("#validity-toggle");
+  // Under "Empfänger", in sight (no longer behind "Gültigkeit"; its summary names only the times).
   const select = page.locator("#recipient-language");
   await expect(select).toHaveValue("de"); // from the settings
   await expect(select.locator("option")).toHaveText(["Deutsch", "English"]);
   await select.selectOption("en");
-  await page.click("#validity-toggle");
-  await expect(page.locator("#validity-summary")).toContainText("· English");
+  await expect(page.locator("#validity-summary")).not.toContainText("English");
   await page.click("#submit");
 
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt."); // the pane in its own language
@@ -705,7 +702,7 @@ test("Link gültig für / Kennwort abrufbar: capped at the maximum with a note, 
 
   // Closed again: the summary shows the new values.
   await page.click("#validity-toggle");
-  await expect(page.locator("#validity-summary")).toHaveText("Link 10 Tage · Kennwort-Link 5 Tage, einmal abrufbar · Deutsch");
+  await expect(page.locator("#validity-summary")).toHaveText("Link 10 Tage · Kennwort-Link 5 Tage, einmal abrufbar");
 });
 
 test("further links share the password by default; 'Zufällig' gives the next one its own", async ({ page }) => {
@@ -1066,7 +1063,7 @@ test("Ohne Kennwort: plain link, no password mail, upload links stay protected",
   // The whole mail stays without password; an upload link would need one – said before any click.
   await expect(page.locator("#mode-random")).toBeDisabled();
   await expect(page.locator("#mode-none")).toBeChecked();
-  await expect(page.locator("#validity-summary")).toHaveText("Link 14 Tage · Deutsch");
+  await expect(page.locator("#validity-summary")).toHaveText("Link 14 Tage");
   await chooseKind(page, "request");
   await expect(page.locator("#password-hint")).toContainText("Links zum Hochladen brauchen ein Kennwort");
   await expect(page.locator("#submit")).toBeDisabled();
@@ -1130,20 +1127,17 @@ test("Zustellnachweis: not offered without DELIVERY_PROOF on the server", async 
 test("Zustellnachweis: only for files; ticked, it goes with the upload and the card names the tracking ID", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Plan.pdf", 2 * MiB)], config: { deliveryProof: true } });
   await expect(page.locator("#password")).not.toHaveValue("");
-  await page.click("#validity-toggle");
-  // Not for a message or an upload link.
+  // Under "Empfänger", in sight – not for a message or an upload link.
   for (const kind of ["message", "request"] as const) {
     await chooseKind(page, kind);
     await expect(page.locator("#proof-field")).toBeHidden();
-    await expect(page.locator("#validity-summary")).not.toContainText("Zustellnachweis");
   }
   await chooseKind(page, "files");
   await expect(page.locator("#proof-field")).toBeVisible();
   await expect(page.locator("#proof")).not.toBeChecked();
-  await expect(page.locator("#validity-summary")).toContainText("· ohne Zustellnachweis");
-  await page.locator("#proof-field .checkbox").click();
+  await expect(page.locator("#proof")).toHaveAttribute("role", "switch");
+  await page.locator("#proof-field .switch-text").click();
   await expect(page.locator("#proof")).toBeChecked();
-  await expect(page.locator("#validity-summary")).toContainText("· mit Zustellnachweis");
   await expectAccessible(page);
 
   await page.click("#submit");
@@ -1166,7 +1160,7 @@ test("Nachricht: inserts a card with the link, never the text, and shares the pa
   await expect(page.locator("#files-section")).toBeHidden(); // one thing at a time
   await expect(page.locator("#submit")).toHaveText("Vertrauliche Nachricht einfügen"); // the only button
   await expect(page.locator("#mode-none-row")).toBeHidden(); // a confidential message always has a password
-  await expect(page.locator("#validity-summary")).toHaveText("Nachricht 5 Tage · Kennwort-Link 5 Tage, 3-mal abrufbar · Deutsch");
+  await expect(page.locator("#validity-summary")).toHaveText("Nachricht 5 Tage · Kennwort-Link 5 Tage, 3-mal abrufbar");
 
   await expect(page.locator("#password")).not.toHaveValue(""); // the pane has started (settings loaded)
   const password = await page.locator("#password").inputValue();
@@ -1850,7 +1844,7 @@ test.describe("README pictures (English)", () => {
   test("Send: files", async ({ page }) => {
     await openTaskpane(page, { lang: "en", attachments: ATTACHMENTS, config: README_CONFIG });
     await expect(page.locator("#submit")).toHaveText("Insert file as link");
-    await expect(page.locator("#validity-summary")).toHaveText("Link 14 days · Password link 5 days, opens 3 times · English");
+    await expect(page.locator("#validity-summary")).toHaveText("Link 14 days · Password link 5 days, opens 3 times");
     await expect(page.locator("#account")).toHaveText("max.mustermann");
     await expectAccessible(page);
     await readmeShot(page, "send");
@@ -1986,7 +1980,7 @@ test("Labels: a protected file shows a note below the list and needs a confirmat
   await expect(row.locator(".file-label")).toHaveText("Geschützt");
   await expect(row.locator(".label-lock")).toHaveCount(1);
   // A note right below the list; inserting only after "Trotzdem als Link senden".
-  await expect(page.locator("#validity-section")).toBeHidden(); // "Weitere Optionen" stays as it was
+  await expect(page.locator("#validity-section")).toBeHidden(); // "Gültigkeit" stays as it was
   await expect(page.locator("#encrypted-text")).toHaveText(
     "„Vertrag.pfile“ ist verschlüsselt. Empfänger außerhalb Ihrer Organisation können sie meist nicht öffnen.");
   await expect(page.locator("#submit")).toBeDisabled();

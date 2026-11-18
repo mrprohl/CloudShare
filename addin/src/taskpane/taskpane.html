@@ -174,24 +174,49 @@
             <p class="hint" id="password-hint">%%t:addin.password.hint%%</p>
           </div>
 
-          <!-- How the password goes out after sending: to the recipients (default), to another address, or by SMS. -->
-          <div class="field" id="password-to-field">
-            <label for="password-channel" class="label">%%t:addin.channel.label%%</label>
-            <div class="select-wrap">
-              <select id="password-channel" class="input select">
-                <option value="recipients">%%t:addin.channel.recipients%%</option>
-                <option value="mail">%%t:addin.channel.mail%%</option>
-                <option value="sms" id="channel-sms-option">%%t:addin.channel.sms%%</option>
-              </select>
+          <!-- "Empfänger": what concerns the recipients of this mail, always in sight – how the password goes out (to the
+               recipients, another address, or by SMS), the language of the link card, the password mail and the SMS
+               (preselected from the settings, renderRecipientLanguages; hidden with only one language) and
+               "Zustellnachweis" (DELIVERY_PROOF, files only, never on by default – proofRequest). Label and control in
+               one row each. -->
+          <h2 class="section-title" id="recipients-heading">%%t:addin.recipients.heading%%</h2>
+          <div class="field recipients" role="group" aria-labelledby="recipients-heading">
+            <div id="password-to-field">
+              <div class="inline-row">
+                <label for="password-channel" class="inline-label">%%t:addin.channel.label%%</label>
+                <div class="select-wrap">
+                  <select id="password-channel" class="input select">
+                    <option value="recipients">%%t:addin.channel.recipients%%</option>
+                    <option value="mail">%%t:addin.channel.mail%%</option>
+                    <option value="sms" id="channel-sms-option">%%t:addin.channel.sms%%</option>
+                  </select>
+                </div>
+              </div>
+              <input type="email" id="password-to" class="input channel-input" placeholder="%%t:addin.channel.mailPlaceholder%%" autocomplete="email"
+                spellcheck="false" aria-label="%%t:addin.channel.mailLabel%%" aria-describedby="password-to-hint" hidden />
+              <input type="tel" id="password-sms" class="input channel-input" placeholder="%%t:addin.channel.smsPlaceholder%%" autocomplete="tel"
+                aria-label="%%t:addin.channel.smsLabel%%" aria-describedby="password-to-hint" hidden />
+              <p class="hint" id="password-to-hint" hidden></p>
             </div>
-            <input type="email" id="password-to" class="input channel-input" placeholder="%%t:addin.channel.mailPlaceholder%%" autocomplete="email"
-              spellcheck="false" aria-label="%%t:addin.channel.mailLabel%%" aria-describedby="password-to-hint" hidden />
-            <input type="tel" id="password-sms" class="input channel-input" placeholder="%%t:addin.channel.smsPlaceholder%%" autocomplete="tel"
-              aria-label="%%t:addin.channel.smsLabel%%" aria-describedby="password-to-hint" hidden />
-            <p class="hint" id="password-to-hint" hidden></p>
+            <div class="inline-row" id="recipient-language-field">
+              <label for="recipient-language" class="inline-label">%%t:addin.recipientLanguage.short%%</label>
+              <div class="select-wrap">
+                <select id="recipient-language" class="input select" title="%%t:addin.recipientLanguage.hint%%"
+                  aria-describedby="recipient-language-hint"></select>
+              </div>
+              <p class="visually-hidden" id="recipient-language-hint">%%t:addin.recipientLanguage.hint%%</p>
+            </div>
+            <div class="switch-field" id="proof-field" hidden>
+              <label class="switch" for="proof">
+                <span class="switch-text">%%t:addin.proof.label%%</span>
+                <input type="checkbox" role="switch" id="proof" aria-describedby="proof-hint" />
+                <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+              </label>
+              <p class="hint" id="proof-hint">%%t:addin.proof.hint%%</p>
+            </div>
           </div>
 
-          <!-- Lifetimes and accesses: rarely changed, so collapsed behind a one-line summary (renderValidity). -->
+          <!-- "Gültigkeit": lifetimes and accesses – rarely changed, so collapsed behind a one-line summary (renderValidity). -->
           <div class="validity">
             <button type="button" id="validity-toggle" class="disclosure disclosure-block" aria-expanded="false" aria-controls="validity-section">
               <svg class="icon chevron" viewBox="0 0 20 20" aria-hidden="true">
@@ -238,27 +263,6 @@
                   <span class="suffix">%%t:addin.expire.suffix%%</span>
                 </div>
                 <p class="hint" id="password-days-hint">%%t:addin.passwordDays.hint%%</p>
-              </div>
-
-              <!-- Language of what the recipients get: the link card, the password mail and the SMS (preselected from the
-                   settings, taskpane.ts renderRecipientLanguages; named in the summary). Hidden with only one language. -->
-              <div class="field" id="recipient-language-field">
-                <label for="recipient-language" class="label">%%t:addin.recipientLanguage.label%%</label>
-                <div class="select-wrap">
-                  <select id="recipient-language" class="input select" aria-describedby="recipient-language-hint"></select>
-                </div>
-                <p class="hint" id="recipient-language-hint">%%t:addin.recipientLanguage.hint%%</p>
-              </div>
-
-              <!-- "Zustellnachweis" (DELIVERY_PROOF on the server, otherwise hidden): never ticked by default; once a link of
-                   the mail has it, the mail keeps its tracking ID (taskpane.ts proofRequest; named in the summary). -->
-              <div class="field" id="proof-field" hidden>
-                <label class="checkbox">
-                  <input type="checkbox" id="proof" aria-describedby="proof-hint" />
-                  <span class="box" aria-hidden="true"></span>
-                  <span class="checkbox-text">%%t:addin.proof.label%%</span>
-                </label>
-                <p class="hint" id="proof-hint">%%t:addin.proof.hint%%</p>
               </div>
             </div>
           </div>
