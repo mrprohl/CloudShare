@@ -19,7 +19,7 @@ import { formatDate, inRecipientLanguage, t } from "./i18n.js";
 import { takeSmsQuota } from "./jobs.js";
 import { passwordMailHtml } from "./passwordMail.js";
 import { passwordRefFor, updatePasswordRef, type PasswordRef } from "./passwordRefs.js";
-import { saveCase, type ProofCase } from "./proof.js";
+import { gatewayUrl, saveCase, type ProofCase } from "./proof.js";
 import { maskPhone, sendSms, smsEnabled } from "./sms.js";
 import { defaultTemplates, render, smsFiles, templatesFor } from "./templates.js";
 import { createPasswordSend, readSendPassword } from "./vaultwarden.js";
@@ -41,7 +41,7 @@ interface Released {
 }
 
 /** One password mail to one address: a new Send with the step's password, in the recipients' language. */
-async function mailPassword(c: ProofCase, ref: PasswordRef, password: string, to: string): Promise<string> {
+async function mailPassword(c: ProofCase, ref: PasswordRef, password: string, to: string, kind?: "file" | "request", token = ""): Promise<string> {
   const send = await createPasswordSend(`CloudShare: ${ref.fileNames[0]}`, password, ref.maxAccessCount, config.sendExpireDays, ref.keepUntil);
   await updatePasswordRef(ref.sendId, { resentSend: send.id }); // deleted with the links
   const mail = inRecipientLanguage(ref.language, () => {
@@ -55,8 +55,10 @@ async function mailPassword(c: ProofCase, ref: PasswordRef, password: string, to
       }),
       html: passwordMailHtml({
         fileNames: ref.fileNames, sendUrl: send.url, maxAccessCount: ref.maxAccessCount, subject: ref.subject,
-        expireDays: config.sendExpireDays, introTemplate: customIntro, senderName: ref.senderName,
+        expireDays: config.sendExpireDays, introTemplate: customIntro, senderName: ref.senderName || ref.ownerUpn,
         expiresOn: formatDate(send.expiresAt), signature: ref.signature, trackingId: c.id,
+        // Right after the confirmation: the mail says so and how to go on.
+        afterConfirmation: kind ? { kind, url: gatewayUrl(token) } : undefined,
       }),
     };
   });
@@ -75,13 +77,14 @@ export async function releasePassword(c: ProofCase, token: string, address: stri
   if (!ref?.deferred) return null;
   const done: Released = ((c.released ??= {})[ref.sendId] ??= { mailed: [] });
   const result: ReleasedPassword = {};
+  const kind = c.links?.[token]?.kind === "request" ? "request" : "file";
   let password: string | undefined;
   const readPassword = async () => (password ??= await readSendPassword(ref.sendId));
 
   if (ref.toRecipients) {
     result.mailTo = address;
     if (!done.mailed.includes(address)) {
-      result.subject = await mailPassword(c, ref, await readPassword(), address);
+      result.subject = await mailPassword(c, ref, await readPassword(), address, kind, token);
       done.mailed.push(address);
       saveCase(c.id);
     }
@@ -89,6 +92,7 @@ export async function releasePassword(c: ProofCase, token: string, address: stri
   if (ref.otherTo?.length) {
     result.others = ref.otherTo;
     if (!done.others) {
+      // Not the one who confirmed: the usual password mail.
       for (const to of ref.otherTo) await mailPassword(c, ref, await readPassword(), to);
       done.others = true;
       saveCase(c.id);

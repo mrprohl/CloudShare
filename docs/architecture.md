@@ -446,7 +446,9 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
 - **Recipient confirms their address** (`proofGateway.ts`): file and upload links of a case go into the mail as
   `https://<host>/r/s/<token>` instead of the Nextcloud link (the path still ends in `/s/<token>`, so the read mode
   and `releaseDraftIfLinksGone` find it). The page asks for the address; only one the mail went to (To, Cc, Bcc – a
-  distribution list does not match) gets a six-digit code, sent from the sender's mailbox with the app token; the page
+  distribution list does not match) gets a six-digit code, sent from the sender's mailbox with the app token (`codeMail`: who sent what with proof of
+  delivery, the code large – `MailCard.highlight` –, the next steps depending on where the password will come from, and
+  that it can be ignored if nobody asked for it); the page
   answers every address alike – the same text, the same limits (counted for every request), the same timing (the code
   mail is not awaited) and one error text for a wrong, expired or never sent code – so trying does not reveal the
   recipients; an address that is not one is recorded (`recipient.unknownAddress`). Ten minutes, five tries, three codes per
@@ -454,7 +456,10 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   browser, sets a signed cookie for this link until it expires and redirects (303) to Nextcloud – the Nextcloud
   password is still needed. Before the mail was found sent the page says so. Plain HTML forms, no script, own CSP.
   A confidential message has no gateway (its link holds the key CloudShare does not keep); its openings are counted.
-- **Password after the confirmation** (`proofPassword.ts`): a step whose links all go through the gateway
+- **Password after the confirmation** (`proofPassword.ts`): the mail to the confirmed address says so ("Sie haben eben Ihre
+  E-Mail-Adresse bestätigt …") and lists the steps, with a button "Zum Download" to the gateway – never to Nextcloud: the confirmed browser goes
+  straight on, another one or a forwarded mail is asked for the code again, so link and password never travel together
+  (`afterConfirmation` in `passwordMailHtml`); a step whose links all go through the gateway
   (`isDeferredStep` in `jobs.ts`) sends no password when the mail is sent (`password.deferred`); its `PasswordRef` is
   `deferred` with `toRecipients` and the signature. After a right code `releasePassword` sends what is still held
   back – a password mail (new Send with the same password, app token, as the mailbox the mail came from) to the

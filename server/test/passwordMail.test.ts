@@ -96,3 +96,26 @@ describe("common layout of all automatic mails", () => {
     expect(html).not.toContain("Grund:");
   });
 });
+
+describe("password mail – limits and the mail after the confirmation", () => {
+  it("says in a sentence how often and how long the button works", () => {
+    const html = passwordMailHtml({ ...base, fileNames: ["a.pdf"], maxAccessCount: 3, expiresOn: "25.11.2026" });
+    expect(html).toContain("Der Knopf funktioniert 3-mal und bis 25.11.2026 – notieren Sie sich das Kennwort");
+    expect(passwordMailHtml({ ...base, fileNames: ["a.pdf"], maxAccessCount: 1, expiresOn: "25.11.2026" }))
+      .toContain("Der Knopf funktioniert nur einmal und bis 25.11.2026");
+  });
+
+  it("right after the confirmation: says so and lists the steps back on the page", () => {
+    const html = passwordMailHtml({
+      ...base, fileNames: ["Angebot.zip"], subject: "Unterlagen", senderName: "Anna Muster", maxAccessCount: 3,
+      expiresOn: "25.11.2026", afterConfirmation: { kind: "file", url: "https://cloudshare.example.test/r/s/tok" },
+    });
+    expect(html).toContain("Sie haben eben Ihre E-Mail-Adresse bestätigt. Hier ist das Kennwort für „Angebot.zip“ aus der Nachricht „Unterlagen“ von Anna Muster.");
+    expect(html).toContain("<ol");
+    expect(html).toContain("Klicken Sie auf „Zum Download“ – hier unten oder auf der geöffneten Seite.");
+    // The button leads to the gateway (confirmed browser: straight on; anyone else: the code again), never to Nextcloud.
+    expect(html).toContain('<a href="https://cloudshare.example.test/r/s/tok"');
+    expect(html).toContain(">Zum Download</a>");
+    expect(html).not.toContain("wenn Sie den Link öffnen"); // the page says where to enter it
+  });
+});

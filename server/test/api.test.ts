@@ -1176,9 +1176,13 @@ describe("delivery proof (Zustellnachweis)", () => {
     // The mail goes out after the answer (same timing for every address).
     await vi.waitFor(() => expect(sendMailAsApp).toHaveBeenCalledOnce());
     expect(asked.body.replaceAll("erika@example.test", "X")).toBe(stranger.body.replaceAll("mallory@example.test", "X"));
-    const [, owner, to, subject] = sendMailAsApp.mock.calls[0];
+    const [, owner, to, subject, html] = sendMailAsApp.mock.calls[0];
     expect([owner, to]).toEqual(["oid-anna", "erika@example.test"]);
-    const code = /(\d{6})/.exec(subject)![1];
+    // The code mail explains itself: what was sent, the code, the next steps, what to do if nobody asked for it.
+    expect(subject).toContain("Ihr Bestätigungscode für");
+    expect(html).toContain("So geht es weiter");
+    expect(html).toContain("ignorieren");
+    const code = />(\d{6})</.exec(String(html))![1];
 
     const wrong = await app.inject({ method: "POST", url: "/r/s/proof-gw/verify", ...form({ address: "erika@example.test", code: code === "000000" ? "111111" : "000000" }) });
     expect(wrong.statusCode).toBe(400);
@@ -1312,7 +1316,7 @@ describe("delivery proof – password after the confirmation", () => {
       sendMailAsApp.mockClear();
       await app.inject({ method: "POST", url: "/r/s/proof-pw/code", remoteAddress: "192.0.2.10", ...form({ address }) });
       await vi.waitFor(() => expect(sendMailAsApp).toHaveBeenCalledOnce());
-      const code = /(\d{6})/.exec(String(sendMailAsApp.mock.calls[0][3]))![1];
+      const code = />(\d{6})</.exec(String(sendMailAsApp.mock.calls[0][4]))![1];
       sendMailAsApp.mockClear();
       return app.inject({ method: "POST", url: "/r/s/proof-pw/verify", remoteAddress: "192.0.2.10", ...form({ address, code }) });
     };
@@ -1327,6 +1331,10 @@ describe("delivery proof – password after the confirmation", () => {
     expect(sendMailAsApp).toHaveBeenCalledOnce();
     expect(sendMailAsApp.mock.calls[0][2]).toBe("erika@example.test");
     expect(String(sendMailAsApp.mock.calls[0][4])).toContain("Kennwort anzeigen");
+    expect(String(sendMailAsApp.mock.calls[0][4])).toContain("Sie haben eben Ihre E-Mail-Adresse bestätigt");
+    // Its button leads back to the gateway, never straight to Nextcloud.
+    expect(String(sendMailAsApp.mock.calls[0][4])).toContain('href="https://cloudshare.example.test/r/s/proof-pw"');
+    expect(String(sendMailAsApp.mock.calls[0][4])).not.toContain("cloud.example.test/s/proof-pw");
 
     // Confirming again (another browser): no second password mail.
     const again = await confirm("erika@example.test");

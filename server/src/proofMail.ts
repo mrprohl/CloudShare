@@ -71,7 +71,8 @@ export async function sendLockNotice(c: ProofCase, linkName: string, attempts: A
       html: mailDocument({
         // The attempts as plain lines (time · address · IP) – no file rows with type badges for them.
         opening: paragraph(t("mail.proof.lockMail.text", { subject })) +
-          attempts.map((a) => paragraph(`${time(a.at)} · ${a.address} · ${a.ip}`)).join(""),
+          attempts.map((a) => paragraph(`${time(a.at)} · ${a.address} · ${a.ip}`)).join("") +
+          paragraph(t("mail.proof.lockMail.advice")),
         card: {
           accent: "danger",
           title: t("mail.proof.lockMail.title"),
