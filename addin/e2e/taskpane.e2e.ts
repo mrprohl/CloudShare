@@ -499,7 +499,7 @@ test("settings: an own signature is plain text with paragraphs – stored as typ
   await page.locator("#settings-signature-format").selectOption("text");
   const text = page.locator("#settings-signature-text");
   await expect(text).toBeVisible();
-  await expect(page.locator("#settings-signature-hint")).toHaveText("Steht als Text am Ende der Nachricht mit dem Kennwort.");
+  await expect(page.locator("#settings-signature-hint")).toHaveText("Steht als Text am Ende jeder E-Mail, die CloudShare an Ihre Empfänger sendet – Kennwort und Bestätigungscode.");
   await text.fill("Mit freundlichen Grüßen\n\n{displayName}\nTel. {phone}");
   // The "i" folds out the placeholders; a click inserts one at the cursor.
   const info = page.locator("#settings-placeholders-toggle");

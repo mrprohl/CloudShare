@@ -2604,7 +2604,7 @@ function shareRow(share: ShareItem): HTMLElement {
       : t(share.unsent ? "proofs.passwordPending" : "shares.withPasswordLine");
   if (share.expiration) {
     row.querySelector<HTMLElement>(".share-ends")!.textContent =
-      ` · ${t("proofs.endsOn", { date: formatDate(`${share.expiration}T12:00:00`) })}`;
+      `· ${t("proofs.endsOn", { date: formatDate(`${share.expiration}T12:00:00`) })}`; // the state line has its own gap
   }
   passwordLine.title = share.password ? passwordText(share.password) : "";
   passwordLine.classList.toggle("failed", share.password?.status === "failed");
