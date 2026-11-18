@@ -1387,6 +1387,7 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   await expect(rows.nth(0).locator(".share-password")).toHaveText("Kennwort an +49 170 •••• 67 – zugestellt");
   await expect(rows.nth(0).locator(".share-password")).toHaveAttribute("title", "Kennwort per SMS an +49 170 •••• 67 – zugestellt am 10.11.2026, 11:00 Uhr");
   await expect(rows.nth(0).locator(".share-state")).toContainText("endet 24.11.2099");
+  await expect(rows.nth(0).locator(".share-ends")).toHaveText("endet 24.11.2099"); // no dot before it
   await expect(rows.nth(1).locator(".share-sent")).toHaveText("12.11.2099"); // always dd.mm.yyyy
   await expect(rows.nth(1).locator(".share-password")).toHaveText("Ohne Kennwort");
   await expect(rows.nth(2).locator(".share-password")).toHaveText("Mit Kennwort");
@@ -1486,6 +1487,9 @@ test("Verlauf: links of a mail not sent (e.g. a discarded draft) say so and when
   await expect(rows.nth(2).locator(".share-unsent")).toHaveText("Kennwort noch nicht verschickt.");
   await expect(rows.nth(2).locator(".state-text")).toContainText("2× heruntergeladen");
   await expect(rows.nth(3).locator(".share-unsent")).toBeHidden();
+  // Not sent: the bold line says it – no extra "Kennwort noch nicht gesendet" line above it.
+  await expect(rows.nth(0).locator(".share-password")).toBeHidden();
+  await expect(rows.nth(3).locator(".share-password")).toBeVisible();
   await expectAccessible(page);
 });
 
@@ -2067,12 +2071,25 @@ test("Labels: a protected file shows a note below the list and needs a confirmat
   await expect(page.locator("#encrypted-field")).toBeVisible();
   expect(calls.some((c) => c.path === "/api/uploads")).toBe(false);
 
+
   await page.locator("#encrypted-confirm-row .checkbox-text").click();
   await expect(page.locator("#encrypted-confirm")).toBeChecked();
   await expect(page.locator("#submit")).toBeEnabled();
   await page.click("#submit");
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
   expect(calls.some((c) => c.path === "/api/uploads")).toBe(true);
+});
+
+test("Labels: the \"×\" on the note removes the encrypted file from the mail – and the note goes with it", async ({ page }) => {
+  await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pfile", 2 * MiB), attachment("a2", "Plan.pdf", 2 * MiB)] });
+  await expect(page.locator("#encrypted-field")).toBeVisible();
+  await expect(page.locator("#encrypted-dismiss")).toHaveAttribute("aria-label", "Datei entfernen – nicht als Link senden");
+  await page.click("#encrypted-dismiss");
+  expect((await officeLog(page)).removed).toEqual(["a1"]); // only the encrypted one
+  await expect(page.locator("#attachments .list-item")).toHaveCount(1);
+  await expect(page.locator("#attachments .file-name")).toHaveText("Plan.pdf");
+  await expect(page.locator("#encrypted-field")).toBeHidden();
+  await expect(page.locator("#submit")).toBeEnabled();
 });
 
 test("Labels: without Outlook's catalog the names and priority come from the tenant (Graph)", async ({ page }) => {

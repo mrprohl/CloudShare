@@ -524,7 +524,9 @@ longer attached, so the add-in does it itself (`addin/src/taskpane/labels.ts`, n
   mail's is lower – never lowered (`labelForMail`; `LABEL_POLICY=inherit`), or offered with "Übernehmen" (`suggest`).
 - **Encrypted files** (`renderEncrypted`): as soon as a ticked file is known to be encrypted, a note appears right
   below the file list (`#encrypted-field`); `LABEL_ENCRYPTED=warn` – the insert button stays off until "Trotzdem als Link senden"
-  is ticked (`insertReady`), `block` – it stays off, `allow` – no note. Large attachments are read only when inserted;
+  is ticked (`insertReady`), `block` – it stays off, `allow` – no note. The note's "×" (`#encrypted-dismiss`) removes the
+  encrypted files instead (attachments from the mail, files chosen in the pane from the list); the note follows the list (`renderAttachments` / `renderPicked` call `renderEncrypted`), so a
+  file removed from the mail takes its note with it. Large attachments are read only when inserted;
   then the same check runs before any upload.
 - No extra permission: the manifest already has `ReadWriteItem`.
 

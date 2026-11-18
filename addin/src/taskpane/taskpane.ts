@@ -74,6 +74,7 @@ const encryptedField = $<HTMLDivElement>("encrypted-field");
 const encryptedText = $<HTMLParagraphElement>("encrypted-text");
 const encryptedConfirm = $<HTMLInputElement>("encrypted-confirm");
 const encryptedConfirmRow = $<HTMLLabelElement>("encrypted-confirm-row");
+const encryptedDismiss = $<HTMLButtonElement>("encrypted-dismiss");
 /** Names of the encrypted files the note was shown for ("" = none). */
 let encryptedShown = "";
 const channelSelect = $<HTMLSelectElement>("password-channel");
@@ -577,7 +578,8 @@ async function renderAttachments() {
     });
   }
   noAttachments.hidden = attachments.length > 0 || pickedFiles.length > 0;
-  renderSubmit();
+  // The note about encrypted files follows the list (an attachment removed in Outlook takes its note with it).
+  void renderEncrypted();
 }
 
 function renderPicked() {
@@ -599,7 +601,8 @@ function renderPicked() {
     pickedFiles.forEach((file, i) => void showLabel(pickedList.children[i] as HTMLElement, labelOf(file, file.name, async () => file)));
   }
   noAttachments.hidden = attachmentList.childElementCount > 0 || pickedFiles.length > 0;
-  renderSubmit();
+  // A file removed with its "×" takes its note with it.
+  void renderEncrypted();
 }
 
 /** The files the rows of #picked currently show (their checkbox values are indexes into it). */
@@ -1700,6 +1703,29 @@ async function knownSelectionLabels() {
 encryptedConfirm.addEventListener("change", () => renderSubmit());
 
 /**
+ * "×" on the note – "Nein": the encrypted files are removed – a file chosen in the pane from the list, an attachment
+ * from the mail – and the note goes with them.
+ */
+encryptedDismiss.addEventListener("click", async () => {
+  const isEncrypted = async (key: string | File | undefined) => Boolean(key && labelCache.has(key) && (await labelCache.get(key)!)?.encrypted);
+  const attachments = Array.from(attachmentList.querySelectorAll<HTMLInputElement>("input:checked")).map((box) => box.value);
+  const picked = Array.from(pickedList.querySelectorAll<HTMLInputElement>("input:checked")).map((box) => pickedFiles[Number(box.value)]);
+  try {
+    for (const id of attachments) {
+      if (await isEncrypted(id)) await officeAsync<void>((cb) => composeItem().removeAttachmentAsync(id, cb));
+    }
+  } catch (err) {
+    setStatus(t("labels.removeFailed", { error: errorMessage(err) }), "error");
+  }
+  const encryptedPicked = new Set<File>();
+  for (const file of picked) if (await isEncrypted(file)) encryptedPicked.add(file);
+  pickedFiles = pickedFiles.filter((file) => !encryptedPicked.has(file));
+  renderPicked();
+  await renderAttachments().catch(() => undefined);
+  submitButton.focus();
+});
+
+/**
  * After inserting: the mail gets the highest label of its files if its own is lower (never lowered) – LABEL_POLICY
  * "inherit" sets it and says so, "suggest" offers "Übernehmen". Only labels of the user's own catalog (other
  * organisations' labels and a missing catalog: nothing to set). Returns the sentence for the message, if any.
@@ -2626,10 +2652,12 @@ function shareRow(share: ShareItem): HTMLElement {
     ? passwordShort(share.password)
     : share.protected === false
       ? t("proofs.withoutPassword")
-      : t(share.unsent ? "proofs.passwordPending" : "shares.withPasswordLine");
+      : t("shares.withPasswordLine");
+  // Not sent yet: the bold line below says so – no "Kennwort noch nicht gesendet" on top of it.
+  passwordLine.parentElement!.hidden = Boolean(share.unsent && !share.password && share.protected !== false);
   if (share.expiration) {
     row.querySelector<HTMLElement>(".share-ends")!.textContent =
-      `· ${t("proofs.endsOn", { date: formatDate(`${share.expiration}T12:00:00`) })}`; // the state line has its own gap
+      t("proofs.endsOn", { date: formatDate(`${share.expiration}T12:00:00`) }); // set apart from the state by the line's gap
   }
   passwordLine.title = share.password ? passwordText(share.password) : "";
   passwordLine.classList.toggle("failed", share.password?.status === "failed");
@@ -2638,7 +2666,10 @@ function shareRow(share: ShareItem): HTMLElement {
   // A message: no download state (Vaultwarden does not report it), no link to copy or insert again (no key kept).
   if (share.kind === "message") {
     // No download state – only when it ends.
-    row.querySelector<HTMLElement>(".state-text")!.textContent = "";
+    const stateText = row.querySelector<HTMLElement>(".state-text")!;
+    stateText.textContent = "";
+    stateText.hidden = true; // no empty gap before "Endet …"
+    row.querySelector<HTMLElement>(".share-ends")!.style.marginLeft = "0";
     const ends = row.querySelector<HTMLElement>(".share-ends")!;
     ends.textContent = share.expiration ? t("shares.endsOnly", { date: formatDate(`${share.expiration}T12:00:00`) }) : "";
     row.querySelector<HTMLElement>(".share-state")!.hidden = !share.expiration;
