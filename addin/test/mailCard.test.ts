@@ -89,3 +89,18 @@ describe("messageCard", () => {
     expect(messageText(url, "27.11.2026")).toContain(`Vertrauliche Nachricht für Sie (gültig bis 27.11.2026):\n${url}`);
   });
 });
+
+describe("one layout for every card", () => {
+  it("puts the button first and the file below it in grey; buttons are filled cells (classic Outlook)", () => {
+    const html = filesCard(files, "27.11.2026", formatSize);
+    expect(html).toContain("Über die folgenden Links laden Sie die Dateien herunter.");
+    // Each block: the button, then type, name and size.
+    expect(html.indexOf('href="https://cloud.example.test/s/a"')).toBeLessThan(html.indexOf("Angebot.pdf · 1000 B"));
+    expect(html.indexOf("Angebot.pdf · 1000 B")).toBeLessThan(html.indexOf('href="https://cloud.example.test/s/b"'));
+    for (const card of [html, messageCard("https://vault.example.test/#/send/m/k", "27.11.2026"), requestCard("https://cloud.example.test/s/up", "27.11.2026")]) {
+      expect(card).toContain('bgcolor="#0f6cbd"');
+      expect(card).toContain("mso-padding-alt:6px 14px");
+      expect(card).not.toMatch(/align="right"/);
+    }
+  });
+});

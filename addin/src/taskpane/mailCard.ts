@@ -1,7 +1,11 @@
 /**
  * HTML cards inserted into the mail body (seen by recipients – texts from the language file, keys "card.*").
  * Built for mail clients: tables and inline styles only, no classes, no external images. Classic Outlook (Word
- * engine) ignores rounded corners and some padding – the card then degrades to a plain bordered box.
+ * engine) ignores rounded corners – the card then degrades to a plain bordered box.
+ *
+ * One layout for every kind (files, confidential message, upload link): title, a short sentence, the button on the
+ * left, below it the details in grey (files: type, name, size – one block per file, each with its own button), and at
+ * the bottom the line "Gültig bis … · Das Kennwort …".
  */
 
 import { t } from "../shared/i18n";
@@ -30,24 +34,35 @@ const TYPE_COLORS: Record<string, string> = {
   zip: "#616161", rar: "#616161", "7z": "#616161", tar: "#616161", gz: "#616161",
 };
 
+/** Small type badge before the file name ("PDF", "XLSX", "DATEI" without extension) in the colour of its kind. */
 function typeBadge(name: string): string {
   const ext = name.includes(".") ? name.split(".").pop()!.toLowerCase() : "";
   const label = escapeHtml(ext ? ext.toUpperCase().slice(0, 4) : t("card.fileBadge"));
   const color = TYPE_COLORS[ext] ?? "#616161";
   return (
-    `<td width="40" valign="middle" style="width:40px;padding:0 12px 0 0;">` +
-    `<div style="width:40px;height:40px;line-height:40px;background:${color};border-radius:4px;color:#ffffff;` +
-    `font-family:${FONT};font-size:11px;font-weight:700;text-align:center;">${label}</div></td>`
+    `<td valign="middle" style="padding:0 8px 0 0;">` +
+    `<span style="display:inline-block;background:${color};border-radius:3px;color:#ffffff;font-family:${FONT};` +
+    `font-size:10px;font-weight:700;line-height:16px;padding:0 5px;">${label}</span></td>`
   );
 }
 
+/**
+ * The button, built to look the same in classic Outlook (Word engine): the colour on a table cell (bgcolor, padding via
+ * mso-padding-alt) – an <a> with padding alone shows there as blue text in a white box.
+ */
 function button(url: string, text: string): string {
   return (
-    `<a href="${escapeHtml(url)}" style="display:inline-block;background:${BRAND};border:1px solid ${BRAND};` +
-    `border-radius:4px;color:#ffffff;font-family:${FONT};font-size:13px;font-weight:600;line-height:18px;` +
-    `padding:6px 14px;text-decoration:none;white-space:nowrap;">${escapeHtml(text)}</a>`
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;">` +
+    `<tr><td bgcolor="${BRAND}" style="background:${BRAND};border-radius:4px;mso-padding-alt:6px 14px;">` +
+    `<a href="${escapeHtml(url)}" style="display:inline-block;color:#ffffff;font-family:${FONT};font-size:13px;` +
+    `font-weight:600;line-height:18px;padding:6px 14px;text-decoration:none;white-space:nowrap;">${escapeHtml(text)}</a>` +
+    `</td></tr></table>`
   );
 }
+
+/** The short sentence under the title. */
+const lead = (text: string) =>
+  `<div style="font-size:14px;line-height:20px;color:#424242;margin:0 0 12px;">${escapeHtml(text)}</div>`;
 
 /**
  * Outer frame: white card, thin border, brand accent on the left. `title` and `note` are plain text. No signature:
@@ -59,7 +74,7 @@ function frame(title: string, rows: string, note: string): string {
     `style="width:100%;max-width:560px;border-collapse:separate;margin:12px 0;">` +
     `<tr><td style="background:#ffffff;border:1px solid #e0e0e0;border-left:4px solid ${BRAND};border-radius:6px;` +
     `padding:14px 16px;font-family:${FONT};color:#242424;">` +
-    `<div style="font-size:15px;line-height:20px;font-weight:600;color:#242424;margin:0 0 6px;">${escapeHtml(title)}</div>` +
+    `<div style="font-size:15px;line-height:20px;font-weight:600;color:#242424;margin:0 0 8px;">${escapeHtml(title)}</div>` +
     rows +
     `<div style="font-size:12px;line-height:16px;color:#616161;margin:10px 0 0;">${escapeHtml(note)}</div>` +
     `</td></tr></table>`
@@ -86,7 +101,7 @@ const passwordNote = (proof?: CardProof) => t(proof?.gateway ? "card.proofPasswo
 const cardNote = (expireDate: string, withPassword: boolean, proof?: CardProof) =>
   [t("card.validUntil", { date: expireDate }), withPassword ? passwordNote(proof) : "", proofNote(proof)].filter(Boolean).join(" · ");
 
-/** Card for shared files: one row per file with type badge, name, size and a download button. */
+/** Card for shared files: per file a block – the download button, below it type, name and size in grey. */
 export function filesCard(
   files: CardFile[],
   expireDate: string,
@@ -95,42 +110,30 @@ export function filesCard(
   withPassword = true,
   proof?: CardProof,
 ): string {
-  const rows = files
+  const blocks = files
     .map(
       (f, i) =>
-        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" ` +
-        `style="width:100%;border-collapse:collapse;${i ? "border-top:1px solid #f0f0f0;" : ""}">` +
+        `<div style="${i ? "border-top:1px solid #f0f0f0;margin:12px 0 0;padding:12px 0 0;" : ""}">` +
+        button(f.url, t("card.download")) +
+        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:6px 0 0;">` +
         `<tr>${typeBadge(f.name)}` +
-        `<td valign="middle" style="padding:8px 12px 8px 0;font-family:${FONT};">` +
-        `<div style="font-size:14px;line-height:20px;font-weight:600;color:#242424;word-break:break-all;">` +
-        `${escapeHtml(f.name)}</div>` +
-        (f.size === null
-          ? ""
-          : `<div style="font-size:12px;line-height:16px;color:#616161;">${escapeHtml(formatSize(f.size))}</div>`) +
-        `</td>` +
-        `<td valign="middle" align="right" style="padding:8px 0;">${button(f.url, t("card.download"))}</td>` +
-        `</tr></table>`,
+        `<td valign="middle" style="font-family:${FONT};font-size:13px;line-height:18px;color:#616161;word-break:break-all;">` +
+        `${escapeHtml(f.name)}${f.size === null ? "" : ` · ${escapeHtml(formatSize(f.size))}`}</td>` +
+        `</tr></table></div>`,
     )
     .join("");
-  return frame(t("card.filesTitle", { count: files.length }), rows, cardNote(expireDate, withPassword, proof));
+  return frame(t("card.filesTitle", { count: files.length }), lead(t("card.filesText", { count: files.length })) + blocks,
+    cardNote(expireDate, withPassword, proof));
 }
 
 /** Card for an upload link ("Dateien von Empfängern erhalten"). */
 export function requestCard(url: string, expireDate: string, proof?: CardProof): string {
-  const rows =
-    `<div style="font-size:14px;line-height:20px;color:#424242;margin:0 0 12px;">` +
-    `${escapeHtml(t("card.requestText"))}</div>` +
-    button(url, t("card.upload"));
-  return frame(t("card.requestTitle"), rows, cardNote(expireDate, true, proof));
+  return frame(t("card.requestTitle"), lead(t("card.requestText")) + button(url, t("card.upload")), cardNote(expireDate, true, proof));
 }
 
 /** Card for a confidential message: the text itself is not in the mail, only the password-protected link to it. */
 export function messageCard(url: string, expireDate: string, proof?: CardProof): string {
-  const rows =
-    `<div style="font-size:14px;line-height:20px;color:#424242;margin:0 0 12px;">` +
-    `${escapeHtml(t("card.messageText"))}</div>` +
-    button(url, t("card.messageOpen"));
-  return frame(t("card.messageTitle"), rows, cardNote(expireDate, true, proof));
+  return frame(t("card.messageTitle"), lead(t("card.messageText")) + button(url, t("card.messageOpen")), cardNote(expireDate, true, proof));
 }
 
 /** Plain-text versions for mails composed in text format. */

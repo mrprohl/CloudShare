@@ -1058,11 +1058,11 @@ describe("personal settings (/api/settings)", () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({
       settings: {
-        downloadNotice: true, uploadNotice: true, smsNotice: true, channels: ["recipients", "mail", "sms"], defaultChannel: "recipients",
+        downloadNotice: true, uploadNotice: true, smsNotice: true, proofReminder: true, channels: ["recipients", "mail", "sms"], defaultChannel: "recipients",
         language: "auto", recipientLanguage: "de", signature: null, // recipients: LANGUAGE (de in the tests)
       },
       defaults: expect.objectContaining({ channels: ["recipients", "mail", "sms"], language: "auto" }),
-      available: { downloadNotice: true, uploadNotice: true, smsNotice: true, channels: ["recipients", "mail", "sms"], languages: ["de", "en"] },
+      available: { downloadNotice: true, uploadNotice: true, smsNotice: true, proofReminder: true, channels: ["recipients", "mail", "sms"], languages: ["de", "en"] },
     });
   });
 
@@ -1170,11 +1170,15 @@ describe("delivery proof (Zustellnachweis)", () => {
     expect(stranger.statusCode).toBe(200);
     expect(sendMailAsApp).not.toHaveBeenCalled();
 
-    // A recipient (any spelling): the code comes from the sender's mailbox.
+    // A recipient (any spelling): the code comes from the sender's mailbox – with the sender's signature below.
+    const { config } = await import("../src/config.js");
+    const footer = config.mailFooter;
+    config.mailFooter = "Viele Grüße\n{email}";
     const asked = await app.inject({ method: "POST", url: "/r/s/proof-gw/code", ...form({ address: "Erika@Example.test" }) });
     expect(asked.statusCode).toBe(200);
     // The mail goes out after the answer (same timing for every address).
     await vi.waitFor(() => expect(sendMailAsApp).toHaveBeenCalledOnce());
+    config.mailFooter = footer;
     expect(asked.body.replaceAll("erika@example.test", "X")).toBe(stranger.body.replaceAll("mallory@example.test", "X"));
     const [, owner, to, subject, html] = sendMailAsApp.mock.calls[0];
     expect([owner, to]).toEqual(["oid-anna", "erika@example.test"]);
@@ -1182,9 +1186,15 @@ describe("delivery proof (Zustellnachweis)", () => {
     expect(subject).toContain("Ihr Bestätigungscode für");
     expect(html).toContain("So geht es weiter");
     expect(html).toContain("ignorieren");
+    expect(String(html)).toMatch(/ignorieren[\s\S]*Viele Grüße<br>anna@example\.test/);
     const code = />(\d{6})</.exec(String(html))![1];
+    // The button in the mail: the code form filled in – the GET alone confirms nothing (mail scanners open links).
+    expect(String(html)).toContain(`/r/s/proof-gw/confirm?address=erika%40example.test&amp;code=${code}`);
+    const prefilled = await app.inject({ method: "GET", url: `/r/s/proof-gw/confirm?address=erika%40example.test&code=${code}` });
+    expect(prefilled.body).toContain(`value="${code}"`);
+    expect(caseById(proofId)!.events.some((e) => e.type === "recipient.verified")).toBe(false);
 
-    const wrong = await app.inject({ method: "POST", url: "/r/s/proof-gw/verify", ...form({ address: "erika@example.test", code: code === "000000" ? "111111" : "000000" }) });
+    const wrong =await app.inject({ method: "POST", url: "/r/s/proof-gw/verify", ...form({ address: "erika@example.test", code: code === "000000" ? "111111" : "000000" }) });
     expect(wrong.statusCode).toBe(400);
     // An address that never got a code gets exactly the same answer as a wrong code – nothing to learn by trying.
     const strangerTry = await app.inject({ method: "POST", url: "/r/s/proof-gw/verify", ...form({ address: "mallory@example.test", code: "123456" }) });
@@ -1362,6 +1372,15 @@ describe("delivery proof – the list for the search (GET /api/proofs)", () => {
     expect((await app.inject({ method: "GET", url: "/api/proofs", headers: as("bernd") })).json()
       .some((p: { id: string }) => p.id === proofId)).toBe(false);
   });
+
+  it("leaves out proofs of mails that were never sent", async () => {
+    nc.createPublicShare.mockResolvedValue("https://cloud.example.test/s/proof-draft");
+    const { body } = await startUpload("anna", "Entwurf.pdf");
+    await putChunk("anna", body.uploadId, 1);
+    const { proofId } = (await complete("anna", body.uploadId, { proof: true })).json();
+    const list = (await app.inject({ method: "GET", url: "/api/proofs", headers: as("anna") })).json() as Array<{ id: string }>;
+    expect(list.some((p) => p.id === proofId)).toBe(false);
+  });
 });
 
 describe("delivery proof – the pages carry the organisation", () => {
@@ -1372,12 +1391,108 @@ describe("delivery proof – the pages carry the organisation", () => {
       const page = await app.inject({ method: "GET", url: "/r/s/unknown-token" });
       expect(page.body).toContain('<img src="/assets/icon-64.png"');
       expect(page.body).toContain('<span class="brand-company">Example GmbH</span>');
-      expect(page.body).toContain('<a href="https://www.example.com" rel="noopener">example.com</a>');
+      expect(page.body).toContain('<a href="https://www.example.com" target="_blank" rel="noopener noreferrer">example.com</a>');
       expect(page.body).toContain(">Impressum</a>");
       expect(page.body).not.toContain("Datenschutz</a>"); // no PRIVACY_URL: no link
       expect(page.headers["content-security-policy"]).toContain("img-src 'self' data:");
     } finally {
       Object.assign(config, { companyName: "", companyWebsiteUrl: "", imprintUrl: "", privacyUrl: "" });
     }
+  });
+});
+
+describe("errors – a service that cannot be reached is named", () => {
+  const fetchFailed = (code: string, hostname?: string) =>
+    Object.assign(new TypeError("fetch failed"), { cause: Object.assign(new Error(`getaddrinfo ${code}`), { code, hostname }) });
+
+  it("names Nextcloud, the password service or the host instead of „Interner Fehler“", async () => {
+    const { unreachableService } = await import("../src/app.js");
+    expect(unreachableService(fetchFailed("ENOTFOUND", "cloud.example.test"))).toBe("Nextcloud (cloud.example.test) ist nicht erreichbar. Bitte wenden Sie sich an Ihre IT.");
+    expect(unreachableService(fetchFailed("ECONNREFUSED", "127.0.0.1"))).toBe("Der Kennwortdienst ist nicht erreichbar. Bitte wenden Sie sich an Ihre IT.");
+    expect(unreachableService(fetchFailed("ETIMEDOUT", "graph.microsoft.com"))).toBe("graph.microsoft.com ist nicht erreichbar. Bitte wenden Sie sich an Ihre IT.");
+    expect(unreachableService(new Error("something else"))).toBeNull();
+  });
+
+  it("answers 502 with code SERVICE_UNREACHABLE", async () => {
+    nc.userInfo.mockRejectedValueOnce(fetchFailed("ENOTFOUND", "cloud.example.test"));
+    const res = await app.inject({ method: "GET", url: "/api/shares", headers: as("anna") });
+    expect(res.statusCode).toBe(502);
+    expect(res.json()).toEqual({ error: "Nextcloud (cloud.example.test) ist nicht erreichbar. Bitte wenden Sie sich an Ihre IT.", code: "SERVICE_UNREACHABLE" });
+  });
+});
+
+describe("delivery proof – state, export and reminder", () => {
+  /** A sent case of anna with one file link ending on `expireDate`. */
+  async function sentCase(token: string, expireDate?: string) {
+    nc.createPublicShare.mockResolvedValue(`https://cloud.example.test/s/${token}`);
+    const { body } = await startUpload("anna", "Bericht.pdf");
+    await putChunk("anna", body.uploadId, 1);
+    const { proofId } = (await complete("anna", body.uploadId, { proof: true })).json();
+    const { recordMailSent, caseById } = await import("../src/proof.js");
+    if (expireDate) for (const l of Object.values(caseById(proofId)!.links ?? {})) l.expireDate = expireDate;
+    recordMailSent([token], { subject: "Bericht", messageId: `<${token}@example.test>`, from: "anna@example.test", to: ["erika@example.test"], cc: [], bcc: [], sentAt: "2026-11-18T10:00:00Z" });
+    return proofId as string;
+  }
+
+  it("lists the state, the end of the links and until when the proof is kept; the seal in \"Verlauf\" gets the state", async () => {
+    const proofId = await sentCase("proof-state");
+    const entry = ((await app.inject({ method: "GET", url: "/api/proofs", headers: as("anna") })).json() as Array<Record<string, unknown>>)
+      .find((p) => p.id === proofId)!;
+    expect(entry).toMatchObject({ state: "sent", fetched: 0 });
+    expect(entry).toMatchObject({ kind: "file", mailAvailable: false, passwordTo: [] }); // password not sent yet
+    // No sent mail known for it (recorded by the job watcher): the subject cannot open one; someone else's case: not found.
+    expect((await app.inject({ method: "GET", url: `/api/proofs/${proofId}/mail`, headers: as("anna") })).statusCode).toBe(404);
+    expect((await app.inject({ method: "GET", url: `/api/proofs/${proofId}/mail`, headers: as("bernd") })).json().error).toBe("Zustellnachweis nicht gefunden");
+    expect(typeof entry.endsOn).toBe("string");
+    expect(entry.keptUntil).toBeGreaterThan(Date.now());
+  });
+
+  it("exports the cases shown as one ZIP – signed PDFs and an overview – only the user's own", async () => {
+    const proofId = await sentCase("proof-export");
+    const res = await app.inject({ method: "POST", url: "/api/proofs/export", headers: as("anna"), payload: { ids: [proofId, "20990101-0000-XXXX"] } });
+    expect(res.statusCode).toBe(200);
+    const { url, count } = res.json();
+    expect(count).toBe(1);
+    const file = await app.inject({ method: "GET", url: new URL(url).pathname });
+    expect(file.statusCode).toBe(200);
+    expect(file.headers["content-type"]).toBe("application/zip");
+    expect(file.rawPayload.subarray(0, 4).toString("latin1")).toBe("PK\x03\x04");
+    const raw = file.rawPayload.toString("utf8");
+    expect(raw).toContain("Übersicht.csv");
+    expect(raw).toContain(`Zustellnachweis-${proofId}.pdf`);
+    // Someone else's cases cannot be exported, an unknown address gives nothing.
+    expect((await app.inject({ method: "POST", url: "/api/proofs/export", headers: as("bernd"), payload: { ids: [proofId] } })).statusCode).toBe(400);
+    expect((await app.inject({ method: "GET", url: "/proof/export/unknown.zip" })).statusCode).toBe(403);
+  });
+
+  it("defuses formulas in the overview", async () => {
+    const { csvField } = await import("../src/app.js");
+    expect(csvField("=HYPERLINK(1)")).toBe("'=HYPERLINK(1)");
+    expect(csvField('a;b "c"')).toBe('"a;b ""c"""');
+    expect(csvField(3)).toBe("3");
+  });
+
+  it("reminds the sender once when nothing was fetched shortly before the link ends – not when switched off", async () => {
+    const soon = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+    const proofId = await sentCase("proof-remind", soon);
+    const sendMailAsApp = vi.mocked((await import("../src/graph.js")).sendMailAsApp);
+    sendMailAsApp.mockClear();
+    const { runProofWatch } = await import("../src/proofWatcher.js");
+    const log = { info: vi.fn(), warn: vi.fn() };
+    await runProofWatch(log as never);
+    const reminders = sendMailAsApp.mock.calls.filter((call) => String(call[3]).startsWith("Noch nicht abgerufen"));
+    expect(reminders).toHaveLength(1);
+    expect(reminders[0][3]).toBe(`Noch nicht abgerufen – Vorgang ${proofId}`);
+    // Once per case.
+    await runProofWatch(log as never);
+    expect(sendMailAsApp.mock.calls.filter((call) => String(call[3]).startsWith("Noch nicht abgerufen"))).toHaveLength(1);
+
+    // Switched off in the settings: no reminder.
+    await app.inject({ method: "PUT", url: "/api/settings", headers: as("anna"), payload: { proofReminder: false } });
+    const other = await sentCase("proof-remind-off", soon);
+    sendMailAsApp.mockClear();
+    await runProofWatch(log as never);
+    expect(sendMailAsApp.mock.calls.some((call) => String(call[3]).includes(other))).toBe(false);
+    await app.inject({ method: "DELETE", url: "/api/settings", headers: as("anna") });
   });
 });

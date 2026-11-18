@@ -94,7 +94,7 @@ dragged onto the pane switch it to "Files".
 1. The taskpane lists the mail's file attachments (those above `ATTACHMENT_THRESHOLD_MB` preselected) and files from
    the computer – dropped onto the drop zone (the whole "Send" tab accepts drops) or picked by clicking it (native dialog `window.showOpenFilePicker`, fallback: hidden `<input type="file">`).
 2. **One click = one step** with a random `step` ID. All files of the step are uploaded one by one:
-   `POST /api/uploads` (quota check via OCS `cloud/user`, 507 → `NEXTCLOUD_QUOTA_EXCEEDED`) →
+   `POST /api/uploads` (quota check via OCS `cloud/user`, 507 → `NEXTCLOUD_QUOTA_EXCEEDED`); a service that cannot be reached (DNS, connection refused, timeout) answers 502 `SERVICE_UNREACHABLE` naming it (`unreachableService`) →
    `PUT /api/uploads/:id/chunks/:n` (10 MiB chunks, Nextcloud chunked upload v2) → `POST /api/uploads/:id/complete`.
    Target: `NEXTCLOUD_FOLDER/<date>_<id>/<file>`. Attachments are removed from the mail only after a successful upload.
 3. `complete` creates one public link per file (password, expiry date) and attaches it to the mail's **password job**
@@ -394,7 +394,7 @@ sent yet without subject says "(No subject yet)", entries from before "(Subject 
 ### 2.11 Personal settings
 
 "Einstellungen" in the account menu (`#settings-open`, bottom left) opens the settings in place of the current tab, like the guide (`settings.ts` in the
-add-in, `server/src/settings.ts`, store `settings`); "Speichern" closes them like the "×" (`closeSettings`, focus back
+add-in, `server/src/settings.ts`, store `settings`); "Speichern" closes them like the back arrow "←" (`closeSettings`, focus back
 on the account), "Zurücksetzen" keeps them open with the defaults in sight:
 
 - **Ways for the password** (`channels`, `defaultChannel`): `applyChannelChoices` hides the other options of "Kennwort
@@ -448,7 +448,8 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   and `releaseDraftIfLinksGone` find it). The page asks for the address; only one the mail went to (To, Cc, Bcc – a
   distribution list does not match) gets a six-digit code, sent from the sender's mailbox with the app token (`codeMail`: who sent what with proof of
   delivery, the code large – `MailCard.highlight` –, the next steps depending on where the password will come from, and
-  that it can be ignored if nobody asked for it); the page
+  that it can be ignored if nobody asked for it, and the sender's signature below – `PasswordRef.signature`, fixed when the
+  mail was sent, else the current one); the page
   answers every address alike – the same text, the same limits (counted for every request), the same timing (the code
   mail is not awaited) and one error text for a wrong, expired or never sent code – so trying does not reveal the
   recipients; an address that is not one is recorded (`recipient.unknownAddress`). Ten minutes, five tries, three codes per
@@ -471,6 +472,14 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   download (`downloadMailSent`; `notices.ts` skips its download confirmation for links of a case) and when the case is
   done (`finalMailSent`, retried until it went out); `proof.sent` records each. `GET /proof/:id.pdf` first runs
   `refreshCase`, so the PDF has downloads since the last pass.
+- **Reminder** (`proofWatcher.ts` `remindIfNothingFetched`, `proofMail.ts` `sendReminder`): a case whose state is still
+  "sent" or "confirmed" (`caseSummary` in `proof.ts`: no download, no files received, message not opened) and whose last
+  running link ends within `PROOF_REMINDER_DAYS` (default 3, 0 = off) mails the sender once (`reminderSent`,
+  `proof.reminded`) – unless the personal setting `proofReminder` (`DEFAULT_PROOF_REMINDER`) is off. Recipients are
+  never written to.
+- **Result first**: the PDF starts with a frame "Ergebnis" (`summaryLines`: sent, address confirmed, downloaded /
+  received / opened, link ends or ended, kept until – a ZapfDingbats tick or circle each; `pdf.ts` lines with `box`,
+  `mark`, `value`), then the record.
 - **Signature** (`pdfSign.ts`, `der.ts`, no dependency): `pdf.ts` leaves an invisible signature field with placeholders
   (`/ByteRange`, `/Contents` of 32768 hex digits), `signPdf` fills them in place: a detached CMS SignedData (SHA-256,
   RSA, the certificate, ESS signing-certificate-v2) over the bytes outside `/Contents`, with an RFC 3161 token from
@@ -576,15 +585,18 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `POST /api/nextcloud/connect`, `…/connect/:id/poll`, `DELETE /api/nextcloud/connection` | Login Flow v2, disconnect |
 | `POST /api/uploads`, `PUT …/:id/chunks/:n`, `POST …/:id/complete`, `DELETE …/:id` | Chunked upload, share link |
 | `POST /api/requests` | Upload link ("Receive files from recipients") |
-| `POST /api/messages` | Confidential message: text → password-protected Vaultwarden Send, joins the mail's password job |
+| `POST /api/messages` | Confidential message: text → password-protected Vaultwarden Send, joins the mail's password job; returns `expiresAt` (exact end, shown with the time in the card) |
 | `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "History": list (all valid links and confidential messages – `msg-<Send ID>`, `kind: "message"`, deleted in Vaultwarden on revoke –, each with `subject` and `mailId` of its sent mail, newest first, max. 100; loaded with the tab, when the pane regains focus and by the refresh button in the tab bar), revoke, insert again; also the read mode (2.9) |
 | `GET /api/shares/:id/password`, `POST /api/shares/:id/password/send` | The password of a sent link (owner only, until the link expires) and sending it again by SMS or password mail (2.10) |
 | `GET /api/shares/:id/mail` | "History": the sent mail of an entry as the EWS ID Outlook opens (`displayMessageFormAsync`) – the immutable Graph ID kept at sending, translated now with `translateExchangeIds` (User.Read), so it follows a moved mail; 404 if none is known or it is gone – also when it lies in Deleted Items or, after emptying them, in Recoverable Items (`sentMailState`, Mail.Read), where Outlook would still open it |
 | `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send), `passwordTo` or `passwordSms` until the password went out; `subject`: the draft's subject changed (the pane checks it every 4 s while open) – "History" shows it for the mail's links until the sent mail is found (`updateDraftSubject`) |
 | `POST /api/jobs/:id/arm` | Arm the password mail (send handler); also reads the sender's name and department for the templates |
-| `GET /api/proofs` | "Zustellnachweise" (account menu): every case of the user, newest first, also finished ones – `{ id, createdAt, subject, sentAt, recipients, files, downloads, confirmed, done }`; the pane searches in it |
+| `GET /api/proofs` | "Zustellnachweise" (account menu): every case of the user whose mail was sent (drafts never sent are left out), newest first, also finished ones – `{ id, createdAt, subject, sentAt, recipients, files, downloads, confirmed, done }`; the pane searches in it |
+| `GET /api/proofs/:id/mail` | "Zustellnachweise": the sent mail of a case as EWS ID (click on the subject, like `GET /api/shares/:id/mail`; shared lookup `sentMailOf`) |
 | `POST /api/proofs/:id/link`, `GET /proof/:id.pdf?until=…&lang=…&sig=…` | "Zustellnachweis" (2.12): a signed PDF address valid 5 minutes (owner only), opened in the default browser; the PDF itself needs no login – the HMAC signature (key from `CREDENTIAL_KEY`) binds case, end and language |
 | `GET /r/s/:token`, `POST /r/s/:token/code`, `POST /r/s/:token/verify` | Gateway of a link with "Zustellnachweis" (no login): the recipient enters their address, gets a six-digit code (only addresses the mail went to; the page reads the same for any address), confirms it and goes on to Nextcloud; a signed cookie per link lets the same browser come back; every step is recorded |
+| `GET /r/s/:token/confirm?address=…&code=…` | The button "Adresse bestätigen" in the code mail: the code form filled in (`confirmFromMail`) – confirms nothing by itself (mail scanners open links), the click posts to `/verify` |
+| `POST /api/proofs/export`, `GET /proof/export/:key.zip` | "Exportieren" in "Zustellnachweise": the cases shown (`{ ids }`, the user's own, at most 200) as one ZIP (`zip.ts`, deflate, no dependency) – every signed PDF and `Übersicht.csv` (semicolons, BOM, formulas defused – `csvField`); the address is an unguessable key, valid 5 minutes |
 | `GET/POST /webhooks/seven?token=…` | seven.io delivery reports (no login, secret `SEVEN_WEBHOOK_SECRET`) |
 
 Rate limit: `RATE_LIMIT_PER_MINUTE` per user (`oid`, otherwise client address); Nextcloud login, upload links and
@@ -723,11 +735,17 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   (sent in `/api/config` as `nextcloudUrl`) in the default browser (`openBrowserWindow`, in the browser a new tab) – the
   browser's own Nextcloud session or a sign-in there; the app password of the connection never leaves the server.
 - **Proofs of delivery** ("Zustellnachweise", second entry, `#proofs-open`, only with `DELIVERY_PROOF`): shown in place of
-  the tab like the settings (`#panel-proofs`); loads `GET /api/proofs` (every case of the user, finished ones too) and
-  filters it while typing over tracking ID, subject, recipients and file names (`renderProofs`); the seal of an entry
-  opens its signed PDF like the seal in "Verlauf".
+  the tab like the settings (`#panel-proofs`); loads `GET /api/proofs` (every case of the user whose mail was sent, finished ones too) and
+  every entry is built like a row of "Verlauf" (`proofRow`: kind symbol, subject as title – a click opens the sent mail
+  via `GET /api/proofs/:id/mail` when `mailAvailable` –, the PDF button `.open-pdf` next to it, the file with its seal,
+  to whom, the state with its dot, the tracking ID);
+  filters it while typing over tracking ID, subject, recipients and file names and by the chips `#proofs-filter`
+  (Alle · Offen · Heruntergeladen · Nicht abgerufen – `proofMatchesFilter`); the seal of an entry (`proofSeal`, also in
+  "Verlauf" via `proofState` of `/api/shares`) is coloured by `caseSummary(c).state` – grey sent, blue confirmed, green
+  fetched – and opens its signed PDF; each entry names when its links end (`endsOn`) or until when the case is kept
+  (`keptUntil`). `#proofs-export` sends the ids shown to `POST /api/proofs/export` and opens the ZIP in the browser.
 - **Help** ("Hilfe" in the account menu of the bottom bar, `#help-toggle`; `#panel-help` in `taskpane.html`, shown in place of the
-  current tab, closed by "×" or a tab): a user guide for everyday users – short `<details>`
+  current tab – the tab bar is hidden while a page (help, settings, proofs) is open (`showOverlay`, `currentOverlay`), "←" before the title (`.page-back`) or Escape leads back): a user guide for everyday users – short `<details>`
   sections (getting started, sending files, password and channel, confidential message, receiving files, "History",
   FAQ), the most common one open. Texts in the language files (`help.*`); admins put their own support contact into
   `help.support` (`/config/locales`). Plain words, the button names of the pane, no technical terms.
@@ -745,6 +763,10 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   automatically by CloudShare" (`mail.automatic`). Users of it: `passwordMail.ts` (password mail incl. "send again",
   `smsProblemMailHtml`) and `notices.ts` (download confirmation: the template text above a card with file, time and
   validity). Tables and inline styles only, so they render in classic Outlook, Outlook on the web, Gmail and on phones.
+  The link cards share one layout for files, confidential message and upload link: title, a short sentence, the
+  button on the left, the details in grey below it (files: one block per file – button, then type badge, name, size).
+  Buttons are filled table cells (`bgcolor`, `mso-padding-alt`) in both files, so classic Outlook (Word engine) shows
+  them filled instead of blue text in a white box.
   The colours are duplicated in `mailCard.ts` and `mailLayout.ts`; keep them in sync. Plain-text mails get a text
   version of the link card. The password mail ends with the sender's signature (2.11; `MAIL_FOOTER` filled from the
   profile unless the user set an own one); the link card carries none.

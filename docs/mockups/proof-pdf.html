@@ -23,6 +23,12 @@ body { background: #e8e8e8; padding: 16px; }
 .m { font-size: 8pt; padding-left: 14pt; }
 .hash { font-size: 7pt; color: #737373; padding-left: 14pt; }
 .foot { font-size: 8pt; color: #737373; margin-top: 18pt; }
+.box { border: 0.8pt solid #b3b3b3; margin-top: 14pt; padding: 8pt 12pt; }
+.box .bt { font-size: 11pt; font-weight: bold; }
+.row { display: flex; font-size: 10pt; }
+.row .mk { width: 16pt; font-family: "Segoe UI Symbol", "ZapfDingbats", sans-serif; }
+.row .mk.open { color: #737373; }
+.row .lb { width: 130pt; }
 </style>
 </head>
 <body>
@@ -30,7 +36,15 @@ body { background: #e8e8e8; padding: 16px; }
   <div class="t1">Proof of delivery</div>
   <div class="t2">Case 20261117-1146-7Q2F</div>
   <div class="intro">CloudShare’s record for the message from max.mustermann@example.com, started on 17/11/2026, 11:46.</div>
-  <div class="ok">Record unchanged: 9 entries, chained without gaps.</div>
+  <div class="box">
+    <div class="bt">Result</div>
+    <div class="row"><span class="mk">✔</span><span class="lb">Sent</span><span>17/11/2026, 11:47</span></div>
+    <div class="row"><span class="mk">✔</span><span class="lb">Address confirmed</span><span>erika.beispiel@example.com, 17/11/2026, 14:03</span></div>
+    <div class="row"><span class="mk">✔</span><span class="lb">Downloaded</span><span>once, 17/11/2026, 14:03</span></div>
+    <div class="row"><span class="mk open">❍</span><span class="lb">Link ends</span><span>01/12/2026</span></div>
+    <div class="row"><span class="mk"></span><span class="lb">Kept until</span><span>17/11/2029</span></div>
+  </div>
+  <div class="ok" style="margin-top:16pt">Record unchanged: 9 entries, chained without gaps.</div>
   <div class="mono grey7">Check value: 5c0e9b1f7a24d3e86b1f0c9a4d72e5b8a3f61c0d9e47b2a8f5c3d1e09b7a6f42c</div>
 
   <div class="h">Events</div>

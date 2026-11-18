@@ -5,13 +5,14 @@
  *   download – on the first download of a file of the case, with the PDF attached (it replaces the download confirmation
  *              of notices.ts for such links, so there is one mail, not two);
  *   final    – when all links of the case ended (expired or revoked), with the complete PDF;
- *   locked   – the gateway refused code requests for a while: too many addresses that are no recipients (proofGateway.ts).
+ *   locked   – the gateway refused code requests for a while: too many addresses that are no recipients (proofGateway.ts);
+ *   reminder – nothing fetched yet a few days before the links end (proofWatcher.ts, PROOF_REMINDER_DAYS).
  */
 import { appGraphToken } from "./auth.js";
 import { sendMailAsApp } from "./graph.js";
-import { formatDateTime, inSenderLanguage, t } from "./i18n.js";
+import { formatDate, formatDateTime, inSenderLanguage, t } from "./i18n.js";
 import { mailDocument, paragraph } from "./mailLayout.js";
-import { addEvent, type ProofCase } from "./proof.js";
+import { addEvent, caseSummary, type ProofCase } from "./proof.js";
 import { signedProofPdf } from "./proofPdf.js";
 
 /** Subject of the mail the case belongs to (the last one recorded as sent). */
@@ -58,6 +59,32 @@ export async function sendFinalProof(c: ProofCase): Promise<void> {
   });
   await sendMailAsApp(await appGraphToken(), c.owner, c.ownerUpn, mail.subject, mail.html, [await pdfAttachment(c)]);
   addEvent(c.id, "proof.sent", { reason: "final" });
+}
+
+/** Nothing fetched yet and the links end on `endsOn` (YYYY-MM-DD): the sender may ask the recipients. */
+export async function sendReminder(c: ProofCase, endsOn: string): Promise<void> {
+  const mail = inSenderLanguage(c.senderLanguage, () => {
+    const subject = caseSubject(c) || t("mail.noSubject");
+    const date = formatDate(Date.parse(`${endsOn}T12:00:00Z`));
+    const summary = caseSummary(c);
+    const recipients = [...c.events].reverse().find((e) => e.type === "message.sent")?.data.to;
+    const to = Array.isArray(recipients) ? recipients.join(", ") : "";
+    return {
+      subject: t("mail.proof.reminderMail.subject", { id: c.id }),
+      html: mailDocument({
+        opening: paragraph(t("mail.proof.reminderMail.text", { subject, date })),
+        card: {
+          accent: "brand",
+          title: t(summary.state === "confirmed" ? "mail.proof.reminderMail.titleConfirmed" : "mail.proof.reminderMail.title"),
+          files: Object.values(c.links ?? {}).map((l) => l.name),
+          details: [to ? t("mail.proof.reminderMail.to", { to }) : "", t("mail.proof.reminderMail.details", { date, id: c.id })].filter(Boolean).join(" · "),
+        },
+        after: paragraph(t("mail.proof.reminderMail.advice")),
+      }),
+    };
+  });
+  await sendMailAsApp(await appGraphToken(), c.owner, c.ownerUpn, mail.subject, mail.html);
+  addEvent(c.id, "proof.reminded", { endsOn });
 }
 
 /** The gateway stopped taking code requests for a link: too many addresses that are no recipients. */

@@ -22,6 +22,7 @@ export function userSettings(): UserSettings {
       downloadNotice: true,
       uploadNotice: true,
       smsNotice: true,
+      proofReminder: true,
       channels: CHANNELS,
       defaultChannel: "recipients",
       language: "auto",
@@ -173,6 +174,9 @@ export function initSettings(options: Options) {
     }
     if (available.smsNotice) {
       noticeRows.push(checkbox("smsNotice", "1", t("settings.notices.sms"), settings.smsNotice, t("settings.notices.smsHint")));
+    }
+    if (available.proofReminder) {
+      noticeRows.push(checkbox("proofReminder", "1", t("settings.notices.proofReminder"), settings.proofReminder, t("settings.notices.proofReminderHint")));
     }
     notices.replaceChildren(...noticeRows);
     noticesGroup.hidden = noticeRows.length === 0;

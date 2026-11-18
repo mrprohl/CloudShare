@@ -124,3 +124,39 @@ describe("delivery proof – PDF", () => {
     expect(proofPdf(caseById(id)!, "en").toString("latin1")).toContain(`(Case ${id})`);
   });
 });
+
+describe("delivery proof – state and the result at the top of the PDF", () => {
+  it("tells the state: open, sent, confirmed, fetched – and until when the case is kept", async () => {
+    const { caseSummary } = await import("../src/proof.js");
+    const id = openCase("oid-anna", "anna@example.test", {});
+    addLink(id, "state-1", link("Plan.pdf"), undefined, {});
+    expect(caseSummary(caseById(id)!).state).toBe("open");
+    recordMailSent(["state-1"], { subject: "Plan", messageId: "<s@example.test>", from: "anna@example.test", to: ["erika@example.test"], cc: [], bcc: [], sentAt: "2026-11-18T10:00:00Z" });
+    expect(caseSummary(caseById(id)!)).toMatchObject({ state: "sent", sentAt: Date.parse("2026-11-18T10:00:00Z"), fetched: 0, endsOn: "2099-12-31" });
+    addEvent(id, "recipient.verified", { links: ["state-1"], address: "erika@example.test", ip: "192.0.2.1" });
+    expect(caseSummary(caseById(id)!)).toMatchObject({ state: "confirmed", confirmed: { address: "erika@example.test" } });
+    addEvent(id, "download", { links: ["state-1"], downloadedAt: "2026-11-18T11:00:00Z" });
+    const summary = caseSummary(caseById(id)!);
+    expect(summary).toMatchObject({ state: "fetched", fetched: 1, lastFetchedAt: Date.parse("2026-11-18T11:00:00Z") });
+    // Kept PROOF_RETENTION_MONTHS (36) calendar months after the last event.
+    const last = new Date(caseById(id)!.events.at(-1)!.at);
+    expect(new Date(summary.keptUntil).getUTCFullYear()).toBe(last.getUTCFullYear() + 3);
+  });
+
+  it("puts the result first in a frame: ticks for what happened, circles for what has not", () => {
+    const id = openCase("oid-anna", "anna@example.test", {});
+    addLink(id, "box-1", link("Plan.pdf"), undefined, {});
+    recordMailSent(["box-1"], { subject: "Plan", messageId: "<b@example.test>", from: "anna@example.test", to: ["erika@example.test"], cc: [], bcc: [], sentAt: "2026-11-18T10:00:00Z" });
+    const pdf = proofPdf(caseById(id)!, "de").toString("latin1");
+    expect(pdf).toContain("(Ergebnis)");
+    expect(pdf).toContain("/BaseFont /ZapfDingbats");
+    expect(pdf).toContain("(4) Tj"); // a tick: sent
+    expect(pdf).toContain("(m) Tj"); // a circle: not confirmed, not downloaded
+    expect(pdf).toContain("(Heruntergeladen)");
+    expect(pdf).toContain("(noch nicht)");
+    expect(pdf).toContain("(Aufbewahrt bis)");
+    expect(pdf).toMatch(/ re S/); // the frame
+    // The result comes before the record.
+    expect(pdf.indexOf("(Ergebnis)")).toBeLessThan(pdf.indexOf("(Ereignisse)") === -1 ? Infinity : pdf.indexOf("(Ereignisse)"));
+  });
+});

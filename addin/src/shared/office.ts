@@ -58,6 +58,8 @@ export interface UserSettings {
   downloadNotice: boolean;
   uploadNotice: boolean;
   smsNotice: boolean;
+  /** "Zustellnachweis": a reminder when nothing was fetched shortly before the links end. */
+  proofReminder: boolean;
   /** Ways "Kennwort senden an" offers, and the one preselected for a new mail. */
   channels: Channel[];
   defaultChannel: Channel;
@@ -73,7 +75,7 @@ export interface UserSettings {
 export interface SettingsResponse {
   settings: UserSettings;
   defaults: UserSettings;
-  available: { downloadNotice: boolean; uploadNotice: boolean; smsNotice: boolean; channels: Channel[]; languages: string[] };
+  available: { downloadNotice: boolean; uploadNotice: boolean; smsNotice: boolean; proofReminder: boolean; channels: Channel[]; languages: string[] };
 }
 
 /** Office SSO: "a previous getAccessToken call is still in progress". */

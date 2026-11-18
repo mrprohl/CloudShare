@@ -17,6 +17,13 @@ export interface PdfLine {
   gapBefore?: number;
   /** A thin rule above the line. */
   rule?: boolean;
+  /** A tick (done) or a circle (open) before the text (ZapfDingbats); "blank" keeps the room for one. */
+  mark?: "done" | "open" | "blank";
+  /** A second column: `value` starts `valueAt` points after the text's start and wraps within the rest of the line. */
+  value?: string;
+  valueAt?: number;
+  /** Consecutive lines with `box` get a frame around them (the summary at the top of the proof). */
+  box?: boolean;
 }
 
 const PAGE_WIDTH = 595.28;
@@ -108,6 +115,10 @@ function infoString(text: string): string {
 }
 
 const FONT_NAMES = { regular: "F1", bold: "F2", mono: "F3" } as const;
+/** ZapfDingbats: "4" a heavy tick, "m" a circle. */
+const MARKS = { done: "4", open: "m" } as const;
+const MARK_WIDTH = 16;
+const BOX_PADDING = 8;
 
 /** Placeholders of the signature field, filled by pdfSign.ts: room for the CMS (hex) and the byte range. */
 export const SIGNATURE_HEX_LENGTH = 32768;
@@ -123,32 +134,58 @@ export function pdfDocument(
   const pages: string[][] = [[]];
   let y = PAGE_HEIGHT - MARGIN;
   const bottom = MARGIN + FOOTER;
+  /** Top of the open frame on the current page (null: no frame open). */
+  let boxTop: number | null = null;
+  const frame = (top: number, low: number) =>
+    pages.at(-1)!.push(`0.7 G 0.8 w ${MARGIN} ${low.toFixed(2)} ${(PAGE_WIDTH - 2 * MARGIN).toFixed(2)} ${(top - low).toFixed(2)} re S`);
+  const newPage = () => {
+    if (boxTop !== null) frame(boxTop, y - 4); // the frame goes on on the next page
+    pages.push([]);
+    y = PAGE_HEIGHT - MARGIN;
+    if (boxTop !== null) boxTop = y;
+  };
+  const closeBox = () => {
+    if (boxTop === null) return;
+    y -= BOX_PADDING;
+    frame(boxTop, y);
+    boxTop = null;
+  };
+  const textOp = (font: keyof typeof FONT_NAMES | "dingbats", size: number, grey: number, x: number, text: string) =>
+    `BT /${font === "dingbats" ? "F4" : FONT_NAMES[font]} ${size} Tf ${grey} g ${x.toFixed(2)} ${y.toFixed(2)} Td (${escapePdf(text)}) Tj ET`;
 
   for (const line of lines) {
     const size = line.size ?? 10;
     const leading = size * 1.35;
-    const indent = line.indent ?? 0;
-    const pieces = wrap(winAnsi(line.text), line, PAGE_WIDTH - 2 * MARGIN - indent);
+    if (!line.box) closeBox();
     y -= line.gapBefore ?? 0;
+    if (line.box && boxTop === null) {
+      boxTop = y;
+      y -= BOX_PADDING;
+    }
+    const inner = line.box ? BOX_PADDING + 4 : 0;
+    const indent = (line.indent ?? 0) + inner + (line.mark ? MARK_WIDTH : 0);
+    const width = PAGE_WIDTH - 2 * MARGIN - indent - inner;
+    const pieces = wrap(winAnsi(line.text), line, line.value !== undefined ? (line.valueAt ?? width) - 4 : width);
+    const valuePieces = line.value !== undefined ? wrap(winAnsi(line.value), { ...line, font: "regular" }, width - (line.valueAt ?? 0)) : [];
     if (line.rule) {
-      if (y - leading < bottom) {
-        pages.push([]);
-        y = PAGE_HEIGHT - MARGIN;
-      }
+      if (y - leading < bottom) newPage();
       pages.at(-1)!.push(`0.8 G 0.5 w ${MARGIN} ${(y + 2).toFixed(2)} m ${PAGE_WIDTH - MARGIN} ${(y + 2).toFixed(2)} l S`);
       y -= 6;
     }
-    for (const piece of pieces) {
-      if (y - leading < bottom) {
-        pages.push([]);
-        y = PAGE_HEIGHT - MARGIN;
-      }
+    const rows = Math.max(pieces.length, valuePieces.length);
+    for (let row = 0; row < rows; row++) {
+      if (y - leading < bottom) newPage();
       y -= leading;
-      pages.at(-1)!.push(
-        `BT /${FONT_NAMES[line.font ?? "regular"]} ${size} Tf ${line.grey ?? 0} g ${(MARGIN + indent).toFixed(2)} ${y.toFixed(2)} Td (${escapePdf(piece)}) Tj ET`,
-      );
+      const x = MARGIN + indent;
+      const grey = line.grey ?? 0;
+      if (row === 0 && line.mark && line.mark !== "blank") {
+        pages.at(-1)!.push(textOp("dingbats", size, line.mark === "done" ? 0 : 0.45, x - MARK_WIDTH, MARKS[line.mark]));
+      }
+      if (pieces[row]) pages.at(-1)!.push(textOp(line.font ?? "regular", size, grey, x, pieces[row]));
+      if (valuePieces[row]) pages.at(-1)!.push(textOp("regular", size, grey, x + (line.valueAt ?? 0), valuePieces[row]));
     }
   }
+  closeBox();
 
   const total = pages.length;
   if (meta.footer) {
@@ -158,7 +195,8 @@ export function pdfDocument(
     });
   }
 
-  // Objects: 1 catalog, 2 page tree, 3–5 fonts, 6 info, then per page its page object and content stream.
+  // Objects: 1 catalog, 2 page tree, 3–5 fonts, 6 info, then per page its page object and content stream, then
+  // the signature (if any) and the fourth font (ZapfDingbats for the marks).
   const objects: string[] = [];
   const pageIds = pages.map((_, i) => 7 + i * 2);
   const sigId = 7 + pages.length * 2;
@@ -171,6 +209,8 @@ export function pdfDocument(
   objects[3] = font("Helvetica");
   objects[4] = font("Helvetica-Bold");
   objects[5] = font("Courier");
+  const dingbatsId = meta.signature ? fieldId + 1 : sigId;
+  objects[dingbatsId] = "<< /Type /Font /Subtype /Type1 /BaseFont /ZapfDingbats >>";
   const created = meta.created ?? new Date();
   const date = `D:${created.toISOString().replace(/[-:T]/g, "").slice(0, 14)}Z`;
   objects[6] = `<< /Title ${infoString(meta.title)}${meta.author ? ` /Author ${infoString(meta.author)}` : ""} /Producer (CloudShare) /CreationDate (${date}) >>`;
@@ -178,7 +218,7 @@ export function pdfDocument(
     const content = ops.join("\n");
     objects[pageIds[i]] =
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] ` +
-      `/Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents ${pageIds[i] + 1} 0 R` +
+      `/Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R /F4 ${dingbatsId} 0 R >> >> /Contents ${pageIds[i] + 1} 0 R` +
       (meta.signature && i === 0 ? ` /Annots [${fieldId} 0 R]` : "") +
       " >>";
     objects[pageIds[i] + 1] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
