@@ -1591,7 +1591,8 @@ test("reading a mail: tabs 'Nachricht' and 'Verlauf', nothing to insert", async 
   const inMail = page.locator("#mail-shares .share");
   await expect(inMail).toHaveCount(2);
   await expect(inMail.nth(0).locator(".share-name")).toHaveText("Präsentation.pptx");
-  await expect(inMail.nth(0).locator(".share-password")).toContainText("zugestellt am 10.11.2026, 11:00 Uhr");
+  await expect(inMail.nth(0).locator(".share-password")).toHaveText("Kennwort per SMS – zugestellt");
+  await expect(inMail.nth(0).locator(".share-password")).toHaveAttribute("title", /zugestellt am 10.11.2026, 11:00 Uhr/);
   await expect(inMail.nth(1).locator(".share-item")).toHaveText("Dateianforderung");
   await expect(page.locator("#mail-none")).toBeHidden();
   // Reading a mail too: "Aktualisieren" in the tab bar, the account at the bottom.
