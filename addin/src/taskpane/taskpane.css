@@ -376,6 +376,11 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .progress-track { height: 2px; margin-bottom: 12px; background: var(--stroke2); border-radius: 1px; overflow: hidden; }
 .progress-bar { height: 100%; width: 0; background: var(--brand-bg); transition: width 0.2s ease; }
 
+/* The note about an encrypted file: its "×" on the right of the title leaves the file out. */
+.encrypted-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.encrypted-head .encrypted-title { margin: 0; }
+.encrypted-head .btn-icon { margin: -4px -6px 0 0; }
+
 /* --- Radio buttons (Fluent 2) --------------------------------------------------- */
 .radio { position: relative; display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; }
 .radio input { position: absolute; opacity: 0; width: 16px; height: 16px; margin: 0; }
@@ -521,6 +526,8 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 .share-password.failed { color: var(--danger-fg); }
 .share-unsent { color: var(--fg2); font-weight: 600; }
 .share-state { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; margin-top: 2px; color: var(--fg2); }
+/* "endet 02.12.2026" after the state, kept on one line. */
+.share-state .share-ends { white-space: nowrap; margin-left: 4px; }
 .share-state .dot-state { width: 8px; height: 8px; border-radius: 50%; background: var(--stroke1); flex: none; }
 .share-state.done .dot-state { background: var(--success-fg); }
 /* Icon buttons at the right of the name; the revoke button shows "Wirklich?" as text until confirmed. */

@@ -89,10 +89,16 @@
                  a note right below the list; with "warn" the box must be ticked before the files can be inserted, with
                  "block" they cannot be. -->
             <div class="field encrypted-field" id="encrypted-field" hidden>
-              <p class="label encrypted-title">
-                <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 14.6 13.5H1.4Z" fill="none" stroke="currentColor" stroke-linejoin="round"/><path d="M8 6.2v3.6M8 11.6v.3" stroke="currentColor" stroke-linecap="round"/></svg>
-                <span>%%t:addin.labels.encryptedTitle%%</span>
-              </p>
+              <div class="encrypted-head">
+                <p class="label encrypted-title">
+                  <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 14.6 13.5H1.4Z" fill="none" stroke="currentColor" stroke-linejoin="round"/><path d="M8 6.2v3.6M8 11.6v.3" stroke="currentColor" stroke-linecap="round"/></svg>
+                  <span>%%t:addin.labels.encryptedTitle%%</span>
+                </p>
+                <!-- "Nein": leaves the encrypted file(s) out – unticks them, the note goes. -->
+                <button type="button" id="encrypted-dismiss" class="btn btn-icon btn-subtle" title="%%t:addin.labels.dismiss%%" aria-label="%%t:addin.labels.dismiss%%">
+                  <svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><path d="M5.5 5.5l9 9m0-9-9 9" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                </button>
+              </div>
               <p class="hint" id="encrypted-text"></p>
               <label class="checkbox" id="encrypted-confirm-row">
                 <input type="checkbox" id="encrypted-confirm" aria-describedby="encrypted-text" />
