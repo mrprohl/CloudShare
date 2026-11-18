@@ -454,10 +454,12 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   recipients; an address that is not one is recorded (`recipient.unknownAddress`). Ten minutes, five tries, three codes per
   address in 15 minutes, ten per link an hour. A right code records address, IP address (via Caddy, `trustProxy`) and
   browser, sets a signed cookie for this link until it expires and redirects (303) to Nextcloud – the Nextcloud
-  password is still needed. Before the mail was found sent the page says so. Plain HTML forms, no script, own CSP.
+  password is still needed. Before the mail was found sent the page says so. Plain HTML forms, no script, own CSP. A header with the CloudShare logo, "CloudShare" and the
+  organisation (`COMPANY_NAME`), a footer with `COMPANY_WEBSITE_URL`, `IMPRINT_URL`, `PRIVACY_URL` (`brandHeader`,
+  `linksFooter`; CSP `img-src 'self'` for the logo).
   A confidential message has no gateway (its link holds the key CloudShare does not keep); its openings are counted.
 - **Password after the confirmation** (`proofPassword.ts`): the mail to the confirmed address says so ("Sie haben eben Ihre
-  E-Mail-Adresse bestätigt …") and lists the steps, with a button "Zum Download" to the gateway – never to Nextcloud: the confirmed browser goes
+  E-Mail-Adresse bestätigt …") and its card has two numbered steps (`MailCard.steps`: 1 "Kennwort anzeigen", 2 "Zum Download", each button with its address as plain text below), the download to the gateway – never to Nextcloud: the confirmed browser goes
   straight on, another one or a forwarded mail is asked for the code again, so link and password never travel together
   (`afterConfirmation` in `passwordMailHtml`); a step whose links all go through the gateway
   (`isDeferredStep` in `jobs.ts`) sends no password when the mail is sent (`password.deferred`); its `PasswordRef` is

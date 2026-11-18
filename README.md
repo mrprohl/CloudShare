@@ -47,7 +47,7 @@ recipient enters the address the mail went to, gets a six-digit code there, and 
 on to the download. See
 [Proof of delivery](#proof-of-delivery-optional).
 
-![The three steps for the recipient: enter the email address the message went to, then the six-digit code; then the confirmation with the next steps – the password mail goes out only now – and the way to the download](docs/images/proof-gateway.png)
+![The three steps for the recipient, each page with the CloudShare logo and the organisation at the top and links to website, imprint and privacy notice at the bottom: enter the email address the message went to, then the six-digit code; then the confirmation with the next steps – the password mail goes out only now – and the way to the download](docs/images/proof-gateway.png)
 
 ## What the sender gets
 
@@ -312,8 +312,10 @@ deployed again.
 | `SMS_NOTICE` | like `DOWNLOAD_NOTICE` | `true`: note to the sender when seven.io reports a password SMS as not delivered later (same application permission `Mail.Send`; unset it follows `DOWNLOAD_NOTICE`, which switched it before). A note about an SMS seven.io refuses right away needs no switch |
 | `DELIVERY_PROOF` | like `DOWNLOAD_NOTICE` | `true`: offers "Zustellnachweis" (proof of delivery) in the pane – per mail, never ticked by default; see [Proof of delivery](#proof-of-delivery-optional). The code mail to the recipients needs the application permission `Mail.Send` |
 | `PROOF_RETENTION_MONTHS` | `36` | Months a proof of delivery is kept after its last event (three years, the regular limitation period) – independent of `DATA_RETENTION_DAYS` |
+| `COMPANY_NAME` | empty | Your organisation's name, shown after the CloudShare logo at the top of the recipients' pages (delivery proof) |
+| `COMPANY_WEBSITE_URL` / `IMPRINT_URL` / `PRIVACY_URL` | empty | Links at the bottom of the recipients' pages: your website (shown by its host name), imprint and privacy notice; each optional, http(s) only |
 | `PROOF_SIGN_CERT_FILE` / `PROOF_SIGN_KEY_FILE` | empty | PEM files of a certificate and its key that sign the proof PDF (e.g. one of a CA trusted by Adobe, under `/config`). Empty: CloudShare makes its own certificate once (kept sealed in the database) – a change of the PDF still shows, but the reader names the signer "unknown" |
-| `PROOF_SIGN_NAME` / `PROOF_SIGN_ORGANIZATION` | `CloudShare Zustellnachweis` / empty | Name (CN) and organisation (O) of the certificate CloudShare makes itself |
+| `PROOF_SIGN_NAME` / `PROOF_SIGN_ORGANIZATION` | `CloudShare Proof of Delivery` / empty | Name (CN) and organisation (O) of the certificate CloudShare makes itself |
 | `PROOF_TSA_URL` | `http://timestamp.digicert.com` | RFC 3161 time stamp authority for the signature – proves the PDF existed unchanged at that time (only a hash is sent); `off` = none, a qualified one for legal weight |
 | `CLEANUP_AFTER_DAYS` | `0` | Uploaded files go to the Nextcloud trash this many days after their link expired or was revoked; `off` = never. Received files are never deleted |
 | `DATA_RETENTION_DAYS` | `365` | Entries in `/data/cloudshare.db` not changed for this many days are deleted (daily, then the file is shrunk); `off` = never. A safety net – entries normally leave on their own (jobs after 7 days, links' data when they expire, SMS states after 120 days). Nextcloud connections and the cleanup list are never affected. At least `SHARE_MAX_EXPIRE_DAYS` |
@@ -407,7 +409,8 @@ default, offered for "Files" only (not for a confidential message or an upload l
   (every recipient confirms for themselves), to another address or by SMS (once, after the first confirmation). The
   page then says what to do next ("We have just sent you the password … · click „Show password“ · click „To the
   download“ here") and leads on to the link; the link card says the password comes after the confirmation. The
-  password mail has a button "To the download" as well – it leads back to that page, never straight to Nextcloud: the
+  password mail shows two numbered steps in its card – 1 "Show password", 2 "To the download", each with its address
+  as plain text below the button; the download leads back to that page, never straight to Nextcloud: the
   confirmed browser goes right on, a forwarded mail or another device is asked for the code again.
 - **Recipients confirm their address**: the link in the mail leads to a CloudShare page first; the recipient enters
   the address the mail went to and gets a six-digit code from the sender's mailbox (the mail explains who sent

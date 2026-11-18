@@ -43,6 +43,14 @@ function cleanupDays(): number | null {
   return value;
 }
 
+/** An http(s) address from the environment (empty if unset); anything else stops the start, so a typo shows. */
+function webUrl(name: string): string {
+  const value = (process.env[name] ?? "").trim();
+  if (!value) return "";
+  if (!/^https?:\/\/[^\s]+$/i.test(value)) throw new Error(`Environment variable ${name} must be an http(s) address`);
+  return value;
+}
+
 /** A switch from the environment ("true" = on); unset, it takes the value of `fallbackName` (an older switch). */
 export function envFlag(name: string, fallbackName?: string, env: NodeJS.ProcessEnv = process.env): boolean {
   return (env[name] ?? (fallbackName ? env[fallbackName] : undefined)) === "true";
@@ -209,9 +217,17 @@ export const config = {
    * without them CloudShare makes a certificate itself (CN PROOF_SIGN_NAME, O PROOF_SIGN_ORGANIZATION). PROOF_TSA_URL:
    * RFC 3161 time stamp authority for the signature ("off" = none) – only a hash leaves the server.
    */
+  /**
+   * The recipients' pages of the delivery proof (proofGateway.ts): the organisation's name after the CloudShare logo,
+   * and its website, imprint and privacy notice in the footer – each optional, only http(s) addresses.
+   */
+  companyName: process.env.COMPANY_NAME?.trim() ?? "",
+  companyWebsiteUrl: webUrl("COMPANY_WEBSITE_URL"),
+  imprintUrl: webUrl("IMPRINT_URL"),
+  privacyUrl: webUrl("PRIVACY_URL"),
   proofSignCertFile: process.env.PROOF_SIGN_CERT_FILE ?? "",
   proofSignKeyFile: process.env.PROOF_SIGN_KEY_FILE ?? "",
-  proofSignName: process.env.PROOF_SIGN_NAME?.trim() || "CloudShare Zustellnachweis",
+  proofSignName: process.env.PROOF_SIGN_NAME?.trim() || "CloudShare Proof of Delivery",
   proofSignOrganization: process.env.PROOF_SIGN_ORGANIZATION?.trim() ?? "",
   proofTsaUrl: (() => {
     const url = (process.env.PROOF_TSA_URL ?? "http://timestamp.digicert.com").trim();

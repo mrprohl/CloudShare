@@ -16,7 +16,9 @@ body { background: #e8e8e8; padding: 16px; font: 14px/1.45 "Segoe UI", -apple-sy
 .url { flex: 1; background: #f0f0f0; border-radius: 14px; padding: 4px 12px; font-size: 12px; color: #424242; }
 .step { font-size: 12px; font-weight: 600; color: #616161; padding: 0 0 6px 2px; }
 /* From proofGateway.ts */
-main{max-width:440px;margin:40px auto 32px;padding:0 16px}.card{background:#fff;border:1px solid #d1d1d1;border-left:4px solid #0f6cbd;border-radius:8px;padding:24px}
+.brand{display:flex;align-items:center;gap:10px;padding:12px 24px;background:#fff;border-bottom:1px solid #d1d1d1}.brand img{width:28px;height:28px}.brand-name{font-size:16px;font-weight:600}.brand-sep{width:1px;height:20px;background:#d1d1d1}.brand-company{font-size:16px;color:#616161}
+.links{text-align:center;font-size:12px;color:#616161;margin:0 16px 20px}.links a{color:inherit}
+main{max-width:440px;margin:28px auto 32px;padding:0 16px}.card{background:#fff;border:1px solid #d1d1d1;border-left:4px solid #0f6cbd;border-radius:8px;padding:24px}
 h1{font-size:20px;font-weight:600;margin:0 0 12px}p{margin:0 0 12px}.small{font-size:12px;color:#616161}
 label{display:block;font-weight:600;margin:16px 0 4px}input{width:100%;font:inherit;padding:7px 10px;border:1px solid #d1d1d1;border-bottom-color:#616161;border-radius:4px;background:#fff;color:#242424}
 button{margin-top:16px;font:inherit;font-weight:600;color:#fff;background:#0f6cbd;border:0;border-radius:4px;padding:8px 20px}.code{letter-spacing:.3em;font-size:18px}
@@ -29,29 +31,34 @@ a.button{display:inline-block;margin-top:4px;font-weight:600;color:#fff;backgrou
     <div class="step">1. The link in the mail</div>
     <div class="window">
       <div class="bar"><span class="dots"><span></span><span></span><span></span></span><span class="url">https://cloudshare.example.com/r/s/aB3xK9pQ</span></div>
+      <header class="brand"><img src="../../addin/assets/icon-64.png" alt="" width="28" height="28"><span class="brand-name">CloudShare</span><span class="brand-sep"></span><span class="brand-company">Example GmbH</span></header>
       <main><div class="card"><h1>Confirm your email address</h1>
         <p>The sender chose a proof of delivery for this message. Enter the email address the message went to – you will get a code there.</p>
         <label for="a">Email address</label><input id="a" value="erika.beispiel@example.com">
         <button>Send code</button></div>
         <p class="small" style="margin-top:12px">For the proof of delivery your email address, the time, your IP address and your browser are recorded.</p></main>
+      <footer class="links"><a href="#">example.com</a> · <a href="#">Imprint</a> · <a href="#">Privacy</a></footer>
     </div>
   </div>
   <div>
     <div class="step">2. The code from the mail</div>
     <div class="window">
       <div class="bar"><span class="dots"><span></span><span></span><span></span></span><span class="url">https://cloudshare.example.com/r/s/aB3xK9pQ/code</span></div>
+      <header class="brand"><img src="../../addin/assets/icon-64.png" alt="" width="28" height="28"><span class="brand-name">CloudShare</span><span class="brand-sep"></span><span class="brand-company">Example GmbH</span></header>
       <main><div class="card"><h1>Enter the code</h1>
         <p>If erika.beispiel@example.com is one of the recipients of the message, we have sent a six-digit code there.</p>
         <label for="c">Code</label><input id="c" class="code" value="482915">
         <button>Confirm and open</button>
         <p class="small" style="margin-top:12px;margin-bottom:0">Use another address</p></div>
         <p class="small" style="margin-top:12px">For the proof of delivery your email address, the time, your IP address and your browser are recorded.</p></main>
+      <footer class="links"><a href="#">example.com</a> · <a href="#">Imprint</a> · <a href="#">Privacy</a></footer>
     </div>
   </div>
   <div>
     <div class="step">3. Confirmed – only now the password mail goes out</div>
     <div class="window">
       <div class="bar"><span class="dots"><span></span><span></span><span></span></span><span class="url">https://cloudshare.example.com/r/s/aB3xK9pQ/verify</span></div>
+      <header class="brand"><img src="../../addin/assets/icon-64.png" alt="" width="28" height="28"><span class="brand-name">CloudShare</span><span class="brand-sep"></span><span class="brand-company">Example GmbH</span></header>
       <main><div class="card"><h1>Email address confirmed</h1>
         <p>What to do next:</p>
         <ol><li>We have just sent you the password at erika.beispiel@example.com (subject “Password for Angebot_2026-118.pdf: Quote 2026-118”).</li>
@@ -59,6 +66,7 @@ a.button{display:inline-block;margin-top:4px;font-weight:600;color:#fff;backgrou
         <li>Click “To the download” here and enter the password.</li></ol>
         <p><a class="button" href="#">To the download</a></p></div>
         <p class="small" style="margin-top:12px">For the proof of delivery your email address, the time, your IP address and your browser are recorded.</p></main>
+      <footer class="links"><a href="#">example.com</a> · <a href="#">Imprint</a> · <a href="#">Privacy</a></footer>
     </div>
   </div>
 </div>

@@ -74,7 +74,7 @@ export interface GatewayResult {
 
 /** Content-Security-Policy of the pages: nothing but their own styles; the form may lead on to Nextcloud. */
 export const gatewayCsp = () =>
-  `default-src 'none'; style-src 'unsafe-inline'; img-src data:; form-action 'self' ${new URL(config.nextcloudUrl).origin}; ` +
+  `default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; form-action 'self' ${new URL(config.nextcloudUrl).origin}; ` +
   "frame-ancestors 'none'; base-uri 'none'";
 
 const COOKIE = "cloudshare_proof";
@@ -113,13 +113,34 @@ const page = (title: string, body: string) => `<!doctype html>
 :root{color-scheme:light dark;--bg:#f5f5f5;--card:#fff;--fg:#242424;--fg2:#616161;--stroke:#d1d1d1;--brand:#0f6cbd;--brand-hover:#115ea3;--danger:#c50f1f}
 @media (prefers-color-scheme:dark){:root{--bg:#1f1f1f;--card:#292929;--fg:#fff;--fg2:#adadad;--stroke:#666;--brand:#479ef5;--brand-hover:#62abf5;--danger:#dc626d}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.45 "Segoe UI",-apple-system,Helvetica,Arial,sans-serif}
-main{max-width:440px;margin:48px auto;padding:0 16px}.card{background:var(--card);border:1px solid var(--stroke);border-left:4px solid var(--brand);border-radius:8px;padding:24px}
+.brand{display:flex;align-items:center;gap:10px;padding:12px 24px;background:var(--card);border-bottom:1px solid var(--stroke)}.brand img{width:28px;height:28px}.brand-name{font-size:16px;font-weight:600}.brand-sep{width:1px;height:20px;background:var(--stroke)}.brand-company{font-size:16px;color:var(--fg2)}
+.links{text-align:center;font-size:12px;color:var(--fg2);margin:32px 16px 24px}.links a{color:inherit}
+main{max-width:440px;margin:40px auto;padding:0 16px}.card{background:var(--card);border:1px solid var(--stroke);border-left:4px solid var(--brand);border-radius:8px;padding:24px}
 h1{font-size:20px;font-weight:600;margin:0 0 12px}p{margin:0 0 12px}.small{font-size:12px;color:var(--fg2)}.error{color:var(--danger);font-weight:600}
 label{display:block;font-weight:600;margin:16px 0 4px}input{width:100%;font:inherit;padding:7px 10px;border:1px solid var(--stroke);border-bottom-color:var(--fg2);border-radius:4px;background:var(--card);color:var(--fg)}
 input:focus{outline:2px solid var(--brand);outline-offset:-1px}button{margin-top:16px;font:inherit;font-weight:600;color:#fff;background:var(--brand);border:0;border-radius:4px;padding:8px 20px;cursor:pointer}
 button:hover{background:var(--brand-hover)}a.button{display:inline-block;margin-top:4px;font-weight:600;color:#fff;background:var(--brand);border-radius:4px;padding:8px 20px;text-decoration:none}a.button:hover{background:var(--brand-hover)}ol{margin:0 0 12px;padding-left:20px}li{margin:0 0 8px}.code{letter-spacing:.3em;font-size:18px}
-</style></head><body><main><div class="card"><h1>${escapeHtml(title)}</h1>${body}</div>
-<p class="small" style="margin-top:12px">${escapeHtml(t("mail.proof.gateway.privacy"))}</p></main></body></html>`;
+</style></head><body>${brandHeader()}<main><div class="card"><h1>${escapeHtml(title)}</h1>${body}</div>
+<p class="small" style="margin-top:12px">${escapeHtml(t("mail.proof.gateway.privacy"))}</p></main>${linksFooter()}</body></html>`;
+
+/** Header of the pages: the CloudShare logo and name, after a thin line the organisation (COMPANY_NAME). */
+function brandHeader(): string {
+  const company = config.companyName
+    ? `<span class="brand-sep" aria-hidden="true"></span><span class="brand-company">${escapeHtml(config.companyName)}</span>`
+    : "";
+  return `<header class="brand"><img src="/assets/icon-64.png" alt="" width="28" height="28"><span class="brand-name">CloudShare</span>${company}</header>`;
+}
+
+/** Footer: the organisation's website, imprint and privacy notice (COMPANY_WEBSITE_URL, IMPRINT_URL, PRIVACY_URL; each optional). */
+function linksFooter(): string {
+  const link = (url: string, text: string) => `<a href="${escapeHtml(url)}" rel="noopener">${escapeHtml(text)}</a>`;
+  const links = [
+    config.companyWebsiteUrl ? link(config.companyWebsiteUrl, new URL(config.companyWebsiteUrl).host.replace(/^www\./, "")) : "",
+    config.imprintUrl ? link(config.imprintUrl, t("mail.proof.gateway.imprint")) : "",
+    config.privacyUrl ? link(config.privacyUrl, t("mail.proof.gateway.privacyLink")) : "",
+  ].filter(Boolean);
+  return links.length ? `<footer class="links">${links.join(" · ")}</footer>` : "";
+}
 
 const addressForm = (token: string, error = "") =>
   page(
