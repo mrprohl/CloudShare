@@ -1081,7 +1081,7 @@ test("Ohne Kennwort: plain link, no password mail, upload links stay protected",
   expect(log.inserted[0].data).toContain("https://cloud.example.com/s/u1");
   expect(log.inserted[0].data).not.toContain("Kennwort");
   expect(log.customProps.cloudshareJob).toBeUndefined(); // nothing for the send handler to arm
-  expect(JSON.parse(log.session["cloudshare-state"])).toEqual({ noPassword: true, links: ["u1"] });
+  expect(JSON.parse(log.session["cloudshare-state"])).toEqual({ noPassword: true, links: ["u1"], proofMail: false });
 
   // The whole mail stays without password; an upload link would need one – said before any click.
   await expect(page.locator("#mode-random")).toBeDisabled();
@@ -1293,7 +1293,7 @@ test("Ohne Kennwort with download confirmation: the draft is tagged so the confi
   await expect(page.locator("#status")).toContainText("ohne Kennwort abrufbar");
   const log = await officeLog(page);
   expect(log.customProps.cloudshareJob).toBe("notice-1");
-  expect(JSON.parse(log.session["cloudshare-state"])).toEqual({ noPassword: true, jobId: "notice-1", links: ["u1"] });
+  expect(JSON.parse(log.session["cloudshare-state"])).toEqual({ noPassword: true, jobId: "notice-1", links: ["u1"], proofMail: false });
   expect(log.inserted[0].data).not.toContain("Kennwort");
   await expect(page.locator("#mode-random")).toBeDisabled();
 });
