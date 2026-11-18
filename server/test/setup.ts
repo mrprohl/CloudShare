@@ -25,6 +25,8 @@ Object.assign(process.env, {
   DOWNLOAD_NOTICE: "true",
   UPLOAD_NOTICE: "true",
   SMS_NOTICE: "true",
+  // No time stamp authority in the tests (pdfSign.test.ts mocks one where it needs it).
+  PROOF_TSA_URL: "off",
   TEMPLATES_FILE: path.join(tmpdir(), "cloudshare-no-templates.json"),
   DATA_DIR: mkdtempSync(path.join(tmpdir(), "cloudshare-test-")),
 });

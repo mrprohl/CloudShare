@@ -109,10 +109,16 @@ function infoString(text: string): string {
 
 const FONT_NAMES = { regular: "F1", bold: "F2", mono: "F3" } as const;
 
+/** Placeholders of the signature field, filled by pdfSign.ts: room for the CMS (hex) and the byte range. */
+export const SIGNATURE_HEX_LENGTH = 32768;
+export const BYTE_RANGE_PLACEHOLDER = "/ByteRange [0 0000000000 0000000000 0000000000]";
+
 /** Builds the PDF: `lines` flow over as many pages as needed; `footer(page, pages)` is printed on every page. */
 export function pdfDocument(
   lines: PdfLine[],
-  meta: { title: string; author?: string; created?: Date; footer?: (page: number, pages: number) => string },
+  meta: { title: string; author?: string; created?: Date; footer?: (page: number, pages: number) => string;
+    /** Leaves an invisible signature field with placeholders for pdfSign.ts (signer name, reason). */
+    signature?: { name: string; reason: string } },
 ): Buffer {
   const pages: string[][] = [[]];
   let y = PAGE_HEIGHT - MARGIN;
@@ -155,7 +161,11 @@ export function pdfDocument(
   // Objects: 1 catalog, 2 page tree, 3–5 fonts, 6 info, then per page its page object and content stream.
   const objects: string[] = [];
   const pageIds = pages.map((_, i) => 7 + i * 2);
-  objects[1] = "<< /Type /Catalog /Pages 2 0 R >>";
+  const sigId = 7 + pages.length * 2;
+  const fieldId = sigId + 1;
+  objects[1] = meta.signature
+    ? `<< /Type /Catalog /Pages 2 0 R /AcroForm << /Fields [${fieldId} 0 R] /SigFlags 3 >> >>`
+    : "<< /Type /Catalog /Pages 2 0 R >>";
   objects[2] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(" ")}] /Count ${total} >>`;
   const font = (name: string) => `<< /Type /Font /Subtype /Type1 /BaseFont /${name} /Encoding /WinAnsiEncoding >>`;
   objects[3] = font("Helvetica");
@@ -168,9 +178,20 @@ export function pdfDocument(
     const content = ops.join("\n");
     objects[pageIds[i]] =
       `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}] ` +
-      `/Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents ${pageIds[i] + 1} 0 R >>`;
+      `/Resources << /Font << /F1 3 0 R /F2 4 0 R /F3 5 0 R >> >> /Contents ${pageIds[i] + 1} 0 R` +
+      (meta.signature && i === 0 ? ` /Annots [${fieldId} 0 R]` : "") +
+      " >>";
     objects[pageIds[i] + 1] = `<< /Length ${content.length} >>\nstream\n${content}\nendstream`;
   });
+  if (meta.signature) {
+    // The signature dictionary: /ByteRange before /Contents – pdfSign.ts fills both in place (same lengths).
+    objects[sigId] =
+      `<< /Type /Sig /Filter /Adobe.PPKLite /SubFilter /adbe.pkcs7.detached ${BYTE_RANGE_PLACEHOLDER} ` +
+      `/Contents <${"0".repeat(SIGNATURE_HEX_LENGTH)}> /Name ${infoString(meta.signature.name)} ` +
+      `/Reason ${infoString(meta.signature.reason)} /M (${date}) >>`;
+    objects[fieldId] =
+      `<< /Type /Annot /Subtype /Widget /FT /Sig /T (Signature1) /V ${sigId} 0 R /Rect [0 0 0 0] /F 132 /P ${pageIds[0]} 0 R >>`;
+  }
 
   let body = "%PDF-1.4\n%\xe2\xe3\xcf\xd3\n";
   const offsets: number[] = [];

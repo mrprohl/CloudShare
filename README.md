@@ -303,7 +303,7 @@ deployed again.
 | `SMS_DEFAULT_COUNTRY` / `SMS_MAX_PER_DAY` | `49` / `50` | Country code for numbers like `0170 …` / SMS per user and day |
 | `SMS_ALLOWED_COUNTRIES` | empty (all) | Countries SMS may go to, e.g. `DE, AT, CH` or `DACH` – ISO codes, calling codes (`+49`), German or English names (`Österreich`, `Austria`), `EU`, `EWR`; see [Password by SMS](#password-by-sms-optional) |
 | `SMS_BLOCKED_NUMBERS` / `SMS_ALLOWED_NUMBERS` | `^\+49(800\|900\|180)` / empty | Regular expressions on the number (`+491701234567`): matching numbers are refused / only matching numbers are accepted. Mobile and landline numbers are allowed; the default blocks 0800, 0900 and 0180 numbers |
-| `DOWNLOAD_NOTICE` | off | `true`: mail to the sender on the first download (needs the Entra application permission `Mail.Send`, see [microsoft-365.md → 5](docs/microsoft-365.md#5-optional-application-permission-for-the-download-confirmation)) |
+| `DOWNLOAD_NOTICE` | off | `true`: mail to the sender on the first download (needs the Entra application permission `Mail.Send`, see [microsoft-365.md → 5](docs/microsoft-365.md#5-optional-application-permission-for-notices-and-the-delivery-proof)) |
 | `UPLOAD_NOTICE` | off | `true`: mail to the sender when files arrive through an upload link ("Anfordern"), at most one per link every 10 minutes, until the link expires (same application permission `Mail.Send`) |
 | `DEFAULT_PASSWORD_CHANNELS` | `recipients,mail,sms` | Personal settings, starting value: ways "Send the password to" offers (`recipients`, `mail`, `sms`; SMS only with seven.io). Each user can change it in the settings (account menu at the bottom left), see [Personal settings](#personal-settings) |
 | `DEFAULT_PASSWORD_CHANNEL` | `recipients` | Personal settings, starting value: the way preselected for a new message |
@@ -312,6 +312,9 @@ deployed again.
 | `SMS_NOTICE` | like `DOWNLOAD_NOTICE` | `true`: note to the sender when seven.io reports a password SMS as not delivered later (same application permission `Mail.Send`; unset it follows `DOWNLOAD_NOTICE`, which switched it before). A note about an SMS seven.io refuses right away needs no switch |
 | `DELIVERY_PROOF` | like `DOWNLOAD_NOTICE` | `true`: offers "Zustellnachweis" (proof of delivery) in the pane – per mail, never ticked by default; see [Proof of delivery](#proof-of-delivery-optional). The code mail to the recipients needs the application permission `Mail.Send` |
 | `PROOF_RETENTION_DAYS` | `1095` | Days a proof of delivery is kept after its last event (three years, the regular limitation period) – independent of `DATA_RETENTION_DAYS` |
+| `PROOF_SIGN_CERT_FILE` / `PROOF_SIGN_KEY_FILE` | empty | PEM files of a certificate and its key that sign the proof PDF (e.g. one of a CA trusted by Adobe, under `/config`). Empty: CloudShare makes its own certificate once (kept sealed in the database) – a change of the PDF still shows, but the reader names the signer "unknown" |
+| `PROOF_SIGN_NAME` / `PROOF_SIGN_ORGANIZATION` | `CloudShare Zustellnachweis` / empty | Name (CN) and organisation (O) of the certificate CloudShare makes itself |
+| `PROOF_TSA_URL` | `http://timestamp.digicert.com` | RFC 3161 time stamp authority for the signature – proves the PDF existed unchanged at that time (only a hash is sent); `off` = none, a qualified one for legal weight |
 | `CLEANUP_AFTER_DAYS` | `0` | Uploaded files go to the Nextcloud trash this many days after their link expired or was revoked; `off` = never. Received files are never deleted |
 | `DATA_RETENTION_DAYS` | `365` | Entries in `/data/cloudshare.db` not changed for this many days are deleted (daily, then the file is shrunk); `off` = never. A safety net – entries normally leave on their own (jobs after 7 days, links' data when they expire, SMS states after 120 days). Nextcloud connections and the cleanup list are never affected. At least `SHARE_MAX_EXPIRE_DAYS` |
 | `MAIL_FOOTER` | empty | Signature of the password mails for users without an own one (settings), filled from the sender's Microsoft 365 profile, e.g. `'{displayName} · {department}\n{company} · Tel. {phone} · {email}'` – recipients see who the password comes from; placeholders and rules in `cloudshare.env.example`. Empty = no signature (`setup.sh`: Enter). The link card in the message carries none |
@@ -413,6 +416,11 @@ default, offered for "Files" only (not for a confidential message or an upload l
   before (downloads are otherwise collected every 10 minutes). The sender also gets it **by mail**: after the first
   download (this mail replaces the plain download confirmation for such links) and once more, complete, when all links
   expired or were revoked. Downloads come from Nextcloud's activity – the Activity app must be enabled.
+- **Signed PDF**: every proof PDF is signed (PAdES, adbe.pkcs7.detached) and time-stamped (RFC 3161, `PROOF_TSA_URL`) –
+  a PDF reader shows "changed after signing" as soon as anyone edits it. Without own PEM files (`PROOF_SIGN_CERT_FILE`,
+  `PROOF_SIGN_KEY_FILE`) CloudShare signs with a certificate it made itself: protected against changes right away, the
+  reader only names the signer "unknown". For legal weight: a certificate of a CA trusted by Adobe or a qualified
+  seal, and a qualified time stamp authority – no code change needed.
 - **Guessing**: after five addresses that are no recipients within an hour, the page takes no code requests for that
   link for an hour (the answer still reads the same) and the sender gets one mail with the attempts (time, address,
   IP address); it is in the record too.

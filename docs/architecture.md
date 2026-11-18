@@ -469,6 +469,14 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   download (`downloadMailSent`; `notices.ts` skips its download confirmation for links of a case) and when the case is
   done (`finalMailSent`, retried until it went out); `proof.sent` records each. `GET /proof/:id.pdf` first runs
   `refreshCase`, so the PDF has downloads since the last pass.
+- **Signature** (`pdfSign.ts`, `der.ts`, no dependency): `pdf.ts` leaves an invisible signature field with placeholders
+  (`/ByteRange`, `/Contents` of 32768 hex digits), `signPdf` fills them in place: a detached CMS SignedData (SHA-256,
+  RSA, the certificate, ESS signing-certificate-v2) over the bytes outside `/Contents`, with an RFC 3161 token from
+  `PROOF_TSA_URL` as unsigned attribute (only the hash of the signature leaves the server; without an answer it signs
+  without). Identity: `PROOF_SIGN_CERT_FILE` + `PROOF_SIGN_KEY_FILE` (PEM) or a self-made RSA-2048 certificate (ten
+  years, `PROOF_SIGN_NAME`/`_ORGANIZATION`) kept in store `signing-identity`. `signedProofPdf` falls back to an
+  unsigned PDF if signing fails. The tests check the CMS with OpenSSL (`openssl cms -verify`) and that a changed byte
+  breaks it.
 - **Guessing** (`proofGateway.ts`): five addresses that are no recipients for a link within an hour lock its code
   requests for an hour (same answer, nothing sent; `gateway.locked`) and mail the sender the attempts once
   (`sendLockNotice`). In memory, like the codes.
@@ -638,7 +646,7 @@ Alert trace". Off by default.
 - **Graph:** delegated permissions for everything the user triggers; the armed token is stored encrypted for at most
   15 minutes of use, and the `.Shared` permissions reach only mailboxes the user already has rights to. Only the
   optional download confirmation uses an **application** permission (`Mail.Send`) – restrict it to the CloudShare
-  users ([microsoft-365.md → 5](microsoft-365.md#5-optional-application-permission-for-the-download-confirmation)), otherwise the app could send as any mailbox of the tenant.
+  users ([microsoft-365.md → 5](microsoft-365.md#5-optional-application-permission-for-notices-and-the-delivery-proof)), otherwise the app could send as any mailbox of the tenant.
 - **Confidential messages** pass the server only in memory; Vaultwarden stores them end-to-end encrypted in the Send
   (the Bitwarden CLI encrypts before upload) and deletes them at expiry. Anyone with link and password can read them
   until then – like a file link.

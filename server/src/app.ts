@@ -70,7 +70,7 @@ import { availableSettings, defaultSettings, parseSettings, resetSettings, saveS
 import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } from "./store.js";
 import { addLink, caseById, caseFor, caseForLink, caseOfToken, gatewayUrl, linkUrlFor, type ProofLink } from "./proof.js";
 import { gatewayCsp, openGateway, requestCode, verifyCode, type GatewayResult, type Visitor } from "./proofGateway.js";
-import { proofPdf } from "./proofPdf.js";
+import { signedProofPdf } from "./proofPdf.js";
 import { refreshCase } from "./proofWatcher.js";
 import { sign, signedBy } from "./storage.js";
 import {
@@ -1295,7 +1295,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       if (!found) return reply.status(404).type("text/plain; charset=utf-8").send(t("server.proofNotFound"));
       // Up to date: downloads and openings since the last pass of the watcher (every 10 minutes).
       await refreshCase(found, req.log);
-      const pdf = proofPdf(found, knownLanguage(lang));
+      const pdf = await signedProofPdf(found, knownLanguage(lang), req.log);
       const name = `${tIn(knownLanguage(lang), "mail.proof.fileName")}-${found.id}.pdf`;
       req.log.info({ user: found.ownerUpn, case: found.id }, "Delivery proof PDF downloaded");
       return reply
