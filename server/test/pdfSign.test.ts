@@ -26,6 +26,7 @@ function opensslVerify(cms: Buffer, content: Buffer): boolean | null {
   const run = spawnSync("openssl", ["cms", "-verify", "-binary", "-inform", "DER", "-in", path.join(dir, "sig.der"),
     "-content", path.join(dir, "data.bin"), "-noverify", "-out", path.join(dir, "out.bin")]);
   if (run.error) return null;
+  if (run.status !== 0) console.error(`openssl cms -verify: ${run.stderr.toString()}`);
   return run.status === 0;
 }
 
