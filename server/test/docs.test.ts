@@ -33,8 +33,45 @@ const INTERNAL: Record<string, string> = {
 function environmentVariables(): string[] {
   const names = new Set<string>();
   for (const m of serverSources.matchAll(/process\.env(?:\.|\[")([A-Z][A-Z0-9_]+)/g)) names.add(m[1]);
-  for (const m of serverSources.matchAll(/\b(?:number|envFlag|envRegex|required|sendDays)\(\s*"([A-Z][A-Z0-9_]+)"/g)) names.add(m[1]);
+  for (const m of serverSources.matchAll(/\b(?:number|envFlag|envRegex|required|sendDays|oneOf|webUrl)(?:<[^>(]*>)?\(\s*"([A-Z][A-Z0-9_]+)"/g)) {
+    names.add(m[1]);
+  }
   return [...names].sort();
+}
+
+/** Files the image and the stack read settings from besides the server (Bitwarden CLI login, Caddy, Compose). */
+const stackSources = ["docker/entrypoint.sh", "compose.yml", "docker-compose.yml", "Dockerfile", "caddy/Caddyfile", "versions.env.example"]
+  .filter((file) => existsSync(path.join(repo, file)))
+  .map(read)
+  .join("\n");
+
+/** Settings the docs name: the first column of the README settings table and every line VAR= / #VAR= of the example. */
+function documentedSettings(): Map<string, string> {
+  const found = new Map<string, string>();
+  for (const m of read("README.md").matchAll(/^\| ((?:`[A-Z][A-Z0-9_]+`(?: \/ )?)+) \|/gm)) {
+    for (const name of m[1].matchAll(/`([A-Z][A-Z0-9_]+)`/g)) found.set(name[1], "README.md");
+  }
+  for (const m of read("cloudshare.env.example").matchAll(/^#?([A-Z][A-Z0-9_]+)=/gm)) found.set(m[1], "cloudshare.env.example");
+  return found;
+}
+
+/** Defaults the server uses: number("X", 14) and oneOf("X", …, "warn") with a literal default. */
+function serverDefaults(): Map<string, string> {
+  const config = read("server/src/config.ts");
+  const defaults = new Map<string, string>();
+  for (const m of config.matchAll(/\bnumber\(\s*"([A-Z][A-Z0-9_]+)",\s*(\d+)[,)]/g)) defaults.set(m[1], m[2]);
+  for (const m of config.matchAll(/\boneOf(?:<[^>(]*>)?\(\s*"([A-Z][A-Z0-9_]+)",\s*[\w.]+,\s*"([^"]+)"\)/g)) defaults.set(m[1], m[2]);
+  return defaults;
+}
+
+/** Every text file of the repository (no dependencies, builds, pictures, local settings). */
+function textFiles(dir = ""): string[] {
+  const skip = new Set(["node_modules", "dist", ".git", "images", "test-results", "playwright-report", "env"]);
+  return readdirSync(path.join(repo, dir), { withFileTypes: true }).flatMap((entry) => {
+    const file = path.join(dir, entry.name);
+    if (entry.isDirectory()) return skip.has(entry.name) ? [] : textFiles(file);
+    return /\.(ts|mjs|js|json|md|html|css|sh|yml|yaml|example|xml|txt)$|^Dockerfile$|^Caddyfile$/.test(entry.name) ? [file] : [];
+  });
 }
 
 /** Every route: app.get/post/put/patch/delete("…") and app.route({ url: "…" }). */
@@ -76,6 +113,63 @@ describe("documentation", () => {
     expect(missing, "document these settings").toEqual([]);
     // The list of internal ones stays honest: each is still read by the server.
     expect(Object.keys(INTERNAL).filter((name) => !environmentVariables().includes(name))).toEqual([]);
+  });
+
+  it("names no setting that nothing reads any more (a removed variable stays out of the docs)", () => {
+    const known = new Set(environmentVariables());
+    const stale = [...documentedSettings()]
+      .filter(([name]) => !known.has(name) && !new RegExp(`\\b${name}\\b`).test(stackSources))
+      .map(([name, file]) => `${name} (${file})`);
+    expect(stale, "remove these from the docs, or read them").toEqual([]);
+  });
+
+  it("states the defaults the server really uses – in the README table, the example and its comments", () => {
+    const defaults = serverDefaults();
+    expect(defaults.size).toBeGreaterThan(8);
+    const wrong: string[] = [];
+    // README: "| `A` / `B` | `14` / `90` |" – the values in the order of the names.
+    for (const m of read("README.md").matchAll(/^\| ((?:`[A-Z][A-Z0-9_]+`(?: \/ )?)+) \| ((?:`[^`|]*`(?: \/ )?)+) \|/gm)) {
+      const names = [...m[1].matchAll(/`([A-Z][A-Z0-9_]+)`/g)].map((x) => x[1]);
+      const values = [...m[2].matchAll(/`([^`]*)`/g)].map((x) => x[1]);
+      if (names.length !== values.length) continue;
+      names.forEach((name, i) => {
+        if (defaults.has(name) && defaults.get(name) !== values[i]) {
+          wrong.push(`README.md: ${name} says ${values[i]}, the server uses ${defaults.get(name)}`);
+        }
+      });
+    }
+    // Example: a commented line shows the default; a comment right above it that says "default N" must say the same.
+    const lines = read("cloudshare.env.example").split(/\r?\n/);
+    lines.forEach((line, i) => {
+      const m = /^(#?)([A-Z][A-Z0-9_]+)=['"]?([^'"\s]*)/.exec(line);
+      if (!m || !defaults.has(m[2])) return;
+      const expected = defaults.get(m[2])!;
+      if (m[1] === "#" && m[3] && m[3] !== expected) wrong.push(`cloudshare.env.example: #${m[2]}=${m[3]}, the server uses ${expected}`);
+      const said = /\bdefault:? (\w+)/i.exec(lines[i - 1] ?? "");
+      if (said && /^\d+$/.test(said[1]) && said[1] !== expected) {
+        wrong.push(`cloudshare.env.example: the comment above ${m[2]} says default ${said[1]}, the server uses ${expected}`);
+      }
+    });
+    expect(wrong).toEqual([]);
+  });
+
+  it("keeps every text file valid UTF-8 without doubly encoded characters", () => {
+    const files = textFiles();
+    expect(files.length).toBeGreaterThan(50);
+    const decoder = new TextDecoder("utf-8", { fatal: true });
+    const broken: string[] = [];
+    for (const file of files) {
+      let text: string;
+      try {
+        text = decoder.decode(readFileSync(path.join(repo, file)));
+      } catch {
+        broken.push(`${file}: not UTF-8`);
+        continue;
+      }
+      // An umlaut or a dash written as two or three odd characters: UTF-8 read as Latin-1 and written again.
+      if (/\u00c3[\u0080-\u00bf]|\u00e2\u20ac/.test(text)) broken.push(`${file}: doubly encoded characters`);
+    }
+    expect(broken).toEqual([]);
   });
 
   it("lists every HTTP route in the API table of docs/architecture.md", () => {

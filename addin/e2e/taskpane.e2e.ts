@@ -1360,16 +1360,15 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   await expect(rows.nth(0).locator(".state-text")).toHaveText("2× heruntergeladen · 11.11.2026, 10:30 Uhr");
   await expect(rows.nth(1).locator(".state-text")).toHaveText("Noch nicht heruntergeladen");
   await expect(rows.nth(2).locator(".state-text")).toHaveText("3 Dateien empfangen");
-  // One short line: period and password – the word "Kennwort" only once.
-  const meta = rows.nth(0).locator(".share-meta").first();
-  await expect(meta.locator(".share-period")).toHaveText("10.11.2026 – 24.11.2099");
-  // To whom in the line ("Kennwort an …"); the time of the delivery in the tooltip.
-  await expect(meta.locator(".share-password")).toHaveText("Kennwort an +49 170 •••• 67 – zugestellt");
-  await expect(meta.locator(".share-password")).toHaveAttribute("title", "Kennwort per SMS an +49 170 •••• 67 – zugestellt am 10.11.2026, 11:00 Uhr");
-  expect((await meta.textContent())!.match(/Kennwort/g)).toHaveLength(1);
-  await expect(rows.nth(1).locator(".share-period")).toHaveText("12.11.2099 – 26.11.2099"); // always dd.mm.yyyy
-  await expect(rows.nth(1).locator(".share-password")).toHaveText("ohne Kennwort");
-  await expect(rows.nth(2).locator(".share-password")).toHaveText("mit Kennwort");
+  // The same lines as an entry of "Zustellnachweise": the day (and to whom, once sent), "Kennwort an …", and the state
+  // ending in "endet …".
+  await expect(rows.nth(0).locator(".share-sent")).toHaveText("10.11.2026");
+  await expect(rows.nth(0).locator(".share-password")).toHaveText("Kennwort an +49 170 •••• 67 – zugestellt");
+  await expect(rows.nth(0).locator(".share-password")).toHaveAttribute("title", "Kennwort per SMS an +49 170 •••• 67 – zugestellt am 10.11.2026, 11:00 Uhr");
+  await expect(rows.nth(0).locator(".share-state")).toContainText("endet 24.11.2099");
+  await expect(rows.nth(1).locator(".share-sent")).toHaveText("12.11.2099"); // always dd.mm.yyyy
+  await expect(rows.nth(1).locator(".share-password")).toHaveText("Ohne Kennwort");
+  await expect(rows.nth(2).locator(".share-password")).toHaveText("Mit Kennwort");
   // Icons instead of words; the words are the buttons' names.
   await expect(rows.nth(0).locator(".copy")).toHaveAttribute("aria-label", "Link kopieren");
   await expect(rows.nth(0).locator(".insert")).toHaveAttribute("aria-label", "Als neuen Link in diese Nachricht einfügen");
@@ -1557,6 +1556,8 @@ test("Verlauf: the subject is the title and opens the mail; confidential message
     "Gesendet am 16.11.2026, 10:04 Uhr an erika@example.com, max@example.com\nCc: chef@example.com",
   );
   await expect(rows.nth(0).locator(".share-title")).toHaveAttribute("aria-label", "Unterlagen Neubau, Nachricht öffnen");
+  // Like "Zustellnachweise": the day it went out and to whom (To and Cc) right in the entry.
+  await expect(rows.nth(0).locator(".share-sent")).toHaveText("16.11.2026 · an erika@example.com, max@example.com, chef@example.com");
   // Below the subject what went out, in plain text: the file name (the document symbol on the left shows the kind).
   await expect(rows.nth(0).locator(".share-item")).toHaveText("Präsentation.pptx");
   await expect(rows.nth(0).locator(".badge")).toHaveCount(0);
@@ -1579,7 +1580,7 @@ test("Verlauf: the subject is the title and opens the mail; confidential message
   await expect(msg.locator(".show-password")).toBeVisible();
   await expect(msg.locator(".copy")).toBeHidden();
   await expect(msg.locator(".insert")).toBeHidden();
-  await expect(msg.locator(".share-state")).toBeHidden();
+  await expect(msg.locator(".share-state")).toHaveText("Endet 17.11.2099"); // no download state, only when it ends
   await expectAccessible(page);
 
   // Revoked: deleted in Vaultwarden.
@@ -2142,7 +2143,7 @@ test("Zustellnachweise: every proof in the account menu, filtered and searched, 
   await expectAccessible(page);
 
   // The switch: only the ones not fetched, only the fetched ones, then all again.
-  await page.locator("#proofs-filter .segment", { hasText: "Nicht abgerufen" }).click();
+  await page.locator("#proofs-filter .segment", { hasText: "Ausstehend" }).click();
   await expect(page.locator('#proofs-filter input[value="unfetched"]')).toBeChecked();
   await expect(entries).toHaveCount(1);
   await expect(entries.nth(0).locator(".share-title")).toHaveText("Vertrag 2026");

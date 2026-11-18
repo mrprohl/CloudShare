@@ -406,8 +406,8 @@ on the account), "Zurücksetzen" keeps them open with the defaults in sight:
 - **Language** (`auto` or a language): kept in `roamingSettings` too, so `i18n.ts` (`preferredLanguage`) has it in
   the taskpane and in the event handlers before any request; loaded from another computer, the pane reloads once
   (`reloadOnce`), saved in the pane it reloads at once. Mails and SMS stay in `LANGUAGE`.
-- **Signature of the password mails** (`{ format: "text", content }` or null = `MAIL_FOOTER`), so recipients see who
-  the password comes from; the link card in the message carries none. **Plain text only** – nothing the user types
+- **Signature of the mails to the recipients** – password mail and the code mail of a proof of delivery
+  (`{ format: "text", content }` or null = `MAIL_FOOTER`), so recipients see who it comes from; the link card in the message carries none. **Plain text only** – nothing the user types
   becomes markup (a formatted signature was considered and dropped for safety). `server/src/signature.ts`: an empty
   line separates paragraphs (`signatureParagraphs`, also `\n\n` in the env file), each paragraph is filled from the
   profile like `MAIL_FOOTER` always was (`fillTemplate`), escaped and shown as a `<p>` in the style of the mail text
@@ -740,7 +740,7 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   via `GET /api/proofs/:id/mail` when `mailAvailable` –, the file with its seal (a click opens the PDF),
   to whom, the tracking ID in bold, then the state with its dot; no action icons – the list is for looking things up);
   filters it while typing over tracking ID, subject, recipients and file names and by the switch `#proofs-filter`
-  (Alle | Abgerufen | Nicht abgerufen – `proofMatchesFilter`, like the kind switch); the seal of an entry (`proofSeal`, also in
+  (Alle | Abgerufen | Ausstehend – `proofMatchesFilter`, like the kind switch); the seal of an entry (`proofSeal`, also in
   "Verlauf" via `proofState` of `/api/shares`) is coloured by `caseSummary(c).state` – grey sent, blue confirmed, green
   fetched – and opens its signed PDF; each entry names when its links end (`endsOn`) or until when the case is kept
   (`keptUntil`).

@@ -42,7 +42,7 @@ ask ATTACHMENT_THRESHOLD_MB "CloudShare from attachment size (MB, 0 = all)" "5"
 ask ATTACHMENT_POLICY       "Large attachments: enforce or suggest"       "suggest"
 ask SHARE_EXPIRE_DAYS       "Link valid, default (days)"                  "14"
 ask SHARE_MAX_EXPIRE_DAYS   "Link valid, maximum (days)"                  "90"
-echo "Signature of the password mails – placeholders from the M365 profile: {displayName} {givenName} {surname} {jobTitle}"
+echo "Signature of the mails to the recipients – placeholders from the M365 profile: {displayName} {givenName} {surname} {jobTitle}"
 echo '  {department} {company} {email} {phone} {mobile} {office}; \n = new line. Enter = none, e.g.'
 echo '  {displayName} · {department}\n{company} · Tel. {phone} · {email}'
 ask MAIL_FOOTER             "Signature template (empty = none)"           ""

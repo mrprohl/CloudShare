@@ -132,7 +132,7 @@ Confidential messages and upload links always have a password, so "No password" 
 
 <br clear="right">
 
-<img src="docs/images/taskpane-shares.png" alt="Tab History: links with period, password way and download status and the icons Copy, Password, Insert, Revoke next to the subject; the first link has the seal of a proof of delivery after its file name and Password is open with the password and Send again to" width="300" align="right">
+<img src="docs/images/taskpane-shares.png" alt="Tab History: like the proofs of delivery - the day and recipients, Password to ... and the download status ending in when the link ends and the icons Copy, Password, Insert, Revoke next to the subject; the first link has the seal of a proof of delivery after its file name and Password is open with the password and Send again to" width="300" align="right">
 
 **"History"** lists everything you sent with CloudShare that is still valid – links and confidential messages,
 newest first. Each entry is titled with the **subject of its mail** – hovering it shows when and to whom it went (To, Cc),
@@ -320,7 +320,7 @@ deployed again.
 | `PROOF_TSA_URL` | `http://timestamp.digicert.com` | RFC 3161 time stamp authority for the signature – proves the PDF existed unchanged at that time (only a hash is sent); `off` = none, a qualified one for legal weight |
 | `CLEANUP_AFTER_DAYS` | `0` | Uploaded files go to the Nextcloud trash this many days after their link expired or was revoked; `off` = never. Received files are never deleted |
 | `DATA_RETENTION_DAYS` | `365` | Entries in `/data/cloudshare.db` not changed for this many days are deleted (daily, then the file is shrunk); `off` = never. A safety net – entries normally leave on their own (jobs after 7 days, links' data when they expire, SMS states after 120 days). Nextcloud connections and the cleanup list are never affected. At least `SHARE_MAX_EXPIRE_DAYS` |
-| `MAIL_FOOTER` | empty | Signature of the password mails for users without an own one (settings), filled from the sender's Microsoft 365 profile, e.g. `'{displayName} · {department}\n{company} · Tel. {phone} · {email}'` – recipients see who the password comes from; placeholders and rules in `cloudshare.env.example`. Empty = no signature (`setup.sh`: Enter). The link card in the message carries none |
+| `MAIL_FOOTER` | empty | Signature of the mails to the recipients (password mail, code mail of a proof of delivery) for users without an own one (settings), filled from the sender's Microsoft 365 profile, e.g. `'{displayName} · {department}\n{company} · Tel. {phone} · {email}'` – recipients see who the password comes from; placeholders and rules in `cloudshare.env.example`. Empty = no signature (`setup.sh`: Enter). The link card in the message carries none |
 | `VAULTWARDEN_URL`, `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD` | – | Vaultwarden service account |
 | `RATE_LIMIT_PER_MINUTE` | `600` | Requests per minute and user |
 | `SUCCESS_MESSAGE_SECONDS` | `5` | Messages in the pane ("The link has been inserted", "The sent message has been deleted", "The connection … has been removed") disappear after this many seconds – a ring around the tick, "!" or "i" runs down and stops while the pointer is on the message. `0` = they stay. Progress ("Uploading …") and a failed start (with "Try again") always stay |
@@ -429,7 +429,7 @@ default, offered for "Files" only (not for a confidential message or an upload l
   seal, and a qualified time stamp authority – no code change needed.
 - **Finding a proof later**: "Proofs of delivery" in the account menu lists the proof of every sent mail – also those whose links expired
   long ago and no longer show in "History" – searchable by case number, subject, recipient or file name and filtered
-  with the switch All | Fetched | Not fetched. Each entry looks and works like a row of "History": a click on the
+  with the switch All | Fetched | Pending (not fetched yet). Each entry looks and works like a row of "History": a click on the
   subject opens the sent mail. The seal after the file name shows the state by its colour (grey sent, blue address
   confirmed, green fetched – the same in "History") and opens the PDF; each entry says when its links end or until when
   the proof is kept.
@@ -507,7 +507,7 @@ on the server per Microsoft account (encrypted like everything in `/data/cloudsh
 | Notifications | download confirmation, files received, SMS not delivered, reminder for proofs not fetched – each on or off | `DEFAULT_DOWNLOAD_NOTICE`, `DEFAULT_UPLOAD_NOTICE`, `DEFAULT_SMS_NOTICE`, `DEFAULT_PROOF_REMINDER` |
 | Language | as in Outlook, or a fixed language of the add-in | `DEFAULT_LANGUAGE` |
 | Language for the recipients | preselected language of the link card, the password mail and the SMS – changeable for each message under "Send the password to" | `LANGUAGE` |
-| Signature of the password mail | at the end of the automatic mail with the password, so recipients see who it comes from: the organisation's (`MAIL_FOOTER`) or an own one – plain text, an empty line starts a paragraph, profile placeholders allowed. The link card in the message carries no signature | `MAIL_FOOTER` |
+| Signature in mails to the recipients | at the end of every automatic mail to the recipients (password, confirmation code), so they see who it comes from: the organisation's (`MAIL_FOOTER`) or an own one – plain text, an empty line starts a paragraph, profile placeholders allowed. The link card in the message carries no signature | `MAIL_FOOTER` |
 
 Only what users changed is stored, so a new starting value in `env/cloudshare.env` reaches everyone who left that
 setting alone; "Reset" brings back the starting values. What the organisation decides stays out of reach: a notice
