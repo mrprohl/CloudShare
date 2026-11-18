@@ -123,7 +123,8 @@ export async function timeStampToken(signature: Buffer): Promise<Buffer | null> 
 function issuerAndSerial(cert: Buffer): Buffer {
   const tbs = children(children(read(cert))[0]);
   const offset = tbs[0].tag === 0xa0 ? 1 : 0; // [0] version
-  return seq(tbs[offset].raw, tbs[offset + 2].raw); // issuer is after the signature algorithm
+  // IssuerAndSerialNumber: the issuer (after serial and signature algorithm), then the serial number.
+  return seq(tbs[offset + 2].raw, tbs[offset].raw);
 }
 
 /** A detached CMS SignedData over `content`, with a time stamp if one can be had. */
