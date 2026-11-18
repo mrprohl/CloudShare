@@ -108,7 +108,7 @@ export async function timeStampToken(signature: Buffer): Promise<Buffer | null> 
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/timestamp-query", Accept: "application/timestamp-reply" },
-    body: request,
+    body: new Uint8Array(request),
     signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`time stamp authority: HTTP ${res.status}`);
