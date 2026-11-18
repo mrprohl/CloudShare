@@ -15,7 +15,7 @@
  *   revoked / expired the link ended
  *
  * Every event carries the SHA-256 of the previous one (a hash chain): changing or removing an event afterwards
- * breaks the chain, which verifyCase() and the PDF show. Cases are kept PROOF_RETENTION_DAYS after their last event
+ * breaks the chain, which verifyCase() and the PDF show. Cases are kept PROOF_RETENTION_MONTHS after their last event
  * (default 3 years), independent of DATA_RETENTION_DAYS. Store "proofs" in the database (sealed like everything).
  */
 import { createHash, randomInt } from "node:crypto";
@@ -90,8 +90,12 @@ export interface ProofCase {
 
 const cases = new PersistentMap<ProofCase>("proofs", { retention: false });
 
-const DAY = 86_400_000;
-const retentionMs = () => config.proofRetentionDays * DAY;
+/** The day a case may go: its last event plus PROOF_RETENTION_MONTHS calendar months. */
+const keptUntil = (last: number) => {
+  const date = new Date(last);
+  date.setUTCMonth(date.getUTCMonth() + config.proofRetentionMonths);
+  return date.getTime();
+};
 
 /** "20261117-1146-7Q2F": date and time (server time zone) and four characters without look-alikes (no 0/O, 1/I). */
 export function newTrackingId(now = new Date()): string {
@@ -125,7 +129,7 @@ function prune() {
   const now = Date.now();
   for (const [id, c] of cases) {
     const last = c.events.at(-1)?.at ?? c.createdAt;
-    if (last + retentionMs() < now) cases.delete(id);
+    if (keptUntil(last) < now) cases.delete(id);
   }
 }
 
@@ -299,3 +303,9 @@ export function endLink(token: string, reason: "revoked" | "expired" | "gone", a
 
 /** A case by its tracking ID (the signed PDF address was checked before). */
 export const caseById = (id: string): ProofCase | undefined => cases.get(id);
+
+/** All cases of `owner`, newest first – also the ones whose links ended long ago (kept PROOF_RETENTION_MONTHS). */
+export const casesOf = (owner: string): ProofCase[] => {
+  prune();
+  return [...cases.values()].filter((c) => c.owner === owner).sort((a, b) => b.createdAt - a.createdAt);
+};

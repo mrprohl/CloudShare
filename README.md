@@ -74,7 +74,7 @@ password (to the recipients), **green** – downloaded, **red** – a problem.
 
 ## Using CloudShare
 
-<img src="docs/images/taskpane-send.png" alt="CloudShare pane, tab Send: the switch Files / Message / Request, one large attachment preselected, the password options, where the password goes, the collapsed validity with its summary and the button Insert file as link" width="300" align="right">
+<img src="docs/images/taskpane-send.png" alt="CloudShare pane, tab Send: the switch Files / Message / Request, one large attachment preselected, the password options, the block Recipients with Password to, Language and the switch Proof of delivery, the collapsed Validity with its summary and the button Insert file as link" width="300" align="right">
 
 **Once:** open the pane with the **CloudShare** button in the ribbon and click **"Connect"** – the Nextcloud login
 opens in the browser (usually without typing anything, thanks to single sign-on). CloudShare remembers the
@@ -132,7 +132,7 @@ Confidential messages and upload links always have a password, so "No password" 
 
 <br clear="right">
 
-<img src="docs/images/taskpane-shares.png" alt="Tab History: three links with period, password and download status and the icons Copy, Password, Insert, Revoke next to the name; at the first link Password is open with the password and Send again to" width="300" align="right">
+<img src="docs/images/taskpane-shares.png" alt="Tab History: links with period, password way and download status and the icons Copy, Password, Insert, Revoke next to the subject; the first link has the seal of a proof of delivery after its file name and Password is open with the password and Send again to" width="300" align="right">
 
 **"History"** lists everything you sent with CloudShare that is still valid – links and confidential messages,
 newest first. Each entry is titled with the **subject of its mail** – hovering it shows when and to whom it went (To, Cc),
@@ -148,7 +148,7 @@ while the pane is open ("(No subject yet)" until then); entries from before subj
 unknown)". It
 loads when you open the tab and again when you come back to
 the pane; **Refresh** (⟳ in the tab bar) reloads it at any time. Expired links are not listed. At the bottom, as in
-"Send": the account, as a menu – at the top the whole account name and its storage (a bar filled with the used share when there is a quota), then "Open Nextcloud" (your Nextcloud in the browser), "Settings", "Help" and "Disconnect" (takes a second click). A link is created when it is inserted;
+"Send": the account, as a menu – at the top the whole account name and its storage (a bar filled with the used share when there is a quota), then "Open Nextcloud" (your Nextcloud in the browser), "Proofs of delivery" (with `DELIVERY_PROOF`: every proof, searchable), "Settings", "Help" and "Disconnect" (takes a second click). A link is created when it is inserted;
 until its mail has been sent it says **"Not sent"**. If the mail is never sent (draft discarded), CloudShare revokes
 the link after 7 days – unless it was already downloaded (opened by yourself, or the mail went out from an Outlook
 without CloudShare): then it says **"Password not sent yet."** and stays until you revoke it.
@@ -311,7 +311,7 @@ deployed again.
 | `DEFAULT_LANGUAGE` | `auto` | Personal settings, starting value of the add-in language: `auto` (as in Outlook) or a language code |
 | `SMS_NOTICE` | like `DOWNLOAD_NOTICE` | `true`: note to the sender when seven.io reports a password SMS as not delivered later (same application permission `Mail.Send`; unset it follows `DOWNLOAD_NOTICE`, which switched it before). A note about an SMS seven.io refuses right away needs no switch |
 | `DELIVERY_PROOF` | like `DOWNLOAD_NOTICE` | `true`: offers "Zustellnachweis" (proof of delivery) in the pane – per mail, never ticked by default; see [Proof of delivery](#proof-of-delivery-optional). The code mail to the recipients needs the application permission `Mail.Send` |
-| `PROOF_RETENTION_DAYS` | `1095` | Days a proof of delivery is kept after its last event (three years, the regular limitation period) – independent of `DATA_RETENTION_DAYS` |
+| `PROOF_RETENTION_MONTHS` | `36` | Months a proof of delivery is kept after its last event (three years, the regular limitation period) – independent of `DATA_RETENTION_DAYS` |
 | `PROOF_SIGN_CERT_FILE` / `PROOF_SIGN_KEY_FILE` | empty | PEM files of a certificate and its key that sign the proof PDF (e.g. one of a CA trusted by Adobe, under `/config`). Empty: CloudShare makes its own certificate once (kept sealed in the database) – a change of the PDF still shows, but the reader names the signer "unknown" |
 | `PROOF_SIGN_NAME` / `PROOF_SIGN_ORGANIZATION` | `CloudShare Zustellnachweis` / empty | Name (CN) and organisation (O) of the certificate CloudShare makes itself |
 | `PROOF_TSA_URL` | `http://timestamp.digicert.com` | RFC 3161 time stamp authority for the signature – proves the PDF existed unchanged at that time (only a hash is sent); `off` = none, a qualified one for legal weight |
@@ -389,6 +389,8 @@ corrected number) or as a password mail. Two kinds of failure:
 
 ### Proof of delivery (optional)
 
+<img src="docs/images/taskpane-proofs.png" alt="Proofs of delivery, opened from the account menu: a search field and three proofs with subject, date and recipient, files and download state, case number and whether it is complete; the seal on the left opens the signed PDF" width="300" align="right">
+
 For mails where the sender may later have to show **that and when** recipients got something. On with
 `DELIVERY_PROOF=true` (unset it follows `DOWNLOAD_NOTICE`; it needs the same application permission `Mail.Send`).
 The sender switches on **"Proof of delivery"** under "Recipients" before inserting files as a link – never on by
@@ -421,13 +423,18 @@ default, offered for "Files" only (not for a confidential message or an upload l
   `PROOF_SIGN_KEY_FILE`) CloudShare signs with a certificate it made itself: protected against changes right away, the
   reader only names the signer "unknown". For legal weight: a certificate of a CA trusted by Adobe or a qualified
   seal, and a qualified time stamp authority – no code change needed.
+- **Finding a proof later**: "Proofs of delivery" in the account menu lists every proof – also those whose links expired
+  long ago and no longer show in "History" – searchable by case number, subject, recipient or file name; the seal opens
+  the PDF.
 - **Guessing**: after five addresses that are no recipients within an hour, the page takes no code requests for that
   link for an hour (the answer still reads the same) and the sender gets one mail with the attempts (time, address,
   IP address); it is in the record too.
 - **Privacy**: the record holds personal data of the recipients (address, IP address, browser, times) for the purpose
-  of proof; it is kept `PROOF_RETENTION_DAYS` (default three years) after its last event – add it to your record of
+  of proof; it is kept `PROOF_RETENTION_MONTHS` (default 36 months) after its last event – add it to your record of
   processing activities. The page tells recipients what is recorded.
 - It is evidence that can be checked, not a qualified delivery service in the sense of eIDAS.
+
+<br clear="right">
 
 ### Sensitivity labels
 
@@ -620,7 +627,7 @@ swallows the screenshot):
 $edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 $repo = (Get-Location).Path; $url = "file:///" + ($repo -replace '\\','/') + "/docs/mockups"
 $opts = "--headless=new", "--hide-scrollbars", "--user-data-dir=$env:TEMP\cloudshare-edge"
-foreach ($shot in @(("outlook-compose", "compose-send", "1440,1100"), ("mail-received", "mail-received", "760,706"),
+foreach ($shot in @(("outlook-compose", "compose-send", "1440,1200"), ("mail-received", "mail-received", "760,706"),
                     ("password-mail", "password-mail", "760,692"), ("sender-notices", "sender-notices", "760,942"),
                     ("proof-gateway", "proof-gateway", "1390,524"), ("proof-pdf", "proof-pdf", "860,934"))) {
   Start-Process -Wait $edge ($opts + "--window-size=$($shot[2])", "--screenshot=$repo\docs\images\$($shot[0]).png", "$url/$($shot[1]).html")

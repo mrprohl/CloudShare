@@ -202,7 +202,8 @@ export const config = {
    */
   deliveryProof: envFlag("DELIVERY_PROOF", "DOWNLOAD_NOTICE"),
   /** How long a case is kept after its last event (days; default three years, the regular limitation period). */
-  proofRetentionDays: number("PROOF_RETENTION_DAYS", 1095),
+  /** How long a delivery proof is kept after its last event, in months (default 36 – three years, the regular limitation period). */
+  proofRetentionMonths: number("PROOF_RETENTION_MONTHS", 36),
   /**
    * Signature of the proof PDF (pdfSign.ts): PEM files of an own certificate and key (e.g. from a CA trusted by Adobe);
    * without them CloudShare makes a certificate itself (CN PROOF_SIGN_NAME, O PROOF_SIGN_ORGANIZATION). PROOF_TSA_URL:

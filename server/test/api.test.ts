@@ -1345,3 +1345,21 @@ describe("delivery proof – password after the confirmation", () => {
     expect(types).toEqual(expect.arrayContaining(["recipient.verified", "password.sent"]));
   });
 });
+
+describe("delivery proof – the list for the search (GET /api/proofs)", () => {
+  it("lists the user's own cases with subject, recipients, files and state – nobody else's", async () => {
+    nc.createPublicShare.mockResolvedValue("https://cloud.example.test/s/proof-list");
+    const { body } = await startUpload("anna", "Liste.pdf");
+    await putChunk("anna", body.uploadId, 1);
+    const { proofId } = (await complete("anna", body.uploadId, { proof: true })).json();
+    const { recordMailSent } = await import("../src/proof.js");
+    recordMailSent(["proof-list"], { subject: "Liste", messageId: "<l@example.test>", from: "anna@example.test", to: ["erika@example.test"], cc: [], bcc: ["geheim@example.test"], sentAt: "2026-11-18T10:00:00Z" });
+
+    const list = (await app.inject({ method: "GET", url: "/api/proofs", headers: as("anna") })).json() as Array<Record<string, unknown>>;
+    const entry = list.find((p) => p.id === proofId)!;
+    expect(entry).toMatchObject({ subject: "Liste", recipients: ["erika@example.test"], files: ["Liste.pdf"], downloads: 0, done: false });
+    expect(entry.recipients).not.toContain("geheim@example.test"); // Bcc stays out of the list
+    expect((await app.inject({ method: "GET", url: "/api/proofs", headers: as("bernd") })).json()
+      .some((p: { id: string }) => p.id === proofId)).toBe(false);
+  });
+});

@@ -52,6 +52,8 @@ interface Scenario {
   labels?: Array<{ id: string; name: string }>;
   /** The labels /api/labels returns (Graph, InformationProtectionPolicy.Read); unset: null (not consented). */
   tenantLabels?: Array<{ id: string; name: string; rank: number }>;
+  /** GET /api/proofs: the user's delivery proofs. */
+  proofs?: unknown[];
   mailLabel?: string;
   /** Opened from a mail being read (taskpane.html?view=read) with this HTML body. */
   readBody?: string;
@@ -128,6 +130,11 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     const route_ = `${call.method} ${call.path}`;
 
+    // "Zustellnachweise": the user's cases, and the signed address of a PDF.
+    if (route_ === "GET /api/proofs") return json(scenario.proofs ?? []);
+    if (/^POST \/api\/proofs\/[^/]+\/link$/.test(route_)) {
+      return json({ url: `https://cloudshare.example.com/proof/${call.path.split("/")[3]}.pdf?until=1&lang=de&sig=x` });
+    }
     // The tenant's sensitivity labels (Graph) – null like a server without the permission.
     if (route_ === "GET /api/labels") return json({ labels: scenario.tenantLabels ?? null });
     if (route_ === "GET /api/config") {
@@ -1838,11 +1845,14 @@ test.describe("README pictures (English)", () => {
   test.use({ locale: "en-GB" });
 
   const ATTACHMENTS = [attachment("a1", "Presentation.pptx", 6.5 * MiB), attachment("a2", "Notes.txt", 200 * 1024)];
-  const README_CONFIG = { smsEnabled: true, smsDefaultCountry: "49", thresholdMb: 5, sendExpireDays: 5, sendMaxExpireDays: 30 };
+  // With the delivery proof offered: the pictures show its switch, the seal in "History" and its help.
+  const README_CONFIG = { smsEnabled: true, smsDefaultCountry: "49", thresholdMb: 5, sendExpireDays: 5, sendMaxExpireDays: 30, deliveryProof: true };
   // With the mails they went out with (subject as title), and a confidential message.
   const SUBJECTS = ["Documents new building project", "Quote 2026-118", "Documents new building project", ""];
   const SHARES_EN = [
-    ...SHARES.map((share, i) => ({ ...share, name: ["Presentation.pptx", "Quote.pdf", "File request", "Old.zip"][i], subject: SUBJECTS[i], mailId: `AAMk-${i}` })),
+    ...SHARES.map((share, i) => ({ ...share, name: ["Presentation.pptx", "Quote.pdf", "File request", "Old.zip"][i], subject: SUBJECTS[i], mailId: `AAMk-${i}`,
+      // The first link went out with a delivery proof: the seal after its name.
+      ...(i === 0 ? { proofId: "20261110-0912-7Q2F" } : {}) })),
     { id: "msg-1", kind: "message", name: "Confidential message", url: null, accessId: "acc1", sharedAt: Date.parse("2026-11-12"),
       expiration: "2099-11-17", downloads: null, received: null, protected: true, passwordAvailable: true, subject: "Access data", mailId: "AAMk-9",
       password: { channel: "mail", to: "erika.beispiel@example.com", status: null, at: Date.parse("2026-11-12T08:00:00Z"), deliveredAt: null } },
@@ -1886,6 +1896,26 @@ test.describe("README pictures (English)", () => {
     await expect(page.locator("#shares .share").nth(0).locator(".password-panel input.mono")).toHaveValue("KateGeteFi45");
     await expectAccessible(page);
     await readmeShot(page, "shares");
+  });
+
+  test("Proofs of delivery", async ({ page }) => {
+    const proofs = [
+      { id: "20261118-1646-CBMH", createdAt: Date.parse("2026-11-18T15:46:00Z"), subject: "Documents new building project",
+        sentAt: Date.parse("2026-11-18T15:47:00Z"), recipients: ["erika.beispiel@example.com"], files: ["Presentation.pptx"], downloads: 1,
+        confirmed: 1, done: false },
+      { id: "20261104-1012-K8MD", createdAt: Date.parse("2026-11-04T09:12:00Z"), subject: "Contract 2026",
+        sentAt: Date.parse("2026-11-04T09:13:00Z"), recipients: ["customer@example.org"], files: ["Contract.pdf", "Annex.pdf"], downloads: 2,
+        confirmed: 1, done: true },
+      { id: "20260921-1533-Z4QN", createdAt: Date.parse("2026-09-21T13:33:00Z"), subject: "Plans",
+        sentAt: Date.parse("2026-09-21T13:34:00Z"), recipients: ["architect@example.net"], files: ["Plans.zip"], downloads: 0,
+        confirmed: 0, done: true },
+    ];
+    await openTaskpane(page, { lang: "en", config: README_CONFIG, proofs });
+    await page.click("#account-toggle");
+    await page.click("#proofs-open");
+    await expect(page.locator("#proofs-list .proof-entry")).toHaveCount(3);
+    await expectAccessible(page);
+    await readmeShot(page, "proofs");
   });
 
   test("Reading a sent mail", async ({ page }) => {
@@ -2022,4 +2052,48 @@ test("Labels: without Outlook's catalog the names and priority come from the ten
   await page.click("#submit");
   await expect(page.locator("#status")).toContainText("„Angebot.docx“ ist als „Vertraulich“ gekennzeichnet");
   expect((await officeLog(page)).mailLabel).toBe(LABEL_IDS.confidential);
+});
+
+test("Zustellnachweise: not in the account menu without DELIVERY_PROOF", async ({ page }) => {
+  await openTaskpane(page);
+  await page.click("#account-toggle");
+  await expect(page.locator("#proofs-open")).toBeHidden();
+});
+
+test("Zustellnachweise: every proof in the account menu, searchable, the seal opens the PDF", async ({ page }) => {
+  const proofs = [
+    { id: "20261118-1646-CBMH", createdAt: Date.parse("2026-11-18T15:46:00Z"), subject: "Unterlagen Neubau", sentAt: Date.parse("2026-11-18T15:47:00Z"),
+      recipients: ["erika@example.com"], files: ["Angebot.zip"], downloads: 1, confirmed: 1, done: true },
+    { id: "20261112-0931-XK7P", createdAt: Date.parse("2026-11-12T08:31:00Z"), subject: "Vertrag 2026", sentAt: Date.parse("2026-11-12T08:32:00Z"),
+      recipients: ["kunde@example.org"], files: ["Vertrag.pdf"], downloads: 0, confirmed: 0, done: false },
+  ];
+  await openTaskpane(page, { config: { deliveryProof: true }, proofs });
+  await page.click("#account-toggle");
+  await page.click("#proofs-open");
+  await expect(page.locator("#panel-proofs")).toBeVisible();
+  await expect(page.locator("#proofs-search")).toBeFocused();
+  const entries = page.locator("#proofs-list .proof-entry");
+  await expect(entries).toHaveCount(2);
+  await expect(entries.nth(0).locator(".share-title")).toHaveText("Unterlagen Neubau");
+  await expect(entries.nth(0)).toContainText("18.11.2026 · an erika@example.com");
+  await expect(entries.nth(0)).toContainText("Angebot.zip · 1× heruntergeladen");
+  await expect(entries.nth(0)).toContainText("Vorgang 20261118-1646-CBMH · abgeschlossen");
+  await expectAccessible(page);
+
+  // Search: by recipient, by tracking ID (any case), nothing.
+  await page.fill("#proofs-search", "kunde@");
+  await expect(entries).toHaveCount(1);
+  await expect(entries.nth(0).locator(".share-title")).toHaveText("Vertrag 2026");
+  await page.fill("#proofs-search", "cbmh");
+  await expect(entries).toHaveCount(1);
+  await page.fill("#proofs-search", "nichts");
+  await expect(entries).toHaveCount(0);
+  await expect(page.locator("#proofs-empty")).toHaveText("Kein Zustellnachweis passt zur Suche.");
+
+  await page.fill("#proofs-search", "");
+  await entries.nth(1).locator(".proof-seal").click();
+  await expect.poll(async () => (await officeLog(page)).openedUrls).toContain(
+    "https://cloudshare.example.com/proof/20261112-0931-XK7P.pdf?until=1&lang=de&sig=x");
+  await page.click("#proofs-close");
+  await expect(page.locator("#panel-proofs")).toBeHidden();
 });

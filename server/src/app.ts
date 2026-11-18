@@ -68,7 +68,8 @@ import { passwordProblem } from "./password.js";
 import { signatureHtml } from "./signature.js";
 import { availableSettings, defaultSettings, parseSettings, resetSettings, saveSettings, settingsFor } from "./settings.js";
 import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } from "./store.js";
-import { addLink, caseById, caseFor, caseForLink, caseOfToken, gatewayUrl, linkUrlFor, type ProofLink } from "./proof.js";
+import { addLink, caseById, caseFor, caseForLink, caseOfToken, casesOf, gatewayUrl, linkUrlFor, type ProofLink } from "./proof.js";
+import { caseSubject } from "./proofMail.js";
 import { gatewayCsp, openGateway, requestCode, verifyCode, type GatewayResult, type Visitor } from "./proofGateway.js";
 import { signedProofPdf } from "./proofPdf.js";
 import { refreshCase } from "./proofWatcher.js";
@@ -1263,6 +1264,30 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     { config: { rateLimit: strictLimit } },
     async (req, reply) => sendGateway(reply, await verifyCode(req.params.token, req.body?.address, req.body?.code, visitorOf(req))),
   );
+
+  /**
+   * "Zustellnachweise" (account menu): every case of the user, newest first – also those whose links expired long ago
+   * (kept PROOF_RETENTION_MONTHS), so a proof can be found when "Verlauf" no longer lists its link. The pane searches
+   * in it (tracking ID, subject, recipients, file names); the seal opens the PDF via /api/proofs/:id/link.
+   */
+  app.get("/api/proofs", async (req) => {
+    const user = await authenticate(req);
+    return casesOf(user.oid).slice(0, 1000).map((c) => {
+      const sent = [...c.events].reverse().find((e) => e.type === "message.sent")?.data;
+      const list = (value: unknown) => (Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []);
+      return {
+        id: c.id,
+        createdAt: c.createdAt,
+        subject: caseSubject(c) || null,
+        sentAt: typeof sent?.sentAt === "string" ? Date.parse(sent.sentAt) : null,
+        recipients: [...list(sent?.to), ...list(sent?.cc)],
+        files: Object.values(c.links ?? {}).map((l) => l.name),
+        downloads: c.events.filter((e) => e.type === "download").length,
+        confirmed: c.events.filter((e) => e.type === "recipient.verified").length,
+        done: c.done === true,
+      };
+    });
+  });
 
   /** How long the address of a proof PDF works – it is opened in the default browser right away. */
   const PDF_LINK_TTL = 5 * 60_000;
