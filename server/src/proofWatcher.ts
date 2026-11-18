@@ -92,14 +92,24 @@ async function watchLinks(owner: string, items: ProofCase[], now: number, log?: 
 }
 
 /**
- * Nothing fetched yet (no download, no files received, message not opened) and the last link ends within
- * PROOF_REMINDER_DAYS: the sender gets one reminder – unless they switched it off in the settings.
+ * When the sender is reminded: half of the time between sending and the end of the links has passed (14 days → after
+ * 7, 2 days → after 1) – never within the first 24 hours after sending. Null: the links end before that.
+ */
+export function reminderTime(sentAt: number, end: number): number | null {
+  const at = sentAt + Math.max((end - sentAt) / 2, DAY);
+  return at < end ? at : null;
+}
+
+/**
+ * Nothing fetched yet (no download, no files received, message not opened) and half of the validity has passed: the
+ * sender gets one reminder – unless they switched it off in the settings.
  */
 async function remindIfNothingFetched(c: ProofCase, now: number, log?: Log) {
-  if (c.reminderSent || config.proofReminderDays <= 0) return;
+  if (c.reminderSent) return;
   const summary = caseSummary(c);
-  if ((summary.state !== "sent" && summary.state !== "confirmed") || !summary.endsOn) return;
-  if (endOfDay(summary.endsOn) - now > config.proofReminderDays * DAY) return;
+  if ((summary.state !== "sent" && summary.state !== "confirmed") || !summary.endsOn || summary.sentAt === undefined) return;
+  const at = reminderTime(summary.sentAt, endOfDay(summary.endsOn));
+  if (at === null || now < at) return;
   if (!settingsFor(c.owner).proofReminder) return;
   try {
     await sendReminder(c, summary.endsOn);

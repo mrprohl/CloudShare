@@ -24,7 +24,7 @@ export interface UserSettings {
   downloadNotice: boolean;
   uploadNotice: boolean;
   smsNotice: boolean;
-  /** "Zustellnachweis": a mail when nothing was fetched a few days before the link ends (PROOF_REMINDER_DAYS). */
+  /** "Zustellnachweis": a mail when nothing was fetched once half of the validity has passed (proofWatcher.ts). */
   proofReminder: boolean;
   /** Ways the pane offers for "Kennwort senden an" (at least one). */
   channels: Channel[];
@@ -49,7 +49,7 @@ export function availableSettings() {
     downloadNotice: config.downloadNotice,
     uploadNotice: config.uploadNotice,
     smsNotice: config.smsNotice && smsEnabled(),
-    proofReminder: config.deliveryProof && config.proofReminderDays > 0,
+    proofReminder: config.deliveryProof,
     channels: CHANNELS.filter((c) => c !== "sms" || smsEnabled()),
     languages: addinLanguages(),
   };

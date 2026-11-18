@@ -63,13 +63,12 @@ import { accessIdOf, isMessageToken, messageFor, messagesOf, recordDraftSubject,
 import { isCloudShareShare, isRequestShare, revokeMessage, revokeShare, tokenOf } from "./shares.js";
 import { defaultTemplates, render, smsFiles, templatesFor } from "./templates.js";
 import { clampInt, isEmailAddress } from "./limits.js";
-import { formatDate, formatDateTime, inRecipientLanguage, inSenderLanguage, knownLanguage, locale, requestLanguageCode, t, tIn, withRequestLanguage } from "./i18n.js";
+import { formatDate, inRecipientLanguage, inSenderLanguage, knownLanguage, locale, requestLanguageCode, t, tIn, withRequestLanguage } from "./i18n.js";
 import { passwordProblem } from "./password.js";
 import { signatureHtml } from "./signature.js";
 import { availableSettings, defaultSettings, parseSettings, resetSettings, saveSettings, settingsFor } from "./settings.js";
 import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } from "./store.js";
 import { addLink, caseById, caseFor, caseForLink, caseOfToken, casesOf, caseSummary, gatewayUrl, linkUrlFor, type ProofCase, type ProofLink } from "./proof.js";
-import { zip } from "./zip.js";
 import { caseSubject } from "./proofMail.js";
 import { confirmFromMail, gatewayCsp, openGateway, requestCode, verifyCode, type GatewayResult, type Visitor } from "./proofGateway.js";
 import { signedProofPdf } from "./proofPdf.js";
@@ -416,7 +415,7 @@ const proofStateOf = (token: string) => {
   return c ? caseSummary(c).state : null;
 };
 
-/** One case for the list "Zustellnachweise" and the overview of an export. */
+/** One case for the list "Zustellnachweise". */
 function proofListEntry(c: ProofCase) {
   const sent = [...c.events].reverse().find((e) => e.type === "message.sent")?.data;
   const list = (value: unknown) => (Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []);
@@ -448,12 +447,6 @@ function proofListEntry(c: ProofCase) {
 /** Only mails that really went out: a proof ticked in a draft that was never sent is no proof of anything. */
 const sentCasesOf = (owner: string) => casesOf(owner).filter((c) => c.events.some((e) => e.type === "message.sent"));
 
-/** A field of the CSV overview: quoted when needed, formulas defused (a leading = + - @ is taken as text). */
-export const csvField = (value: unknown) => {
-  let text = value === null || value === undefined ? "" : String(value);
-  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
-  return /[";\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
-};
 
 export async function buildApp(options: { logger?: boolean } = {}) {
   // Only proxies in private networks (Caddy, an upstream proxy in the LAN) may set X-Forwarded-For – otherwise a
@@ -1368,56 +1361,6 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     return sentCasesOf(user.oid).slice(0, 1000).map(proofListEntry);
   });
 
-  /** Exports waiting to be fetched by the browser: owner, cases, language – 5 minutes, then gone. */
-  const proofExports = new Map<string, { owner: string; ids: string[]; lang: string; until: number }>();
-  const EXPORT_MAX = 200;
-  const EXPORT_TTL = 5 * 60_000;
-
-  /**
-   * "Exportieren" in "Zustellnachweise": the cases shown (filter and search of the pane) as one ZIP – every signed PDF
-   * and an overview as CSV. Returns a short-lived, unguessable address the pane opens in the default browser.
-   */
-  app.post<{ Body: { ids?: unknown } }>("/api/proofs/export", { config: { rateLimit: strictLimit } }, async (req) => {
-    const user = await authenticate(req);
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((id): id is string => typeof id === "string") : [];
-    const own = [...new Set(ids)].filter((id) => caseFor(id, user.oid));
-    if (own.length === 0) throw new HttpError(400, t("server.proofExportEmpty"));
-    if (own.length > EXPORT_MAX) throw new HttpError(400, t("server.proofExportTooMany", { max: EXPORT_MAX }));
-    const now = Date.now();
-    for (const [key, value] of proofExports) if (value.until < now) proofExports.delete(key);
-    const key = randomUUID();
-    proofExports.set(key, { owner: user.oid, ids: own, lang: requestLanguageCode() ?? "", until: now + EXPORT_TTL });
-    return { url: `${config.publicBaseUrl}/proof/export/${key}.zip`, count: own.length };
-  });
-
-  app.get<{ Params: { file: string } }>("/proof/export/:file", async (req, reply) => {
-    const job = proofExports.get(req.params.file.replace(/\.zip$/, ""));
-    if (!job || job.until < Date.now()) return reply.status(403).type("text/plain; charset=utf-8").send(t("server.proofLinkExpired"));
-    const language = knownLanguage(job.lang);
-    const cases = job.ids.map((id) => caseFor(id, job.owner)).filter((c): c is ProofCase => Boolean(c));
-    const fileName = (c: ProofCase) => `${tIn(language, "mail.proof.fileName")}-${c.id}.pdf`.replace(/[^\w.-]/g, "_");
-    const entries: Array<{ name: string; content: Buffer }> = [];
-    for (const c of cases) entries.push({ name: fileName(c), content: await signedProofPdf(c, language, req.log) });
-    const overview = inSenderLanguage(language, () => {
-      const head = ["case", "subject", "sent", "recipients", "files", "state", "fetched", "confirmed", "endsOn", "keptUntil", "pdf"]
-        .map((k) => t(`mail.proof.export.${k}`));
-      const rows = cases.map((c) => {
-        const e = proofListEntry(c);
-        return [e.id, e.subject ?? "", formatDateTime(e.sentAt), e.recipients.join(", "), e.files.join(", "), t(`mail.proof.export.state.${e.state}`),
-          e.fetched, e.confirmed, e.endsOn ? formatDate(Date.parse(`${e.endsOn}T12:00:00Z`)) : "", formatDate(e.keptUntil), fileName(c)];
-      });
-      // Semicolons and a byte order mark: Excel opens it right away with umlauts intact.
-      return `﻿${[head, ...rows].map((r) => r.map(csvField).join(";")).join("\r\n")}\r\n`;
-    });
-    entries.unshift({ name: `${tIn(language, "mail.proof.export.overviewFile")}.csv`, content: Buffer.from(overview, "utf8") });
-    req.log.info({ user: cases[0]?.ownerUpn, cases: cases.length }, "Delivery proofs exported");
-    const name = `${tIn(language, "mail.proof.export.zipFile")}-${new Date().toISOString().slice(0, 10)}.zip`.replace(/[^\w.-]/g, "_");
-    return reply
-      .header("Cache-Control", "no-store")
-      .header("Content-Disposition", `attachment; filename="${name}"`)
-      .type("application/zip")
-      .send(zip(entries));
-  });
 
   /** How long the address of a proof PDF works – it is opened in the default browser right away. */
   const PDF_LINK_TTL = 5 * 60_000;

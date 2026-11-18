@@ -504,19 +504,16 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 .share-item .proof-seal .icon { width: 16px; height: 16px; }
 /* "Zustellnachweise" (account menu): the search field and one entry per proof, the seal on the left opens the PDF. */
 .proofs-search { display: block; width: 100%; margin: 4px 0 12px; }
-/* The seal tells the state: grey sent, blue address confirmed, green fetched (downloaded, received, opened). */
+/* The seal tells the state – the symbol itself in the colour: grey sent, blue address confirmed, green fetched
+   (downloaded, received, opened). Not the brand blue of other subtle buttons. */
+.proof-seal .icon { color: inherit; }
+.proof-seal.state-sent, .proof-seal.state-open { color: var(--fg3); }
 .proof-seal.state-confirmed { color: var(--brand-fg); }
 .proof-seal.state-fetched { color: var(--success-fg); }
-/* Filter of "Zustellnachweise": chips like Outlook's quick filters, one pressed. */
-.chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
-.chip {
-  font: inherit; font-size: 12px; line-height: 16px; padding: 3px 10px; border: 1px solid var(--stroke1); border-radius: 12px;
-  background: var(--bg1); color: var(--fg2); cursor: pointer;
-}
-.chip:hover { background: var(--bg1-hover); color: var(--fg1); }
-.chip[aria-pressed="true"] { background: var(--brand-tint-bg); border-color: var(--brand-tint-stroke); color: var(--brand-tint-fg); font-weight: 600; }
-.chip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
-.help-header .proofs-export { margin: 0 0 0 auto; }
+/* "Vorgang …" of a proof: bold, above its state – the number to quote. */
+.proof-entry .proof-case { font-weight: 600; color: var(--fg2); }
+/* Filter of "Zustellnachweise": the switch like Dateien / Nachricht / Anfordern, one line. */
+.proofs-filter { margin: 0 0 12px; }
 .share-meta { font-size: 12px; line-height: 16px; color: var(--fg3); }
 .share-password.failed { color: var(--danger-fg); }
 .share-unsent { color: var(--fg2); font-weight: 600; }

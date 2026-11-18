@@ -474,7 +474,8 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   `refreshCase`, so the PDF has downloads since the last pass.
 - **Reminder** (`proofWatcher.ts` `remindIfNothingFetched`, `proofMail.ts` `sendReminder`): a case whose state is still
   "sent" or "confirmed" (`caseSummary` in `proof.ts`: no download, no files received, message not opened) and whose last
-  running link ends within `PROOF_REMINDER_DAYS` (default 3, 0 = off) mails the sender once (`reminderSent`,
+  running link has used up half of its validity since the mail was sent (`reminderTime`: 14 days → after 7, 2 days →
+  after 1, never within the first 24 hours) mails the sender once (`reminderSent`,
   `proof.reminded`) – unless the personal setting `proofReminder` (`DEFAULT_PROOF_REMINDER`) is off. Recipients are
   never written to.
 - **Result first**: the PDF starts with a frame "Ergebnis" (`summaryLines`: sent, address confirmed, downloaded /
@@ -596,7 +597,6 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `POST /api/proofs/:id/link`, `GET /proof/:id.pdf?until=…&lang=…&sig=…` | "Zustellnachweis" (2.12): a signed PDF address valid 5 minutes (owner only), opened in the default browser; the PDF itself needs no login – the HMAC signature (key from `CREDENTIAL_KEY`) binds case, end and language |
 | `GET /r/s/:token`, `POST /r/s/:token/code`, `POST /r/s/:token/verify` | Gateway of a link with "Zustellnachweis" (no login): the recipient enters their address, gets a six-digit code (only addresses the mail went to; the page reads the same for any address), confirms it and goes on to Nextcloud; a signed cookie per link lets the same browser come back; every step is recorded |
 | `GET /r/s/:token/confirm?address=…&code=…` | The button "Adresse bestätigen" in the code mail: the code form filled in (`confirmFromMail`) – confirms nothing by itself (mail scanners open links), the click posts to `/verify` |
-| `POST /api/proofs/export`, `GET /proof/export/:key.zip` | "Exportieren" in "Zustellnachweise": the cases shown (`{ ids }`, the user's own, at most 200) as one ZIP (`zip.ts`, deflate, no dependency) – every signed PDF and `Übersicht.csv` (semicolons, BOM, formulas defused – `csvField`); the address is an unguessable key, valid 5 minutes |
 | `GET/POST /webhooks/seven?token=…` | seven.io delivery reports (no login, secret `SEVEN_WEBHOOK_SECRET`) |
 
 Rate limit: `RATE_LIMIT_PER_MINUTE` per user (`oid`, otherwise client address); Nextcloud login, upload links and
@@ -737,13 +737,13 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
 - **Proofs of delivery** ("Zustellnachweise", second entry, `#proofs-open`, only with `DELIVERY_PROOF`): shown in place of
   the tab like the settings (`#panel-proofs`); loads `GET /api/proofs` (every case of the user whose mail was sent, finished ones too) and
   every entry is built like a row of "Verlauf" (`proofRow`: kind symbol, subject as title – a click opens the sent mail
-  via `GET /api/proofs/:id/mail` when `mailAvailable` –, the PDF button `.open-pdf` next to it, the file with its seal,
-  to whom, the state with its dot, the tracking ID);
-  filters it while typing over tracking ID, subject, recipients and file names and by the chips `#proofs-filter`
-  (Alle · Offen · Heruntergeladen · Nicht abgerufen – `proofMatchesFilter`); the seal of an entry (`proofSeal`, also in
+  via `GET /api/proofs/:id/mail` when `mailAvailable` –, the file with its seal (a click opens the PDF),
+  to whom, the tracking ID in bold, then the state with its dot; no action icons – the list is for looking things up);
+  filters it while typing over tracking ID, subject, recipients and file names and by the switch `#proofs-filter`
+  (Alle | Abgerufen | Nicht abgerufen – `proofMatchesFilter`, like the kind switch); the seal of an entry (`proofSeal`, also in
   "Verlauf" via `proofState` of `/api/shares`) is coloured by `caseSummary(c).state` – grey sent, blue confirmed, green
   fetched – and opens its signed PDF; each entry names when its links end (`endsOn`) or until when the case is kept
-  (`keptUntil`). `#proofs-export` sends the ids shown to `POST /api/proofs/export` and opens the ZIP in the browser.
+  (`keptUntil`).
 - **Help** ("Hilfe" in the account menu of the bottom bar, `#help-toggle`; `#panel-help` in `taskpane.html`, shown in place of the
   current tab – the tab bar is hidden while a page (help, settings, proofs) is open (`showOverlay`, `currentOverlay`), "←" before the title (`.page-back`) or Escape leads back): a user guide for everyday users – short `<details>`
   sections (getting started, sending files, password and channel, confidential message, receiving files, "History",
