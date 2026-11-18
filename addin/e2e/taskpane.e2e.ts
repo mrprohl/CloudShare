@@ -1335,15 +1335,17 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   await page.click("#tab-send");
   await expect(refresh).toBeHidden();
   await page.click("#tab-shares");
-  await expect(rows.nth(0).locator(".state-text")).toHaveText("2× heruntergeladen, zuletzt 11.11.2026, 10:30 Uhr"); // with the year
+  await expect(rows.nth(0).locator(".state-text")).toHaveText("2× heruntergeladen · 11.11.2026, 10:30 Uhr");
   await expect(rows.nth(1).locator(".state-text")).toHaveText("Noch nicht heruntergeladen");
   await expect(rows.nth(2).locator(".state-text")).toHaveText("3 Dateien empfangen");
   // One short line: period and password – the word "Kennwort" only once.
   const meta = rows.nth(0).locator(".share-meta").first();
   await expect(meta.locator(".share-period")).toHaveText("10.11.2026 – 24.11.2099");
-  await expect(meta.locator(".share-password")).toContainText("Kennwort per SMS an +49 170 •••• 67 – zugestellt am 10.11.2026, 11:00 Uhr");
+  // The way in a few words; number and time of the delivery in the tooltip.
+  await expect(meta.locator(".share-password")).toHaveText("Kennwort per SMS – zugestellt");
+  await expect(meta.locator(".share-password")).toHaveAttribute("title", "Kennwort per SMS an +49 170 •••• 67 – zugestellt am 10.11.2026, 11:00 Uhr");
   expect((await meta.textContent())!.match(/Kennwort/g)).toHaveLength(1);
-  await expect(rows.nth(1).locator(".share-period")).toHaveText("12.11. – 26.11.2099"); // same year: no year at the start
+  await expect(rows.nth(1).locator(".share-period")).toHaveText("12.11.2099 – 26.11.2099"); // always dd.mm.yyyy
   await expect(rows.nth(1).locator(".share-password")).toHaveText("ohne Kennwort");
   await expect(rows.nth(2).locator(".share-password")).toHaveText("mit Kennwort");
   // Icons instead of words; the words are the buttons' names.
@@ -1416,9 +1418,9 @@ test("Verlauf: a failed SMS says whether it was sent at all, and how to send the
   await page.click("#tab-shares");
   const rows = page.locator("#shares .share");
   // seven.io refused it right away (key, credit, limit).
-  await expect(rows.nth(0).locator(".share-password")).toHaveText("Kennwort per SMS an +49 170 •••• 67 – nicht versendet – bitte erneut senden");
+  await expect(rows.nth(0).locator(".share-password")).toHaveText("Kennwort per SMS – nicht versendet – bitte erneut senden");
   // seven.io accepted it and reported "not delivered" later.
-  await expect(rows.nth(1).locator(".share-password")).toHaveText("Kennwort per SMS an +49 170 •••• 67 – nicht zugestellt – bitte erneut senden");
+  await expect(rows.nth(1).locator(".share-password")).toHaveText("Kennwort per SMS – nicht zugestellt – bitte erneut senden");
   await expect(rows.nth(1).locator(".share-password")).toHaveClass(/failed/);
 });
 
@@ -1589,7 +1591,8 @@ test("reading a mail: tabs 'Nachricht' and 'Verlauf', nothing to insert", async 
   const inMail = page.locator("#mail-shares .share");
   await expect(inMail).toHaveCount(2);
   await expect(inMail.nth(0).locator(".share-name")).toHaveText("Präsentation.pptx");
-  await expect(inMail.nth(0).locator(".share-password")).toContainText("zugestellt am 10.11.2026, 11:00 Uhr");
+  await expect(inMail.nth(0).locator(".share-password")).toHaveText("Kennwort per SMS – zugestellt");
+  await expect(inMail.nth(0).locator(".share-password")).toHaveAttribute("title", /zugestellt am 10.11.2026, 11:00 Uhr/);
   await expect(inMail.nth(1).locator(".share-item")).toHaveText("Dateianforderung");
   await expect(page.locator("#mail-none")).toBeHidden();
   // Reading a mail too: "Aktualisieren" in the tab bar, the account at the bottom.
