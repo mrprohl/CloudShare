@@ -104,3 +104,13 @@ describe("one layout for every card", () => {
     }
   });
 });
+
+describe("spacing in classic Outlook", () => {
+  it("keeps the space between the file blocks on table cells (Word ignores margins of <div>)", () => {
+    const html = filesCard(files, "27.11.2026", formatSize);
+    expect(html).toContain('<td style="padding:0px 0 12px 0;">'); // first block: space below
+    expect(html).toContain('<td style="padding:12px 0 12px 0;border-top:1px solid #f0f0f0;">'); // middle: line and space
+    expect(html).toContain('<td style="padding:12px 0 0px 0;border-top:1px solid #f0f0f0;">'); // last
+    expect(html).not.toMatch(/<div style="[^"]*margin:12px/);
+  });
+});

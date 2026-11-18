@@ -84,7 +84,7 @@ export interface ProofCase {
   /** The sender got the PDF after the first download / at the end (proofMail.ts). */
   downloadMailSent?: boolean;
   finalMailSent?: boolean;
-  /** The sender was reminded that nothing was fetched yet (proofWatcher.ts, PROOF_REMINDER_DAYS) – once per case. */
+  /** The sender was reminded that nothing was fetched yet (proofWatcher.ts, half of the validity) – once per case. */
   reminderSent?: boolean;
   /** Held-back passwords already released per Send ID (proofPassword.ts): addresses mailed, other addresses, SMS. */
   released?: Record<string, { mailed: string[]; others?: boolean; sms?: boolean }>;

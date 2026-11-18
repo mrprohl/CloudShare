@@ -213,11 +213,6 @@ export const config = {
   /** How long a delivery proof is kept after its last event, in months (default 36 – three years, the regular limitation period). */
   proofRetentionMonths: number("PROOF_RETENTION_MONTHS", 36),
   /**
-   * Days before a link of a delivery proof ends on which the sender is reminded that nothing was fetched yet (one mail
-   * per case; 0 = never). Each user can switch it off in the settings.
-   */
-  proofReminderDays: number("PROOF_REMINDER_DAYS", 3),
-  /**
    * Signature of the proof PDF (pdfSign.ts): PEM files of an own certificate and key (e.g. from a CA trusted by Adobe);
    * without them CloudShare makes a certificate itself (CN PROOF_SIGN_NAME, O PROOF_SIGN_ORGANIZATION). PROOF_TSA_URL:
    * RFC 3161 time stamp authority for the signature ("off" = none) – only a hash leaves the server.

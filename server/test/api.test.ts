@@ -1421,16 +1421,16 @@ describe("errors – a service that cannot be reached is named", () => {
   });
 });
 
-describe("delivery proof – state, export and reminder", () => {
+describe("delivery proof – state and reminder", () => {
   /** A sent case of anna with one file link ending on `expireDate`. */
-  async function sentCase(token: string, expireDate?: string) {
+  async function sentCase(token: string, expireDate?: string, sentAt = "2026-11-18T10:00:00Z") {
     nc.createPublicShare.mockResolvedValue(`https://cloud.example.test/s/${token}`);
     const { body } = await startUpload("anna", "Bericht.pdf");
     await putChunk("anna", body.uploadId, 1);
     const { proofId } = (await complete("anna", body.uploadId, { proof: true })).json();
     const { recordMailSent, caseById } = await import("../src/proof.js");
     if (expireDate) for (const l of Object.values(caseById(proofId)!.links ?? {})) l.expireDate = expireDate;
-    recordMailSent([token], { subject: "Bericht", messageId: `<${token}@example.test>`, from: "anna@example.test", to: ["erika@example.test"], cc: [], bcc: [], sentAt: "2026-11-18T10:00:00Z" });
+    recordMailSent([token], { subject: "Bericht", messageId: `<${token}@example.test>`, from: "anna@example.test", to: ["erika@example.test"], cc: [], bcc: [], sentAt });
     return proofId as string;
   }
 
@@ -1447,34 +1447,22 @@ describe("delivery proof – state, export and reminder", () => {
     expect(entry.keptUntil).toBeGreaterThan(Date.now());
   });
 
-  it("exports the cases shown as one ZIP – signed PDFs and an overview – only the user's own", async () => {
-    const proofId = await sentCase("proof-export");
-    const res = await app.inject({ method: "POST", url: "/api/proofs/export", headers: as("anna"), payload: { ids: [proofId, "20990101-0000-XXXX"] } });
-    expect(res.statusCode).toBe(200);
-    const { url, count } = res.json();
-    expect(count).toBe(1);
-    const file = await app.inject({ method: "GET", url: new URL(url).pathname });
-    expect(file.statusCode).toBe(200);
-    expect(file.headers["content-type"]).toBe("application/zip");
-    expect(file.rawPayload.subarray(0, 4).toString("latin1")).toBe("PK\x03\x04");
-    const raw = file.rawPayload.toString("utf8");
-    expect(raw).toContain("Übersicht.csv");
-    expect(raw).toContain(`Zustellnachweis-${proofId}.pdf`);
-    // Someone else's cases cannot be exported, an unknown address gives nothing.
-    expect((await app.inject({ method: "POST", url: "/api/proofs/export", headers: as("bernd"), payload: { ids: [proofId] } })).statusCode).toBe(400);
-    expect((await app.inject({ method: "GET", url: "/proof/export/unknown.zip" })).statusCode).toBe(403);
+
+  it("reminds when half of the validity has passed – never within the first 24 hours", async () => {
+    const { reminderTime } = await import("../src/proofWatcher.js");
+    const day = 86_400_000;
+    expect(reminderTime(0, 14 * day)).toBe(7 * day); // 14 days: after 7
+    expect(reminderTime(0, 2 * day)).toBe(day); // 2 days: after 1
+    expect(reminderTime(0, 30 * 3_600_000)).toBe(day); // 30 hours: not before 24
+    expect(reminderTime(0, 20 * 3_600_000)).toBeNull(); // ends before 24 hours: none
   });
 
-  it("defuses formulas in the overview", async () => {
-    const { csvField } = await import("../src/app.js");
-    expect(csvField("=HYPERLINK(1)")).toBe("'=HYPERLINK(1)");
-    expect(csvField('a;b "c"')).toBe('"a;b ""c"""');
-    expect(csvField(3)).toBe("3");
-  });
-
-  it("reminds the sender once when nothing was fetched shortly before the link ends – not when switched off", async () => {
+  it("reminds the sender once when nothing was fetched by half of the validity – not when switched off", async () => {
     const soon = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
-    const proofId = await sentCase("proof-remind", soon);
+    const threeDaysAgo = new Date(Date.now() - 3 * 86_400_000).toISOString();
+    // Just sent, link ends tomorrow: half of the time has not passed yet – no reminder.
+    await sentCase("proof-remind-early", soon, new Date().toISOString());
+    const proofId = await sentCase("proof-remind", soon, threeDaysAgo);
     const sendMailAsApp = vi.mocked((await import("../src/graph.js")).sendMailAsApp);
     sendMailAsApp.mockClear();
     const { runProofWatch } = await import("../src/proofWatcher.js");
@@ -1489,7 +1477,7 @@ describe("delivery proof – state, export and reminder", () => {
 
     // Switched off in the settings: no reminder.
     await app.inject({ method: "PUT", url: "/api/settings", headers: as("anna"), payload: { proofReminder: false } });
-    const other = await sentCase("proof-remind-off", soon);
+    const other = await sentCase("proof-remind-off", soon, threeDaysAgo);
     sendMailAsApp.mockClear();
     await runProofWatch(log as never);
     expect(sendMailAsApp.mock.calls.some((call) => String(call[3]).includes(other))).toBe(false);

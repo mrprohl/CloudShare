@@ -132,7 +132,7 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
 
     // "Zustellnachweise": the user's cases, and the signed address of a PDF.
     if (route_ === "GET /api/proofs") return json(scenario.proofs ?? []);
-    if (route_ === "POST /api/proofs/export") return json({ url: "https://cloudshare.example.com/proof/export/x.zip", count: 1 });
+
     if (/^POST \/api\/proofs\/[^/]+\/link$/.test(route_)) {
       return json({ url: `https://cloudshare.example.com/proof/${call.path.split("/")[3]}.pdf?until=1&lang=de&sig=x` });
     }
@@ -2098,7 +2098,7 @@ test("Zustellnachweise: not in the account menu without DELIVERY_PROOF", async (
   await expect(page.locator("#proofs-open")).toBeHidden();
 });
 
-test("Zustellnachweise: every proof in the account menu, filtered and searched, the seal opens the PDF, export", async ({ page }) => {
+test("Zustellnachweise: every proof in the account menu, filtered and searched, the seal opens the PDF", async ({ page }) => {
   const proofs = [
     { id: "20261118-1646-CBMH", createdAt: Date.parse("2026-11-18T15:46:00Z"), subject: "Unterlagen Neubau", sentAt: Date.parse("2026-11-18T15:47:00Z"),
       recipients: ["erika@example.com"], files: ["Angebot.zip"], downloads: 1, confirmed: 1, done: true,
@@ -2107,7 +2107,7 @@ test("Zustellnachweise: every proof in the account menu, filtered and searched, 
       recipients: ["kunde@example.org"], files: ["Vertrag.pdf"], downloads: 0, confirmed: 0, done: false,
       state: "sent", fetched: 0, endsOn: "2026-11-26", keptUntil: Date.parse("2029-11-12T12:00:00Z"), kind: "file", mailAvailable: false, passwordTo: ["erika@example.com"] },
   ];
-  const calls = await openTaskpane(page, { config: { deliveryProof: true }, proofs });
+  await openTaskpane(page, { config: { deliveryProof: true }, proofs });
   await page.click("#account-toggle");
   await page.click("#proofs-open");
   await expect(page.locator("#panel-proofs")).toBeVisible();
@@ -2121,32 +2121,35 @@ test("Zustellnachweise: every proof in the account menu, filtered and searched, 
   await expect(entries.nth(0).locator(".state-text")).toHaveText("1× heruntergeladen · aufbewahrt bis 18.11.2029");
   await expect(entries.nth(0).locator(".share-state")).toHaveClass(/done/);
   await expect(entries.nth(0).locator(".proof-case")).toHaveText("Vorgang 20261118-1646-CBMH");
+  // "Vorgang …" bold, right above the state; no icons on the right (the list is for looking things up).
+  await expect(entries.nth(0).locator(".proof-case")).toHaveCSS("font-weight", "600");
+  expect(await entries.nth(0).locator(".proof-case + .share-state").count()).toBe(1);
+  await expect(entries.nth(0).locator(".share-actions")).toHaveCount(0);
   await expect(entries.nth(1).locator(".state-text")).toHaveText("nicht abgerufen · endet 26.11.2026");
   await expect(entries.nth(0).locator(".proof-password")).toHaveText("Kennwort an erika@example.com");
   // The subject opens the sent mail, as in "Verlauf" – only where the mail is known.
   await entries.nth(0).locator("button.share-title").click();
   await expect.poll(async () => (await officeLog(page)).openedMails).toContain("ews-proof-20261118-1646-CBMH");
   await expect(entries.nth(1).locator("button.share-title")).toHaveCount(0);
-  // The PDF button next to the subject.
-  await entries.nth(0).locator(".open-pdf").click();
-  await expect.poll(async () => (await officeLog(page)).openedUrls).toContain(
-    "https://cloudshare.example.com/proof/20261118-1646-CBMH.pdf?until=1&lang=de&sig=x");
-  // The seal tells the state by its colour (and its tooltip).
+  // No second PDF button: the seal after the file name opens the PDF and tells the state by its colour (and tooltip).
+  await expect(entries.nth(0).locator(".share-actions")).toHaveCount(0);
   await expect(entries.nth(0).locator(".proof-seal")).toHaveClass(/state-fetched/);
+  await expect(entries.nth(0).locator(".proof-seal .icon")).toHaveCSS("color", /.+/);
+  expect(await entries.nth(0).locator(".proof-seal .icon").evaluate((el) => getComputedStyle(el).color))
+    .not.toBe(await entries.nth(1).locator(".proof-seal .icon").evaluate((el) => getComputedStyle(el).color));
+  await expect(page.locator("#proofs-export")).toHaveCount(0);
   await expect(entries.nth(1).locator(".proof-seal")).toHaveAttribute("title", "Zustellnachweis 20261112-0931-XK7P als PDF öffnen – gesendet, noch nicht abgerufen");
   await expectAccessible(page);
 
-  // Filter chips: only the ones not fetched, then all again.
-  await page.click('#proofs-filter [data-filter="unfetched"]');
-  await expect(page.locator('#proofs-filter [data-filter="unfetched"]')).toHaveAttribute("aria-pressed", "true");
+  // The switch: only the ones not fetched, only the fetched ones, then all again.
+  await page.locator("#proofs-filter .segment", { hasText: "Nicht abgerufen" }).click();
+  await expect(page.locator('#proofs-filter input[value="unfetched"]')).toBeChecked();
   await expect(entries).toHaveCount(1);
   await expect(entries.nth(0).locator(".share-title")).toHaveText("Vertrag 2026");
-  // "Exportieren" exports what is shown.
-  await page.click("#proofs-export");
-  await expect.poll(async () => (await officeLog(page)).openedUrls).toContain("https://cloudshare.example.com/proof/export/x.zip");
-  const exported = calls.find((c) => c.path === "/api/proofs/export");
-  expect(JSON.parse(String(exported?.body))).toEqual({ ids: ["20261112-0931-XK7P"] });
-  await page.click('#proofs-filter [data-filter="all"]');
+  await page.locator("#proofs-filter .segment", { hasText: /^Abgerufen$/ }).click();
+  await expect(entries).toHaveCount(1);
+  await expect(entries.nth(0).locator(".share-title")).toHaveText("Unterlagen Neubau");
+  await page.locator("#proofs-filter .segment", { hasText: "Alle" }).click();
   await expect(entries).toHaveCount(2);
 
   // Search: by recipient, by tracking ID (any case), nothing.

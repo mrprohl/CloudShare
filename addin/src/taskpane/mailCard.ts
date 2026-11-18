@@ -40,7 +40,7 @@ function typeBadge(name: string): string {
   const label = escapeHtml(ext ? ext.toUpperCase().slice(0, 4) : t("card.fileBadge"));
   const color = TYPE_COLORS[ext] ?? "#616161";
   return (
-    `<td valign="middle" style="padding:0 8px 0 0;">` +
+    `<td valign="middle" style="padding:6px 8px 0 0;">` +
     `<span style="display:inline-block;background:${color};border-radius:3px;color:#ffffff;font-family:${FONT};` +
     `font-size:10px;font-weight:700;line-height:16px;padding:0 5px;">${label}</span></td>`
   );
@@ -110,18 +110,24 @@ export function filesCard(
   withPassword = true,
   proof?: CardProof,
 ): string {
-  const blocks = files
-    .map(
-      (f, i) =>
-        `<div style="${i ? "border-top:1px solid #f0f0f0;margin:12px 0 0;padding:12px 0 0;" : ""}">` +
-        button(f.url, t("card.download")) +
-        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin:6px 0 0;">` +
-        `<tr>${typeBadge(f.name)}` +
-        `<td valign="middle" style="font-family:${FONT};font-size:13px;line-height:18px;color:#616161;word-break:break-all;">` +
-        `${escapeHtml(f.name)}${f.size === null ? "" : ` · ${escapeHtml(formatSize(f.size))}`}</td>` +
-        `</tr></table></div>`,
-    )
-    .join("");
+  // One table row per file: classic Outlook (Word engine) ignores margins and padding of <div>, but keeps them on table
+  // cells – so the space between the blocks, the line between them and the gap under the button are cell paddings.
+  const last = files.length - 1;
+  const blocks =
+    `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;border-collapse:collapse;">` +
+    files
+      .map(
+        (f, i) =>
+          `<tr><td style="padding:${i ? 12 : 0}px 0 ${i < last ? 12 : 0}px 0;${i ? "border-top:1px solid #f0f0f0;" : ""}">` +
+          button(f.url, t("card.download")) +
+          `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">` +
+          `<tr>${typeBadge(f.name)}` +
+          `<td valign="middle" style="padding:6px 0 0 0;font-family:${FONT};font-size:13px;line-height:18px;color:#616161;word-break:break-all;">` +
+          `${escapeHtml(f.name)}${f.size === null ? "" : ` · ${escapeHtml(formatSize(f.size))}`}</td>` +
+          `</tr></table></td></tr>`,
+      )
+      .join("") +
+    `</table>`;
   return frame(t("card.filesTitle", { count: files.length }), lead(t("card.filesText", { count: files.length })) + blocks,
     cardNote(expireDate, withPassword, proof));
 }

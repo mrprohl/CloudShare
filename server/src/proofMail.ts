@@ -6,7 +6,7 @@
  *              of notices.ts for such links, so there is one mail, not two);
  *   final    – when all links of the case ended (expired or revoked), with the complete PDF;
  *   locked   – the gateway refused code requests for a while: too many addresses that are no recipients (proofGateway.ts);
- *   reminder – nothing fetched yet a few days before the links end (proofWatcher.ts, PROOF_REMINDER_DAYS).
+ *   reminder – nothing fetched yet once half of the validity has passed (proofWatcher.ts, reminderTime).
  */
 import { appGraphToken } from "./auth.js";
 import { sendMailAsApp } from "./graph.js";

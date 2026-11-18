@@ -110,7 +110,7 @@ const settingsOpen = $<HTMLButtonElement>("settings-open");
 const panelProofs = $<HTMLElement>("panel-proofs");
 const proofsOpen = $<HTMLButtonElement>("proofs-open");
 const proofsClose = $<HTMLButtonElement>("proofs-close");
-const proofsExport = $<HTMLButtonElement>("proofs-export");
+
 const proofsFilter = $<HTMLDivElement>("proofs-filter");
 const proofsSearch = $<HTMLInputElement>("proofs-search");
 const proofsList = $<HTMLDivElement>("proofs-list");
@@ -2009,7 +2009,7 @@ interface ProofItem {
   passwordTo: string[] | null;
 }
 
-type ProofFilter = "all" | "running" | "fetched" | "unfetched";
+type ProofFilter = "all" | "fetched" | "unfetched";
 
 let proofItems: ProofItem[] = [];
 let proofFilter: ProofFilter = "all";
@@ -2042,13 +2042,13 @@ function proofRow(p: ProofItem): HTMLElement {
   row.innerHTML =
     (p.kind === "request" ? REQUEST_ICON : p.kind === "message" ? MESSAGE_ICON : FILE_ICON) +
     `<div class="share-body">` +
-    `<div class="share-head"><div class="share-title"></div>` +
-    `<div class="share-actions"><button type="button" class="btn btn-subtle btn-icon open-pdf">${ICONS.pdf}</button></div></div>` +
+    `<div class="share-head"><div class="share-title"></div></div>` +
     `<div class="share-item"></div>` +
     `<div class="share-meta proof-sent"></div>` +
     `<div class="share-meta proof-password"></div>` +
+    `<div class="share-meta proof-case"></div>` +
     `<div class="share-state${p.state === "fetched" ? " done" : ""}"><span class="dot-state" aria-hidden="true"></span><span class="state-text"></span></div>` +
-    `<div class="share-meta proof-case"></div></div>`;
+    `</div>`;
   const subject = p.subject || t("shares.noSubject");
   if (p.mailAvailable) {
     const title = document.createElement("button");
@@ -2061,10 +2061,6 @@ function proofRow(p: ProofItem): HTMLElement {
   } else {
     row.querySelector<HTMLElement>(".share-title")!.textContent = subject;
   }
-  const pdf = row.querySelector<HTMLButtonElement>(".open-pdf")!;
-  pdf.title = t("proofs.openPdf");
-  pdf.setAttribute("aria-label", pdf.title);
-  pdf.addEventListener("click", () => void openProof(p.id, pdf));
   const item = row.querySelector<HTMLElement>(".share-item")!;
   item.textContent = p.kind === "file" ? p.files.join(", ") : t(`shares.kind.${p.kind}`);
   item.title = p.files.join(", ");
@@ -2100,45 +2096,21 @@ async function openProofMail(id: string) {
 }
 
 const proofMatchesFilter = (p: ProofItem) =>
-  proofFilter === "all" ||
-  (proofFilter === "running" && p.endsOn !== null) ||
-  (proofFilter === "fetched" && p.state === "fetched") ||
-  (proofFilter === "unfetched" && p.state !== "fetched");
+  proofFilter === "all" || (proofFilter === "fetched") === (p.state === "fetched");
 
-/** The proofs the filter and the search let through (what "Exportieren" exports). */
+/** The proofs the filter and the search let through. */
 function shownProofs(): ProofItem[] {
   const query = proofsSearch.value.trim().toLowerCase();
   return proofItems.filter((p) => proofMatchesFilter(p) &&
     (!query || [p.id, p.subject ?? "", ...p.recipients, ...p.files].some((s) => s.toLowerCase().includes(query))));
 }
 
-/** The list: filter chips and search (tracking ID, subject, recipients and file names, case-insensitive). */
+/** The list: the switch Alle / Abgerufen / Nicht abgerufen and the search (tracking ID, subject, recipients, file names). */
 function renderProofs() {
   const hits = shownProofs();
   proofsList.replaceChildren(...hits.map(proofRow));
   proofsEmpty.hidden = hits.length > 0;
   proofsEmpty.textContent = proofItems.length ? t("proofs.noMatch") : t("proofs.none");
-  proofsExport.disabled = hits.length === 0;
-  for (const chip of proofsFilter.querySelectorAll<HTMLButtonElement>(".chip")) {
-    chip.setAttribute("aria-pressed", String(chip.dataset.filter === proofFilter));
-  }
-}
-
-/** "Exportieren": the proofs shown as a ZIP (signed PDFs and an overview as CSV), opened in the default browser. */
-async function exportProofs() {
-  const ids = shownProofs().map((p) => p.id);
-  if (ids.length === 0) return;
-  proofsExport.disabled = true;
-  setStatus(t("proofs.exporting", { count: ids.length }), "progress");
-  try {
-    const { url } = await api<{ url: string }>("/api/proofs/export", { method: "POST", body: JSON.stringify({ ids }) }, await getToken());
-    openInBrowser(url);
-    setStatus(t("proofs.exported", { count: ids.length }), "success");
-  } catch (err) {
-    setStatus(t("proofs.exportFailed", { error: errorMessage(err) }), "error");
-  } finally {
-    proofsExport.disabled = false;
-  }
 }
 
 async function openProofs() {
@@ -2158,13 +2130,10 @@ async function openProofs() {
 
 proofsOpen.addEventListener("click", () => void openProofs());
 proofsSearch.addEventListener("input", renderProofs);
-proofsFilter.addEventListener("click", (event) => {
-  const chip = (event.target as HTMLElement).closest<HTMLButtonElement>(".chip");
-  if (!chip) return;
-  proofFilter = chip.dataset.filter as ProofFilter;
+proofsFilter.addEventListener("change", (event) => {
+  proofFilter = (event.target as HTMLInputElement).value as ProofFilter;
   renderProofs();
 });
-proofsExport.addEventListener("click", () => void exportProofs());
 proofsClose.addEventListener("click", () => {
   showOverlay(null);
   accountToggle.focus();
@@ -2388,8 +2357,6 @@ const ICONS = {
   ),
   revoke: icon('<circle cx="10" cy="10" r="6.5"/><path d="M5.4 5.4l9.2 9.2"/>'),
   /** "Nachweis": a document with a seal (the PDF of the delivery proof). */
-  /** A document with an arrow out of it: opens the proof as PDF. */
-  pdf: icon('<path d="M11.5 3H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6.5L11.5 3Z"/><path d="M11.5 3v3.5H15"/><path d="M10 9v5m0 0-2-2m2 2 2-2"/>'),
   proof: icon('<path d="M11.5 3H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h3"/><path d="M11.5 3L15 6.5V9"/><path d="M8 7h3M8 10h2"/><circle cx="14" cy="13" r="2.5"/><path d="M12.8 15.2L12.5 18l1.5-.8 1.5.8-.3-2.8"/>'),
   /** Same drawing as the refresh button in the tab bar (taskpane.html). */
   refresh: icon('<path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11"/>'),

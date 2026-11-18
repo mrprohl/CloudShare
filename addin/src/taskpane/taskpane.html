@@ -285,19 +285,13 @@
                 </svg>
               </button>
               <h2 class="subtitle" id="proofs-heading">%%t:addin.proofs.heading%%</h2>
-              <button type="button" id="proofs-export" class="btn btn-icon btn-subtle proofs-export" title="%%t:addin.proofs.export%%" aria-label="%%t:addin.proofs.export%%">
-                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
-                  <path d="M10 3v9m0 0-3.5-3.5M10 12l3.5-3.5M4 14v1.5A1.5 1.5 0 0 0 5.5 17h9a1.5 1.5 0 0 0 1.5-1.5V14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </button>
             </div>
             <input type="search" id="proofs-search" class="input proofs-search" placeholder="%%t:addin.proofs.searchPlaceholder%%"
               aria-label="%%t:addin.proofs.searchLabel%%" aria-controls="proofs-list" />
-            <div class="chips" id="proofs-filter" role="group" aria-label="%%t:addin.proofs.filterLabel%%">
-              <button type="button" class="chip" data-filter="all" aria-pressed="true">%%t:addin.proofs.filter.all%%</button>
-              <button type="button" class="chip" data-filter="running" aria-pressed="false">%%t:addin.proofs.filter.running%%</button>
-              <button type="button" class="chip" data-filter="fetched" aria-pressed="false">%%t:addin.proofs.filter.fetched%%</button>
-              <button type="button" class="chip" data-filter="unfetched" aria-pressed="false">%%t:addin.proofs.filter.unfetched%%</button>
+            <div class="segmented proofs-filter" id="proofs-filter" role="radiogroup" aria-label="%%t:addin.proofs.filterLabel%%">
+              <label class="segment"><input type="radio" name="proof-filter" value="all" checked /><span>%%t:addin.proofs.filter.all%%</span></label>
+              <label class="segment"><input type="radio" name="proof-filter" value="fetched" /><span>%%t:addin.proofs.filter.fetched%%</span></label>
+              <label class="segment"><input type="radio" name="proof-filter" value="unfetched" /><span>%%t:addin.proofs.filter.unfetched%%</span></label>
             </div>
             <p class="caption proofs-empty" id="proofs-empty" role="status" hidden></p>
             <div id="proofs-list" class="proofs-list"></div>

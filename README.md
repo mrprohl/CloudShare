@@ -311,8 +311,7 @@ deployed again.
 | `DEFAULT_LANGUAGE` | `auto` | Personal settings, starting value of the add-in language: `auto` (as in Outlook) or a language code |
 | `SMS_NOTICE` | like `DOWNLOAD_NOTICE` | `true`: note to the sender when seven.io reports a password SMS as not delivered later (same application permission `Mail.Send`; unset it follows `DOWNLOAD_NOTICE`, which switched it before). A note about an SMS seven.io refuses right away needs no switch |
 | `DELIVERY_PROOF` | like `DOWNLOAD_NOTICE` | `true`: offers "Zustellnachweis" (proof of delivery) in the pane – per mail, never ticked by default; see [Proof of delivery](#proof-of-delivery-optional). The code mail to the recipients needs the application permission `Mail.Send` |
-| `PROOF_REMINDER_DAYS` | `3` | Days before the links of a proof of delivery end on which the sender is reminded once that nothing was fetched yet; `0` = never. Each user can switch it off in the settings |
-| `DEFAULT_PROOF_REMINDER` | `true` | Personal settings, starting value of that reminder – only where `PROOF_REMINDER_DAYS` is above 0 |
+| `DEFAULT_PROOF_REMINDER` | `true` | Personal settings, starting value of the reminder for proofs of delivery not fetched (sent once half of the validity has passed) |
 | `PROOF_RETENTION_MONTHS` | `36` | Months a proof of delivery is kept after its last event (three years, the regular limitation period) – independent of `DATA_RETENTION_DAYS` |
 | `COMPANY_NAME` | empty | Your organisation's name, shown after the CloudShare logo at the top of the recipients' pages (delivery proof) |
 | `COMPANY_WEBSITE_URL` / `IMPRINT_URL` / `PRIVACY_URL` | empty | Links at the bottom of the recipients' pages: your website (shown by its host name), imprint and privacy notice; each optional, http(s) only |
@@ -430,14 +429,15 @@ default, offered for "Files" only (not for a confidential message or an upload l
   seal, and a qualified time stamp authority – no code change needed.
 - **Finding a proof later**: "Proofs of delivery" in the account menu lists the proof of every sent mail – also those whose links expired
   long ago and no longer show in "History" – searchable by case number, subject, recipient or file name and filtered
-  with the chips All · Open · Downloaded · Not fetched. Each entry looks and works like a row of "History": a click on the subject opens the sent mail, the button next to it the PDF. The seal shows the state by its colour (grey sent, blue
-  address confirmed, green fetched – the same in "History") and opens the PDF; each entry says when its links end or
-  until when the proof is kept. **Export** (arrow in the heading) gives the proofs shown as one ZIP: every signed PDF
-  and an overview as CSV (opens in Excel), for the files or a document management system.
+  with the switch All | Fetched | Not fetched. Each entry looks and works like a row of "History": a click on the
+  subject opens the sent mail. The seal after the file name shows the state by its colour (grey sent, blue address
+  confirmed, green fetched – the same in "History") and opens the PDF; each entry says when its links end or until when
+  the proof is kept.
 - **The PDF** starts with the result in a frame – sent, address confirmed, downloaded (or files received, message
   opened), when the link ends and until when the proof is kept, each with a tick or a circle – followed by the record.
-- **Reminder**: if nothing was fetched `PROOF_REMINDER_DAYS` (default 3) days before the links end, the sender gets one
-  mail – the recipients are not written to. Each user can switch it off under "Settings".
+- **Reminder**: if nothing was fetched once half of the validity has passed (14 days → after 7, 2 days → after 1; never
+  within the first 24 hours), the sender gets one mail – the recipients are not written to. On by default, each user
+  can switch it off under "Settings".
 - **Code page and code mail**: the page names the sender and the file, so recipients know it belongs to the mail they
   got. The code mail has a button "Confirm address" that fills in the code – one click confirms; opening the link
   alone confirms nothing, so mail scanners that follow links do no harm. Phones offer the code from the mail; spaces
