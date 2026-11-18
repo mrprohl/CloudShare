@@ -2315,13 +2315,6 @@ function nameParts(name: string): [string, string] {
 /** Still valid today (Nextcloud removes expired links only once a day; the server already leaves them out). */
 const isValid = (share: ShareItem) => share.expiration === null || share.expiration >= new Date().toISOString().slice(0, 10);
 
-/** Start of a link's period, without the year if it ends in the same year: "15.11." (de) / "15/11" (en-GB). */
-function shortDate(sharedAt: number, expiration: string): string {
-  const from = new Date(sharedAt);
-  void expiration; // always with the year now (dd.mm.yyyy)
-  return formatDate(from.getTime());
-}
-
 /** Copies text; the async clipboard API is not available in every Outlook version. */
 async function copyText(text: string) {
   try {
@@ -2528,10 +2521,12 @@ function shareRow(share: ShareItem): HTMLElement {
     `<button type="button" class="btn btn-subtle btn-icon insert">${ICONS.insert}</button>` +
     `<button type="button" class="btn btn-subtle btn-icon btn-danger revoke">${ICONS.revoke}</button>` +
     `</div></div>` +
-    `<div class="share-meta"><span class="share-period"></span> · <span class="share-password"></span></div>` +
+    // Like an entry of "Zustellnachweise": when and to whom, then where the password went.
+    `<div class="share-meta share-sent"></div>` +
+    `<div class="share-meta"><span class="share-password"></span></div>` +
     `<div class="share-meta share-unsent" hidden></div>` +
     `<div class="share-state${state.done ? " done" : ""}">` +
-    `<span class="dot-state" aria-hidden="true"></span><span class="state-text"></span></div>` +
+    `<span class="dot-state" aria-hidden="true"></span><span class="state-text"></span><span class="share-ends"></span></div>` +
     `<div class="password-panel" hidden></div></div>`;
   const label = (button: HTMLButtonElement, text: string) => {
     button.title = text;
@@ -2593,26 +2588,35 @@ function shareRow(share: ShareItem): HTMLElement {
     row.querySelector(".share-head")!.after(item);
   }
 
-  // "15.11. – 29.11.2026 · Kennwort per SMS an +49 170 •••• 72 – übermittelt": the word "Kennwort" only once.
-  const period = row.querySelector<HTMLElement>(".share-period")!;
-  const sharedOn = formatDate(share.sharedAt);
-  period.textContent = share.expiration
-    ? t("shares.period", { from: shortDate(share.sharedAt, share.expiration), until: formatDate(`${share.expiration}T12:00:00`) })
-    : t("shares.since", { from: sharedOn });
-  period.title = [t("shares.sharedOn", { date: sharedOn }), share.expiration ? t("shares.validUntil", { date: formatDate(share.expiration) }) : ""]
-    .filter(Boolean)
-    .join(", ");
+  // The same lines as an entry of "Zustellnachweise": "18.11.2026 · an erika@example.com", "Kennwort an …", and the
+  // state ending in "endet 02.12.2026".
+  const sentLine = row.querySelector<HTMLElement>(".share-sent")!;
+  const sentTo = share.sentTo ? [...share.sentTo.to, ...share.sentTo.cc] : [];
+  sentLine.textContent = sentTo.length
+    ? t("proofs.sentTo", { date: formatDate(share.sentAt ?? share.sharedAt), to: sentTo.join(", ") })
+    : formatDate(share.sharedAt);
+  sentLine.title = t("shares.sharedOn", { date: formatDate(share.sharedAt) });
   const passwordLine = row.querySelector<HTMLElement>(".share-password")!;
   passwordLine.textContent = share.password
     ? passwordShort(share.password)
-    : t(share.protected === false ? "shares.withoutPassword" : "shares.withPassword");
+    : share.protected === false
+      ? t("proofs.withoutPassword")
+      : t(share.unsent ? "proofs.passwordPending" : "shares.withPasswordLine");
+  if (share.expiration) {
+    row.querySelector<HTMLElement>(".share-ends")!.textContent =
+      `· ${t("proofs.endsOn", { date: formatDate(`${share.expiration}T12:00:00`) })}`; // the state line has its own gap
+  }
   passwordLine.title = share.password ? passwordText(share.password) : "";
   passwordLine.classList.toggle("failed", share.password?.status === "failed");
 
   row.querySelector<HTMLElement>(".state-text")!.textContent = state.text;
   // A message: no download state (Vaultwarden does not report it), no link to copy or insert again (no key kept).
   if (share.kind === "message") {
-    row.querySelector<HTMLElement>(".share-state")!.hidden = true;
+    // No download state – only when it ends.
+    row.querySelector<HTMLElement>(".state-text")!.textContent = "";
+    const ends = row.querySelector<HTMLElement>(".share-ends")!;
+    ends.textContent = share.expiration ? t("shares.endsOnly", { date: formatDate(`${share.expiration}T12:00:00`) }) : "";
+    row.querySelector<HTMLElement>(".share-state")!.hidden = !share.expiration;
     row.querySelector<HTMLElement>(".copy")!.hidden = true;
   }
   if (share.unsent) {
