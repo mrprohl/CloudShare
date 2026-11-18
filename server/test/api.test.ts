@@ -1484,3 +1484,47 @@ describe("delivery proof – state and reminder", () => {
     await app.inject({ method: "DELETE", url: "/api/settings", headers: as("anna") });
   });
 });
+
+describe("delivery proof – never mixed with links without one in a mail", () => {
+  it("refuses a message or an upload link in a mail with a proof, and a proof in a mail without one", async () => {
+    nc.createPublicShare.mockResolvedValue("https://cloud.example.test/s/mix-proof");
+    const first = await startUpload("anna", "Vertrag.pdf");
+    await putChunk("anna", first.body.uploadId, 1);
+    const withProof = (await complete("anna", first.body.uploadId, { proof: true, step: "s1" })).json();
+    expect(withProof.proofId).toBeTruthy();
+
+    const message = await app.inject({ method: "POST", url: "/api/messages", headers: as("anna"),
+      payload: { jobId: withProof.jobId, step: "s1", password: STRONG, text: "geheim" } });
+    expect(message.statusCode).toBe(409);
+    expect(message.json().code).toBe("PROOF_MIX");
+    const request = await app.inject({ method: "POST", url: "/api/requests", headers: as("anna"),
+      payload: { jobId: withProof.jobId, step: "s1", password: STRONG } });
+    expect(request.json().code).toBe("PROOF_MIX");
+
+    // The other way round: a mail with a plain link takes no file with a proof.
+    nc.createPublicShare.mockResolvedValue("https://cloud.example.test/s/mix-plain");
+    const plain = await startUpload("anna", "Liste.pdf");
+    await putChunk("anna", plain.body.uploadId, 1);
+    const plainJob = (await complete("anna", plain.body.uploadId, { step: "p1" })).json().jobId;
+    const second = await startUpload("anna", "Plan.pdf");
+    await putChunk("anna", second.body.uploadId, 1);
+    const refused = await complete("anna", second.body.uploadId, { jobId: plainJob, step: "p1", proof: true });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().error).toContain("ohne Zustellnachweis");
+  });
+
+  it("holds back the send of a mail that mixes them anyway (the password would reach them before the confirmation)", async () => {
+    nc.createPublicShare.mockResolvedValue("https://cloud.example.test/s/mix-arm");
+    const upload = await startUpload("anna", "Bericht.pdf");
+    await putChunk("anna", upload.body.uploadId, 1);
+    const { jobId } = (await complete("anna", upload.body.uploadId, { proof: true, step: "a1" })).json();
+    const { addSeparatePart } = await import("../src/jobs.js");
+    await addSeparatePart(jobId, {
+      step: "a2", fileNames: ["Alt.pdf"], sendUrl: "https://vault.example.test/#/send/x/y", sendId: "send-x",
+      shares: [{ token: "plain-token", name: "Alt.pdf", url: "https://cloud.example.test/s/plain-token", expireDate: "2099-12-31" }],
+    } as never);
+    const res = await app.inject({ method: "POST", url: `/api/jobs/${jobId}/arm`, headers: as("anna"), payload: {} });
+    expect(res.statusCode).toBe(409);
+    expect(res.json()).toMatchObject({ code: "PROOF_MIX" });
+  });
+});

@@ -459,6 +459,12 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   organisation (`COMPANY_NAME`), a footer with `COMPANY_WEBSITE_URL`, `IMPRINT_URL`, `PRIVACY_URL` (`brandHeader`,
   `linksFooter`; CSP `img-src 'self'` for the logo).
   A confidential message has no gateway (its link holds the key CloudShare does not keep); its openings are counted.
+- **One mail, one kind** (`assertNoProofMix`, `proofKindOf` in `app.ts`): a password step holds back its password only
+  if every link of it goes through the gateway – so a mail never mixes links with and without a proof. Inserting a link
+  of the other kind into the mail's job (`jobId`) answers 409 `PROOF_MIX` (files with `proof`, upload links and messages
+  never have one); `/arm` refuses a job that mixes them anyway, so the send handler holds the mail back. The pane fixes
+  the kind with the first link (`DraftState.proofMail`, `applyProofLock`: the switch fixed, "Nachricht" and
+  "Anfordern" disabled with a proof).
 - **Password after the confirmation** (`proofPassword.ts`): the mail to the confirmed address says so ("Sie haben eben Ihre
   E-Mail-Adresse bestätigt …") and its card has two numbered steps (`MailCard.steps`: 1 "Kennwort anzeigen", 2 "Zum Download", each button with its address as plain text below), the download to the gateway – never to Nextcloud: the confirmed browser goes
   straight on, another one or a forwarded mail is asked for the code again, so link and password never travel together
