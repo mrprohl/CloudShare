@@ -43,7 +43,7 @@ export interface PasswordRef {
   /**
    * "Zustellnachweis": the password was held back when the mail was sent – it goes out only after a recipient confirmed
    * their address at the gateway (proofPassword.ts). `toRecipients`: one of its ways was the recipients of the mail
-   * (each confirmed recipient gets their own password mail); `signature`: the sender's signature fixed when arming.
+   * (each confirmed recipient gets their own password mail); `signature`: the sender's signature fixed when arming (every step, for the code mail too).
    */
   deferred?: boolean;
   toRecipients?: boolean;

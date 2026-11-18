@@ -10,6 +10,9 @@
  *   3. A signed cookie for this link (until it expires) lets the same browser open it again without a new code; every
  *      opening is recorded.
  *
+ * The code mail also has a button "Adresse bestätigen" (/r/s/<token>/confirm with address and code): it opens the code
+ * form filled in, one click confirms – a GET alone confirms nothing, so mail scanners that open links do no harm.
+ *
  * Plain HTML forms, no script; the page comes in the language chosen for the recipients.
  */
 import { createHash, randomInt } from "node:crypto";
@@ -19,7 +22,9 @@ import { sendMailAsApp } from "./graph.js";
 import { inRecipientLanguage, mailLanguage, t } from "./i18n.js";
 import { escapeHtml, mailDocument, paragraph, TEXT_STYLE } from "./mailLayout.js";
 import { passwordRefFor } from "./passwordRefs.js";
-import { addEvent, caseOfToken, type ProofCase, type ProofLink } from "./proof.js";
+import { settingsFor } from "./settings.js";
+import { signatureHtml } from "./signature.js";
+import { addEvent, caseOfToken, gatewayUrl, type ProofCase, type ProofLink } from "./proof.js";
 import { sendLockNotice } from "./proofMail.js";
 import { releasePassword, type ReleasedPassword } from "./proofPassword.js";
 import { sign, signedBy } from "./storage.js";
@@ -116,7 +121,7 @@ const page = (title: string, body: string) => `<!doctype html>
 .brand{display:flex;align-items:center;gap:10px;padding:12px 24px;background:var(--card);border-bottom:1px solid var(--stroke)}.brand img{width:28px;height:28px}.brand-name{font-size:16px;font-weight:600}.brand-sep{width:1px;height:20px;background:var(--stroke)}.brand-company{font-size:16px;color:var(--fg2)}
 .links{text-align:center;font-size:12px;color:var(--fg2);margin:32px 16px 24px}.links a{color:inherit}
 main{max-width:440px;margin:40px auto;padding:0 16px}.card{background:var(--card);border:1px solid var(--stroke);border-left:4px solid var(--brand);border-radius:8px;padding:24px}
-h1{font-size:20px;font-weight:600;margin:0 0 12px}p{margin:0 0 12px}.small{font-size:12px;color:var(--fg2)}.error{color:var(--danger);font-weight:600}
+h1{font-size:20px;font-weight:600;margin:0 0 12px}p{margin:0 0 12px}.small{font-size:12px;color:var(--fg2)}.context{font-size:13px;color:var(--fg2);background:var(--bg);border-radius:4px;padding:8px 12px}.context span{display:inline-block;min-width:64px;color:var(--fg2)}.error{color:var(--danger);font-weight:600}
 label{display:block;font-weight:600;margin:16px 0 4px}input{width:100%;font:inherit;padding:7px 10px;border:1px solid var(--stroke);border-bottom-color:var(--fg2);border-radius:4px;background:var(--card);color:var(--fg)}
 input:focus{outline:2px solid var(--brand);outline-offset:-1px}button{margin-top:16px;font:inherit;font-weight:600;color:#fff;background:var(--brand);border:0;border-radius:4px;padding:8px 20px;cursor:pointer}
 button:hover{background:var(--brand-hover)}a.button{display:inline-block;margin-top:4px;font-weight:600;color:#fff;background:var(--brand);border-radius:4px;padding:8px 20px;text-decoration:none}a.button:hover{background:var(--brand-hover)}ol{margin:0 0 12px;padding-left:20px}li{margin:0 0 8px}.code{letter-spacing:.3em;font-size:18px}
@@ -133,7 +138,7 @@ function brandHeader(): string {
 
 /** Footer: the organisation's website, imprint and privacy notice (COMPANY_WEBSITE_URL, IMPRINT_URL, PRIVACY_URL; each optional). */
 function linksFooter(): string {
-  const link = (url: string, text: string) => `<a href="${escapeHtml(url)}" rel="noopener">${escapeHtml(text)}</a>`;
+  const link = (url: string, text: string) => `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(text)}</a>`;
   const links = [
     config.companyWebsiteUrl ? link(config.companyWebsiteUrl, new URL(config.companyWebsiteUrl).host.replace(/^www\./, "")) : "",
     config.imprintUrl ? link(config.imprintUrl, t("mail.proof.gateway.imprint")) : "",
@@ -142,22 +147,30 @@ function linksFooter(): string {
   return links.length ? `<footer class="links">${links.join(" · ")}</footer>` : "";
 }
 
-const addressForm = (token: string, error = "") =>
+/** Who sent what – so the recipient knows the page belongs to the mail they got (and is no phishing). */
+function context(c: ProofCase, token: string, link: ProofLink): string {
+  const sender = passwordRefFor(token, c.owner)?.senderName || c.ownerUpn;
+  return `<p class="context"><span>${escapeHtml(t("mail.proof.gateway.from"))}</span> ${escapeHtml(sender)}<br>` +
+    `<span>${escapeHtml(t(link.kind === "request" ? "mail.proof.gateway.forUpload" : "mail.proof.gateway.file"))}</span> ${escapeHtml(link.name)}</p>`;
+}
+
+const addressForm = (c: ProofCase, token: string, link: ProofLink, error = "") =>
   page(
     t("mail.proof.gateway.title"),
-    `<p>${escapeHtml(t("mail.proof.gateway.intro"))}</p>${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}
+    `${context(c, token, link)}<p>${escapeHtml(t("mail.proof.gateway.intro"))}</p>${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}
 <form method="post" action="${cookiePath(token)}/code"><label for="address">${escapeHtml(t("mail.proof.gateway.address"))}</label>
 <input id="address" name="address" type="email" autocomplete="email" required autofocus>
 <button type="submit">${escapeHtml(t("mail.proof.gateway.sendCode"))}</button></form>`,
   );
 
-const codeForm = (token: string, address: string, error = "") =>
+/** The code form; `code` filled in when the recipient came by the button in the code mail (one click confirms). */
+const codeForm = (token: string, address: string, error = "", code = "") =>
   page(
     t("mail.proof.gateway.codeTitle"),
-    `<p>${escapeHtml(t("mail.proof.gateway.codeSent", { address }))}</p>${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}
+    `<p>${escapeHtml(t(code ? "mail.proof.gateway.codeFromMail" : "mail.proof.gateway.codeSent", { address }))}</p>${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}
 <form method="post" action="${cookiePath(token)}/verify"><input type="hidden" name="address" value="${escapeHtml(address)}">
 <label for="code">${escapeHtml(t("mail.proof.gateway.code"))}</label>
-<input id="code" class="code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required autofocus>
+<input id="code" class="code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9 \-]{6,11}" maxlength="11" required${code ? ` value="${escapeHtml(code)}"` : " autofocus"}>
 <button type="submit">${escapeHtml(t("mail.proof.gateway.open"))}</button></form>
 <p class="small"><a href="${cookiePath(token)}" style="color:inherit">${escapeHtml(t("mail.proof.gateway.otherAddress"))}</a></p>`,
   );
@@ -179,15 +192,31 @@ export function openGateway(token: string, cookieHeader: string | undefined, vis
       addEvent(c.id, "link.opened", { links: [token], address, ip: visitor.ip, userAgent: visitor.userAgent.slice(0, 300) });
       return { status: 303, redirect: link.url };
     }
-    return { status: 200, html: addressForm(token) };
+    return { status: 200, html: addressForm(c, token, link) };
   });
+}
+
+/**
+ * GET /r/s/:token/confirm – the button in the code mail: the code form filled in with address and code. Confirms
+ * nothing by itself (a mail scanner opening the link changes nothing); the click on the button does.
+ */
+export function confirmFromMail(token: string, rawAddress: unknown, rawCode: unknown): GatewayResult {
+  const found = linkOf(token);
+  if (!found) return inRecipientLanguage(undefined, unavailable);
+  const { c, link } = found;
+  const address = normalize(rawAddress);
+  const code = typeof rawCode === "string" ? rawCode.replace(/\D/g, "").slice(0, 6) : "";
+  return inRecipientLanguage(c.language, () =>
+    validAddress(address) && code.length === 6
+      ? { status: 200, html: codeForm(token, address, "", code) }
+      : { status: 200, html: addressForm(c, token, link) });
 }
 
 /**
  * The mail with the code: who sent what and why the address is confirmed, the code large, the next steps (where the
  * password will come from, what the link then does) and that it can be ignored if nobody asked for it.
  */
-function codeMail(c: ProofCase, token: string, link: ProofLink, code: string): { subject: string; html: string } {
+function codeMail(c: ProofCase, token: string, link: ProofLink, address: string, code: string): { subject: string; html: string } {
   const ref = passwordRefFor(token, c.owner);
   const sender = ref?.senderName || c.ownerUpn;
   const steps = [t("mail.proof.codeMail.step1")];
@@ -209,9 +238,13 @@ function codeMail(c: ProofCase, token: string, link: ProofLink, code: string): {
         title: t("mail.proof.codeMail.title"),
         highlight: code,
         files: [],
+        button: { label: t("mail.proof.codeMail.confirm"), url: `${gatewayUrl(token)}/confirm?${new URLSearchParams({ address, code })}` },
         details: t("mail.proof.codeMail.details", { minutes: CODE_TTL / MINUTE, id: c.id }),
       },
-      after: paragraph(t("mail.proof.codeMail.next")) + list + paragraph(t("mail.proof.codeMail.ignore")),
+      // Like every mail to the recipients: the sender's signature below (fixed when the mail was sent; for steps without
+      // one – no password – the sender's current one).
+      after: paragraph(t("mail.proof.codeMail.next")) + list + paragraph(t("mail.proof.codeMail.ignore")) +
+        `<div style="margin:20px 0 0;">${ref?.signature || signatureHtml(settingsFor(c.owner).signature, { displayName: ref?.senderName, email: c.ownerUpn })}</div>`,
     }),
   };
 }
@@ -223,7 +256,7 @@ export async function requestCode(token: string, rawAddress: unknown, visitor: V
   const { c, link } = found;
   const address = normalize(rawAddress);
   if (!validAddress(address)) {
-    return inRecipientLanguage(c.language, () => ({ status: 400, html: addressForm(token, t("mail.proof.gateway.invalidAddress")) }));
+    return inRecipientLanguage(c.language, () => ({ status: 400, html: addressForm(c, token, link, t("mail.proof.gateway.invalidAddress")) }));
   }
   // Every address is answered the same way – page, limits, timing –, so nobody can find out by trying which addresses
   // the mail went to. Only a recipient gets a mail; the limits count every request, recipient or not.
@@ -252,7 +285,7 @@ export async function requestCode(token: string, rawAddress: unknown, visitor: V
     return inRecipientLanguage(c.language, () => ({ status: 200, html: codeForm(token, address) }));
   }
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
-  const { subject, html } = inRecipientLanguage(c.language, () => codeMail(c, token, link, code));
+  const { subject, html } = inRecipientLanguage(c.language, () => codeMail(c, token, link, address, code));
   pending.set(key, { hash: hashCode(code), expiresAt: now + CODE_TTL, tries: 0 });
   // Not awaited: the answer must not take longer for a recipient than for anyone else (the mail goes out meanwhile).
   void appGraphToken()
@@ -271,7 +304,8 @@ export async function verifyCode(token: string, rawAddress: unknown, rawCode: un
   if (!found) return inRecipientLanguage(undefined, unavailable);
   const { c, link } = found;
   const address = normalize(rawAddress);
-  const code = typeof rawCode === "string" ? rawCode.replace(/\s/g, "") : "";
+  // Spaces and hyphens do not matter ("482 915", "482-915").
+  const code = typeof rawCode === "string" ? rawCode.replace(/[\s-]/g, "") : "";
   const key = `${token}|${address}`;
   const entry = pending.get(key);
   const checked = inRecipientLanguage(c.language, (): GatewayResult | null => {

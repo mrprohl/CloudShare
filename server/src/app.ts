@@ -63,14 +63,15 @@ import { accessIdOf, isMessageToken, messageFor, messagesOf, recordDraftSubject,
 import { isCloudShareShare, isRequestShare, revokeMessage, revokeShare, tokenOf } from "./shares.js";
 import { defaultTemplates, render, smsFiles, templatesFor } from "./templates.js";
 import { clampInt, isEmailAddress } from "./limits.js";
-import { formatDate, inRecipientLanguage, inSenderLanguage, knownLanguage, locale, requestLanguageCode, t, tIn, withRequestLanguage } from "./i18n.js";
+import { formatDate, formatDateTime, inRecipientLanguage, inSenderLanguage, knownLanguage, locale, requestLanguageCode, t, tIn, withRequestLanguage } from "./i18n.js";
 import { passwordProblem } from "./password.js";
 import { signatureHtml } from "./signature.js";
 import { availableSettings, defaultSettings, parseSettings, resetSettings, saveSettings, settingsFor } from "./settings.js";
 import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } from "./store.js";
-import { addLink, caseById, caseFor, caseForLink, caseOfToken, casesOf, gatewayUrl, linkUrlFor, type ProofLink } from "./proof.js";
+import { addLink, caseById, caseFor, caseForLink, caseOfToken, casesOf, caseSummary, gatewayUrl, linkUrlFor, type ProofCase, type ProofLink } from "./proof.js";
+import { zip } from "./zip.js";
 import { caseSubject } from "./proofMail.js";
-import { gatewayCsp, openGateway, requestCode, verifyCode, type GatewayResult, type Visitor } from "./proofGateway.js";
+import { confirmFromMail, gatewayCsp, openGateway, requestCode, verifyCode, type GatewayResult, type Visitor } from "./proofGateway.js";
 import { signedProofPdf } from "./proofPdf.js";
 import { refreshCase } from "./proofWatcher.js";
 import { sign, signedBy } from "./storage.js";
@@ -390,6 +391,70 @@ function rateLimitKey(req: FastifyRequest): string {
 /** Stricter limit for expensive actions (Nextcloud login flow, upload links). */
 const strictLimit = { max: Math.max(5, Math.ceil(config.rateLimitPerMinute / 60)), timeWindow: "1 minute" };
 
+/** Network errors of fetch (undici puts them in `cause`): the host could not be found or reached. */
+const UNREACHABLE_CODES = new Set(["ENOTFOUND", "EAI_AGAIN", "ECONNREFUSED", "ECONNRESET", "ETIMEDOUT", "EHOSTUNREACH", "ENETUNREACH", "UND_ERR_CONNECT_TIMEOUT"]);
+
+/** The text for a service that cannot be reached – Nextcloud, the password service (bw serve) or another host – or null. */
+export function unreachableService(err: unknown): string | null {
+  let cause: unknown = err;
+  for (let depth = 0; cause && depth < 4; depth++) {
+    const { code, hostname, address } = cause as { code?: string; hostname?: string; address?: string };
+    if (code && UNREACHABLE_CODES.has(code)) {
+      const host = hostname ?? address ?? "";
+      if (host && host === new URL(config.nextcloudUrl).hostname) return t("server.nextcloudUnreachable", { host });
+      if (host === "127.0.0.1" || host === "localhost") return t("server.passwordServiceUnreachable");
+      return t("server.serviceUnreachable", { host: host || "?" });
+    }
+    cause = (cause as { cause?: unknown }).cause;
+  }
+  return null;
+}
+
+/** State of the case a link belongs to – the colour of its seal in "Verlauf" (null: no proof). */
+const proofStateOf = (token: string) => {
+  const c = caseOfToken(token);
+  return c ? caseSummary(c).state : null;
+};
+
+/** One case for the list "Zustellnachweise" and the overview of an export. */
+function proofListEntry(c: ProofCase) {
+  const sent = [...c.events].reverse().find((e) => e.type === "message.sent")?.data;
+  const list = (value: unknown) => (Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []);
+  const summary = caseSummary(c);
+  return {
+    id: c.id,
+    createdAt: c.createdAt,
+    subject: caseSubject(c) || null,
+    sentAt: summary.sentAt ?? c.createdAt,
+    recipients: [...list(sent?.to), ...list(sent?.cc)],
+    files: Object.values(c.links ?? {}).map((l) => l.name),
+    downloads: c.events.filter((e) => e.type === "download").length,
+    confirmed: c.events.filter((e) => e.type === "recipient.verified").length,
+    done: c.done === true,
+    state: summary.state,
+    fetched: summary.fetched,
+    endsOn: summary.endsOn ?? null,
+    keptUntil: summary.keptUntil,
+    // Like an entry of "Verlauf": the kind symbol, and whether a click on the subject can open the sent mail.
+    kind: Object.values(c.links ?? {})[0]?.kind ?? "file",
+    mailAvailable: c.tokens.some((tok) => Boolean(sentMailFor(tok, c.owner)?.mailId)),
+    // "Kennwort an …": where the password went (addresses, masked numbers); null for links without password.
+    passwordTo: Object.values(c.events).some((e) => e.type === "link.created" && e.data.protection !== "none")
+      ? [...new Set(c.events.filter((e) => e.type === "password.sent" && typeof e.data.to === "string").map((e) => String(e.data.to)))]
+      : null,
+  };
+}
+
+/** Only mails that really went out: a proof ticked in a draft that was never sent is no proof of anything. */
+const sentCasesOf = (owner: string) => casesOf(owner).filter((c) => c.events.some((e) => e.type === "message.sent"));
+
+/** A field of the CSV overview: quoted when needed, formulas defused (a leading = + - @ is taken as text). */
+export const csvField = (value: unknown) => {
+  let text = value === null || value === undefined ? "" : String(value);
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  return /[";\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+};
+
 export async function buildApp(options: { logger?: boolean } = {}) {
   // Only proxies in private networks (Caddy, an upstream proxy in the LAN) may set X-Forwarded-For – otherwise a
   // client could choose its own address and escape the rate limit.
@@ -428,6 +493,10 @@ export async function buildApp(options: { logger?: boolean } = {}) {
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof HttpError) return reply.status(err.status).send({ error: err.message, code: err.code });
     req.log.error(err);
+    // A service CloudShare talks to cannot be reached (wrong address, DNS, network): say which one instead of
+    // "Interner Fehler", so the admin knows where to look.
+    const unreachable = unreachableService(err);
+    if (unreachable) return reply.status(502).send({ error: unreachable, code: "SERVICE_UNREACHABLE" });
     const error = err as Error & { statusCode?: number };
     const status = error.statusCode ?? 500;
     return reply.status(status).send({ error: status < 500 ? error.message : t("server.internalError") });
@@ -828,7 +897,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         })
       : {};
     req.log.info({ user: user.upn, days, length: text.length, proof: proof.proofId }, "Confidential message created");
-    return { shareUrl: send.url, expireDate, jobId, proofId: proof.proofId ?? null };
+    // expiresAt: the exact end of the message (its Send), shown with the time in the card.
+    return { shareUrl: send.url, expireDate, expiresAt: expiresAt.getTime(), jobId, proofId: proof.proofId ?? null };
   });
 
   // --- History ("Verlauf") ------------------------------------------------
@@ -876,6 +946,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
           url: linkUrlFor(token, s.url),
           // Tracking ID of its case ("Nachweis" in the list), if it has one.
           proofId: caseOfToken(token)?.id ?? null,
+          proofState: proofStateOf(token),
           sharedAt: s.sharedAt,
           expiration: s.expiration,
           protected: s.hasPassword,
@@ -904,6 +975,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       url: null,
       accessId: m.accessId,
       proofId: caseOfToken(m.token)?.id ?? null,
+      proofState: proofStateOf(m.token),
       sharedAt: m.createdAt,
       expiration: new Date(m.expiresAt).toISOString().slice(0, 10),
       protected: true,
@@ -953,6 +1025,24 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       if (!share || !isCloudShareShare(share)) throw new HttpError(404, t("server.shareNotFound"));
       token = tokenOf(share.url);
     }
+    return sentMailOf(user, token, req.log);
+  });
+
+  /**
+   * "Zustellnachweise": the mail of a case, opened like in "Verlauf" (click on the subject) – the mail any of its links
+   * went out with.
+   */
+  app.get<{ Params: { id: string } }>("/api/proofs/:id/mail", async (req) => {
+    const user = await authenticate(req);
+    const c = caseFor(req.params.id, user.oid);
+    if (!c) throw new HttpError(404, t("server.proofNotFound"));
+    const token = c.tokens.find((tok) => sentMailFor(tok, user.oid)?.mailId);
+    if (!token) throw new HttpError(404, t("server.mailUnknown"));
+    return sentMailOf(user, token, req.log);
+  });
+
+  /** The EWS ID of the mail a link (token) went out with – 404 if unknown or deleted. */
+  async function sentMailOf(user: User, token: string, log: FastifyBaseLogger): Promise<{ ewsId: string }> {
     const mailId = sentMailFor(token, user.oid)?.mailId;
     if (!mailId) throw new HttpError(404, t("server.mailUnknown"));
     // Deleted (also after emptying "Deleted Items": Exchange keeps it hidden for a while) – not opened. If the check
@@ -960,18 +1050,18 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     const state = await onBehalfOf(user, GRAPH_SCOPES)
       .then(({ token: mailToken }) => sentMailState(mailToken, mailId))
       .catch((err) => {
-        req.log.warn({ err, user: user.upn }, "State of the sent mail not checked");
+        log.warn({ err, user: user.upn }, "State of the sent mail not checked");
         return "ok" as const;
       });
     if (state !== "ok") throw new HttpError(404, t("server.mailDeleted"));
     const { token: graphToken } = await onBehalfOf(user, GRAPH_PROFILE_SCOPES);
     const ewsId = await ewsIdFor(graphToken, mailId).catch((err) => {
-      req.log.warn({ err, user: user.upn }, "Mail ID not translated");
+      log.warn({ err, user: user.upn }, "Mail ID not translated");
       return null;
     });
     if (!ewsId) throw new HttpError(404, t("server.mailUnknown"));
     return { ewsId };
-  });
+  }
 
   /** The user's CloudShare link (or message) with this ID and the entry of its password (404 if it has none any more). */
   async function ownPasswordRef(user: User, id: string): Promise<PasswordRef> {
@@ -1253,6 +1343,9 @@ export async function buildApp(options: { logger?: boolean } = {}) {
   app.get<{ Params: { token: string } }>("/r/s/:token", async (req, reply) =>
     sendGateway(reply, openGateway(req.params.token, req.headers.cookie, visitorOf(req))));
 
+  app.get<{ Params: { token: string }; Querystring: { address?: string; code?: string } }>("/r/s/:token/confirm", async (req, reply) =>
+    sendGateway(reply, confirmFromMail(req.params.token, req.query.address, req.query.code)));
+
   app.post<{ Params: { token: string }; Body: { address?: unknown } }>(
     "/r/s/:token/code",
     { config: { rateLimit: strictLimit } },
@@ -1272,21 +1365,58 @@ export async function buildApp(options: { logger?: boolean } = {}) {
    */
   app.get("/api/proofs", async (req) => {
     const user = await authenticate(req);
-    return casesOf(user.oid).slice(0, 1000).map((c) => {
-      const sent = [...c.events].reverse().find((e) => e.type === "message.sent")?.data;
-      const list = (value: unknown) => (Array.isArray(value) ? value.filter((v): v is string => typeof v === "string") : []);
-      return {
-        id: c.id,
-        createdAt: c.createdAt,
-        subject: caseSubject(c) || null,
-        sentAt: typeof sent?.sentAt === "string" ? Date.parse(sent.sentAt) : null,
-        recipients: [...list(sent?.to), ...list(sent?.cc)],
-        files: Object.values(c.links ?? {}).map((l) => l.name),
-        downloads: c.events.filter((e) => e.type === "download").length,
-        confirmed: c.events.filter((e) => e.type === "recipient.verified").length,
-        done: c.done === true,
-      };
+    return sentCasesOf(user.oid).slice(0, 1000).map(proofListEntry);
+  });
+
+  /** Exports waiting to be fetched by the browser: owner, cases, language – 5 minutes, then gone. */
+  const proofExports = new Map<string, { owner: string; ids: string[]; lang: string; until: number }>();
+  const EXPORT_MAX = 200;
+  const EXPORT_TTL = 5 * 60_000;
+
+  /**
+   * "Exportieren" in "Zustellnachweise": the cases shown (filter and search of the pane) as one ZIP – every signed PDF
+   * and an overview as CSV. Returns a short-lived, unguessable address the pane opens in the default browser.
+   */
+  app.post<{ Body: { ids?: unknown } }>("/api/proofs/export", { config: { rateLimit: strictLimit } }, async (req) => {
+    const user = await authenticate(req);
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((id): id is string => typeof id === "string") : [];
+    const own = [...new Set(ids)].filter((id) => caseFor(id, user.oid));
+    if (own.length === 0) throw new HttpError(400, t("server.proofExportEmpty"));
+    if (own.length > EXPORT_MAX) throw new HttpError(400, t("server.proofExportTooMany", { max: EXPORT_MAX }));
+    const now = Date.now();
+    for (const [key, value] of proofExports) if (value.until < now) proofExports.delete(key);
+    const key = randomUUID();
+    proofExports.set(key, { owner: user.oid, ids: own, lang: requestLanguageCode() ?? "", until: now + EXPORT_TTL });
+    return { url: `${config.publicBaseUrl}/proof/export/${key}.zip`, count: own.length };
+  });
+
+  app.get<{ Params: { file: string } }>("/proof/export/:file", async (req, reply) => {
+    const job = proofExports.get(req.params.file.replace(/\.zip$/, ""));
+    if (!job || job.until < Date.now()) return reply.status(403).type("text/plain; charset=utf-8").send(t("server.proofLinkExpired"));
+    const language = knownLanguage(job.lang);
+    const cases = job.ids.map((id) => caseFor(id, job.owner)).filter((c): c is ProofCase => Boolean(c));
+    const fileName = (c: ProofCase) => `${tIn(language, "mail.proof.fileName")}-${c.id}.pdf`.replace(/[^\w.-]/g, "_");
+    const entries: Array<{ name: string; content: Buffer }> = [];
+    for (const c of cases) entries.push({ name: fileName(c), content: await signedProofPdf(c, language, req.log) });
+    const overview = inSenderLanguage(language, () => {
+      const head = ["case", "subject", "sent", "recipients", "files", "state", "fetched", "confirmed", "endsOn", "keptUntil", "pdf"]
+        .map((k) => t(`mail.proof.export.${k}`));
+      const rows = cases.map((c) => {
+        const e = proofListEntry(c);
+        return [e.id, e.subject ?? "", formatDateTime(e.sentAt), e.recipients.join(", "), e.files.join(", "), t(`mail.proof.export.state.${e.state}`),
+          e.fetched, e.confirmed, e.endsOn ? formatDate(Date.parse(`${e.endsOn}T12:00:00Z`)) : "", formatDate(e.keptUntil), fileName(c)];
+      });
+      // Semicolons and a byte order mark: Excel opens it right away with umlauts intact.
+      return `﻿${[head, ...rows].map((r) => r.map(csvField).join(";")).join("\r\n")}\r\n`;
     });
+    entries.unshift({ name: `${tIn(language, "mail.proof.export.overviewFile")}.csv`, content: Buffer.from(overview, "utf8") });
+    req.log.info({ user: cases[0]?.ownerUpn, cases: cases.length }, "Delivery proofs exported");
+    const name = `${tIn(language, "mail.proof.export.zipFile")}-${new Date().toISOString().slice(0, 10)}.zip`.replace(/[^\w.-]/g, "_");
+    return reply
+      .header("Cache-Control", "no-store")
+      .header("Content-Disposition", `attachment; filename="${name}"`)
+      .type("application/zip")
+      .send(zip(entries));
   });
 
   /** How long the address of a proof PDF works – it is opened in the default browser right away. */

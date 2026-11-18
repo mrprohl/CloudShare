@@ -24,6 +24,8 @@ export interface UserSettings {
   downloadNotice: boolean;
   uploadNotice: boolean;
   smsNotice: boolean;
+  /** "Zustellnachweis": a mail when nothing was fetched a few days before the link ends (PROOF_REMINDER_DAYS). */
+  proofReminder: boolean;
   /** Ways the pane offers for "Kennwort senden an" (at least one). */
   channels: Channel[];
   /** The way preselected for a new mail – one of `channels`. */
@@ -47,6 +49,7 @@ export function availableSettings() {
     downloadNotice: config.downloadNotice,
     uploadNotice: config.uploadNotice,
     smsNotice: config.smsNotice && smsEnabled(),
+    proofReminder: config.deliveryProof && config.proofReminderDays > 0,
     channels: CHANNELS.filter((c) => c !== "sms" || smsEnabled()),
     languages: addinLanguages(),
   };
@@ -70,6 +73,7 @@ function effective(values: UserSettings): UserSettings {
     downloadNotice: available.downloadNotice && values.downloadNotice,
     uploadNotice: available.uploadNotice && values.uploadNotice,
     smsNotice: available.smsNotice && values.smsNotice,
+    proofReminder: available.proofReminder && values.proofReminder,
     channels,
     defaultChannel: channels.includes(values.defaultChannel) ? values.defaultChannel : channels[0],
     language: values.language === "auto" || available.languages.includes(values.language) ? values.language : "auto",
@@ -86,6 +90,7 @@ export function defaultSettings(): UserSettings {
     downloadNotice: d.downloadNotice,
     uploadNotice: d.uploadNotice,
     smsNotice: d.smsNotice,
+    proofReminder: d.proofReminder,
     channels: d.channels.filter((c): c is Channel => (CHANNELS as readonly string[]).includes(c)),
     defaultChannel: (CHANNELS as readonly string[]).includes(d.defaultChannel) ? (d.defaultChannel as Channel) : "recipients",
     language: d.language,
@@ -106,7 +111,7 @@ export function parseSettings(body: unknown): Partial<UserSettings> {
   if (!body || typeof body !== "object") throw invalid("body");
   const input = body as Record<string, unknown>;
   const result: Partial<UserSettings> = {};
-  for (const key of ["downloadNotice", "uploadNotice", "smsNotice"] as const) {
+  for (const key of ["downloadNotice", "uploadNotice", "smsNotice", "proofReminder"] as const) {
     if (key in input) {
       if (typeof input[key] !== "boolean") throw invalid(key);
       result[key] = input[key] as boolean;

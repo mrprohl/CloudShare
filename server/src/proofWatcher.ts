@@ -10,10 +10,11 @@ import { config } from "./config.js";
 import { getCredentials, removeCredentials } from "./credentials.js";
 import { MESSAGE_PREFIX } from "./history.js";
 import { NextcloudClient, NOT_CONNECTED } from "./nextcloud.js";
-import { addEvent, endLink, openCases, saveCase, type ProofCase } from "./proof.js";
+import { addEvent, caseSummary, endLink, openCases, saveCase, type ProofCase } from "./proof.js";
+import { settingsFor } from "./settings.js";
 import { tokenOf } from "./shares.js";
 import { sendAccessCount } from "./vaultwarden.js";
-import { sendDownloadProof, sendFinalProof } from "./proofMail.js";
+import { sendDownloadProof, sendFinalProof, sendReminder } from "./proofMail.js";
 
 const INTERVAL = 10 * 60_000;
 const DAY = 86_400_000;
@@ -90,6 +91,25 @@ async function watchLinks(owner: string, items: ProofCase[], now: number, log?: 
   }
 }
 
+/**
+ * Nothing fetched yet (no download, no files received, message not opened) and the last link ends within
+ * PROOF_REMINDER_DAYS: the sender gets one reminder – unless they switched it off in the settings.
+ */
+async function remindIfNothingFetched(c: ProofCase, now: number, log?: Log) {
+  if (c.reminderSent || config.proofReminderDays <= 0) return;
+  const summary = caseSummary(c);
+  if ((summary.state !== "sent" && summary.state !== "confirmed") || !summary.endsOn) return;
+  if (endOfDay(summary.endsOn) - now > config.proofReminderDays * DAY) return;
+  if (!settingsFor(c.owner).proofReminder) return;
+  try {
+    await sendReminder(c, summary.endsOn);
+    c.reminderSent = true;
+    saveCase(c.id);
+  } catch (err) {
+    log?.warn({ err, case: c.id }, "Delivery proof: reminder not sent, retrying later");
+  }
+}
+
 /** Brings one case up to date right away (before its PDF is made) – downloads, received files, openings. */
 export async function refreshCase(c: ProofCase, log: Log, now = Date.now()): Promise<void> {
   await watchLinks(c.owner, [c], now, log).catch((err) => log.warn({ err, case: c.id }, "Delivery proof: links not checked"));
@@ -111,6 +131,7 @@ export async function runProofWatch(log: Log, now = Date.now()) {
     }
     for (const c of items) {
       await watchSends(c, now).catch((err) => log.warn({ err, case: c.id }, "Delivery proof: Sends not checked"));
+      await remindIfNothingFetched(c, now, log);
       // Done: every link ended – or two days past the last expiry (nothing can happen any more).
       const links = Object.entries(c.links ?? {});
       const lastExpiry = Math.max(0, ...links.map(([, l]) => endOfDay(l.expireDate)));

@@ -84,6 +84,8 @@ export interface ProofCase {
   /** The sender got the PDF after the first download / at the end (proofMail.ts). */
   downloadMailSent?: boolean;
   finalMailSent?: boolean;
+  /** The sender was reminded that nothing was fetched yet (proofWatcher.ts, PROOF_REMINDER_DAYS) – once per case. */
+  reminderSent?: boolean;
   /** Held-back passwords already released per Send ID (proofPassword.ts): addresses mailed, other addresses, SMS. */
   released?: Record<string, { mailed: string[]; others?: boolean; sms?: boolean }>;
 }
@@ -91,7 +93,7 @@ export interface ProofCase {
 const cases = new PersistentMap<ProofCase>("proofs", { retention: false });
 
 /** The day a case may go: its last event plus PROOF_RETENTION_MONTHS calendar months. */
-const keptUntil = (last: number) => {
+export const keptUntil = (last: number) => {
   const date = new Date(last);
   date.setUTCMonth(date.getUTCMonth() + config.proofRetentionMonths);
   return date.getTime();
@@ -303,6 +305,52 @@ export function endLink(token: string, reason: "revoked" | "expired" | "gone", a
 
 /** A case by its tracking ID (the signed PDF address was checked before). */
 export const caseById = (id: string): ProofCase | undefined => cases.get(id);
+
+/**
+ * Where a case stands, for the list, the seal and the PDF: "open" (mail not sent yet), "sent", "confirmed" (a recipient
+ * confirmed their address), "fetched" (a file downloaded, files received or the message opened).
+ */
+export type CaseState = "open" | "sent" | "confirmed" | "fetched";
+
+/** Event types that mean the recipients got what was sent. */
+const FETCHED = new Set(["download", "files.received", "message.opened"]);
+
+export interface CaseSummary {
+  state: CaseState;
+  /** When the mail went out (from "Sent Items"), else undefined. */
+  sentAt?: number;
+  /** The first confirmed address and when. */
+  confirmed?: { address: string; at: number };
+  /** Downloads, receipts and openings, and the last one. */
+  fetched: number;
+  lastFetchedAt?: number;
+  /** Last valid day of the links still running (YYYY-MM-DD) – undefined once all ended. */
+  endsOn?: string;
+  /** Until when the case is kept (ms). */
+  keptUntil: number;
+}
+
+export function caseSummary(c: ProofCase): CaseSummary {
+  const sent = [...c.events].reverse().find((e) => e.type === "message.sent");
+  const sentAt = sent ? (typeof sent.data.sentAt === "string" && Number.isFinite(Date.parse(sent.data.sentAt)) ? Date.parse(sent.data.sentAt) : sent.at) : undefined;
+  const verified = c.events.find((e) => e.type === "recipient.verified");
+  const fetchedEvents = c.events.filter((e) => FETCHED.has(e.type));
+  const running = Object.entries(c.links ?? {}).filter(([token]) => !c.ended?.includes(token)).map(([, l]) => l.expireDate).sort();
+  const state: CaseState = !sent ? "open" : fetchedEvents.length ? "fetched" : verified ? "confirmed" : "sent";
+  return {
+    state,
+    sentAt,
+    confirmed: verified ? { address: String(verified.data.address ?? ""), at: verified.at } : undefined,
+    fetched: fetchedEvents.length,
+    lastFetchedAt: (() => {
+      const last = fetchedEvents.at(-1);
+      const at = typeof last?.data.downloadedAt === "string" ? Date.parse(last.data.downloadedAt) : NaN;
+      return Number.isFinite(at) ? at : last?.at;
+    })(),
+    endsOn: c.done ? undefined : running.at(-1),
+    keptUntil: keptUntil(c.events.at(-1)?.at ?? c.createdAt),
+  };
+}
 
 /** All cases of `owner`, newest first – also the ones whose links ended long ago (kept PROOF_RETENTION_MONTHS). */
 export const casesOf = (owner: string): ProofCase[] => {

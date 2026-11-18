@@ -36,7 +36,7 @@ is "Datei als Link einfügen", "History" is "Verlauf".*
 
 | 1. The mail with the download links | 2. Shortly after: the password |
 |---|---|
-| ![Received mail with a card for three files and a card for an upload link](docs/images/mail-received.png) | ![Password mail with the three file names, a "Show password" button and the sender's signature at the end](docs/images/password-mail.png) |
+| ![Received mail with a card for three files – per file the Download button, below it type, name and size in grey – and a card for an upload link in the same layout](docs/images/mail-received.png) | ![Password mail with the three file names, a "Show password" button and the sender's signature at the end](docs/images/password-mail.png) |
 | One card per click on the insert button: file type, name, size and a download button; here also a link through which the recipients can upload files themselves (a confidential message gets its own card with "Open message"). | One password mail per card. "Show password" opens the Vaultwarden Send; it works only a few times (default 3) and for a few days (default 5, chosen by the sender). |
 
 The password never travels in the same mail as the link, and it is only sent once the mail with the link has really
@@ -68,7 +68,7 @@ password (to the recipients), **green** – downloaded, **red** – a problem.
   with Message-ID, password, code confirmation of the recipient, every download – hash-chained, as a PDF from "History"
   ("Proof", document with a seal). The download confirmation then also names the tracking ID and the file's SHA-256.
   <br>
-  <img src="docs/images/proof-pdf.png" alt="First page of the proof of delivery PDF: tracking ID, record unchanged, and the events from link created through message sent, password, recipient confirmed to downloaded, each with time and hash" width="420">
+  <img src="docs/images/proof-pdf.png" alt="First page of the proof of delivery PDF: tracking ID, the result in a frame (sent, address confirmed, downloaded, link ends, kept until – ticks and circles), record unchanged, and the events from link created through message sent, password, recipient confirmed to downloaded, each with time and hash" width="420">
 
 <br clear="right">
 
@@ -185,7 +185,7 @@ everyday users without IT knowledge – e.g. clerks in an administration: the fi
 step by step, choosing the password and how it is sent (with a clear note that personal or confidential data always go
 with a password), the confidential message, receiving files, "History" and frequently asked questions ("The
 recipients did not get a password", "I sent the link to the wrong person" …). Short sections to open as needed; the
-most common one is open. It opens in place of the current tab; "×", the question mark or a tab closes it again. It is
+most common one is open. It opens as a page of its own in place of the tabs (the tab bar is hidden meanwhile, like the settings and the proofs of delivery); the arrow "←" before its title or Escape leads back. It is
 also there when the pane was opened from a sent mail. Its last sentence points to the IT support – put your own
 contact there, see [Languages](#languages) (`help.support`).
 
@@ -311,11 +311,13 @@ deployed again.
 | `DEFAULT_LANGUAGE` | `auto` | Personal settings, starting value of the add-in language: `auto` (as in Outlook) or a language code |
 | `SMS_NOTICE` | like `DOWNLOAD_NOTICE` | `true`: note to the sender when seven.io reports a password SMS as not delivered later (same application permission `Mail.Send`; unset it follows `DOWNLOAD_NOTICE`, which switched it before). A note about an SMS seven.io refuses right away needs no switch |
 | `DELIVERY_PROOF` | like `DOWNLOAD_NOTICE` | `true`: offers "Zustellnachweis" (proof of delivery) in the pane – per mail, never ticked by default; see [Proof of delivery](#proof-of-delivery-optional). The code mail to the recipients needs the application permission `Mail.Send` |
+| `PROOF_REMINDER_DAYS` | `3` | Days before the links of a proof of delivery end on which the sender is reminded once that nothing was fetched yet; `0` = never. Each user can switch it off in the settings |
+| `DEFAULT_PROOF_REMINDER` | `true` | Personal settings, starting value of that reminder – only where `PROOF_REMINDER_DAYS` is above 0 |
 | `PROOF_RETENTION_MONTHS` | `36` | Months a proof of delivery is kept after its last event (three years, the regular limitation period) – independent of `DATA_RETENTION_DAYS` |
 | `COMPANY_NAME` | empty | Your organisation's name, shown after the CloudShare logo at the top of the recipients' pages (delivery proof) |
 | `COMPANY_WEBSITE_URL` / `IMPRINT_URL` / `PRIVACY_URL` | empty | Links at the bottom of the recipients' pages: your website (shown by its host name), imprint and privacy notice; each optional, http(s) only |
 | `PROOF_SIGN_CERT_FILE` / `PROOF_SIGN_KEY_FILE` | empty | PEM files of a certificate and its key that sign the proof PDF (e.g. one of a CA trusted by Adobe, under `/config`). Empty: CloudShare makes its own certificate once (kept sealed in the database) – a change of the PDF still shows, but the reader names the signer "unknown" |
-| `PROOF_SIGN_NAME` / `PROOF_SIGN_ORGANIZATION` | `CloudShare Proof of Delivery` / empty | Name (CN) and organisation (O) of the certificate CloudShare makes itself |
+| `PROOF_SIGN_NAME` / `PROOF_SIGN_ORGANIZATION` | `CloudShare` / empty | Name (CN) and organisation (O) of the certificate CloudShare makes itself |
 | `PROOF_TSA_URL` | `http://timestamp.digicert.com` | RFC 3161 time stamp authority for the signature – proves the PDF existed unchanged at that time (only a hash is sent); `off` = none, a qualified one for legal weight |
 | `CLEANUP_AFTER_DAYS` | `0` | Uploaded files go to the Nextcloud trash this many days after their link expired or was revoked; `off` = never. Received files are never deleted |
 | `DATA_RETENTION_DAYS` | `365` | Entries in `/data/cloudshare.db` not changed for this many days are deleted (daily, then the file is shrunk); `off` = never. A safety net – entries normally leave on their own (jobs after 7 days, links' data when they expire, SMS states after 120 days). Nextcloud connections and the cleanup list are never affected. At least `SHARE_MAX_EXPIRE_DAYS` |
@@ -426,9 +428,20 @@ default, offered for "Files" only (not for a confidential message or an upload l
   `PROOF_SIGN_KEY_FILE`) CloudShare signs with a certificate it made itself: protected against changes right away, the
   reader only names the signer "unknown". For legal weight: a certificate of a CA trusted by Adobe or a qualified
   seal, and a qualified time stamp authority – no code change needed.
-- **Finding a proof later**: "Proofs of delivery" in the account menu lists every proof – also those whose links expired
-  long ago and no longer show in "History" – searchable by case number, subject, recipient or file name; the seal opens
-  the PDF.
+- **Finding a proof later**: "Proofs of delivery" in the account menu lists the proof of every sent mail – also those whose links expired
+  long ago and no longer show in "History" – searchable by case number, subject, recipient or file name and filtered
+  with the chips All · Open · Downloaded · Not fetched. Each entry looks and works like a row of "History": a click on the subject opens the sent mail, the button next to it the PDF. The seal shows the state by its colour (grey sent, blue
+  address confirmed, green fetched – the same in "History") and opens the PDF; each entry says when its links end or
+  until when the proof is kept. **Export** (arrow in the heading) gives the proofs shown as one ZIP: every signed PDF
+  and an overview as CSV (opens in Excel), for the files or a document management system.
+- **The PDF** starts with the result in a frame – sent, address confirmed, downloaded (or files received, message
+  opened), when the link ends and until when the proof is kept, each with a tick or a circle – followed by the record.
+- **Reminder**: if nothing was fetched `PROOF_REMINDER_DAYS` (default 3) days before the links end, the sender gets one
+  mail – the recipients are not written to. Each user can switch it off under "Settings".
+- **Code page and code mail**: the page names the sender and the file, so recipients know it belongs to the mail they
+  got. The code mail has a button "Confirm address" that fills in the code – one click confirms; opening the link
+  alone confirms nothing, so mail scanners that follow links do no harm. Phones offer the code from the mail; spaces
+  and hyphens in the code do not matter.
 - **Guessing**: after five addresses that are no recipients within an hour, the page takes no code requests for that
   link for an hour (the answer still reads the same) and the sender gets one mail with the attempts (time, address,
   IP address); it is in the record too.
@@ -491,7 +504,7 @@ on the server per Microsoft account (encrypted like everything in `/data/cloudsh
 | Setting | Choice | Starting value |
 |---|---|---|
 | Send the password to | which ways the pane offers (recipients of the message, another address, SMS) and which one a new message starts with | `DEFAULT_PASSWORD_CHANNELS`, `DEFAULT_PASSWORD_CHANNEL` |
-| Notifications | download confirmation, files received, SMS not delivered – each on or off | `DEFAULT_DOWNLOAD_NOTICE`, `DEFAULT_UPLOAD_NOTICE`, `DEFAULT_SMS_NOTICE` |
+| Notifications | download confirmation, files received, SMS not delivered, reminder for proofs not fetched – each on or off | `DEFAULT_DOWNLOAD_NOTICE`, `DEFAULT_UPLOAD_NOTICE`, `DEFAULT_SMS_NOTICE`, `DEFAULT_PROOF_REMINDER` |
 | Language | as in Outlook, or a fixed language of the add-in | `DEFAULT_LANGUAGE` |
 | Language for the recipients | preselected language of the link card, the password mail and the SMS – changeable for each message under "Send the password to" | `LANGUAGE` |
 | Signature of the password mail | at the end of the automatic mail with the password, so recipients see who it comes from: the organisation's (`MAIL_FOOTER`) or an own one – plain text, an empty line starts a paragraph, profile placeholders allowed. The link card in the message carries no signature | `MAIL_FOOTER` |
@@ -630,9 +643,9 @@ swallows the screenshot):
 $edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 $repo = (Get-Location).Path; $url = "file:///" + ($repo -replace '\\','/') + "/docs/mockups"
 $opts = "--headless=new", "--hide-scrollbars", "--user-data-dir=$env:TEMP\cloudshare-edge"
-foreach ($shot in @(("outlook-compose", "compose-send", "1440,1200"), ("mail-received", "mail-received", "760,706"),
+foreach ($shot in @(("outlook-compose", "compose-send", "1440,1200"), ("mail-received", "mail-received", "760,800"),
                     ("password-mail", "password-mail", "760,692"), ("sender-notices", "sender-notices", "760,942"),
-                    ("proof-gateway", "proof-gateway", "1390,524"), ("proof-pdf", "proof-pdf", "860,934"))) {
+                    ("proof-gateway", "proof-gateway", "1390,640"), ("proof-pdf", "proof-pdf", "860,1060"))) {
   Start-Process -Wait $edge ($opts + "--window-size=$($shot[2])", "--screenshot=$repo\docs\images\$($shot[0]).png", "$url/$($shot[1]).html")
 }
 ```

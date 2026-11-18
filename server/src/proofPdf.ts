@@ -6,7 +6,7 @@ import { config } from "./config.js";
 import { formatDate, formatDateTime, inSenderLanguage, locale, t } from "./i18n.js";
 import { pdfDocument, type PdfLine } from "./pdf.js";
 import { signPdf } from "./pdfSign.js";
-import { verifyCase, type ProofCase, type ProofEvent } from "./proof.js";
+import { caseSummary, verifyCase, type ProofCase, type ProofEvent } from "./proof.js";
 
 const time = (ms: number) => formatDateTime(ms);
 
@@ -115,6 +115,8 @@ function describe(e: ProofEvent, c: ProofCase): { label: string; details: Array<
         label: t("mail.proof.event.gatewayLocked"),
         details: [[t("mail.proof.field.attempts"), text(d.attempts)], [t("mail.proof.field.lockedUntil"), isoTime(d.until)], ...about],
       };
+    case "proof.reminded":
+      return { label: t("mail.proof.event.proofReminded"), details: [] };
     case "proof.sent":
       return { label: t(d.reason === "final" ? "mail.proof.event.proofSentFinal" : "mail.proof.event.proofSentDownload"), details: [] };
     case "link.revoked":
@@ -126,6 +128,30 @@ function describe(e: ProofEvent, c: ProofCase): { label: string; details: Array<
   }
 }
 
+/**
+ * The result first, in a frame: sent, confirmed, fetched, when the links end (or ended) and until when the proof is
+ * kept – a tick for what happened, a circle for what has not (yet).
+ */
+function summaryLines(c: ProofCase): PdfLine[] {
+  const s = caseSummary(c);
+  const kinds = new Set(Object.values(c.links ?? {}).map((l) => l.kind));
+  const fetchedLabel = kinds.has("file") ? "downloaded" : kinds.has("request") ? "received" : "opened";
+  const row = (mark: PdfLine["mark"], label: string, value: string): PdfLine => ({ text: label, value, valueAt: 130, mark, size: 10, box: true });
+  const lastEnd = Object.values(c.links ?? {}).map((l) => l.expireDate).sort().at(-1);
+  return [
+    { text: t("mail.proof.summary.title"), font: "bold", size: 11, box: true, gapBefore: 14 },
+    row(s.sentAt ? "done" : "open", t("mail.proof.summary.sent"), s.sentAt ? time(s.sentAt) : t("mail.proof.summary.notYet")),
+    row(s.confirmed ? "done" : "open", t("mail.proof.summary.confirmed"),
+      s.confirmed ? t("mail.proof.summary.confirmedValue", { address: s.confirmed.address, time: time(s.confirmed.at) }) : t("mail.proof.summary.notYet")),
+    row(s.fetched ? "done" : "open", t(`mail.proof.summary.${fetchedLabel}`),
+      s.fetched ? t("mail.proof.summary.fetchedValue", { count: s.fetched, time: time(s.lastFetchedAt ?? 0) }) : t("mail.proof.summary.notYet")),
+    s.endsOn
+      ? row("open", t("mail.proof.summary.endsOn"), formatDate(Date.parse(`${s.endsOn}T12:00:00Z`)))
+      : row("done", t("mail.proof.summary.ended"), lastEnd ? formatDate(Date.parse(`${lastEnd}T12:00:00Z`)) : "–"),
+    row("blank", t("mail.proof.summary.keptUntil"), formatDate(s.keptUntil)),
+  ];
+}
+
 /** The PDF of a case in `language` (the sender's add-in; else LANGUAGE). */
 export function proofPdf(c: ProofCase, language: string | undefined, now = new Date(), signed = false): Buffer {
   return inSenderLanguage(language, () => {
@@ -134,13 +160,14 @@ export function proofPdf(c: ProofCase, language: string | undefined, now = new D
       { text: t("mail.proof.title"), size: 20, font: "bold" },
       { text: t("mail.proof.trackingId", { id: c.id }), size: 12, font: "bold", gapBefore: 4 },
       { text: t("mail.proof.intro", { sender: c.ownerUpn, date: time(c.createdAt) }), size: 9, grey: 0.3, gapBefore: 6 },
+      ...summaryLines(c),
       {
         text: check.intact
           ? t("mail.proof.chainIntact", { count: c.events.length })
           : t("mail.proof.chainBroken", { number: (check.brokenAt ?? 0) + 1 }),
         font: "bold",
         size: 10,
-        gapBefore: 10,
+        gapBefore: 16,
       },
     ];
     if (c.events.length) {

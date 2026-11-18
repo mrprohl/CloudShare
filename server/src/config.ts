@@ -213,6 +213,11 @@ export const config = {
   /** How long a delivery proof is kept after its last event, in months (default 36 – three years, the regular limitation period). */
   proofRetentionMonths: number("PROOF_RETENTION_MONTHS", 36),
   /**
+   * Days before a link of a delivery proof ends on which the sender is reminded that nothing was fetched yet (one mail
+   * per case; 0 = never). Each user can switch it off in the settings.
+   */
+  proofReminderDays: number("PROOF_REMINDER_DAYS", 3),
+  /**
    * Signature of the proof PDF (pdfSign.ts): PEM files of an own certificate and key (e.g. from a CA trusted by Adobe);
    * without them CloudShare makes a certificate itself (CN PROOF_SIGN_NAME, O PROOF_SIGN_ORGANIZATION). PROOF_TSA_URL:
    * RFC 3161 time stamp authority for the signature ("off" = none) – only a hash leaves the server.
@@ -227,7 +232,7 @@ export const config = {
   privacyUrl: webUrl("PRIVACY_URL"),
   proofSignCertFile: process.env.PROOF_SIGN_CERT_FILE ?? "",
   proofSignKeyFile: process.env.PROOF_SIGN_KEY_FILE ?? "",
-  proofSignName: process.env.PROOF_SIGN_NAME?.trim() || "CloudShare Proof of Delivery",
+  proofSignName: process.env.PROOF_SIGN_NAME?.trim() || "CloudShare",
   proofSignOrganization: process.env.PROOF_SIGN_ORGANIZATION?.trim() ?? "",
   proofTsaUrl: (() => {
     const url = (process.env.PROOF_TSA_URL ?? "http://timestamp.digicert.com").trim();
@@ -243,6 +248,7 @@ export const config = {
     downloadNotice: process.env.DEFAULT_DOWNLOAD_NOTICE !== "false",
     uploadNotice: process.env.DEFAULT_UPLOAD_NOTICE !== "false",
     smsNotice: process.env.DEFAULT_SMS_NOTICE !== "false",
+    proofReminder: process.env.DEFAULT_PROOF_REMINDER !== "false",
     channels: (process.env.DEFAULT_PASSWORD_CHANNELS ?? "recipients,mail,sms")
       .split(",")
       .map((c) => c.trim().toLowerCase())

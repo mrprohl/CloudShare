@@ -132,6 +132,7 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
 
     // "Zustellnachweise": the user's cases, and the signed address of a PDF.
     if (route_ === "GET /api/proofs") return json(scenario.proofs ?? []);
+    if (route_ === "POST /api/proofs/export") return json({ url: "https://cloudshare.example.com/proof/export/x.zip", count: 1 });
     if (/^POST \/api\/proofs\/[^/]+\/link$/.test(route_)) {
       return json({ url: `https://cloudshare.example.com/proof/${call.path.split("/")[3]}.pdf?until=1&lang=de&sig=x` });
     }
@@ -209,6 +210,7 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     if (route_ === "GET /api/shares") return json(scenario.shares ?? []);
     if (/^DELETE \/api\/shares\/.+$/.test(route_)) return json({ ok: true });
     // "Verlauf": the sent mail of an entry, as the EWS ID Outlook opens.
+    if (/^GET \/api\/proofs\/[^/]+\/mail$/.test(route_)) return json({ ewsId: `ews-proof-${route_.split("/")[3]}` });
     if (/^GET \/api\/shares\/[^/]+\/mail$/.test(route_)) return json({ ewsId: `ews-${route_.split("/")[3]}` });
     if (/^PATCH \/api\/jobs\/[^/]+$/.test(route_)) return json({ maxAccess: JSON.parse(call.body!.toString()).maxAccess });
     if (/^GET \/api\/shares\/[^/]+\/password$/.test(route_)) {
@@ -332,6 +334,19 @@ async function readmeShot(page: Page, name: string) {
 
 // --- Connection --------------------------------------------------------------------------------------------------
 
+test("a progress message is shown whole (its class must not clash with the progress bar)", async ({ page }) => {
+  await openTaskpane(page);
+  // The kind of the message is its class – "progress" once also styled the 2px progress bar and cut the message.
+  const height = await page.evaluate(() => {
+    const bar = document.getElementById("status")!;
+    bar.hidden = false;
+    bar.className = "messagebar progress";
+    bar.innerHTML = '<svg class="icon" viewBox="0 0 16 16"></svg><span>„cloud-redirect.zip“ wird hochgeladen … 42 %</span>';
+    return bar.getBoundingClientRect().height;
+  });
+  expect(height).toBeGreaterThanOrEqual(36);
+});
+
 test("not connected: shows the connect view and connects via the Nextcloud login", async ({ page }) => {
   const calls = await openTaskpane(page, { connected: false });
   await expect(page.locator("#connect-view")).toBeVisible();
@@ -453,7 +468,7 @@ test("settings: the gear opens them in place of the tab; saved ways apply to the
   await expect(page.locator('#password-channel option[value="mail"]')).toHaveJSProperty("hidden", false);
 });
 
-test("settings and help: the heading with its × stays in sight while scrolling", async ({ page }) => {
+test("settings and help: the heading with its back arrow stays in sight while scrolling", async ({ page }) => {
   await page.setViewportSize({ width: 340, height: 520 });
   await openTaskpane(page, { config: { smsEnabled: true } });
   await openSettings(page);
@@ -1348,8 +1363,8 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   // One short line: period and password – the word "Kennwort" only once.
   const meta = rows.nth(0).locator(".share-meta").first();
   await expect(meta.locator(".share-period")).toHaveText("10.11.2026 – 24.11.2099");
-  // The way in a few words; number and time of the delivery in the tooltip.
-  await expect(meta.locator(".share-password")).toHaveText("Kennwort per SMS – zugestellt");
+  // To whom in the line ("Kennwort an …"); the time of the delivery in the tooltip.
+  await expect(meta.locator(".share-password")).toHaveText("Kennwort an +49 170 •••• 67 – zugestellt");
   await expect(meta.locator(".share-password")).toHaveAttribute("title", "Kennwort per SMS an +49 170 •••• 67 – zugestellt am 10.11.2026, 11:00 Uhr");
   expect((await meta.textContent())!.match(/Kennwort/g)).toHaveLength(1);
   await expect(rows.nth(1).locator(".share-period")).toHaveText("12.11.2099 – 26.11.2099"); // always dd.mm.yyyy
@@ -1425,9 +1440,9 @@ test("Verlauf: a failed SMS says whether it was sent at all, and how to send the
   await page.click("#tab-shares");
   const rows = page.locator("#shares .share");
   // seven.io refused it right away (key, credit, limit).
-  await expect(rows.nth(0).locator(".share-password")).toHaveText("Kennwort per SMS – nicht versendet – bitte erneut senden");
+  await expect(rows.nth(0).locator(".share-password")).toHaveText("Kennwort an +49 170 •••• 67 – nicht versendet – bitte erneut senden");
   // seven.io accepted it and reported "not delivered" later.
-  await expect(rows.nth(1).locator(".share-password")).toHaveText("Kennwort per SMS – nicht zugestellt – bitte erneut senden");
+  await expect(rows.nth(1).locator(".share-password")).toHaveText("Kennwort an +49 170 •••• 67 – nicht zugestellt – bitte erneut senden");
   await expect(rows.nth(1).locator(".share-password")).toHaveClass(/failed/);
 });
 
@@ -1598,7 +1613,7 @@ test("reading a mail: tabs 'Nachricht' and 'Verlauf', nothing to insert", async 
   const inMail = page.locator("#mail-shares .share");
   await expect(inMail).toHaveCount(2);
   await expect(inMail.nth(0).locator(".share-name")).toHaveText("Präsentation.pptx");
-  await expect(inMail.nth(0).locator(".share-password")).toHaveText("Kennwort per SMS – zugestellt");
+  await expect(inMail.nth(0).locator(".share-password")).toHaveText("Kennwort an +49 170 •••• 67 – zugestellt");
   await expect(inMail.nth(0).locator(".share-password")).toHaveAttribute("title", /zugestellt am 10.11.2026, 11:00 Uhr/);
   await expect(inMail.nth(1).locator(".share-item")).toHaveText("Dateianforderung");
   await expect(page.locator("#mail-none")).toBeHidden();
@@ -1852,7 +1867,7 @@ test.describe("README pictures (English)", () => {
   const SHARES_EN = [
     ...SHARES.map((share, i) => ({ ...share, name: ["Presentation.pptx", "Quote.pdf", "File request", "Old.zip"][i], subject: SUBJECTS[i], mailId: `AAMk-${i}`,
       // The first link went out with a delivery proof: the seal after its name.
-      ...(i === 0 ? { proofId: "20261110-0912-7Q2F" } : {}) })),
+      ...(i === 0 ? { proofId: "20261110-0912-7Q2F", proofState: "fetched" } : {}) })),
     { id: "msg-1", kind: "message", name: "Confidential message", url: null, accessId: "acc1", sharedAt: Date.parse("2026-11-12"),
       expiration: "2099-11-17", downloads: null, received: null, protected: true, passwordAvailable: true, subject: "Access data", mailId: "AAMk-9",
       password: { channel: "mail", to: "erika.beispiel@example.com", status: null, at: Date.parse("2026-11-12T08:00:00Z"), deliveredAt: null } },
@@ -1902,13 +1917,13 @@ test.describe("README pictures (English)", () => {
     const proofs = [
       { id: "20261118-1646-CBMH", createdAt: Date.parse("2026-11-18T15:46:00Z"), subject: "Documents new building project",
         sentAt: Date.parse("2026-11-18T15:47:00Z"), recipients: ["erika.beispiel@example.com"], files: ["Presentation.pptx"], downloads: 1,
-        confirmed: 1, done: false },
+        confirmed: 1, done: false, state: "fetched", fetched: 1, endsOn: "2026-12-02", keptUntil: Date.parse("2029-11-18T12:00:00Z"), kind: "file", mailAvailable: true, passwordTo: ["erika@example.com"] },
       { id: "20261104-1012-K8MD", createdAt: Date.parse("2026-11-04T09:12:00Z"), subject: "Contract 2026",
         sentAt: Date.parse("2026-11-04T09:13:00Z"), recipients: ["customer@example.org"], files: ["Contract.pdf", "Annex.pdf"], downloads: 2,
-        confirmed: 1, done: true },
+        confirmed: 1, done: true, state: "fetched", fetched: 2, endsOn: null, keptUntil: Date.parse("2029-11-18T12:00:00Z"), kind: "file", mailAvailable: true, passwordTo: ["erika@example.com"] },
       { id: "20260921-1533-Z4QN", createdAt: Date.parse("2026-09-21T13:33:00Z"), subject: "Plans",
         sentAt: Date.parse("2026-09-21T13:34:00Z"), recipients: ["architect@example.net"], files: ["Plans.zip"], downloads: 0,
-        confirmed: 0, done: true },
+        confirmed: 0, done: true, state: "sent", fetched: 0, endsOn: null, keptUntil: Date.parse("2029-10-05T12:00:00Z"), kind: "file", mailAvailable: true, passwordTo: ["erika@example.com"] },
     ];
     await openTaskpane(page, { lang: "en", config: README_CONFIG, proofs });
     await page.click("#account-toggle");
@@ -2054,20 +2069,44 @@ test("Labels: without Outlook's catalog the names and priority come from the ten
   expect((await officeLog(page)).mailLabel).toBe(LABEL_IDS.confidential);
 });
 
+test("settings, proofs and help are pages of their own: no tabs meanwhile, back with the arrow or Escape", async ({ page }) => {
+  await openTaskpane(page, { config: { deliveryProof: true } });
+  for (const [entry, panel, back] of [["#settings-open", "#panel-settings", "#settings-close"], ["#proofs-open", "#panel-proofs", "#proofs-close"],
+    ["#help-toggle", "#panel-help", "#help-close"]]) {
+    await page.click("#account-toggle");
+    await page.click(entry);
+    await expect(page.locator(panel)).toBeVisible();
+    await expect(page.locator(".tabbar")).toBeHidden(); // no tab looks active behind the page
+    await expect(page.locator(back)).toHaveAttribute("aria-label", "Zurück");
+    await page.click(back);
+    await expect(page.locator(panel)).toBeHidden();
+    await expect(page.locator(".tabbar")).toBeVisible();
+    await expect(page.locator("#panel-send")).toBeVisible();
+  }
+  await page.click("#account-toggle");
+  await page.click("#settings-open");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#panel-settings")).toBeHidden();
+  await expect(page.locator(".tabbar")).toBeVisible();
+  await expect(page.locator("#account-toggle")).toBeFocused();
+});
+
 test("Zustellnachweise: not in the account menu without DELIVERY_PROOF", async ({ page }) => {
   await openTaskpane(page);
   await page.click("#account-toggle");
   await expect(page.locator("#proofs-open")).toBeHidden();
 });
 
-test("Zustellnachweise: every proof in the account menu, searchable, the seal opens the PDF", async ({ page }) => {
+test("Zustellnachweise: every proof in the account menu, filtered and searched, the seal opens the PDF, export", async ({ page }) => {
   const proofs = [
     { id: "20261118-1646-CBMH", createdAt: Date.parse("2026-11-18T15:46:00Z"), subject: "Unterlagen Neubau", sentAt: Date.parse("2026-11-18T15:47:00Z"),
-      recipients: ["erika@example.com"], files: ["Angebot.zip"], downloads: 1, confirmed: 1, done: true },
+      recipients: ["erika@example.com"], files: ["Angebot.zip"], downloads: 1, confirmed: 1, done: true,
+      state: "fetched", fetched: 1, endsOn: null, keptUntil: Date.parse("2029-11-18T12:00:00Z"), kind: "file", mailAvailable: true, passwordTo: ["erika@example.com"] },
     { id: "20261112-0931-XK7P", createdAt: Date.parse("2026-11-12T08:31:00Z"), subject: "Vertrag 2026", sentAt: Date.parse("2026-11-12T08:32:00Z"),
-      recipients: ["kunde@example.org"], files: ["Vertrag.pdf"], downloads: 0, confirmed: 0, done: false },
+      recipients: ["kunde@example.org"], files: ["Vertrag.pdf"], downloads: 0, confirmed: 0, done: false,
+      state: "sent", fetched: 0, endsOn: "2026-11-26", keptUntil: Date.parse("2029-11-12T12:00:00Z"), kind: "file", mailAvailable: false, passwordTo: ["erika@example.com"] },
   ];
-  await openTaskpane(page, { config: { deliveryProof: true }, proofs });
+  const calls = await openTaskpane(page, { config: { deliveryProof: true }, proofs });
   await page.click("#account-toggle");
   await page.click("#proofs-open");
   await expect(page.locator("#panel-proofs")).toBeVisible();
@@ -2076,9 +2115,38 @@ test("Zustellnachweise: every proof in the account menu, searchable, the seal op
   await expect(entries).toHaveCount(2);
   await expect(entries.nth(0).locator(".share-title")).toHaveText("Unterlagen Neubau");
   await expect(entries.nth(0)).toContainText("18.11.2026 · an erika@example.com");
-  await expect(entries.nth(0)).toContainText("Angebot.zip · 1× heruntergeladen");
-  await expect(entries.nth(0)).toContainText("Vorgang 20261118-1646-CBMH · abgeschlossen");
+  // Like a row of "Verlauf": the file with its seal, to whom, the state with its dot, the tracking ID.
+  await expect(entries.nth(0).locator(".share-item")).toHaveText("Angebot.zip");
+  await expect(entries.nth(0).locator(".state-text")).toHaveText("1× heruntergeladen · aufbewahrt bis 18.11.2029");
+  await expect(entries.nth(0).locator(".share-state")).toHaveClass(/done/);
+  await expect(entries.nth(0).locator(".proof-case")).toHaveText("Vorgang 20261118-1646-CBMH");
+  await expect(entries.nth(1).locator(".state-text")).toHaveText("nicht abgerufen · endet 26.11.2026");
+  await expect(entries.nth(0).locator(".proof-password")).toHaveText("Kennwort an erika@example.com");
+  // The subject opens the sent mail, as in "Verlauf" – only where the mail is known.
+  await entries.nth(0).locator("button.share-title").click();
+  await expect.poll(async () => (await officeLog(page)).openedMails).toContain("ews-proof-20261118-1646-CBMH");
+  await expect(entries.nth(1).locator("button.share-title")).toHaveCount(0);
+  // The PDF button next to the subject.
+  await entries.nth(0).locator(".open-pdf").click();
+  await expect.poll(async () => (await officeLog(page)).openedUrls).toContain(
+    "https://cloudshare.example.com/proof/20261118-1646-CBMH.pdf?until=1&lang=de&sig=x");
+  // The seal tells the state by its colour (and its tooltip).
+  await expect(entries.nth(0).locator(".proof-seal")).toHaveClass(/state-fetched/);
+  await expect(entries.nth(1).locator(".proof-seal")).toHaveAttribute("title", "Zustellnachweis 20261112-0931-XK7P – gesendet, noch nicht abgerufen");
   await expectAccessible(page);
+
+  // Filter chips: only the ones not fetched, then all again.
+  await page.click('#proofs-filter [data-filter="unfetched"]');
+  await expect(page.locator('#proofs-filter [data-filter="unfetched"]')).toHaveAttribute("aria-pressed", "true");
+  await expect(entries).toHaveCount(1);
+  await expect(entries.nth(0).locator(".share-title")).toHaveText("Vertrag 2026");
+  // "Exportieren" exports what is shown.
+  await page.click("#proofs-export");
+  await expect.poll(async () => (await officeLog(page)).openedUrls).toContain("https://cloudshare.example.com/proof/export/x.zip");
+  const exported = calls.find((c) => c.path === "/api/proofs/export");
+  expect(JSON.parse(String(exported?.body))).toEqual({ ids: ["20261112-0931-XK7P"] });
+  await page.click('#proofs-filter [data-filter="all"]');
+  await expect(entries).toHaveCount(2);
 
   // Search: by recipient, by tracking ID (any case), nothing.
   await page.fill("#proofs-search", "kunde@");

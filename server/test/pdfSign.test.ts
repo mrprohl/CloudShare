@@ -33,9 +33,9 @@ function opensslVerify(cms: Buffer, content: Buffer): boolean | null {
 describe("signing the proof PDF", () => {
   it("makes a certificate Node reads and whose signature checks", () => {
     const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-    const der = makeCertificate("CloudShare Proof of Delivery", "Example GmbH", privateKey, publicKey.export({ type: "spki", format: "der" }));
+    const der = makeCertificate("CloudShare", "Example GmbH", privateKey, publicKey.export({ type: "spki", format: "der" }));
     const cert = new X509Certificate(der);
-    expect(cert.subject).toContain("CN=CloudShare Proof of Delivery");
+    expect(cert.subject).toContain("CN=CloudShare");
     expect(cert.subject).toContain("O=Example GmbH");
     expect(cert.verify(publicKey)).toBe(true);
     expect(new Date(cert.validTo).getTime()).toBeGreaterThan(Date.now() + 9 * 365 * 86_400_000);

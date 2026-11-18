@@ -110,6 +110,8 @@ const settingsOpen = $<HTMLButtonElement>("settings-open");
 const panelProofs = $<HTMLElement>("panel-proofs");
 const proofsOpen = $<HTMLButtonElement>("proofs-open");
 const proofsClose = $<HTMLButtonElement>("proofs-close");
+const proofsExport = $<HTMLButtonElement>("proofs-export");
+const proofsFilter = $<HTMLDivElement>("proofs-filter");
 const proofsSearch = $<HTMLInputElement>("proofs-search");
 const proofsList = $<HTMLDivElement>("proofs-list");
 const proofsEmpty = $<HTMLParagraphElement>("proofs-empty");
@@ -425,6 +427,7 @@ accountToggle.addEventListener("click", () => {
 // Closes with Escape (focus back on the account) or a click anywhere else.
 accountMenu.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
+  event.stopPropagation(); // only the menu closes, not a page open behind it
   showAccountMenu(false);
   accountToggle.focus();
 });
@@ -1115,6 +1118,12 @@ function settingsProblem(kind: "file" | "request" | "message"): string | null {
 const DATE_FORMAT = { day: "2-digit", month: "2-digit", year: "numeric" } as const;
 const formatDate = (when: string | number) => new Date(when).toLocaleDateString(locale(), DATE_FORMAT);
 
+/**
+ * "Gültig bis 02.12.2026, 23:59 Uhr" in the card: a Nextcloud link works through its last day (YYYY-MM-DD, like the
+ * watcher and the cleanup count it), a confidential message until the exact end of its Send (`exact`, ms).
+ */
+const formatExpiry = (expireDate: string, exact?: number) => formatDateTime(exact ?? new Date(`${expireDate}T23:59:00`).getTime());
+
 /** Empty paragraph after an inserted card, so the cursor ends up below it (see insertIntoBody). */
 const AFTER_CARD = "<p style=\"margin:0;\"><br></p>";
 
@@ -1172,7 +1181,7 @@ async function insertLinks(results: UploadResult[]) {
   const withPassword = !isWithoutPassword(results[0]);
   // The card in the language chosen for the recipients (dates and sizes too).
   const [html, text] = inLanguage(recipientLanguage(), () => {
-    const expire = formatDate(results[0].expireDate);
+    const expire = formatExpiry(results[0].expireDate);
     const proof = cardProof(results.find((r) => r.proofId)?.proofId, true);
     return [filesCard(files, expire, formatSize, withPassword, proof), filesText(files, expire, formatSize, withPassword, proof)];
   });
@@ -1802,7 +1811,7 @@ async function insertRequest() {
       // Same password and password mail as the files of this mail.
       await rememberShareChoice(result.jobId, undefined, result.proofId);
       const [html, text] = inLanguage(recipientLanguage(), () => {
-        const expire = formatDate(result.expireDate);
+        const expire = formatExpiry(result.expireDate);
         const proof = cardProof(result.proofId, true);
         return [requestCard(result.shareUrl, expire, proof), requestText(result.shareUrl, expire, proof)];
       });
@@ -1844,7 +1853,7 @@ async function insertMessage() {
   await runInsert(async () => {
     try {
       setStatus(t("message.creating"), "progress");
-      const result = await api<{ shareUrl: string; expireDate: string; jobId: string; proofId?: string | null }>(
+      const result = await api<{ shareUrl: string; expireDate: string; expiresAt?: number; jobId: string; proofId?: string | null }>(
         "/api/messages",
         {
           method: "POST",
@@ -1855,7 +1864,7 @@ async function insertMessage() {
       // Same password and password mail as the files of this mail (one step).
       await rememberShareChoice(result.jobId, undefined, result.proofId);
       const [cardHtml, cardText] = inLanguage(recipientLanguage(), () => {
-        const expire = formatDate(result.expireDate);
+        const expire = formatExpiry(result.expireDate, result.expiresAt);
         const proof = cardProof(result.proofId, false);
         return [messageCard(result.shareUrl, expire, proof), messageText(result.shareUrl, expire, proof)];
       });
@@ -1890,7 +1899,16 @@ function selectTab(tab: Tab, load = true) {
 type Overlay = "help" | "settings" | "proofs" | null;
 
 /** Shows the guide or the settings in place of the current tab; closed, that tab shows again. */
+/** The page shown in place of the tabs (settings, proofs, help) – null: a tab. */
+let currentOverlay: Overlay = null;
+
+/**
+ * Settings, proofs and help are pages of their own: the tab bar goes while one is open (no tab looks active behind
+ * it), the page has "←" before its title; "←" or Escape leads back to the tab.
+ */
 function showOverlay(overlay: Overlay) {
+  currentOverlay = overlay;
+  document.querySelector<HTMLElement>(".tabbar")!.hidden = overlay !== null;
   helpToggle.setAttribute("aria-expanded", String(overlay === "help"));
   panelHelp.hidden = overlay !== "help";
   panelSettings.hidden = overlay !== "settings";
@@ -1903,6 +1921,13 @@ function showOverlay(overlay: Overlay) {
 }
 
 const showHelp = (open: boolean) => showOverlay(open ? "help" : null);
+
+// Escape on a page: back to the tab, the focus on the account (where the page was opened).
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || currentOverlay === null || event.defaultPrevented) return;
+  showOverlay(null);
+  accountToggle.focus();
+});
 
 tabSend.addEventListener("click", () => selectTab("send"));
 tabMail.addEventListener("click", () => selectTab("mail"));
@@ -1957,58 +1982,163 @@ settingsClose.addEventListener("click", closeSettings);
 // Every delivery proof of the user, newest first – also those whose links expired long ago, which "Verlauf" no longer
 // lists. Searched here (tracking ID, subject, recipients, file names); the seal opens the signed PDF.
 
+/** Where a case stands (server proof.ts, caseSummary): the colour of its seal. */
+type ProofState = "open" | "sent" | "confirmed" | "fetched";
+
 interface ProofItem {
   id: string;
   createdAt: number;
   subject: string | null;
-  sentAt: number | null;
+  sentAt: number;
   recipients: string[];
   files: string[];
   downloads: number;
   confirmed: number;
   done: boolean;
+  state: ProofState;
+  /** Downloads, files received, openings of a message. */
+  fetched: number;
+  /** Last valid day of the links still running (YYYY-MM-DD), null once all ended. */
+  endsOn: string | null;
+  keptUntil: number;
+  /** Kind of its (first) link – the symbol on the left, as in "Verlauf". */
+  kind: "file" | "request" | "message";
+  /** Whether the sent mail is known – then the subject opens it. */
+  mailAvailable: boolean;
+  /** Where the password went (addresses, masked numbers); empty: not sent yet. null: links without password. */
+  passwordTo: string[] | null;
 }
 
-let proofItems: ProofItem[] = [];
+type ProofFilter = "all" | "running" | "fetched" | "unfetched";
 
+let proofItems: ProofItem[] = [];
+let proofFilter: ProofFilter = "all";
+
+/**
+ * The seal of a proof, coloured by its state (grey sent, blue address confirmed, green fetched); the state and the
+ * tracking ID in its tooltip, a click opens the PDF. Also used in "Verlauf".
+ */
+function proofSeal(id: string, state: ProofState | null | undefined): HTMLButtonElement {
+  const seal = document.createElement("button");
+  seal.type = "button";
+  seal.className = `btn btn-subtle btn-icon proof-seal state-${state ?? "sent"}`;
+  seal.innerHTML = ICONS.proof;
+  seal.title = `${t("shares.proofLabel", { id })} – ${t(`proofs.state.${state ?? "sent"}`)}`;
+  seal.setAttribute("aria-label", seal.title);
+  seal.addEventListener("click", () => void openProof(id, seal));
+  return seal;
+}
+
+const dayOf = (date: string) => formatDate(Date.parse(`${date}T12:00:00Z`));
+
+/**
+ * An entry like a row of "Verlauf": the kind symbol on the left, the subject as the title (a click opens the sent mail),
+ * the PDF button next to it, below it what went out with the seal (state by its colour), to whom and when, the state
+ * with its dot, and the tracking ID.
+ */
 function proofRow(p: ProofItem): HTMLElement {
   const row = document.createElement("div");
   row.className = "share proof-entry";
-  const seal = document.createElement("button");
-  seal.type = "button";
-  seal.className = "btn btn-subtle btn-icon proof-seal";
-  seal.innerHTML = ICONS.proof;
-  seal.title = t("shares.proofLabel", { id: p.id });
-  seal.setAttribute("aria-label", seal.title);
-  seal.addEventListener("click", () => void openProof(p.id, seal));
-  const body = document.createElement("div");
-  body.className = "share-body";
-  const line = (text: string, className = "share-meta") => {
-    const el = document.createElement("div");
-    el.className = className;
-    el.textContent = text;
-    return el;
-  };
-  body.append(
-    line(p.subject || t("shares.noSubject"), "share-title"),
-    line(p.sentAt
-      ? t("proofs.sentTo", { date: formatDate(p.sentAt), to: p.recipients.join(", ") || "–" })
-      : t("proofs.notSent", { date: formatDate(p.createdAt) })),
-    line([p.files.join(", "), p.downloads > 0 ? t("proofs.downloaded", { count: p.downloads }) : t("proofs.notDownloaded")]
-      .filter(Boolean).join(" · ")),
-    line(`${t("proofs.case", { id: p.id })} · ${t(p.done ? "proofs.done" : "proofs.running")}`),
-  );
-  row.append(seal, body);
+  row.innerHTML =
+    (p.kind === "request" ? REQUEST_ICON : p.kind === "message" ? MESSAGE_ICON : FILE_ICON) +
+    `<div class="share-body">` +
+    `<div class="share-head"><div class="share-title"></div>` +
+    `<div class="share-actions"><button type="button" class="btn btn-subtle btn-icon open-pdf">${ICONS.pdf}</button></div></div>` +
+    `<div class="share-item"></div>` +
+    `<div class="share-meta proof-sent"></div>` +
+    `<div class="share-meta proof-password"></div>` +
+    `<div class="share-state${p.state === "fetched" ? " done" : ""}"><span class="dot-state" aria-hidden="true"></span><span class="state-text"></span></div>` +
+    `<div class="share-meta proof-case"></div></div>`;
+  const subject = p.subject || t("shares.noSubject");
+  if (p.mailAvailable) {
+    const title = document.createElement("button");
+    title.type = "button";
+    title.className = "share-title";
+    title.textContent = subject;
+    title.setAttribute("aria-label", `${subject}, ${t("shares.openMail")}`);
+    title.addEventListener("click", () => void openProofMail(p.id));
+    row.querySelector(".share-title")!.replaceWith(title);
+  } else {
+    row.querySelector<HTMLElement>(".share-title")!.textContent = subject;
+  }
+  const pdf = row.querySelector<HTMLButtonElement>(".open-pdf")!;
+  pdf.title = t("proofs.openPdf");
+  pdf.setAttribute("aria-label", pdf.title);
+  pdf.addEventListener("click", () => void openProof(p.id, pdf));
+  const item = row.querySelector<HTMLElement>(".share-item")!;
+  item.textContent = p.kind === "file" ? p.files.join(", ") : t(`shares.kind.${p.kind}`);
+  item.title = p.files.join(", ");
+  item.append(proofSeal(p.id, p.state));
+  row.querySelector<HTMLElement>(".proof-sent")!.textContent =
+    t("proofs.sentTo", { date: formatDate(p.sentAt), to: p.recipients.join(", ") || "–" });
+  // "Kennwort an erika@example.com" – like the password line of "Verlauf".
+  const password = row.querySelector<HTMLElement>(".proof-password")!;
+  password.textContent = p.passwordTo === null
+    ? t("proofs.withoutPassword")
+    : p.passwordTo.length ? t("proofs.passwordTo", { to: p.passwordTo.join(", ") }) : t("proofs.passwordPending");
+  row.querySelector<HTMLElement>(".state-text")!.textContent = [
+    p.downloads > 0 ? t("proofs.downloaded", { count: p.downloads }) : p.fetched > 0 ? t("proofs.fetched", { count: p.fetched }) : t("proofs.notFetched"),
+    p.endsOn ? t("proofs.endsOn", { date: dayOf(p.endsOn) }) : t("proofs.keptUntil", { date: formatDate(p.keptUntil) }),
+  ].join(" · ");
+  row.querySelector<HTMLElement>(".proof-case")!.textContent = t("proofs.case", { id: p.id });
   return row;
 }
 
-/** The list for the search: tracking ID, subject, recipients and file names, case-insensitive. */
-function renderProofs() {
+/** The mail of a proof, opened in Outlook like a click on the subject in "Verlauf". */
+async function openProofMail(id: string) {
+  try {
+    const { ewsId } = await api<{ ewsId: string }>(`/api/proofs/${encodeURIComponent(id)}/mail`, {}, await getToken());
+    const mailbox = Office.context.mailbox;
+    if (typeof mailbox.displayMessageFormAsync === "function") {
+      await officeAsync<void>((cb) => mailbox.displayMessageFormAsync(ewsId, cb));
+    } else {
+      mailbox.displayMessageForm(ewsId);
+    }
+  } catch (err) {
+    setStatus(err instanceof ApiError ? errorMessage(err) : t("shares.openMailFailed"), "error");
+  }
+}
+
+const proofMatchesFilter = (p: ProofItem) =>
+  proofFilter === "all" ||
+  (proofFilter === "running" && p.endsOn !== null) ||
+  (proofFilter === "fetched" && p.state === "fetched") ||
+  (proofFilter === "unfetched" && p.state !== "fetched");
+
+/** The proofs the filter and the search let through (what "Exportieren" exports). */
+function shownProofs(): ProofItem[] {
   const query = proofsSearch.value.trim().toLowerCase();
-  const hits = proofItems.filter((p) => !query || [p.id, p.subject ?? "", ...p.recipients, ...p.files].some((s) => s.toLowerCase().includes(query)));
+  return proofItems.filter((p) => proofMatchesFilter(p) &&
+    (!query || [p.id, p.subject ?? "", ...p.recipients, ...p.files].some((s) => s.toLowerCase().includes(query))));
+}
+
+/** The list: filter chips and search (tracking ID, subject, recipients and file names, case-insensitive). */
+function renderProofs() {
+  const hits = shownProofs();
   proofsList.replaceChildren(...hits.map(proofRow));
   proofsEmpty.hidden = hits.length > 0;
   proofsEmpty.textContent = proofItems.length ? t("proofs.noMatch") : t("proofs.none");
+  proofsExport.disabled = hits.length === 0;
+  for (const chip of proofsFilter.querySelectorAll<HTMLButtonElement>(".chip")) {
+    chip.setAttribute("aria-pressed", String(chip.dataset.filter === proofFilter));
+  }
+}
+
+/** "Exportieren": the proofs shown as a ZIP (signed PDFs and an overview as CSV), opened in the default browser. */
+async function exportProofs() {
+  const ids = shownProofs().map((p) => p.id);
+  if (ids.length === 0) return;
+  proofsExport.disabled = true;
+  setStatus(t("proofs.exporting", { count: ids.length }), "progress");
+  try {
+    const { url } = await api<{ url: string }>("/api/proofs/export", { method: "POST", body: JSON.stringify({ ids }) }, await getToken());
+    openInBrowser(url);
+    setStatus(t("proofs.exported", { count: ids.length }), "success");
+  } catch (err) {
+    setStatus(t("proofs.exportFailed", { error: errorMessage(err) }), "error");
+  } finally {
+    proofsExport.disabled = false;
+  }
 }
 
 async function openProofs() {
@@ -2028,6 +2158,13 @@ async function openProofs() {
 
 proofsOpen.addEventListener("click", () => void openProofs());
 proofsSearch.addEventListener("input", renderProofs);
+proofsFilter.addEventListener("click", (event) => {
+  const chip = (event.target as HTMLElement).closest<HTMLButtonElement>(".chip");
+  if (!chip) return;
+  proofFilter = chip.dataset.filter as ProofFilter;
+  renderProofs();
+});
+proofsExport.addEventListener("click", () => void exportProofs());
 proofsClose.addEventListener("click", () => {
   showOverlay(null);
   accountToggle.focus();
@@ -2056,6 +2193,8 @@ interface ShareItem {
   accessId?: string;
   /** "Zustellnachweis": tracking ID of the mail's case – "Nachweis" opens its PDF. */
   proofId?: string | null;
+  /** State of that case (colour of the seal). */
+  proofState?: ProofState | null;
   /** Subject of the mail it went out with (title of the entry); null while unknown (not sent yet, older entries). */
   subject?: string | null;
   /** Graph ID of that mail in the user's own mailbox – a click on the subject opens it. */
@@ -2090,12 +2229,12 @@ interface ShareItem {
 /** "Kennwort per SMS an +49 170 •••• 78 – zugestellt am 16.11.2026, 14:05" for the "Verlauf" list. */
 /** The way in a few words for the line ("Kennwort per Mail", "Kennwort per SMS – zugestellt"); the rest in the tooltip. */
 function passwordShort(p: NonNullable<ShareItem["password"]>): string {
-  if (p.channel === "mail") return t("shares.passwordMailShort");
+  if (p.channel === "mail") return t("shares.passwordMailShort", { to: p.to });
   const status =
     p.status === "delivered" ? t("shares.smsDelivered")
     : p.status === "failed" ? t(p.refused ? "shares.smsFailed" : "shares.smsUndelivered")
     : t("shares.smsSubmitted");
-  return t("shares.passwordSmsShort", { status });
+  return t("shares.passwordSmsShort", { to: p.to, status });
 }
 
 function passwordText(p: NonNullable<ShareItem["password"]>): string {
@@ -2130,16 +2269,21 @@ const MESSAGE_ICON =
  * "Nachweis": the PDF of the mail's delivery proof in the default browser – the server hands out a signed address that
  * works for a few minutes (a download from the taskpane does not work in every Outlook).
  */
+/** Opens an address (a proof PDF, an export) in the default browser – a download from the taskpane does not work everywhere. */
+function openInBrowser(url: string) {
+  const ui = Office.context.ui as unknown as { openBrowserWindow?: (url: string) => void };
+  if (ui.openBrowserWindow && Office.context.requirements.isSetSupported("OpenBrowserWindowApi", "1.1")) {
+    ui.openBrowserWindow(url);
+  } else {
+    window.open(url, "_blank", "noopener");
+  }
+}
+
 async function openProof(id: string, button: HTMLButtonElement) {
   button.disabled = true;
   try {
     const { url } = await api<{ url: string }>(`/api/proofs/${encodeURIComponent(id)}/link`, { method: "POST" }, await getToken());
-    const ui = Office.context.ui as unknown as { openBrowserWindow?: (url: string) => void };
-    if (ui.openBrowserWindow && Office.context.requirements.isSetSupported("OpenBrowserWindowApi", "1.1")) {
-      ui.openBrowserWindow(url);
-    } else {
-      window.open(url, "_blank", "noopener");
-    }
+    openInBrowser(url);
   } catch (err) {
     setStatus(t("shares.proofFailed", { error: errorMessage(err) }), "error");
   } finally {
@@ -2244,6 +2388,8 @@ const ICONS = {
   ),
   revoke: icon('<circle cx="10" cy="10" r="6.5"/><path d="M5.4 5.4l9.2 9.2"/>'),
   /** "Nachweis": a document with a seal (the PDF of the delivery proof). */
+  /** A document with an arrow out of it: opens the proof as PDF. */
+  pdf: icon('<path d="M11.5 3H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V6.5L11.5 3Z"/><path d="M11.5 3v3.5H15"/><path d="M10 9v5m0 0-2-2m2 2 2-2"/>'),
   proof: icon('<path d="M11.5 3H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h3"/><path d="M11.5 3L15 6.5V9"/><path d="M8 7h3M8 10h2"/><circle cx="14" cy="13" r="2.5"/><path d="M12.8 15.2L12.5 18l1.5-.8 1.5.8-.3-2.8"/>'),
   /** Same drawing as the refresh button in the tab bar (taskpane.html). */
   refresh: icon('<path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11"/>'),
@@ -2476,15 +2622,7 @@ function shareRow(share: ShareItem): HTMLElement {
       item.textContent = t(`shares.kind.${share.kind}`);
     }
     // "Zustellnachweis": a small seal after it – the tracking ID in its tooltip, a click opens the PDF ("Nachweis").
-    if (share.proofId) {
-      const seal = document.createElement("button");
-      seal.type = "button";
-      seal.className = "btn btn-subtle btn-icon proof-seal";
-      seal.innerHTML = ICONS.proof;
-      label(seal, t("shares.proofLabel", { id: share.proofId }));
-      seal.addEventListener("click", () => void openProof(share.proofId!, seal));
-      item.append(seal);
-    }
+    if (share.proofId) item.append(proofSeal(share.proofId, share.proofState));
     row.querySelector(".share-head")!.after(item);
   }
 
@@ -2638,7 +2776,7 @@ async function linkAgain(share: ShareItem, button: HTMLButtonElement) {
     const withPassword = !isWithoutPassword(result);
     // The card in the language chosen for the recipients of this mail.
     const [html, text] = inLanguage(recipientLanguage(), () => {
-      const expire = formatDate(result.expireDate);
+      const expire = formatExpiry(result.expireDate);
       const proof = cardProof(result.proofId, true);
       if (result.kind === "request") return [requestCard(result.shareUrl, expire, proof), requestText(result.shareUrl, expire, proof)];
       const files = [{ name: result.fileName, size: result.size, url: result.shareUrl }];

@@ -113,12 +113,17 @@ export function mailCard(card: MailCard): string {
   );
 }
 
-/** A button as a link (the card's button and the buttons of its steps). */
+/**
+ * A button (the card's button and the buttons of its steps), the same as in the link card (addin mailCard.ts): the
+ * colour on a table cell, so classic Outlook (Word engine) shows a filled button, not blue text in a white box.
+ */
 function buttonLink(button: { label: string; url: string }): string {
   return (
-    `<a href="${escapeHtml(button.url)}" style="display:inline-block;background:${BRAND};border:1px solid ${BRAND};` +
-    `border-radius:4px;color:#ffffff;font-family:${FONT};font-size:13px;font-weight:600;line-height:18px;` +
-    `padding:6px 14px;text-decoration:none;white-space:nowrap;">${escapeHtml(button.label)}</a>`
+    `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;">` +
+    `<tr><td bgcolor="${BRAND}" style="background:${BRAND};border-radius:4px;mso-padding-alt:6px 14px;">` +
+    `<a href="${escapeHtml(button.url)}" style="display:inline-block;color:#ffffff;font-family:${FONT};font-size:13px;` +
+    `font-weight:600;line-height:18px;padding:6px 14px;text-decoration:none;white-space:nowrap;">${escapeHtml(button.label)}</a>` +
+    `</td></tr></table>`
   );
 }
 

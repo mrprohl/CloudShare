@@ -579,9 +579,9 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
               maxAccessCount: part.maxAccessCount,
               senderName: job.senderName,
               department: job.department,
-              ...(deferred
-                ? { deferred: true, toRecipients: ways.some((w) => w.channel === "recipients"), signature: job.signature }
-                : {}),
+              // Every mail to the recipients carries the sender's signature – also the code mail of the delivery proof.
+              signature: job.signature,
+              ...(deferred ? { deferred: true, toRecipients: ways.some((w) => w.channel === "recipients") } : {}),
             }).catch((err) => log.warn({ err, user: job.ownerUpn }, "Password entry for resending not recorded"));
           }
         }
