@@ -557,7 +557,7 @@ test("language: a regional variant uses its language", async ({ page }) => {
 
 // --- Sending files -----------------------------------------------------------------------------------------------
 
-test("preselects large attachments and proposes a random password", async ({ page }) => {
+test("ticks every attachment and proposes a random password", async ({ page }) => {
   await openTaskpane(page, {
     attachments: [attachment("a1", "Präsentation.pptx", 2.5 * MiB), attachment("a2", "Notiz.txt", 200 * 1024)],
     config: { smsEnabled: true, smsDefaultCountry: "49" }, // the README picture shows every way the password can go
@@ -565,9 +565,10 @@ test("preselects large attachments and proposes a random password", async ({ pag
   const rows = page.locator("#attachments label.list-item");
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(0).locator("input")).toBeChecked();
-  await expect(rows.nth(0).locator(".badge")).toHaveText("Groß");
-  await expect(rows.nth(1).locator("input")).not.toBeChecked();
-  await expect(rows.nth(1).locator(".badge")).toHaveCount(0);
+  // Whoever opens CloudShare sends through it: every attachment ticked, also the small one; no "Groß" mark, an "×" each.
+  await expect(page.locator("#attachments .badge")).toHaveCount(0);
+  await expect(rows.nth(0).locator(".remove-file")).toHaveAttribute("aria-label", "„Präsentation.pptx“ entfernen");
+  await expect(rows.nth(1).locator("input")).toBeChecked();
 
   const password = page.locator("#password");
   await expect(password).toHaveAttribute("readonly", "");
@@ -578,9 +579,9 @@ test("preselects large attachments and proposes a random password", async ({ pag
   await expect(page.locator("#account-storage")).toHaveText("37,5 GB von 50 GB belegt"); // in the account menu
   // One button that says what it inserts; the rarely changed values collapsed behind a summary.
   await expect(page.locator("#kind-files")).toBeChecked();
-  await expect(page.locator("#submit")).toHaveText("Datei als Link einfügen");
-  await rows.nth(1).locator(".file-name").click();
   await expect(page.locator("#submit")).toHaveText("2 Dateien als Link einfügen");
+  await rows.nth(1).locator(".file-name").click();
+  await expect(page.locator("#submit")).toHaveText("Datei als Link einfügen");
   await rows.nth(1).locator(".file-name").click();
   await expect(page.locator("#validity-section")).toBeHidden();
   await expect(page.locator("#validity-summary")).toHaveText("Link 14 Tage · Kennwort-Link 5 Tage, 3-mal abrufbar");
@@ -633,6 +634,16 @@ test("Sprache für die Empfänger: the card and the password mail in the chosen 
   // The server writes the password mail and SMS of this step in it; the mail keeps the choice.
   expect(JSON.parse(calls.find((c) => c.path.endsWith("/complete"))!.body!.toString())).toMatchObject({ language: "en", subject: "Unterlagen Neubau" }); // the draft's subject for "Verlauf"
   expect(JSON.parse((await officeLog(page)).session["cloudshare-state"] ?? "{}")).toMatchObject({ recipientLanguage: "en" });
+});
+
+test("the \"×\" of an attachment removes it from the mail", async ({ page }) => {
+  await openTaskpane(page, { attachments: [attachment("a1", "Präsentation.pptx", 2.5 * MiB), attachment("a2", "Notiz.txt", 200 * 1024)] });
+  const rows = page.locator("#attachments label.list-item");
+  await expect(rows).toHaveCount(2);
+  await rows.nth(1).locator(".remove-file").click();
+  expect((await officeLog(page)).removed).toEqual(["a2"]);
+  await expect(rows).toHaveCount(1);
+  await expect(rows.nth(0).locator(".file-name")).toHaveText("Präsentation.pptx");
 });
 
 test("uploads a large attachment in chunks, removes it and inserts the card", async ({ page }) => {
@@ -1016,7 +1027,7 @@ test("files picked from the computer can be removed from the list again (×)", a
   await expect(rows.nth(0).locator("input")).toBeChecked(); // the × did not toggle anything
   await expect(rows.nth(1)).toContainText("Drei.pdf");
   await expect(rows.nth(1).locator("input")).not.toBeChecked(); // stays unticked after re-rendering
-  await expect(rows.nth(0).locator(".remove-file")).toHaveAttribute("aria-label", "„Zwei.pdf“ aus der Liste entfernen");
+  await expect(rows.nth(0).locator(".remove-file")).toHaveAttribute("aria-label", "„Zwei.pdf“ entfernen");
   await expectAccessible(page);
 
   await rows.nth(0).locator(".remove-file").click();
@@ -1177,7 +1188,10 @@ test("Zustellnachweis: only for files; ticked, it goes with the upload and the c
   // From now on this mail takes only files with a proof: no confidential message, no upload link, the switch fixed on.
   await expect(page.locator("#proof")).toBeChecked();
   await expect(page.locator("#proof")).toBeDisabled();
-  await expect(page.locator("#proof-hint")).toContainText("Diese Nachricht hat einen Zustellnachweis");
+  // The reason in a box at the top that stays; the hint under the switch stays as it was.
+  await expect(page.locator("#proof-lock-note")).toBeVisible();
+  await expect(page.locator("#proof-lock-note")).toContainText("Diese Nachricht hat einen Zustellnachweis");
+  await expect(page.locator("#proof-hint")).toHaveText("Versand und Abrufe werden protokolliert; Empfänger bestätigen ihre Adresse mit einem Code.");
   await expect(page.locator('input[name="kind"][value="message"]')).toBeDisabled();
   await expect(page.locator('input[name="kind"][value="request"]')).toBeDisabled();
   expect(JSON.parse((await officeLog(page)).session["cloudshare-state"])).toMatchObject({ proofMail: true });
@@ -1190,7 +1204,8 @@ test("Zustellnachweis: after a link without it, the mail takes no proof (never m
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
   await expect(page.locator("#proof")).not.toBeChecked();
   await expect(page.locator("#proof")).toBeDisabled();
-  await expect(page.locator("#proof-hint")).toContainText("schon Links ohne Zustellnachweis");
+  await expect(page.locator("#proof-lock-note")).toContainText("schon Links ohne Zustellnachweis");
+  await expect(page.locator("#proof-hint")).toHaveText("Versand und Abrufe werden protokolliert; Empfänger bestätigen ihre Adresse mit einem Code.");
   // A message or an upload link is still fine here.
   await expect(page.locator('input[name="kind"][value="message"]')).toBeEnabled();
   await expectAccessible(page);
@@ -1902,7 +1917,7 @@ test.describe("README pictures (English)", () => {
 
   test("Send: files", async ({ page }) => {
     await openTaskpane(page, { lang: "en", attachments: ATTACHMENTS, config: README_CONFIG });
-    await expect(page.locator("#submit")).toHaveText("Insert file as link");
+    await expect(page.locator("#submit")).toHaveText("Insert 2 files as links");
     await expect(page.locator("#validity-summary")).toHaveText("Link 14 days · Password link 5 days, opens 3 times");
     await expect(page.locator("#account")).toHaveText("max.mustermann");
     await expectAccessible(page);

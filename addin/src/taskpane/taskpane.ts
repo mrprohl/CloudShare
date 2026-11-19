@@ -1,6 +1,6 @@
 import {
   api,
-  attachmentThreshold,
+
   API_BASE,
   ApiError,
   composeItem,
@@ -69,7 +69,8 @@ const recipientLanguageField = $<HTMLDivElement>("recipient-language-field");
 const recipientLanguageSelect = $<HTMLSelectElement>("recipient-language");
 const proofField = $<HTMLDivElement>("proof-field");
 const proofInput = $<HTMLInputElement>("proof");
-const proofHint = $<HTMLParagraphElement>("proof-hint");
+const proofLockNote = $<HTMLDivElement>("proof-lock-note");
+const proofLockText = $<HTMLSpanElement>("proof-lock-text");
 const encryptedField = $<HTMLDivElement>("encrypted-field");
 const encryptedText = $<HTMLParagraphElement>("encrypted-text");
 const encryptedConfirm = $<HTMLInputElement>("encrypted-confirm");
@@ -458,31 +459,28 @@ const FILE_ICON =
   '<path d="M10.5 2.5v4h4" fill="none" stroke="currentColor"/></svg>';
 
 /**
- * One row in Outlook's list style: checkbox, file icon, name and an optional "Groß" badge; below the name the file's
- * sensitivity label once it is known (showLabel) – no size.
+ * One row in Outlook's list style: checkbox, file icon, name and the "×" that removes the file (an attachment from the
+ * mail, a picked file from the list); below the name the file's sensitivity label once it is known (showLabel) – no
+ * size, no "Groß" mark (large attachments are simply ticked already).
  */
 function fileRow(
   name: string,
   value: string,
   checked: boolean,
-  large: boolean,
-  /** Files picked from the computer can be removed from the list again (mail attachments are removed in Outlook). */
+  /** The "×": removes the file – an attachment from the mail, a file picked from the computer from the list. */
   onRemove?: () => void,
 ): HTMLLabelElement {
   const row = document.createElement("label");
   row.className = "checkbox list-item";
   row.innerHTML =
     `<input type="checkbox" /><span class="box" aria-hidden="true"></span>${FILE_ICON}` +
-    `<span class="file-text"><span class="file-name"></span><span class="file-meta" hidden></span></span>` +
-    (large ? `<span class="badge"></span>` : "");
+    `<span class="file-text"><span class="file-name"></span><span class="file-meta" hidden></span></span>`;
   const box = row.querySelector("input")!;
   box.value = value;
   box.checked = checked;
   box.dataset.name = name;
   row.querySelector(".file-name")!.textContent = name;
   row.querySelector<HTMLElement>(".file-name")!.title = name;
-  const badge = row.querySelector<HTMLElement>(".badge");
-  if (badge) badge.textContent = t("files.large");
   // Own name for the checkbox: otherwise a remove button inside the label would become part of it.
   box.setAttribute("aria-label", name);
   if (onRemove) {
@@ -559,17 +557,21 @@ async function showLabel(row: HTMLElement, label: Promise<FileLabel | null>) {
 const selectedFileCount = () =>
   attachmentList.querySelectorAll("input:checked").length + pickedList.querySelectorAll("input:checked").length;
 
-/** The size (MB) the list was last rendered with – a change of recipients re-renders only if it changes. */
-let shownThreshold: number | undefined;
+
 
 async function renderAttachments() {
   const attachments = await getFileAttachments();
-  // The size that applies to this draft – outside or inside the organisation (attachmentThreshold).
-  shownThreshold = await attachmentThreshold(serverConfig);
-  const threshold = shownThreshold * MB;
-  // Large attachments are preselected.
-  // ATTACHMENT_THRESHOLD_MB=0: every attachment is preselected, and none is called "Groß".
-  const rows = attachments.map((a) => fileRow(a.name, a.id, a.size > threshold, a.size > threshold && threshold > 0));
+  // Whoever opens CloudShare wants to send through it: every attachment is ticked (the size threshold only decides
+  // when Outlook points to CloudShare). One the user unticked stays unticked when the list is drawn again; its "×"
+  // removes it from the mail, as in Outlook.
+  const unticked = new Set(Array.from(attachmentList.querySelectorAll<HTMLInputElement>("input:not(:checked)")).map((box) => box.value));
+  const rows = attachments.map((a) =>
+    fileRow(a.name, a.id, !unticked.has(a.id), () => {
+      officeAsync<void>((cb) => composeItem().removeAttachmentAsync(a.id, cb))
+        .catch((err) => setStatus(t("labels.removeFailed", { error: errorMessage(err) }), "error"))
+        .finally(() => void renderAttachments().catch(() => undefined));
+    }),
+  );
   attachmentList.replaceChildren(...rows);
   // Their sensitivity label under the name (larger attachments are read only when they are inserted).
   if (labelPolicy() !== "off") {
@@ -590,7 +592,7 @@ function renderPicked() {
   pickedRendered = pickedFiles;
   pickedList.replaceChildren(
     ...pickedFiles.map((file, i) =>
-      fileRow(file.name, String(i), !unticked.has(file), false, () => {
+      fileRow(file.name, String(i), !unticked.has(file), () => {
         pickedFiles = pickedFiles.filter((f) => f !== file);
         renderPicked();
       }),
@@ -879,7 +881,9 @@ function applyProofLock(proofMail: boolean | undefined) {
   const locked = proofMail !== undefined && serverConfig?.deliveryProof === true;
   if (locked) proofInput.checked = proofMail;
   proofInput.disabled = locked;
-  proofHint.textContent = t(!locked ? "proof.hint" : proofMail ? "proof.lockedOn" : "proof.lockedOff");
+  // The hint under the switch always says what a proof does; why things are fixed stays in a box at the top.
+  proofLockNote.hidden = !locked;
+  proofLockText.textContent = locked ? t(proofMail ? "proof.lockedOn" : "proof.lockedOff") : "";
   // With a proof: no confidential message, no upload link in this mail (they have no confirmation page).
   for (const radio of kindRadios) {
     const blocked = locked && proofMail === true && radio.value !== "files";
@@ -3008,12 +3012,6 @@ Office.onReady(async () => {
   await renderAttachments().catch(() => undefined);
   composeItem().addHandlerAsync(Office.EventType.AttachmentsChanged, () => {
     renderAttachments().catch(() => undefined);
-  });
-  // Recipients decide which size applies: preselect again when it changes (internal ↔ external).
-  composeItem().addHandlerAsync(Office.EventType.RecipientsChanged, () => {
-    void attachmentThreshold(serverConfig).then((mb) => {
-      if (mb !== shownThreshold) renderAttachments().catch(() => undefined);
-    });
   });
 
   try {

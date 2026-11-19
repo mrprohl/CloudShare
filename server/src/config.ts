@@ -111,7 +111,7 @@ export const config = {
   credentialKey: required("CREDENTIAL_KEY"),
 
   /** From this size (per attachment) CloudShare suggests sending a link. No upper limit – the Nextcloud quota applies. */
-  // When a recipient is outside the organisation (INTERNAL_DOMAINS). 0: every attachment (no "Groß" badge, texts without a size).
+  // When a recipient is outside the organisation (INTERNAL_DOMAINS). 0: every attachment (texts without a size).
   thresholdMb: number("ATTACHMENT_THRESHOLD_MB", 5, true),
   // When every recipient is internal – also while none is entered yet. Unset: the same as ATTACHMENT_THRESHOLD_MB.
   thresholdInternalMb: number("ATTACHMENT_THRESHOLD_INTERNAL_MB", Number(process.env.ATTACHMENT_THRESHOLD_MB ?? 5), true),

@@ -63,6 +63,11 @@
 
         <div id="panel-send" class="panel" role="tabpanel" aria-labelledby="tab-send">
         <div class="content">
+          <!-- Why "Nachricht"/"Anfordern" or the proof switch are fixed in this mail (applyProofLock) – stays while it applies. -->
+          <div class="note-box" id="proof-lock-note" role="note" hidden>
+            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor"/><path d="M8 7v4M8 4.8v.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+            <span id="proof-lock-text"></span>
+          </div>
           <!-- What goes into the mail: one kind at a time, the button in the footer inserts it (taskpane.ts, selectKind). -->
           <div class="segmented" role="radiogroup" aria-label="%%t:addin.kind.label%%">
             <label class="segment">

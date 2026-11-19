@@ -326,18 +326,6 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .encrypted-title { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--danger-fg); margin: 0 0 2px; }
 .encrypted-title .icon { width: 16px; height: 16px; flex: none; }
 .encrypted-field .hint { margin: 0 0 4px; color: var(--fg1); }
-.badge {
-  flex: none;
-  height: 20px;
-  padding: 0 6px;
-  border: 1px solid var(--brand-tint-stroke);
-  border-radius: 10px;
-  background: var(--brand-tint-bg);
-  color: var(--brand-tint-fg);
-  font-size: 12px;
-  line-height: 18px;
-  font-weight: 600;
-}
 
 /* --- Message bar --------------------------------------------------------------- */
 /* Stays in sight at the top while the pane is scrolled (e.g. after a click on the button at its bottom). */
@@ -375,6 +363,13 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* Not ".progress": that is the class of a message of kind "progress" (setStatus), which would get cut to 2px. */
 .progress-track { height: 2px; margin-bottom: 12px; background: var(--stroke2); border-radius: 1px; overflow: hidden; }
 .progress-bar { height: 100%; width: 0; background: var(--brand-bg); transition: width 0.2s ease; }
+
+/* A note that stays at the top of "Senden" while it applies (e.g. why "Nachricht" and "Anfordern" are greyed out). */
+.note-box {
+  display: flex; align-items: flex-start; gap: 8px; margin: 0 0 12px; padding: 8px 12px;
+  border: 1px solid var(--brand-tint-stroke); border-radius: 4px; background: var(--brand-tint-bg); color: var(--fg1);
+}
+.note-box .icon { flex: none; width: 16px; height: 16px; margin-top: 2px; color: var(--brand-fg); }
 
 /* The note about an encrypted file: its "×" on the right of the title leaves the file out. */
 .encrypted-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }

@@ -97,12 +97,16 @@ function trace(step: string, detail?: string) {
 const supportsCustomAlert = () => Office.context.requirements.isSetSupported("Mailbox", "1.14");
 
 /**
- * Attachments above the size that applies to this draft (external or internal recipients, attachmentRule) – with that
- * size, which the texts name (none at 0), and the policy that applies (enforce / suggest).
+ * The attachments CloudShare should take, if their total is above the size that applies to this draft (external or
+ * internal recipients, attachmentRule) – the size counts for all file attachments of the mail together, not for each
+ * one: three files of 2 MB are 6 MB. Returned with that size, which the texts name (none at 0), and the policy that
+ * applies (enforce / suggest). 0: every attachment.
  */
 const largeAttachments = async (config: ServerConfig) => {
   const { mb, policy } = await attachmentRule(config);
-  return { mb, policy, large: (await getFileAttachments()).filter((a) => a.size > mb * MB) };
+  const files = await getFileAttachments();
+  const total = files.reduce((sum, a) => sum + a.size, 0);
+  return { mb, policy, large: total > mb * MB ? files : [] };
 };
 
 /**

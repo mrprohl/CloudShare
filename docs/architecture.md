@@ -91,7 +91,8 @@ files as links", "Insert confidential message", "Insert upload link"). Password,
 only; a mail already fixed to links without password disables the button for the other two and says why. Files
 dragged onto the pane switch it to "Files".
 
-1. The taskpane lists the mail's file attachments (those above `ATTACHMENT_THRESHOLD_MB` preselected) and files from
+1. The taskpane lists the mail's file attachments (all ticked – whoever opens CloudShare sends through it; the threshold
+   only decides when Outlook points to CloudShare; an attachment unticked stays so when the list is redrawn) and files from
    the computer – dropped onto the drop zone (the whole "Send" tab accepts drops) or picked by clicking it (native dialog `window.showOpenFilePicker`, fallback: hidden `<input type="file">`).
 2. **One click = one step** with a random `step` ID. All files of the step are uploaded one by one:
    `POST /api/uploads` (quota check via OCS `cloud/user`, 507 → `NEXTCLOUD_QUOTA_EXCEEDED`); a service that cannot be reached (DNS, connection refused, timeout) answers 502 `SERVICE_UNREACHABLE` naming it (`unreachableService`) →
@@ -464,7 +465,8 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   of the other kind into the mail's job (`jobId`) answers 409 `PROOF_MIX` (files with `proof`, upload links and messages
   never have one); `/arm` refuses a job that mixes them anyway, so the send handler holds the mail back. The pane fixes
   the kind with the first link (`DraftState.proofMail`, `applyProofLock`: the switch fixed, "Nachricht" and
-  "Anfordern" disabled with a proof).
+  "Anfordern" disabled with a proof; the reason stays in a note at the top of "Senden", `#proof-lock-note` - the hint under
+  the switch never changes).
 - **Password after the confirmation** (`proofPassword.ts`): the mail to the confirmed address says so ("Sie haben eben Ihre
   E-Mail-Adresse bestätigt …") and its card has two numbered steps (`MailCard.steps`: 1 "Kennwort anzeigen", 2 "Zum Download", each button with its address as plain text below), the download to the gateway – never to Nextcloud: the confirmed browser goes
   straight on, another one or a forwarded mail is asked for the code again, so link and password never travel together
@@ -536,11 +538,12 @@ Which attachments CloudShare steps in for, and how strictly, depends on the reci
 `addin/src/shared/office.ts`, used by the info bar, the send handler and the preselection in the pane):
 
 - **External** – one recipient in To, Cc or Bcc outside `INTERNAL_DOMAINS` (comma-separated, subdomains included;
-  empty = the domain of the user's own address): `ATTACHMENT_THRESHOLD_MB` and `ATTACHMENT_POLICY`.
+  empty = the domain of the user's own address): `ATTACHMENT_THRESHOLD_MB` and `ATTACHMENT_POLICY`. The size is the total
+  of all file attachments of the mail, not of each one (`largeAttachments` in `commands.ts`: above it, all of them).
 - **Internal** – every recipient inside, and also while none is entered yet: `ATTACHMENT_THRESHOLD_INTERNAL_MB` and
   `ATTACHMENT_POLICY_INTERNAL` (each unset = the external value). A distribution list counts by its own address –
   Outlook does not reveal its members in a draft. Recipients that cannot be read: external (the stricter case).
-- **`0` = every attachment**: all preselected, no "Groß" badge, the info bar and the prompt name no size
+- **`0` = every attachment**: the info bar and the prompt name no size
   (`notify.any`, `alert.enforceAny`, `alert.suggestAny`).
 - `OnMessageRecipientsChanged` (manifest 1.5.0.0, `onRecipientsChangedHandler` = the attachments handler) shows or
   removes the info bar when recipients change; the pane re-preselects only when the size that applies changes
