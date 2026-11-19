@@ -125,12 +125,22 @@ describe("send – policy enforce", () => {
 
   it("lets small, inline and non-file attachments through", async () => {
     office.state.attachments = [
-      small,
       { ...big, id: "i", isInline: true },
       { ...big, id: "m", attachmentType: "item" },
       { ...big, id: "edge", size: 1 * MB }, // exactly at the threshold is not "larger"
     ];
     expect(await send()).toEqual({ allowEvent: true });
+  });
+
+  it("counts the attachments of the mail together, not each on its own", async () => {
+    office.state.attachments = [
+      { ...small, id: "p1", name: "Teil1.pdf", size: 0.6 * MB },
+      { ...small, id: "p2", name: "Teil2.pdf", size: 0.6 * MB }, // each below 1 MB, together above
+    ];
+    const result = await send();
+    expect(result.allowEvent).toBe(false);
+    expect(result.errorMessage).toContain("zusammen größer als 1 MB");
+    expect(result.errorMessage).toContain("Teil1.pdf, Teil2.pdf");
   });
 });
 
@@ -339,6 +349,15 @@ describe("info bar while composing", () => {
     office.state.attachments = [{ ...big, name: `${"x".repeat(200)}.zip` }];
     await changed();
     expect(String(office.state.notifications.replaced[0].message).length).toBeLessThanOrEqual(150);
+  });
+
+  it("names the total when several attachments are larger together", async () => {
+    office.state.attachments = [
+      { ...small, id: "p1", size: 0.6 * MB },
+      { ...small, id: "p2", name: "Plan.pdf", size: 0.6 * MB },
+    ];
+    await changed();
+    expect(String(office.state.notifications.replaced[0].message)).toContain("2 Anhänge sind zusammen größer als 1 MB");
   });
 
   it("removes the bar when no large attachment is left", async () => {

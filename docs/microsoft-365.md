@@ -289,7 +289,7 @@ failed, retrying later`); everything else keeps working.
    shows your address and client ID.
 2. In Outlook, write a new mail → **CloudShare** → the pane opens without asking for a password → *Connect*
    connects Nextcloud.
-3. Attach a file above the threshold (default 5 MB) → the info bar appears; open CloudShare and click *Insert file as
+3. Attach files larger than the threshold together (default 5 MB) → the info bar appears; open CloudShare and click *Insert file as
    link* → a card is inserted.
 4. Send the mail to yourself or a colleague → the password mail follows within about a minute. The server log shows
    `Password mail sent` (`docker logs cloudshare 2>&1 | grep "Password mail"`).

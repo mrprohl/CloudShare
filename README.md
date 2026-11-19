@@ -74,7 +74,7 @@ password (to the recipients), **green** – downloaded, **red** – a problem.
 
 ## Using CloudShare
 
-<img src="docs/images/taskpane-send.png" alt="CloudShare pane, tab Send: the switch Files / Message / Request, one large attachment preselected, the password options, the block Recipients with Password to, Language and the switch Proof of delivery, the collapsed Validity with its summary and the button Insert file as link" width="300" align="right">
+<img src="docs/images/taskpane-send.png" alt="CloudShare pane, tab Send: the switch Files / Message / Request, the attachments ticked, each with its "×", the password options, the block Recipients with Password to, Language and the switch Proof of delivery, the collapsed Validity with its summary and the button Insert file as link" width="300" align="right">
 
 **Once:** open the pane with the **CloudShare** button in the ribbon and click **"Connect"** – the Nextcloud login
 opens in the browser (usually without typing anything, thanks to single sign-on). CloudShare remembers the
@@ -88,7 +88,8 @@ three.
 **Sending files** (**Files**):
 
 1. Attach the file as usual, or drag files from Explorer onto the pane (or click the drop zone to choose files).
-   Attachments above the threshold (default 5 MB) are marked **"Large"** and preselected; Outlook also shows a hint
+   Every attachment is ticked when the pane opens (untick what should go as a normal attachment; the "×" of a row removes
+   the file). When the attachments of the mail are larger than the threshold together (default 5 MB), Outlook also shows a hint
    above the mail.
 2. Choose the password:
    - **Random password** (default) – easy to read out, in varying patterns, e.g. `KateGeteFi45`, `47RantoBeKiwu`.
@@ -288,7 +289,7 @@ deployed again.
 | `NEXTCLOUD_FOLDER` | `CloudShare` | Folder for uploaded files in each user's Nextcloud |
 | `NEXTCLOUD_REQUEST_FOLDER` | `CloudShare-File-Requests` | Folder for files received through upload links |
 | `CREDENTIAL_KEY` | – | Key for the stored Nextcloud app passwords (`openssl rand -base64 32`); changing it disconnects all users |
-| `ATTACHMENT_THRESHOLD_MB` | `5` | From this size CloudShare steps in **when a recipient is outside the organisation** (hint while writing, check on send; such attachments are preselected and marked "Large"). `0` = every attachment: all preselected, no "Large" mark, the texts name no size |
+| `ATTACHMENT_THRESHOLD_MB` | `5` | From this total size of all attachments of a mail (not each one) CloudShare steps in **when a recipient is outside the organisation** (hint while writing, check on send; in the pane every attachment is ticked anyway). `0` = every attachment: the hint and the check for each one, the texts name no size |
 | `ATTACHMENT_THRESHOLD_INTERNAL_MB` | like `ATTACHMENT_THRESHOLD_MB` | The same when **every recipient is internal** – also while no recipient is entered yet; e.g. `0` outside and `5` inside: every attachment to customers goes as a link, colleagues get attachments up to 5 MB as usual. Checked again when the recipients change and on send |
 | `INTERNAL_DOMAINS` | empty (the user's own domain) | Domains that count as internal, comma-separated, subdomains included, e.g. `example.com, example.de`. A distribution list counts by its own address (Outlook does not reveal its members while writing) |
 | `ATTACHMENT_POLICY` | `suggest` | `suggest`: ask once, "Send Anyway" possible · `enforce`: large attachments only via CloudShare |
@@ -445,7 +446,7 @@ default, offered for "Files" only (not for a confidential message or an upload l
 - **One mail, one kind**: a mail with a proof of delivery takes only files with a proof – no confidential message, no
   upload link, no file without a proof (they have no confirmation page, and their password would reach the recipients
   before the confirmation). A mail with links without a proof takes no proof. The pane offers only what fits (the switch
-  is fixed after the first link, "Message" and "Request" are greyed out); the server refuses a mix when inserting and
+  is fixed after the first link, "Message" and "Request" are greyed out, a note at the top of "Send" says why); the server refuses a mix when inserting and
   when sending (409 `PROOF_MIX`).
 - **Guessing**: after five addresses that are no recipients within an hour, the page takes no code requests for that
   link for an hour (the answer still reads the same) and the sender gets one mail with the attempts (time, address,
