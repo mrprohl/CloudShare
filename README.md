@@ -74,7 +74,7 @@ password (to the recipients), **green** – downloaded, **red** – a problem.
 
 ## Using CloudShare
 
-<img src="docs/images/taskpane-send.png" alt="CloudShare pane, tab Send: the switch Files / Message / Request, the attachments ticked, each with its "×", the password options, the block Recipients with Password to, Language and the switch Proof of delivery, the collapsed Validity with its summary and the button Insert file as link" width="300" align="right">
+<img src="docs/images/taskpane-send.png" alt="CloudShare pane, tab Send: the switch Files / Message / Request, both attachments ticked, each with its "×", the password options, the block Recipients with Password to, Language and the switch Proof of delivery, the collapsed Validity with its summary and the button Insert file as link" width="300" align="right">
 
 **Once:** open the pane with the **CloudShare** button in the ribbon and click **"Connect"** – the Nextcloud login
 opens in the browser (usually without typing anything, thanks to single sign-on). CloudShare remembers the
