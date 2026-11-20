@@ -45,6 +45,8 @@ export interface ServerConfig {
   nextcloudUrl?: string;
   /** "Zustellnachweis" offered under "Empfänger" (DELIVERY_PROOF). */
   deliveryProof?: boolean;
+  /** "Feedback senden" in the account menu (FEEDBACK_MAIL set on the server). */
+  feedback?: boolean;
   /** Sensitivity labels of shared files: the mail takes them over ("inherit"), is offered them ("suggest") or nothing. */
   labelPolicy?: "inherit" | "suggest" | "off";
   /** Files encrypted by a label: ask first ("warn"), refuse ("block") or share without a word ("allow"). */

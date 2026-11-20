@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { config } from "../src/config.js";
 import { children, explicit, int, oid, read, seq } from "../src/der.js";
 import { pdfDocument } from "../src/pdf.js";
-import { makeCertificate, signedParts, signingIdentity, signPdf } from "../src/pdfSign.js";
+import { makeCertificate, resetSigningIdentity, signedParts, signingFilesProblem, signingIdentity, signPdf } from "../src/pdfSign.js";
 import { mockFetch } from "./helpers.js";
 
 afterEach(() => {
@@ -43,6 +43,45 @@ describe("signing the proof PDF", () => {
 
   it("keeps its own identity once made", () => {
     expect(signingIdentity().cert.equals(signingIdentity().cert)).toBe(true);
+  });
+
+  it("own PEM files: used when they work; missing or not matching – named at start, signed with the own certificate", () => {
+    const own = signingIdentity().cert;
+    const dir = mkdtempSync(path.join(tmpdir(), "cloudshare-pem-"));
+    const make = () => {
+      const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
+      const der = makeCertificate("Beispiel", "Example GmbH", privateKey, publicKey.export({ type: "spki", format: "der" }));
+      return { der, cert: new X509Certificate(der).toString(), key: privateKey.export({ type: "pkcs8", format: "pem" }).toString() };
+    };
+    const first = make();
+    const second = make();
+    writeFileSync(path.join(dir, "cert.pem"), first.cert);
+    writeFileSync(path.join(dir, "key.pem"), first.key);
+    writeFileSync(path.join(dir, "other-key.pem"), second.key);
+    const use = (cert: string, key: string) => {
+      config.proofSignCertFile = cert;
+      config.proofSignKeyFile = key;
+      resetSigningIdentity();
+    };
+    try {
+      use(path.join(dir, "cert.pem"), path.join(dir, "key.pem"));
+      expect(signingFilesProblem()).toBeNull();
+      expect(signingIdentity().cert.equals(first.der)).toBe(true);
+
+      use(path.join(dir, "missing.pem"), path.join(dir, "key.pem"));
+      expect(signingFilesProblem()).toContain("ENOENT");
+      expect(signingIdentity().cert.equals(own)).toBe(true);
+
+      use(path.join(dir, "cert.pem"), path.join(dir, "other-key.pem"));
+      expect(signingFilesProblem()).toContain("does not belong to the certificate");
+      expect(signingIdentity().cert.equals(own)).toBe(true);
+
+      use(path.join(dir, "cert.pem"), "");
+      expect(signingFilesProblem()).toContain("must both be set");
+    } finally {
+      use("", "");
+    }
+    expect(signingFilesProblem()).toBeNull();
   });
 
   it("signs the bytes outside /Contents; a change afterwards breaks the signature", async () => {

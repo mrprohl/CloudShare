@@ -88,7 +88,11 @@ The "Send" tab starts with a switch for **what** goes into the mail – **Files*
 **Request** (an upload link) – and shows only that part; the one button in the footer names what it inserts ("Insert 2
 files as links", "Insert confidential message", "Insert upload link"). Password, the block "Empfänger" ("Kennwort an", "Sprache", for files the switch "Zustellnachweis") and the collapsed
 "Gültigkeit" (one-line summary of the times for the chosen kind) apply to all three. "No password" is offered for files
-only; a mail already fixed to links without password disables the button for the other two and says why. Files
+only; a mail already fixed to links without password disables the button for the other two and says why. An option
+that does not exist for the chosen kind is not hidden without a word: "Ohne Kennwort" and "Zustellnachweis" show
+greyed out for "Nachricht"/"Anfordern" (`#mode-none-unavailable`, `#proof-unavailable` – own disabled copies, so the
+lock logic of the real ones stays untouched) with an "i" (`.why-toggle`, `showUnavailable`) that folds out the reason
+(`password.noneFilesOnly`, `proof.filesOnly`). Nextcloud enforcing passwords still hides "Ohne Kennwort" (a rule of the organisation, not of the kind). Files
 dragged onto the pane switch it to "Files".
 
 1. The taskpane lists the mail's file attachments (all ticked – whoever opens CloudShare sends through it; the threshold
@@ -101,9 +105,13 @@ dragged onto the pane switch it to "Files".
 3. `complete` creates one public link per file (password, expiry date) and attaches it to the mail's **password job**
    (`attachToJob`): the first file of a step creates a Vaultwarden Send with the step's password, further files of the
    same step join it. The job ID and its parts are described in [3](#3-state-and-data).
-4. The taskpane inserts a card (`mailCard.ts`) at the cursor – falling back to the top of the mail when Outlook
-   inserted nothing (new Outlook without a cursor in the body) – followed by an empty paragraph, so the next card does
-   not land inside this one. It tags the draft with the custom property `cloudshareJob` (job ID) and records the link
+4. The taskpane inserts the first card (`mailCard.ts`) at the cursor – falling back to the top of the mail when Outlook
+   inserted nothing (new Outlook without a cursor in the body) – followed by an empty paragraph. Every further card of
+   an HTML mail goes right after the last CloudShare card, wherever the cursor is (the user may have clicked into a
+   card): Office.js cannot insert after an element, so `insertAfterLastCard` reads the body, `cardPlace.ts` finds the
+   frame (the table of width 560 around the last token of `DraftState.links`, outside any table the body itself is laid
+   out in) and the body is written back with `body.setAsync`; if the card cannot be found it goes to the cursor. Text
+   mails always insert at the cursor. It tags the draft with the custom property `cloudshareJob` (job ID) and records the link
    token in the draft state.
 5. After the step the taskpane preselects "Gleiches Kennwort wie zuvor" (`mode-same`, `DraftState.lastStep` = step ID
    and password): the next link – files, message or upload link – is sent with the same `step` and joins that part
@@ -190,6 +198,10 @@ step collects the ways of its links (`SeparatePart.deliveries`). A step with lin
 same password by SMS sends one password mail and one SMS; each way exactly once, also after an error in another one
 (`sentWays`). Changing the select only affects the next link. Steps from before this (no `deliveries`) and mails with
 one shared password keep the mail's one way (`PasswordJob.passwordTo` / `passwordSms`, `PATCH /api/jobs/:id`, `/arm`).
+While typing another address or an SMS number the pane suggests entries of the user's own Outlook contacts
+(`contactSuggest.ts`: ARIA combobox, from two characters, `GET /api/contacts`; for SMS only numbers `smsNumberProblem`
+accepts); a picked entry is filled in and saved like a typed one. Without the optional delegated `Contacts.Read` the
+server answers `contacts: null` and the pane stops asking for the session.
 The ways:
 
 - **Recipients of the message** (default) – the password mail to the mail's actual recipients;
@@ -338,10 +350,10 @@ test checks the German texts in the running stack.
 ### 2.9 Status of sent mails (read mode)
 
 The manifest also adds the CloudShare button to the ribbon of a mail being **read** (`MessageReadCommandSurface`,
-pinnable via `SupportsPinning`; legacy `ItemRead` form for older clients). It opens `taskpane.html?view=read`: no
-"Send" tab; the tabs are "Message" (`#tab-mail`, opened first and again when a pinned pane moves to another mail:
-the links of that mail) and "History" (the same list as while writing). A link revoked in one list
-disappears from both.
+pinnable via `SupportsPinning`; legacy `ItemRead` form for older clients). It opens `taskpane.html?view=read`: in place
+of "Senden" the links of that mail (`#panel-mail`, "Links in dieser Nachricht" with its own refresh `#refresh-mail`;
+shown again when a pinned pane moves to another mail); "Verlauf" and the rest are in the account menu as while
+writing. A link revoked in one list disappears from both.
 
 The mail is matched by its body, not by a server-side record: the pane reads the HTML body (`body.getAsync`) and
 collects the tokens of Nextcloud links (`/s/<token>`) and the access IDs of message links (`#/send/<accessId>/`); the entries of `GET /api/shares` whose token or `accessId` is among them belong
@@ -371,6 +383,12 @@ In "History" and in the read mode (2.9) such links get **Password** (`passwordAv
   limit as the first one). A mail gets a **new** Send with the same password (default access and days, deleted with
   the links) and goes out as the user via Graph (delegated, like the first one, also from a shared mailbox); it never
   contains the password itself. "History" shows the new delivery – To and Cc, never Bcc.
+- A step whose password is **held back for the delivery proof** (`PasswordRef.deferred`, 2.12) is never sent again
+  around it: before any recipient confirmed their address with the code every way answers 409 `PASSWORD_HELD`;
+  afterwards `channel: "recipients"` reaches the **confirmed addresses only** (`verifiedAddresses` in
+  `proofPassword.ts`: the `recipient.verified` events of the step's links), each in a mail of its own. `GET …/password`
+  says `deferred` and `verified`, so the pane shows a note instead of "Senden" before a confirmation and names the
+  confirmed recipients afterwards ("Bestätigte Empfänger").
 
 Revoking the last link of a step deletes its Sends at once (`forgetPasswordToken`); otherwise Vaultwarden deletes them
 when the links expire. Steps sent before this version have no entry – their password cannot be shown.
@@ -395,8 +413,11 @@ sent yet without subject says "(No subject yet)", entries from before "(Subject 
 ### 2.11 Personal settings
 
 "Einstellungen" in the account menu (`#settings-open`, bottom left) opens the settings in place of the current tab, like the guide (`settings.ts` in the
-add-in, `server/src/settings.ts`, store `settings`); "Speichern" closes them like the back arrow "←" (`closeSettings`, focus back
-on the account), "Zurücksetzen" keeps them open with the defaults in sight:
+add-in, `server/src/settings.ts`, store `settings`). Every change is saved at once (no "Speichern": a box or a list on
+`change`, the signature one second after typing stops and on leaving it – one `PUT` at a time, nothing sent when
+nothing changed); the page stays open until "←" (`closeSettings`, focus back on the account). Notices and signature
+are in sight; the ways for the password, the languages and "Zurücksetzen" (keeps the page open with the defaults in
+sight) are folded away under "Weitere Einstellungen" (`#settings-more`):
 
 - **Ways for the password** (`channels`, `defaultChannel`): `applyChannelChoices` hides the other options of "Kennwort
   senden an" (and of "Erneut senden an") but keeps the way a mail already uses; a new mail starts with
@@ -494,8 +515,10 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   RSA, the certificate, ESS signing-certificate-v2) over the bytes outside `/Contents`, with an RFC 3161 token from
   `PROOF_TSA_URL` as unsigned attribute (only the hash of the signature leaves the server; without an answer it signs
   without). Identity: `PROOF_SIGN_CERT_FILE` + `PROOF_SIGN_KEY_FILE` (PEM) or a self-made RSA-2048 certificate (ten
-  years, `PROOF_SIGN_NAME`/`_ORGANIZATION`) kept in store `signing-identity`. `signedProofPdf` falls back to an
-  unsigned PDF if signing fails. The tests check the CMS with OpenSSL (`openssl cms -verify`) and that a changed byte
+  years, `PROOF_SIGN_NAME`/`_ORGANIZATION`) kept in store `signing-identity`. PEM files that cannot be read or whose
+  key does not belong to the certificate are named at start (`signingFilesProblem`, log `Proof signing files not
+  usable`) and the self-made certificate signs instead. `signedProofPdf` falls back to an unsigned PDF only if signing
+  itself fails. The tests check the CMS with OpenSSL (`openssl cms -verify`) and that a changed byte
   breaks it.
 - **Guessing** (`proofGateway.ts`): five addresses that are no recipients for a link within an hour lock its code
   requests for an hour (same answer, nothing sent; `gateway.locked`) and mail the sender the attempts once
@@ -549,6 +572,20 @@ Which attachments CloudShare steps in for, and how strictly, depends on the reci
   removes the info bar when recipients change; the pane re-preselects only when the size that applies changes
   (`RecipientsChanged`, `shownThreshold`). The send handler checks with the recipients at that moment.
 
+### 2.15 Feedback and problem reports
+
+"Feedback senden" in the account menu (`#feedback-open`, only when `FEEDBACK_MAIL` is set – `/api/config` says
+`feedback: true`, never the address) opens a page like the settings (`#panel-feedback`, `addin/src/taskpane/feedback.ts`):
+the kind (problem / suggestion), the text and "Technische Angaben mitsenden" (ticked; the details are shown before
+they go). `POST /api/feedback` (`server/src/feedback.ts`) mails it from the user's own mailbox to `FEEDBACK_MAIL` in
+the layout of every CloudShare mail (red accent for a problem, blue for a suggestion) – a reply goes straight to the
+user. Nothing goes anywhere public: no automatic GitHub issue (the repository is public, a report may hold personal
+data); the mail asks whoever reads it to remove names, addresses, file names and subjects before making anything
+public. The details are a fixed list (`DIAGNOSTICS`, anything else is dropped): Outlook host, version and platform,
+the highest Mailbox requirement set, the languages of Outlook and CloudShare, the window size, the browser, the time
+and the last five error messages of the pane (`noteError` in `setStatus`); the server adds the add-in version from
+the manifest it serves. No mail content, no recipients, no logs.
+
 ## 3. State and data
 
 | Where | What | Lifetime |
@@ -593,13 +630,15 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `GET /api/profile` | Sender's Microsoft 365 profile (the server reads it itself for templates and signature) |
 | `GET/PUT/DELETE /api/settings` | Personal settings (2.11): `{ settings, defaults, available }`; `PUT` changes single fields, `DELETE` resets |
 | `GET /api/labels` | Sensitivity labels published to the user (Graph `/me/security/informationProtection/sensitivityLabels`, delegated `InformationProtectionPolicy.Read`): `{ labels: [{ id, name, rank, protection }] }` in the add-in's language, kept an hour per user; `labels: null` without the permission (2.13) |
+| `POST /api/feedback` | "Feedback senden" (2.15): `{ kind: "bug"\|"idea", text, diagnostics? }` → a mail from the user's own mailbox (delegated `Mail.Send`) to `FEEDBACK_MAIL` in `LANGUAGE`; 404 `FEEDBACK_OFF` without it, 400 for an empty or too long text (5,000 characters); the text is not logged |
+| `GET /api/contacts` | Suggestions for "Kennwort an" from the user's own Outlook contacts (Graph `/me/contacts`, delegated `Contacts.Read`, optional): `?kind=mail\|sms&q=…` → `{ contacts: [{ name, value, type? }] }` (at most 8; names and addresses, for SMS names and the digits of the numbers – `matchContacts` in `contacts.ts`); the contacts are kept in memory ten minutes per user, never stored, the query is not logged; `contacts: null` without the permission |
 | `GET /api/nextcloud/status` | Connected?, storage (free/used/total), `passwordEnforced` |
 | `POST /api/nextcloud/connect`, `…/connect/:id/poll`, `DELETE /api/nextcloud/connection` | Login Flow v2, disconnect |
 | `POST /api/uploads`, `PUT …/:id/chunks/:n`, `POST …/:id/complete`, `DELETE …/:id` | Chunked upload, share link |
 | `POST /api/requests` | Upload link ("Receive files from recipients") |
 | `POST /api/messages` | Confidential message: text → password-protected Vaultwarden Send, joins the mail's password job; returns `expiresAt` (exact end, shown with the time in the card) |
 | `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "History": list (all valid links and confidential messages – `msg-<Send ID>`, `kind: "message"`, deleted in Vaultwarden on revoke –, each with `subject` and `mailId` of its sent mail, newest first, max. 100; loaded with the tab, when the pane regains focus and by the refresh button in the tab bar), revoke, insert again; also the read mode (2.9) |
-| `GET /api/shares/:id/password`, `POST /api/shares/:id/password/send` | The password of a sent link (owner only, until the link expires) and sending it again by SMS or password mail (2.10) |
+| `GET /api/shares/:id/password`, `POST /api/shares/:id/password/send` | The password of a sent link (owner only, until the link expires) and sending it again by SMS or password mail (2.10); held back for a delivery proof: 409 `PASSWORD_HELD` before the first confirmation, then to confirmed recipients only |
 | `GET /api/shares/:id/mail` | "History": the sent mail of an entry as the EWS ID Outlook opens (`displayMessageFormAsync`) – the immutable Graph ID kept at sending, translated now with `translateExchangeIds` (User.Read), so it follows a moved mail; 404 if none is known or it is gone – also when it lies in Deleted Items or, after emptying them, in Recoverable Items (`sentMailState`, Mail.Read), where Outlook would still open it |
 | `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send), `passwordTo` or `passwordSms` until the password went out; `subject`: the draft's subject changed (the pane checks it every 4 s while open) – "History" shows it for the mail's links until the sent mail is found (`updateDraftSubject`) |
 | `POST /api/jobs/:id/arm` | Arm the password mail (send handler); also reads the sender's name and department for the templates |
@@ -701,7 +740,8 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
 - Application ID URI `api://cloudshare.example.com/<client-id>` (must match the manifest's `<Resource>`), scope
   `access_as_user` (admins and users), authorized client `ea5a67f6-b6f3-4338-b240-c655ddc3cc8e` (Microsoft Office).
 - Delegated Graph permissions `openid`, `profile`, `offline_access`, `User.Read`, `Mail.Read`, `Mail.Read.Shared`,
-  `Mail.Send`, `Mail.Send.Shared` with **admin consent**, optionally `InformationProtectionPolicy.Read` (label names; all of
+  `Mail.Send`, `Mail.Send.Shared` with **admin consent**, optionally `Contacts.Read` (suggestions under "Kennwort an")
+  and `InformationProtectionPolicy.Read` (label names; all of
   them also listed in the manifest's `<WebApplicationInfo><Scopes>`); client secret → `ENTRA_CLIENT_SECRET` (renew before expiry).
 - Add-in: admin center → *Integrated apps* → manifest URL `https://cloudshare.example.com/manifest.xml`.
 - Only for the download confirmation: application permission `Mail.Send`, **restricted** to the CloudShare users with
@@ -746,18 +786,22 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
 - **Open Nextcloud** ("Nextcloud öffnen", first entry of the account menu, `#nextcloud-open`): opens `NEXTCLOUD_URL`
   (sent in `/api/config` as `nextcloudUrl`) in the default browser (`openBrowserWindow`, in the browser a new tab) – the
   browser's own Nextcloud session or a sign-in there; the app password of the connection never leaves the server.
-- **Proofs of delivery** ("Zustellnachweise", second entry, `#proofs-open`, only with `DELIVERY_PROOF`): shown in place of
-  the tab like the settings (`#panel-proofs`); loads `GET /api/proofs` (every case of the user whose mail was sent, finished ones too) and
+- **History** ("Verlauf", `#shares-open`, right above "Zustellnachweise"): a page like the settings (`#panel-shares`,
+  `showOverlay("shares")`) – every valid link with its actions, reloaded when opened, by `#refresh-shares` in its head
+  and on return to the pane; the search `#shares-search` filters by subject, name, recipients, password address and
+  tracking ID (`renderShareList`). The pane has no tabs any more: the view is "Senden" (or, reading, the links of that
+  mail – `currentView`), every other thing is a page of the account menu.
+- **Proofs of delivery** ("Zustellnachweise", `#proofs-open`, only with `DELIVERY_PROOF`): a page like the settings
+  (`#panel-proofs`); loads `GET /api/proofs` (every case of the user whose mail was sent, finished ones too) and
   every entry is built like a row of "Verlauf" (`proofRow`: kind symbol, subject as title – a click opens the sent mail
   via `GET /api/proofs/:id/mail` when `mailAvailable` –, the file with its seal (a click opens the PDF),
   to whom, the tracking ID in bold, then the state with its dot; no action icons – the list is for looking things up);
-  filters it while typing over tracking ID, subject, recipients and file names and by the switch `#proofs-filter`
-  (Alle | Abgerufen | Ausstehend – `proofMatchesFilter`, like the kind switch); the seal of an entry (`proofSeal`, also in
+  filters it while typing over tracking ID, subject, recipients and file names (no other filters); the seal of an entry (`proofSeal`, also in
   "Verlauf" via `proofState` of `/api/shares`) is coloured by `caseSummary(c).state` – grey sent, blue confirmed, green
   fetched – and opens its signed PDF; each entry names when its links end (`endsOn`) or until when the case is kept
   (`keptUntil`).
 - **Help** ("Hilfe" in the account menu of the bottom bar, `#help-toggle`; `#panel-help` in `taskpane.html`, shown in place of the
-  current tab – the tab bar is hidden while a page (help, settings, proofs) is open (`showOverlay`, `currentOverlay`), "←" before the title (`.page-back`) or Escape leads back): a user guide for everyday users – short `<details>`
+  view like the history, the settings and the proofs (`showOverlay`, `currentOverlay`), "←" before the title (`.page-back`) or Escape leads back): a user guide for everyday users – short `<details>`
   sections (getting started, sending files, password and channel, confidential message, receiving files, "History",
   FAQ), the most common one open. Texts in the language files (`help.*`); admins put their own support contact into
   `help.support` (`/config/locales`). Plain words, the button names of the pane, no technical terms.

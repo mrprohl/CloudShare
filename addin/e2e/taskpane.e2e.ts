@@ -52,6 +52,10 @@ interface Scenario {
   labels?: Array<{ id: string; name: string }>;
   /** The labels /api/labels returns (Graph, InformationProtectionPolicy.Read); unset: null (not consented). */
   tenantLabels?: Array<{ id: string; name: string; rank: number }>;
+  /** The own Outlook contacts /api/contacts matches (Contacts.Read); with `type` = a number (SMS); unset: null (not consented). */
+  contacts?: Array<{ name: string; value: string; type?: "mobile" | "business" | "home" }>;
+  /** More of GET /api/shares/:id/password – e.g. `{ deferred: true, verified: [] }` for a password held back for the proof. */
+  passwordInfo?: Record<string, unknown>;
   /** GET /api/proofs: the user's delivery proofs. */
   proofs?: unknown[];
   mailLabel?: string;
@@ -138,6 +142,16 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     }
     // The tenant's sensitivity labels (Graph) – null like a server without the permission.
     if (route_ === "GET /api/labels") return json({ labels: scenario.tenantLabels ?? null });
+    // "Feedback senden": the server mails it (FEEDBACK_MAIL).
+    if (route_ === "POST /api/feedback") return json({ ok: true });
+    // Suggestions from the own contacts: numbers for kind=sms, addresses otherwise, matched like the server (roughly).
+    if (route_ === "GET /api/contacts") {
+      if (!scenario.contacts) return json({ contacts: null });
+      const q = (url.searchParams.get("q") ?? "").toLowerCase();
+      const sms = url.searchParams.get("kind") === "sms";
+      return json({ contacts: scenario.contacts.filter((c) => Boolean(c.type) === sms
+        && (c.name.toLowerCase().includes(q) || c.value.toLowerCase().includes(q))) });
+    }
     if (route_ === "GET /api/config") {
       return scenario.config === "down" ? json({ error: "down" }, 503) : json({ ...CONFIG, ...scenario.config });
     }
@@ -215,7 +229,7 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     if (/^PATCH \/api\/jobs\/[^/]+$/.test(route_)) return json({ maxAccess: JSON.parse(call.body!.toString()).maxAccess });
     if (/^GET \/api\/shares\/[^/]+\/password$/.test(route_)) {
       return json({ password: "KateGeteFi45", sms: "+491701234567", otherTo: [],
-        recipients: { to: ["erika@example.com"], cc: ["chef@example.com"], bcc: ["archiv@example.com"] } });
+        recipients: { to: ["erika@example.com"], cc: ["chef@example.com"], bcc: ["archiv@example.com"] }, ...scenario.passwordInfo });
     }
     if (/^POST \/api\/shares\/[^/]+\/password\/send$/.test(route_)) {
       const { channel, to } = JSON.parse(call.body!.toString());
@@ -238,7 +252,7 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
 
 const officeLog = (page: Page) =>
   page.evaluate(() => (window as unknown as { __officeLog: {
-    inserted: { data: string; coercionType: string; at: "cursor" | "top" }[];
+    inserted: { data: string; coercionType: string; at: "cursor" | "top" | "body" }[];
     removed: string[];
     customProps: Record<string, string>;
     session: Record<string, string>;
@@ -268,6 +282,13 @@ async function openHelp(page: Page) {
   await page.locator("#account-toggle").click();
   await page.locator("#help-toggle").click();
   await expect(page.locator("#panel-help")).toBeVisible();
+}
+
+/** Opens "Verlauf": account at the bottom left → "Verlauf" (a page like the settings). */
+async function openHistory(page: Page) {
+  await page.locator("#account-toggle").click();
+  await page.locator("#shares-open").click();
+  await expect(page.locator("#panel-shares")).toBeVisible();
 }
 
 /** Opens the personal settings: account at the bottom left → "Einstellungen". */
@@ -412,8 +433,8 @@ test("language: the pane follows Outlook's display language and tells the server
   const calls = await openTaskpane(page, { displayLanguage: "en-US" });
   await expect(page.locator("#send-view")).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
-  await expect(page.locator("#tab-send")).toHaveText("Send");
-  await expect(page.locator("#tab-shares")).toHaveText("History");
+  await expect(page.locator("label:has(#kind-files) span")).toHaveText("Files");
+  await expect(page.locator("#shares-open")).toHaveText("History");
   await expect(page.locator("#password-label")).toHaveText("Password");
   await expect.poll(() => calls.filter((c) => c.path.startsWith("/api/")).length).toBeGreaterThan(0);
   expect(calls.every((c) => c.language === "en")).toBe(true); // error messages of the server in English
@@ -422,13 +443,13 @@ test("language: the pane follows Outlook's display language and tells the server
 test("language: a client language without texts falls back to English", async ({ page }) => {
   const calls = await openTaskpane(page, { displayLanguage: "fr-FR" });
   await expect(page.locator("#send-view")).toBeVisible();
-  await expect(page.locator("#tab-send")).toHaveText("Send");
+  await expect(page.locator("label:has(#kind-files) span")).toHaveText("Files");
   expect(calls.every((c) => c.language === "en")).toBe(true);
 });
 
 // --- Personal settings (gear in the account line) -------------------------------------------------------------------
 
-test("settings: the gear opens them in place of the tab; saved ways apply to the password at once", async ({ page }) => {
+test("settings: notices and signature in sight, the rest under \"Weitere Einstellungen\"; every change saved at once", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Plan.pdf", 2 * MiB)], config: { smsEnabled: true } });
   await expect(page.locator("#send-view")).toBeVisible();
   await openSettings(page);
@@ -440,26 +461,39 @@ test("settings: the gear opens them in place of the tab; saved ways apply to the
   await expect(page.locator("#settings-notices input")).toHaveCount(3);
   await expect(page.locator("#settings-language")).toHaveValue("auto");
   await expect(page.locator("#settings-signature-format")).toHaveValue("none");
+  // In sight: notices and signature; folded away: the ways for the password, the languages and "Zurücksetzen".
+  await expect(page.locator("#settings-notices-group")).toBeVisible();
+  await expect(page.locator("#settings-signature-format")).toBeVisible();
+  await expect(page.locator("#settings-default-channel")).toBeHidden();
+  await expect(page.locator("#settings-language")).toBeHidden();
+  await expect(page.locator("#settings-reset")).toBeHidden();
+  await expect(page.locator("#settings-save")).toHaveCount(0); // no "Speichern" any more
   await expectAccessible(page);
   await shot(page, "settings");
 
-  // Only "Andere E-Mail-Adresse" and SMS, SMS preselected; no download confirmation.
+  // A notice: saved with the click.
   // The real checkbox is invisible under its box (as in the attachment list): click the row like a user.
   const row = (input: string) => page.locator("label.checkbox").filter({ has: page.locator(input) });
+  const puts = () => calls.filter((c) => c.method === "PUT" && c.path === "/api/settings").map((c) => JSON.parse(c.body!.toString()));
+  await row('input[name="downloadNotice"]').click();
+  await expect(page.locator('#settings-notices input[name="downloadNotice"]')).not.toBeChecked();
+  await expect(page.locator("#status")).toHaveText("Ihre Einstellungen wurden gespeichert.");
+  await expect.poll(() => puts().length).toBe(1);
+  expect(puts()[0]).toMatchObject({ downloadNotice: false, uploadNotice: true, smsNotice: true, language: "auto", signature: null });
+
+  // Only "Andere E-Mail-Adresse" and SMS, SMS preselected – under "Weitere Einstellungen".
+  await page.locator("#settings-more > summary").click();
+  await expect(page.locator("#settings-default-channel")).toBeVisible();
+  await expect(page.locator("#settings-reset")).toBeVisible();
+  await expectAccessible(page);
   await row('input[value="recipients"]').click();
   await expect(page.locator('#settings-channels input[value="recipients"]')).not.toBeChecked();
   await page.locator("#settings-default-channel").selectOption("sms");
-  await row('input[name="downloadNotice"]').click();
-  await expect(page.locator('#settings-notices input[name="downloadNotice"]')).not.toBeChecked();
-  await page.click("#settings-save");
-  await expect(page.locator("#status")).toHaveText("Ihre Einstellungen wurden gespeichert.");
-  const put = calls.find((c) => c.method === "PUT" && c.path === "/api/settings");
-  expect(JSON.parse(put!.body!.toString())).toMatchObject({
-    channels: ["mail", "sms"], defaultChannel: "sms", downloadNotice: false, uploadNotice: true, smsNotice: true, language: "auto", signature: null,
-  });
+  await expect.poll(() => puts().at(-1)).toMatchObject({ channels: ["mail", "sms"], defaultChannel: "sms", downloadNotice: false });
 
-  // Saving closes the settings like the "×": back on the tab, focus on the account.
-  await expect(page.locator("#panel-settings")).toBeHidden();
+  // The settings stay open; back to "Senden" with the arrow.
+  await expect(page.locator("#panel-settings")).toBeVisible();
+  await page.click("#settings-close");
   await expect(page.locator("#panel-send")).toBeVisible();
   await expect(page.locator("#account-toggle")).toBeFocused();
   // No links in this mail yet: it switches to the preselected way, the ways left out are not offered.
@@ -473,7 +507,7 @@ test("settings and help: the heading with its back arrow stays in sight while sc
   await openTaskpane(page, { config: { smsEnabled: true } });
   await openSettings(page);
   await expect(page.locator("#settings-form")).toBeVisible();
-  await page.locator("#settings-save").scrollIntoViewIfNeeded(); // scrolled to the bottom
+  await page.locator("#settings-more").scrollIntoViewIfNeeded(); // scrolled to the bottom
   await expect(page.locator("#settings-close")).toBeInViewport();
   await expect(page.locator("#settings-heading")).toBeInViewport();
   await page.click("#settings-close");
@@ -517,13 +551,15 @@ test("settings: an own signature is plain text with paragraphs – stored as typ
   await info.click();
   await expect(page.locator("#settings-placeholders")).toBeHidden();
   await text.fill("Mit freundlichen Grüßen\n\n{displayName}\nTel. {phone}");
-  await page.click("#settings-save");
+  // Saved a moment after typing stops – no button.
   await expect(page.locator("#status")).toHaveText("Ihre Einstellungen wurden gespeichert.");
-  const saved = JSON.parse(calls.find((c) => c.method === "PUT")!.body!.toString());
-  expect(saved.signature).toEqual({ format: "text", content: "Mit freundlichen Grüßen\n\n{displayName}\nTel. {phone}" });
+  await expect.poll(() => {
+    const puts = calls.filter((c) => c.method === "PUT");
+    return puts.length ? JSON.parse(puts.at(-1)!.body!.toString()).signature : null;
+  }).toEqual({ format: "text", content: "Mit freundlichen Grüßen\n\n{displayName}\nTel. {phone}" });
 
-  // Opened again (saving closed them): the text as typed.
-  await expect(page.locator("#panel-settings")).toBeHidden();
+  // Opened again: the text as typed.
+  await page.click("#settings-close");
   await openSettings(page);
   await expect(page.locator("#settings-signature-format")).toHaveValue("text");
   await expect(text).toHaveValue("Mit freundlichen Grüßen\n\n{displayName}\nTel. {phone}");
@@ -540,7 +576,7 @@ test("settings: a language chosen in the settings beats Outlook's", async ({ pag
   const calls = await openTaskpane(page, { settings: { language: "en" } });
   // Loaded once, cached in roamingSettings, the pane starts again in English.
   await expect(page.locator("html")).toHaveAttribute("lang", "en");
-  await expect(page.locator("#tab-send")).toHaveText("Send");
+  await expect(page.locator("label:has(#kind-files) span")).toHaveText("Files");
   await expect.poll(() => calls.filter((c) => c.path === "/api/config").length).toBeGreaterThan(1);
   await openSettings(page);
   await expect(page.locator("#settings-language")).toHaveValue("en");
@@ -551,7 +587,7 @@ test("language: a regional variant uses its language", async ({ page }) => {
   const calls = await openTaskpane(page, { displayLanguage: "de-AT" });
   await expect(page.locator("#send-view")).toBeVisible();
   await expect(page.locator("html")).toHaveAttribute("lang", "de");
-  await expect(page.locator("#tab-send")).toHaveText("Senden");
+  await expect(page.locator("label:has(#kind-files) span")).toHaveText("Dateien");
   expect(calls.every((c) => c.language === "de")).toBe(true);
 });
 
@@ -863,6 +899,67 @@ test("Kennwort per SMS: numbers of other countries and service numbers are refus
   await expect(page.locator("#submit")).toBeEnabled();
 });
 
+test("Kennwort an: suggestions from the own contacts while typing – arrow keys and Enter, or a click", async ({ page }) => {
+  const calls = await openTaskpane(page, {
+    attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)],
+    config: { smsEnabled: true, smsCountryCodes: ["49"], smsCountries: "Deutschland" },
+    contacts: [
+      { name: "Jonas Müller-Berg", value: "j.mueller@example.org" },
+      { name: "Anna Hamüller", value: "anna@example.test" },
+      { name: "Jonas Müller-Berg", value: "+49 171 1234567", type: "mobile" },
+      { name: "Jonas Müller-Berg", value: "+44 7700 900123", type: "business" }, // no SMS to that country
+    ],
+  });
+  await page.selectOption("#password-channel", "mail");
+  const field = page.locator("#password-to");
+  await field.fill("mül");
+  const list = page.locator("#password-to + [role=listbox]");
+  await expect(list).toBeVisible();
+  await expect(list).toHaveAttribute("aria-label", "Vorschläge aus Ihren Kontakten");
+  await expect(field).toHaveAttribute("aria-expanded", "true");
+  await expect(list.locator("[role=option] .suggestion-name")).toHaveText(["Jonas Müller-Berg", "Anna Hamüller"]);
+  await expect(list.locator("[role=option] .suggestion-value")).toHaveText(["j.mueller@example.org", "anna@example.test"]);
+  await expectAccessible(page);
+  await field.press("ArrowDown");
+  await expect(list.locator("[role=option]").nth(0)).toHaveAttribute("aria-selected", "true");
+  await field.press("Enter");
+  await expect(field).toHaveValue("j.mueller@example.org");
+  await expect(list).toBeHidden();
+  await expect(field).toHaveAttribute("aria-expanded", "false");
+  await expect(page.locator("#status")).toContainText("nur an j.mueller@example.org");
+  await expect(page.locator("#submit")).toBeEnabled();
+
+  // Escape closes only the list.
+  await field.fill("anna");
+  await expect(list).toBeVisible();
+  await field.press("Escape");
+  await expect(list).toBeHidden();
+  await expect(page.locator("#panel-send")).toBeVisible();
+
+  // SMS: only numbers that may get one, a click fills in the number as E.164.
+  await page.selectOption("#password-channel", "sms");
+  const sms = page.locator("#password-sms");
+  await sms.fill("jonas");
+  const numbers = page.locator("#password-sms + [role=listbox] [role=option]");
+  await expect(numbers).toHaveCount(1);
+  await expect(numbers.locator(".suggestion-value")).toHaveText("+49 171 1234567 · Mobil");
+  await numbers.nth(0).click();
+  await expect(sms).toHaveValue("+491711234567");
+  await expect(page.locator("#status")).toContainText("per SMS an +491711234567");
+  expect(calls.filter((c) => c.path === "/api/contacts").length).toBeGreaterThan(1);
+});
+
+test("Kennwort an without the permission Contacts.Read: a plain field, asked only once", async ({ page }) => {
+  const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)] });
+  await page.selectOption("#password-channel", "mail");
+  const field = page.locator("#password-to");
+  await field.pressSequentially("mül", { delay: 50 });
+  await expect.poll(() => calls.filter((c) => c.path === "/api/contacts").length).toBe(1);
+  await field.pressSequentially("ler", { delay: 300 });
+  await expect(page.locator("#password-to + [role=listbox]")).toBeHidden();
+  expect(calls.filter((c) => c.path === "/api/contacts")).toHaveLength(1);
+});
+
 test("Kennwort an eine andere E-Mail-Adresse chosen without an address: no link until it is there", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)] });
   await page.selectOption("#password-channel", "mail");
@@ -899,6 +996,88 @@ test("links deleted from the mail again: password options unlock, no password ma
   const log = await officeLog(page);
   expect(log.customProps.cloudshareJob).toBeUndefined(); // the send handler has nothing to arm
   expect(JSON.parse(log.session["cloudshare-state"])).toEqual({});
+});
+
+test("Feedback senden: not offered without FEEDBACK_MAIL on the server", async ({ page }) => {
+  await openTaskpane(page);
+  await page.click("#account-toggle");
+  await expect(page.locator("#account-menu")).toBeVisible();
+  await expect(page.locator("#feedback-open")).toBeHidden();
+});
+
+test("Feedback senden: a problem report with the last error message of the pane", async ({ page }) => {
+  const calls = await openTaskpane(page, { config: { feedback: true } });
+  await page.selectOption("#password-channel", "mail");
+  await page.fill("#password-to", "keine-adresse");
+  await page.press("#password-to", "Tab");
+  await expect(page.locator("#status")).toContainText("gültige E-Mail-Adresse"); // an error the report will carry
+
+  await page.click("#account-toggle");
+  await expect(page.locator("#account-menu button:visible")).toContainText(["Einstellungen", "Feedback senden", "Hilfe"]);
+  await page.click("#feedback-open");
+  await expect(page.locator("#panel-feedback")).toBeVisible();
+  await expect(page.locator("#panel-send")).toBeHidden();
+  await expect(page.locator("#feedback-text")).toBeFocused();
+  await expect(page.locator("#feedback-kind-idea")).toBeChecked();
+  await expect(page.locator("#feedback-diagnostics")).toBeChecked();
+  await expectAccessible(page);
+
+  // Nothing written yet: not sent.
+  await page.click("#feedback-send");
+  await expect(page.locator("#status")).toHaveText("Bitte schreiben Sie zuerst Ihre Nachricht.");
+  expect(calls.some((c) => c.path === "/api/feedback")).toBe(false);
+
+  // The details are shown before they go.
+  await page.locator("label.segment", { has: page.locator("#feedback-kind-bug") }).click();
+  await page.fill("#feedback-text", "Der Link landet mitten in der Karte.");
+  await page.click("#feedback-details-toggle");
+  await expect(page.locator("#feedback-details")).toBeVisible();
+  await expect(page.locator("#feedback-details")).toContainText("Letzte Fehlermeldungen");
+  await expect(page.locator("#feedback-details")).toContainText("gültige E-Mail-Adresse");
+  await expect(page.locator("#feedback-details-toggle")).toHaveText("Angaben ausblenden");
+  await page.click("#feedback-send");
+  await expect(page.locator("#status")).toHaveText("Danke! Ihre Nachricht wurde gesendet.");
+  const sent = JSON.parse(calls.find((c) => c.path === "/api/feedback")!.body!.toString());
+  expect(sent).toMatchObject({ kind: "bug", text: "Der Link landet mitten in der Karte." });
+  expect(sent.diagnostics.errors).toContain("gültige E-Mail-Adresse");
+  expect(Object.keys(sent.diagnostics)).toEqual(expect.arrayContaining(["outlook", "addinLanguage", "browser", "time"]));
+  // Back on "Senden", the text emptied for the next time.
+  await expect(page.locator("#panel-feedback")).toBeHidden();
+  await expect(page.locator("#panel-send")).toBeVisible();
+  await expect(page.locator("#feedback-text")).toHaveValue("");
+
+  // Without the details nothing technical goes along.
+  await page.click("#account-toggle");
+  await page.click("#feedback-open");
+  await page.fill("#feedback-text", "Bitte mehr Farben.");
+  await page.locator("label.checkbox", { has: page.locator("#feedback-diagnostics") }).click();
+  await expect(page.locator("#feedback-details-toggle")).toBeHidden();
+  await page.click("#feedback-send");
+  await expect(page.locator("#status")).toHaveText("Danke! Ihre Nachricht wurde gesendet.");
+  const second = JSON.parse(calls.filter((c) => c.path === "/api/feedback")[1].body!.toString());
+  expect(second).toEqual({ kind: "idea", text: "Bitte mehr Farben." });
+});
+
+test("a further link goes right after the last card – wherever the cursor is", async ({ page }) => {
+  await openTaskpane(page, { attachments: [attachment("a1", "Bericht.pdf", 1.5 * MiB)] });
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
+  expect((await officeLog(page)).inserted[0].at).toBe("cursor"); // the first card: at the cursor
+  await chooseKind(page, "request");
+  await page.click("#submit");
+  await expect(page.locator("#status")).toContainText("Der Link zum Hochladen wurde eingefügt.");
+  const log = await officeLog(page);
+  // The body was written back once with the new card between the first card and the empty line after it.
+  expect(log.inserted).toHaveLength(1);
+  expect(log.inserted[0].at).toBe("body");
+  const body = log.inserted[0].data;
+  const first = body.indexOf("https://cloud.example.com/s/u1");
+  const second = body.indexOf("https://cloud.example.com/s/request");
+  expect(first).toBeGreaterThan(-1);
+  expect(second).toBeGreaterThan(first);
+  expect(body.lastIndexOf("</table>", second)).toBeGreaterThan(first); // after the first card's frame, not inside it
+  expect(body.endsWith("<p style=\"margin:0;\"><br></p>")).toBe(true);
+  expect(JSON.parse(log.session["cloudshare-state"]).links).toEqual(["u1", "request"]);
 });
 
 test("cursor never in the body (new Outlook): the card goes to the top of the mail", async ({ page }) => {
@@ -1119,12 +1298,23 @@ test("Nachricht / Anfordern: 'Ohne Kennwort' is not offered – a choice made fo
   await expect(page.locator("#password-group")).toBeHidden();
   await chooseKind(page, "request");
   await expect(page.locator("#mode-none-row")).toBeHidden();
+  // Greyed out instead of gone: the "i" folds out why.
+  const unavailable = page.locator("#mode-none-unavailable");
+  await expect(unavailable).toBeVisible();
+  await expect(unavailable.locator("input")).toBeDisabled();
+  await expect(page.locator("#mode-none-why")).toBeHidden();
+  await page.click("#mode-none-why-toggle");
+  await expect(page.locator("#mode-none-why-toggle")).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#mode-none-why")).toHaveText(
+    "Nur für Dateien: Eine vertrauliche Nachricht und ein Upload-Link sind immer mit einem Kennwort geschützt.");
+  await expectAccessible(page);
   await expect(page.locator("#mode-random")).toBeChecked();
   await expect(page.locator("#password-group")).toBeVisible();
   await expect(page.locator("#password")).not.toHaveValue("");
   await expect(page.locator("#submit")).toHaveText("Link zum Hochladen einfügen");
   await chooseKind(page, "files");
   await expect(page.locator("#mode-none-row")).toBeVisible();
+  await expect(unavailable).toBeHidden();
   await expect(page.locator("#submit")).toHaveText("Als Link einfügen"); // no attachments, nothing ticked
 });
 
@@ -1156,17 +1346,28 @@ test("Zustellnachweis: not offered without DELIVERY_PROOF on the server", async 
   await openTaskpane(page);
   await page.click("#validity-toggle");
   await expect(page.locator("#proof-field")).toBeHidden();
+  await chooseKind(page, "message");
+  await expect(page.locator("#proof-unavailable")).toBeHidden(); // nothing to explain where it does not exist at all
 });
 
 test("Zustellnachweis: only for files; ticked, it goes with the upload and the card names the tracking ID", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Plan.pdf", 2 * MiB)], config: { deliveryProof: true } });
   await expect(page.locator("#password")).not.toHaveValue("");
   // Under "Empfänger", in sight – not for a message or an upload link.
+  // Greyed out there, the "i" says why.
   for (const kind of ["message", "request"] as const) {
     await chooseKind(page, kind);
     await expect(page.locator("#proof-field")).toBeHidden();
+    await expect(page.locator("#proof-unavailable")).toBeVisible();
+    await expect(page.locator("#proof-unavailable input")).toBeDisabled();
   }
+  await page.click("#proof-why-toggle");
+  await expect(page.locator("#proof-why")).toHaveText(
+    "Nur für Dateien: Nextcloud kann belegen, dass und wann eine Datei heruntergeladen wurde. " +
+    "Dass ein Nachrichtentext gelesen oder ein Upload-Link genutzt wurde, lässt sich nicht ebenso nachweisen.");
+  await expectAccessible(page);
   await chooseKind(page, "files");
+  await expect(page.locator("#proof-unavailable")).toBeHidden();
   await expect(page.locator("#proof-field")).toBeVisible();
   await expect(page.locator("#proof")).not.toBeChecked();
   await expect(page.locator("#proof")).toHaveAttribute("role", "switch");
@@ -1340,12 +1541,12 @@ const SHARES = [
 
 test("Verlauf: shows the state of each link and revokes after confirmation", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: SHARES });
-  await page.click("#tab-shares");
+  await openHistory(page);
   const rows = page.locator("#shares .share");
   // All valid links, no expired one ("Alt.zip"), no "last 30 days".
   await expect(rows).toHaveCount(3);
   await expect(page.locator("#shares")).not.toContainText("Alt.zip");
-  // "Aktualisieren" in the tab bar reloads the list; on "Senden" there is none.
+  // "Aktualisieren" in the head of the page reloads the list; "Senden" has none.
   const loads = () => calls.filter((c) => c.path === "/api/shares").length;
   const refresh = page.locator("#refresh-shares");
   await expect(refresh).toBeVisible();
@@ -1371,8 +1572,8 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   await toggle.click();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(menu).toBeVisible();
-  await expect(page.locator("#account-menu button:visible")).toHaveText(["Nextcloud öffnen", "Einstellungen", "Hilfe", "Verbindung trennen"]);
-  await expect(page.locator("#account-menu button:visible svg")).toHaveCount(4);
+  await expect(page.locator("#account-menu button:visible")).toHaveText(["Nextcloud öffnen", "Verlauf", "Einstellungen", "Hilfe", "Verbindung trennen"]);
+  await expect(page.locator("#account-menu button:visible svg")).toHaveCount(5);
   await expect(page.locator("#nextcloud-open")).toBeFocused(); // the first entry
   await expect(page.locator("#nextcloud-open")).toHaveAttribute("title", "https://cloud.example.com");
   // At the top, set apart: the whole name, a bar filled with the used share (37,5 of 50 GB = 75 %) and the text.
@@ -1390,9 +1591,10 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   await toggle.click();
   await page.locator("#shares").click({ position: { x: 5, y: 5 } });
   await expect(menu).toBeHidden();
-  await page.click("#tab-send");
+  await page.click("#shares-close");
   await expect(refresh).toBeHidden();
-  await page.click("#tab-shares");
+  await expect(page.locator("#panel-send")).toBeVisible();
+  await openHistory(page);
   await expect(rows.nth(0).locator(".state-text")).toHaveText("2× heruntergeladen · 11.11.2026, 10:30 Uhr");
   await expect(rows.nth(1).locator(".state-text")).toHaveText("Noch nicht heruntergeladen");
   await expect(rows.nth(2).locator(".state-text")).toHaveText("3 Dateien empfangen");
@@ -1452,7 +1654,7 @@ test("a failed start keeps its message with \"Erneut versuchen\", whatever the t
 
 test("a success message runs down and goes; the pointer on it stops the ring", async ({ page }) => {
   await openTaskpane(page, { shares: SHARES, config: { successMessageSeconds: 1 } });
-  await page.click("#tab-shares");
+  await openHistory(page);
   const revoke = page.locator("#shares .share").nth(1).locator(".revoke");
   await revoke.click();
   await revoke.click();
@@ -1473,7 +1675,7 @@ test("Verlauf: a failed SMS says whether it was sent at all, and how to send the
   const share = (id: string, name: string, refused: boolean) => ({ ...SHARES[0], id, name, url: `https://cloud.example.com/s/${id}`,
     password: { ...sms, refused }, passwordAvailable: true });
   await openTaskpane(page, { shares: [share("21", "Refused.pdf", true), share("22", "Lost.pdf", false)] });
-  await page.click("#tab-shares");
+  await openHistory(page);
   const rows = page.locator("#shares .share");
   // seven.io refused it right away (key, credit, limit).
   await expect(rows.nth(0).locator(".share-password")).toHaveText("Kennwort an +49 170 •••• 67 – nicht versendet – bitte erneut senden");
@@ -1493,7 +1695,7 @@ test("Verlauf: links of a mail not sent (e.g. a discarded draft) say so and when
       SHARES[1],
     ],
   });
-  await page.click("#tab-shares");
+  await openHistory(page);
   const rows = page.locator("#shares .share");
   await expect(rows.nth(0).locator(".share-unsent")).toHaveText(
     `Nicht gesendet – wird die Nachricht bis 22.11.2099 nicht gesendet, zieht CloudShare den Link zurück.`,
@@ -1510,7 +1712,7 @@ test("Verlauf: links of a mail not sent (e.g. a discarded draft) say so and when
 
 test("Verlauf: Kennwort shows the password and sends it again the same ways as the first time", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: [{ ...SHARES[0], passwordAvailable: true }, SHARES[1]], config: { smsEnabled: true } });
-  await page.click("#tab-shares");
+  await openHistory(page);
   const rows = page.locator("#shares .share");
   await expect(rows.nth(1).locator(".show-password")).toBeHidden(); // no password to show (link without password)
   const toggle = rows.nth(0).locator(".show-password");
@@ -1552,11 +1754,43 @@ test("Verlauf: Kennwort shows the password and sends it again the same ways as t
   expect(sends()[1]).toEqual({ channel: "mail", to: "kollege@example.com, buergerin@example.com" });
 });
 
+test("Verlauf: a password held back for the proof of delivery is not sent again before a confirmation", async ({ page }) => {
+  const calls = await openTaskpane(page, {
+    shares: [{ ...SHARES[0], passwordAvailable: true }], passwordInfo: { deferred: true, verified: [] },
+  });
+  await openHistory(page);
+  const row = page.locator("#shares .share").nth(0);
+  await row.locator(".show-password").click();
+  const panel = row.locator(".password-panel");
+  await expect(panel.locator("input.mono")).toHaveValue("KateGeteFi45"); // the sender may see it
+  await expect(panel.locator(".hint")).toHaveText(
+    "Zustellnachweis: Das Kennwort geht automatisch an jeden Empfänger, sobald er seine Adresse mit dem Code bestätigt hat. " +
+    "Erneut senden können Sie es erst danach – so bleibt der Nachweis lückenlos.");
+  await expect(panel.locator("select")).toHaveCount(0);
+  await expect(panel.locator(".send-password")).toHaveCount(0);
+  await expectAccessible(page);
+  expect(calls.some((c) => c.path.endsWith("/password/send"))).toBe(false);
+});
+
+test("Verlauf: once confirmed, the password goes again to the confirmed recipients only", async ({ page }) => {
+  await openTaskpane(page, {
+    shares: [{ ...SHARES[0], passwordAvailable: true }], passwordInfo: { deferred: true, verified: ["erika@example.com"] },
+  });
+  await openHistory(page);
+  const row = page.locator("#shares .share").nth(0);
+  await row.locator(".show-password").click();
+  const panel = row.locator(".password-panel");
+  await panel.locator("select").selectOption("recipients");
+  await expect(panel.locator("select option").first()).toHaveText("Bestätigte Empfänger");
+  await expect(panel.locator(".hint")).toHaveText(
+    "Nur an Empfänger, die ihre Adresse mit dem Code bestätigt haben – jeder in einer eigenen Nachricht: erika@example.com");
+});
+
 test("Verlauf: Als Link einfügen creates a new link with this mail's password", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: SHARES });
   await expect(page.locator("#password")).not.toHaveValue(""); // the pane has started (settings loaded)
   const password = await page.locator("#password").inputValue();
-  await page.click("#tab-shares");
+  await openHistory(page);
   await page.locator("#shares .share").nth(1).locator(".insert").click();
 
   await expect(page.locator("#status")).toContainText("Ein neuer Link zu „Angebot.pdf“ wurde eingefügt.");
@@ -1587,7 +1821,7 @@ test("Verlauf: the subject is the title and opens the mail; confidential message
       SHARES[2], // not sent yet: no subject known – titled with its name as before
     ],
   });
-  await page.click("#tab-shares");
+  await openHistory(page);
   const rows = page.locator("#shares .share");
   await expect(rows.nth(0).locator(".share-title")).toHaveText("Unterlagen Neubau");
   // Hovering the subject: when and to whom it went; screen readers hear that it opens the mail.
@@ -1642,13 +1876,12 @@ test("reading a mail: a confidential message of that mail shows under 'Nachricht
   await expect(page.locator("#mail-shares .share .share-item")).toHaveText("Vertrauliche Nachricht");
 });
 
-test("reading a mail: tabs 'Nachricht' and 'Verlauf', nothing to insert", async ({ page }) => {
+test("reading a mail: the links of that mail, \"Verlauf\" in the menu, nothing to insert", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: SHARES, readBody: SENT_MAIL });
-  // No "Senden" when reading: "Nachricht" (opened first) takes its place, "Verlauf" as when writing.
-  await expect(page.locator("#tab-send")).toBeHidden();
-  await expect(page.locator(".tabs [role=tab]:visible")).toHaveText(["Nachricht", "Verlauf"]);
-  await expect(page.locator("#tab-mail")).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator("#account-toggle")).toBeVisible(); // the guide and the settings are there too, in its menu
+  // No "Senden" and no tabs when reading: the links of this mail; "Verlauf" in the account menu as when writing.
+  await expect(page.locator("#panel-mail")).toBeVisible();
+  await expect(page.locator("#mail-heading")).toHaveText("Links in dieser Nachricht");
+  await expect(page.locator("#account-toggle")).toBeVisible(); // "Verlauf", the guide and the settings are in its menu
   await expect(page.locator("#panel-send")).toBeHidden();
   await expect(page.locator("#panel-shares")).toBeHidden();
   const inMail = page.locator("#mail-shares .share");
@@ -1658,8 +1891,8 @@ test("reading a mail: tabs 'Nachricht' and 'Verlauf', nothing to insert", async 
   await expect(inMail.nth(0).locator(".share-password")).toHaveAttribute("title", /zugestellt am 10.11.2026, 11:00 Uhr/);
   await expect(inMail.nth(1).locator(".share-item")).toHaveText("Dateianforderung");
   await expect(page.locator("#mail-none")).toBeHidden();
-  // Reading a mail too: "Aktualisieren" in the tab bar, the account at the bottom.
-  await expect(page.locator("#refresh-shares")).toBeVisible();
+  // Reading a mail too: "Aktualisieren" next to the title, the account at the bottom.
+  await expect(page.locator("#refresh-mail")).toBeVisible();
   await expect(page.locator("#account-toggle")).toHaveText("max.mustermann");
   await expect(page.locator(".share .insert").first()).toBeHidden(); // a mail being read cannot take a link
   await expect(page.locator("#panel-mail")).not.toContainText("Weitere Freigaben");
@@ -1668,13 +1901,14 @@ test("reading a mail: tabs 'Nachricht' and 'Verlauf', nothing to insert", async 
   await shot(page, "read-view");
 
   // "Verlauf": every valid link, those of this mail included (Alt.zip has expired).
-  await page.click("#tab-shares");
+  await openHistory(page);
   await expect(page.locator("#panel-mail")).toBeHidden();
   await expect(page.locator("#shares .share .share-item")).toHaveText(["Präsentation.pptx", "Angebot.pdf", "Dateianforderung"]);
   await expectAccessible(page);
 
   // Revoked in one list, gone from both.
-  await page.click("#tab-mail");
+  await page.click("#shares-close");
+  await expect(page.locator("#panel-mail")).toBeVisible();
   const revoke = page.locator("#mail-shares .share").nth(1).locator(".revoke");
   await revoke.click();
   await revoke.click();
@@ -1685,12 +1919,13 @@ test("reading a mail: tabs 'Nachricht' and 'Verlauf', nothing to insert", async 
 
   // Pinned pane, the user selects another mail without CloudShare links: back to "Nachricht", the message about
   // the previous mail is gone.
-  await page.click("#tab-shares");
+  await openHistory(page);
   await page.evaluate(() => {
     (window as unknown as { __officeConfig: { readBody: string } }).__officeConfig.readBody = "<p>Keine Links</p>";
     (window as unknown as { __officeHandlers: Record<string, () => void> }).__officeHandlers.olkItemSelectedChanged();
   });
-  await expect(page.locator("#tab-mail")).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("#panel-mail")).toBeVisible();
+  await expect(page.locator("#panel-shares")).toBeHidden();
   await expect(page.locator("#status")).toBeHidden();
   await expect(page.locator("#mail-none")).toHaveText("Diese Nachricht enthält keine CloudShare-Links von Ihnen.");
   await expect(page.locator("#mail-shares .share")).toHaveCount(0);
@@ -1701,13 +1936,30 @@ test("reading a mail before connecting Nextcloud: connect view, then the shares"
   await expect(page.locator("#connect-view")).toBeVisible();
   await page.click("#connect");
   await expect(page.locator("#mail-shares .share")).toHaveCount(2, { timeout: 10_000 });
-  await expect(page.locator("#tab-send")).toBeHidden();
+  await expect(page.locator("#panel-send")).toBeHidden();
+});
+
+test("Verlauf: a page of the account menu with a search over subject, file and recipient", async ({ page }) => {
+  await openTaskpane(page, { shares: SHARES });
+  await openHistory(page);
+  const rows = page.locator("#shares .share");
+  await expect(rows).toHaveCount(3);
+  await expect(page.locator("#shares-search")).toBeFocused();
+  await page.fill("#shares-search", "angebot");
+  await expect(rows).toHaveCount(1);
+  await expect(rows.nth(0).locator(".share-item")).toContainText("Angebot.pdf");
+  await page.fill("#shares-search", "nichts dergleichen");
+  await expect(rows).toHaveCount(0);
+  await expect(page.locator("#no-shares")).toHaveText("Kein Eintrag passt zur Suche.");
+  await page.fill("#shares-search", "");
+  await expect(rows).toHaveCount(3);
+  await expectAccessible(page);
 });
 
 test("Verlauf: upload links are not inserted again without password", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: SHARES });
   await page.check("#mode-none");
-  await page.click("#tab-shares");
+  await openHistory(page);
   await page.locator("#shares .share").nth(2).locator(".insert").click();
   await expect(page.locator("#status")).toContainText("Links zum Hochladen brauchen immer ein Kennwort");
   expect(calls.some((c) => c.path.endsWith("/link"))).toBe(false);
@@ -1764,14 +2016,13 @@ test("Hilfe: \"Hilfe\" in the account menu opens the guide in place of the tab, 
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await expect(page.locator("#account-toggle")).toBeFocused();
 
-  // Opened from "Verlauf": back leads to "Verlauf" again (the tabs are hidden while the guide is open).
-  await page.click("#tab-shares");
+  // Opened while "Verlauf" is open: the guide takes its place, back leads to "Senden".
+  await openHistory(page);
   await openHelp(page);
   await expect(page.locator("#panel-shares")).toBeHidden();
-  await expect(page.locator("#tab-send")).toBeHidden();
   await page.click("#help-close");
   await expect(page.locator("#panel-help")).toBeHidden();
-  await expect(page.locator("#panel-shares")).toBeVisible();
+  await expect(page.locator("#panel-send")).toBeVisible();
 });
 
 test("Nextcloud öffnen opens the user's Nextcloud in the browser", async ({ page }) => {
@@ -1843,7 +2094,7 @@ test("dark Office theme: dark pane, still accessible", async ({ page }) => {
   await expect(page.locator("#attachments label.list-item")).toHaveCount(1);
   await expectAccessible(page);
   await fullShot(page, "send-dark");
-  await page.click("#tab-shares");
+  await openHistory(page);
   await expect(page.locator("#shares .share")).toHaveCount(3); // the expired "Alt.zip" is not listed
   await expectAccessible(page);
   await shot(page, "shares-dark");
@@ -1857,15 +2108,11 @@ test("narrow taskpane (320 px): no horizontal scrolling", async ({ page }) => {
   await shot(page, "send-320px");
 });
 
-test("reading a mail at 320 px: the tab names stay on one line", async ({ page }) => {
+test("reading a mail at 320 px: the title and its refresh button fit", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   await openTaskpane(page, { shares: SHARES, readBody: SENT_MAIL });
-  for (const id of ["#tab-mail", "#tab-shares"]) {
-    const tab = page.locator(id);
-    await expect(tab).toBeVisible();
-    expect((await tab.boundingBox())!.height).toBeLessThan(50); // one line of 20 px plus padding, not two
-  }
-  await expect(page.locator("#tab-mail")).toHaveAttribute("title", "Nachricht"); // full name if ever shortened
+  await expect(page.locator("#mail-heading")).toBeVisible();
+  await expect(page.locator("#refresh-mail")).toBeVisible();
   await expectNoHorizontalScroll(page);
   await shot(page, "read-320px");
 });
@@ -1874,7 +2121,7 @@ test("Verlauf at 320 px: a long name is shortened in the middle, the icons stay 
   await page.setViewportSize({ width: 320, height: 800 });
   const long = "cloudshare-icon-varianten-mit-sehr-langem-namen und Leerzeichen-final.png";
   await openTaskpane(page, { shares: [{ ...SHARES[0], name: long, passwordAvailable: true }, SHARES[1]] });
-  await page.click("#tab-shares");
+  await openHistory(page);
   const row = page.locator("#shares .share").first();
   const name = row.locator(".share-name");
   await expect(name).toHaveText(long); // the whole name for screen readers …
@@ -1945,7 +2192,7 @@ test.describe("README pictures (English)", () => {
   test("History", async ({ page }) => {
     const shares = SHARES_EN.map((share, i) => (i === 0 ? { ...share, passwordAvailable: true } : share));
     await openTaskpane(page, { lang: "en", shares, config: README_CONFIG });
-    await page.click("#tab-shares");
+    await openHistory(page);
     await expect(page.locator("#shares .share")).toHaveCount(4);
     await expect(page.locator("#shares .share").nth(1).locator(".state-text")).toHaveText("Not downloaded yet");
     // "Password" opened at the first link: the password and "Send again to".
@@ -1978,8 +2225,7 @@ test.describe("README pictures (English)", () => {
   test("Reading a sent mail", async ({ page }) => {
     await openTaskpane(page, { lang: "en", shares: SHARES_EN, config: README_CONFIG, readBody: SENT_MAIL });
     await expect(page.locator("#mail-shares .share")).toHaveCount(2);
-    await expect(page.locator("#tab-mail")).toHaveText("Message");
-    await expect(page.locator("#tab-shares")).toHaveText("History");
+    await expect(page.locator("#mail-heading")).toHaveText("Links in this message");
     await readmeShot(page, "read");
   });
 
@@ -2124,25 +2370,30 @@ test("Labels: without Outlook's catalog the names and priority come from the ten
   expect((await officeLog(page)).mailLabel).toBe(LABEL_IDS.confidential);
 });
 
-test("settings, proofs and help are pages of their own: no tabs meanwhile, back with the arrow or Escape", async ({ page }) => {
+test("history, proofs, settings and help are pages of the account menu: back with the arrow or Escape", async ({ page }) => {
   await openTaskpane(page, { config: { deliveryProof: true } });
-  for (const [entry, panel, back] of [["#settings-open", "#panel-settings", "#settings-close"], ["#proofs-open", "#panel-proofs", "#proofs-close"],
-    ["#help-toggle", "#panel-help", "#help-close"]]) {
+  await expect(page.locator(".tabbar, [role=tab]")).toHaveCount(0); // no tabs at all – "Senden" is the view
+  await page.click("#account-toggle");
+  // "Verlauf" right above "Zustellnachweise".
+  await expect(page.locator("#account-menu button:visible")).toHaveText(
+    ["Nextcloud öffnen", "Verlauf", "Zustellnachweise", "Einstellungen", "Hilfe", "Verbindung trennen"]);
+  await page.keyboard.press("Escape");
+  for (const [entry, panel, back] of [["#shares-open", "#panel-shares", "#shares-close"], ["#settings-open", "#panel-settings", "#settings-close"],
+    ["#proofs-open", "#panel-proofs", "#proofs-close"], ["#help-toggle", "#panel-help", "#help-close"]]) {
     await page.click("#account-toggle");
     await page.click(entry);
     await expect(page.locator(panel)).toBeVisible();
-    await expect(page.locator(".tabbar")).toBeHidden(); // no tab looks active behind the page
+    await expect(page.locator("#panel-send")).toBeHidden();
     await expect(page.locator(back)).toHaveAttribute("aria-label", "Zurück");
     await page.click(back);
     await expect(page.locator(panel)).toBeHidden();
-    await expect(page.locator(".tabbar")).toBeVisible();
     await expect(page.locator("#panel-send")).toBeVisible();
   }
   await page.click("#account-toggle");
   await page.click("#settings-open");
   await page.keyboard.press("Escape");
   await expect(page.locator("#panel-settings")).toBeHidden();
-  await expect(page.locator(".tabbar")).toBeVisible();
+  await expect(page.locator("#panel-send")).toBeVisible();
   await expect(page.locator("#account-toggle")).toBeFocused();
 });
 
@@ -2195,16 +2446,8 @@ test("Zustellnachweise: every proof in the account menu, filtered and searched, 
   await expect(entries.nth(1).locator(".proof-seal")).toHaveAttribute("title", "Zustellnachweis 20261112-0931-XK7P als PDF öffnen – gesendet, noch nicht abgerufen");
   await expectAccessible(page);
 
-  // The switch: only the ones not fetched, only the fetched ones, then all again.
-  await page.locator("#proofs-filter .segment", { hasText: "Ausstehend" }).click();
-  await expect(page.locator('#proofs-filter input[value="unfetched"]')).toBeChecked();
-  await expect(entries).toHaveCount(1);
-  await expect(entries.nth(0).locator(".share-title")).toHaveText("Vertrag 2026");
-  await page.locator("#proofs-filter .segment", { hasText: /^Abgerufen$/ }).click();
-  await expect(entries).toHaveCount(1);
-  await expect(entries.nth(0).locator(".share-title")).toHaveText("Unterlagen Neubau");
-  await page.locator("#proofs-filter .segment", { hasText: "Alle" }).click();
-  await expect(entries).toHaveCount(2);
+  // No filters any more – the search is the way to find a proof.
+  await expect(page.locator("#proofs-filter")).toHaveCount(0);
 
   // Search: by recipient, by tracking ID (any case), nothing.
   await page.fill("#proofs-search", "kunde@");

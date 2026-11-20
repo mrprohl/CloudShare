@@ -104,6 +104,11 @@ export const config = {
   requestFolder: process.env.NEXTCLOUD_REQUEST_FOLDER ?? "CloudShare-File-Requests",
   /** Optional line at the bottom of the card inserted into the mail, e.g. the company name. */
   mailFooter: process.env.MAIL_FOOTER ?? "",
+  /**
+   * "Feedback senden" in the add-in (feedback.ts): bug reports and ideas go by mail from the user's mailbox to this
+   * address – e.g. whoever looks after CloudShare. Empty: the entry is not offered.
+   */
+  feedbackMail: (process.env.FEEDBACK_MAIL ?? "").trim(),
 
   /** Persistent storage for the encrypted Nextcloud app passwords. */
   dataDir: process.env.DATA_DIR ?? "/data",
@@ -214,7 +219,8 @@ export const config = {
   proofRetentionMonths: number("PROOF_RETENTION_MONTHS", 36),
   /**
    * Signature of the proof PDF (pdfSign.ts): PEM files of an own certificate and key (e.g. from a CA trusted by Adobe);
-   * without them CloudShare makes a certificate itself (CN PROOF_SIGN_NAME, O PROOF_SIGN_ORGANIZATION). PROOF_TSA_URL:
+   * without them – or while they cannot be used, named in the start log – CloudShare signs with a certificate it made
+   * itself (CN PROOF_SIGN_NAME, O PROOF_SIGN_ORGANIZATION). PROOF_TSA_URL:
    * RFC 3161 time stamp authority for the signature ("off" = none) – only a hash leaves the server.
    */
   /**
@@ -283,6 +289,10 @@ export const config = {
   /** Nextcloud chunking v2: at least 5 MiB per chunk (except the last), at most 10,000 chunks. */
   chunkSizeBytes: 10 * 1024 * 1024,
 };
+
+if (config.feedbackMail && !/^[^\s@,;<>"()]+@[^\s@,;<>"()]+\.[^\s@,;<>"()]{2,}$/.test(config.feedbackMail)) {
+  throw new Error("FEEDBACK_MAIL must be one email address");
+}
 
 if (config.sendExpireDays > config.sendMaxExpireDays) {
   throw new Error("SEND_EXPIRE_DAYS must not be larger than SEND_MAX_EXPIRE_DAYS");

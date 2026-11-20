@@ -25,6 +25,8 @@ Object.assign(process.env, {
   DOWNLOAD_NOTICE: "true",
   UPLOAD_NOTICE: "true",
   SMS_NOTICE: "true",
+  // "Feedback senden" on, so its route is tested (the mail goes to the mocked Graph).
+  FEEDBACK_MAIL: "cloudshare-support@example.test",
   // No time stamp authority in the tests (pdfSign.test.ts mocks one where it needs it).
   PROOF_TSA_URL: "off",
   TEMPLATES_FILE: path.join(tmpdir(), "cloudshare-no-templates.json"),

@@ -6,6 +6,7 @@ import { config } from "./config.js";
 import { startCleanup } from "./cleanup.js";
 import { addinLanguages, language, locale, localizePublic } from "./i18n.js";
 import { startNotices } from "./notices.js";
+import { signingFilesProblem } from "./pdfSign.js";
 import { startProofWatcher } from "./proofWatcher.js";
 import { startRetention } from "./db.js";
 import { onUnsentExpired, startJobWatcher } from "./jobs.js";
@@ -20,6 +21,11 @@ const localized = existsSync(publicDir) ? localizePublic(publicDir) : 0;
 const app = await buildApp();
 app.log.info({ language, locale: locale(), addin: addinLanguages(), files: localized }, "Language");
 await initVault((msg) => app.log.info(msg));
+// Own PEM files for the proof PDF that cannot be used: told now, not with the first proof (signed with the own certificate meanwhile).
+const signingProblem = config.deliveryProof ? signingFilesProblem() : null;
+if (signingProblem) {
+  app.log.error({ problem: signingProblem }, "Proof signing files not usable – signing with CloudShare's own certificate instead");
+}
 await app.listen({ host: "0.0.0.0", port: config.port });
 // Links of drafts that were never sent are revoked when their job expires (shares.ts).
 onUnsentExpired(revokeUnsentLinks);

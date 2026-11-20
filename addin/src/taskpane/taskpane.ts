@@ -24,6 +24,9 @@ import { errorText } from "../shared/sso";
 import { filesCard, filesText, messageCard, messageText, requestCard, requestText, type CardProof } from "./mailCard";
 import { initSettings, loadSettings, userSettings } from "./settings";
 import { labelCatalog, mailLabel, readFileLabel, setMailLabel, type FileLabel, type LabelDetails } from "./labels";
+import { attachContactSuggestions } from "./contactSuggest";
+import { withCardAfterLast } from "./cardPlace";
+import { initFeedback, noteError } from "./feedback";
 
 // All visible texts come from locales/<language>.json (t(), see shared/i18n.ts) and follow Outlook's terminology
 // ("Nachricht"/"message", "Kennwort"/"password").
@@ -57,6 +60,9 @@ const modeRandom = $<HTMLInputElement>("mode-random");
 const modeOwn = $<HTMLInputElement>("mode-own");
 const modeNone = $<HTMLInputElement>("mode-none");
 const modeNoneRow = $<HTMLLabelElement>("mode-none-row");
+/** "Ohne Kennwort" / "Zustellnachweis" shown greyed out where they do not exist, with an "i" that says why. */
+const modeNoneUnavailable = $<HTMLDivElement>("mode-none-unavailable");
+const proofUnavailable = $<HTMLDivElement>("proof-unavailable");
 const modeSame = $<HTMLInputElement>("mode-same");
 const modeSameRow = $<HTMLLabelElement>("mode-same-row");
 const passwordGroup = $<HTMLDivElement>("password-group");
@@ -96,10 +102,11 @@ const validitySummary = $<HTMLSpanElement>("validity-summary");
 const expireField = $<HTMLDivElement>("expire-field");
 const messageDaysField = $<HTMLDivElement>("message-days-field");
 const expireHint = $<HTMLParagraphElement>("expire-hint");
-const tabSend = $<HTMLButtonElement>("tab-send");
-const tabShares = $<HTMLButtonElement>("tab-shares");
-const tabMail = $<HTMLButtonElement>("tab-mail");
 const refreshSharesButton = $<HTMLButtonElement>("refresh-shares");
+const refreshMailButton = $<HTMLButtonElement>("refresh-mail");
+const sharesOpen = $<HTMLButtonElement>("shares-open");
+const sharesClose = $<HTMLButtonElement>("shares-close");
+const sharesSearch = $<HTMLInputElement>("shares-search");
 const panelMail = $<HTMLDivElement>("panel-mail");
 const helpToggle = $<HTMLButtonElement>("help-toggle");
 const helpClose = $<HTMLButtonElement>("help-close");
@@ -113,8 +120,11 @@ const settingsOpen = $<HTMLButtonElement>("settings-open");
 const panelProofs = $<HTMLElement>("panel-proofs");
 const proofsOpen = $<HTMLButtonElement>("proofs-open");
 const proofsClose = $<HTMLButtonElement>("proofs-close");
+/** "Feedback senden" in the account menu (FEEDBACK_MAIL). */
+const panelFeedback = $<HTMLElement>("panel-feedback");
+const feedbackOpen = $<HTMLButtonElement>("feedback-open");
+const feedbackClose = $<HTMLButtonElement>("feedback-close");
 
-const proofsFilter = $<HTMLDivElement>("proofs-filter");
 const proofsSearch = $<HTMLInputElement>("proofs-search");
 const proofsList = $<HTMLDivElement>("proofs-list");
 const proofsEmpty = $<HTMLParagraphElement>("proofs-empty");
@@ -216,6 +226,7 @@ function setStatus(text: string, kind: StatusKind = "info", action?: StatusActio
     ? `<svg class="icon" viewBox="0 0 16 16" aria-hidden="true">${seconds > 0 ? statusTimer(kind) : STATUS_CIRCLE + STATUS_GLYPHS[kind]}</svg><span></span>`
     : "";
   if (text) statusBar.querySelector("span")!.textContent = text;
+  if (kind === "error") noteError(text); // for a later bug report ("Feedback senden")
   for (const item of text ? actions : []) {
     const button = document.createElement("button");
     button.type = "button";
@@ -1115,6 +1126,13 @@ passwordSmsInput.addEventListener("change", () => {
   void applyChannel({ passwordTo: undefined, passwordSms: number });
 });
 
+// Suggestions from the own Outlook contacts while typing (optional Contacts.Read); for SMS only numbers that may get one.
+attachContactSuggestions(passwordToInput, "mail", looksLikeEmail);
+attachContactSuggestions(passwordSmsInput, "sms", (value) => {
+  const number = normalizePhone(value);
+  return number !== null && !smsNumberProblem(number);
+});
+
 /**
  * Why a new link cannot be created with the current settings, or null. Upload links always need a password;
  * an own password must meet the rules; the chosen password channel needs its address or number.
@@ -1180,9 +1198,29 @@ async function bodyContains(marker: string): Promise<boolean> {
 }
 
 /**
- * Inserts a card (HTML mail) or plain text (text mail) at the cursor. New Outlook reports success but inserts
- * nothing when the cursor has never been in the body (e.g. only recipients and subject were filled in) – so the
- * result is checked via `marker` and the card is put at the top of the mail instead. Throws if both fail.
+ * A further card goes right after the last CloudShare card of this mail, wherever the cursor is (cardPlace.ts): the
+ * body is read, the card put in and the body written back. False when the mail has no card yet or it cannot be found.
+ */
+async function insertAfterLastCard(html: string): Promise<boolean> {
+  const markers = (await readDraftState()).links ?? [];
+  if (!markers.length) return false;
+  try {
+    const body = composeItem().body;
+    const content = await officeAsync<string>((cb) => body.getAsync(Office.CoercionType.Html, cb));
+    const placed = withCardAfterLast(content, markers, html);
+    if (placed === null) return false;
+    await officeAsync<void>((cb) => body.setAsync(placed, { coercionType: Office.CoercionType.Html }, cb));
+    return true;
+  } catch {
+    return false; // then at the cursor, as for the first card
+  }
+}
+
+/**
+ * Inserts a card (HTML mail) or plain text (text mail) at the cursor – a further card of an HTML mail right after the
+ * last one instead (insertAfterLastCard). New Outlook reports success but inserts nothing when the cursor has never
+ * been in the body (e.g. only recipients and subject were filled in) – so the result is checked via `marker` and the
+ * card is put at the top of the mail instead. Throws if both fail.
  */
 async function insertIntoBody(html: string, text: string, marker: string) {
   const body = composeItem().body;
@@ -1197,6 +1235,7 @@ async function insertIntoBody(html: string, text: string, marker: string) {
 
   // Only links that really landed in the mail are recorded: after a failed insertion the user may paste the link
   // by hand ("Verlauf"), so the draft must not be released then (see releaseDraftIfLinksGone).
+  if (!isText && (await insertAfterLastCard(html)) && (await bodyContains(marker))) return rememberLink(marker);
   await officeAsync<void>((cb) => body.setSelectedDataAsync(data, options, cb));
   if (await bodyContains(marker)) return rememberLink(marker);
 
@@ -1517,6 +1556,27 @@ function selectKind(kind: Kind) {
 for (const radio of kindRadios) radio.addEventListener("change", () => renderKind());
 
 /**
+ * A greyed-out option with its "i" (`.unavailable`: "Ohne Kennwort", "Zustellnachweis" for a message or an upload
+ * link). Shown or hidden; the reason folds out below on a click on the "i" and folds in again when it is hidden.
+ */
+function showUnavailable(block: HTMLElement, shown: boolean) {
+  block.hidden = !shown;
+  if (!shown) {
+    const toggle = block.querySelector<HTMLButtonElement>(".why-toggle")!;
+    toggle.setAttribute("aria-expanded", "false");
+    block.querySelector<HTMLElement>(".why")!.hidden = true;
+  }
+}
+for (const block of [modeNoneUnavailable, proofUnavailable]) {
+  const toggle = block.querySelector<HTMLButtonElement>(".why-toggle")!;
+  const why = block.querySelector<HTMLElement>(".why")!;
+  toggle.addEventListener("click", () => {
+    why.hidden = !why.hidden;
+    toggle.setAttribute("aria-expanded", String(!why.hidden));
+  });
+}
+
+/**
  * Shows the part of the chosen kind. "Ohne Kennwort" exists only for files – a confidential message or an upload link
  * always needs a password, so the option is not offered there (instead of an error after the click).
  */
@@ -1531,6 +1591,9 @@ function renderKind() {
   const lockedNone = modeNone.checked && modeNone.disabled;
   // A mail fixed to "Ohne Kennwort" keeps showing it, so the note below explains why nothing else can be inserted.
   modeNoneRow.hidden = !lockedNone && (passwordEnforced || kind !== "files");
+  // Not for this kind: greyed out with the reason behind the "i", instead of silently gone (Nextcloud's own rule for
+  // passwords stays without – it is the organisation's choice, not the kind's).
+  showUnavailable(modeNoneUnavailable, modeNoneRow.hidden && !passwordEnforced && kind !== "files");
   renderPasswordHint();
   renderValidity();
   renderSubmit();
@@ -1586,8 +1649,10 @@ function renderValidity() {
   // "Kennwort abrufbar" / "Kennwort-Link gültig für" only for a password link: not without password, not by SMS (the
   // password is in the SMS itself and works as long as the link does).
   const passwordLink = !withoutPassword() && selectedChannel() !== "sms";
-  // "Zustellnachweis" only for files (offered with DELIVERY_PROOF) – not for a message or an upload link.
+  // "Zustellnachweis" only for files (offered with DELIVERY_PROOF) – for a message or an upload link greyed out, the
+  // "i" says why.
   proofField.hidden = !serverConfig.deliveryProof || kind !== "files";
+  showUnavailable(proofUnavailable, serverConfig.deliveryProof === true && kind !== "files");
   expireField.hidden = kind === "message";
   expireHint.textContent = t(kind === "request" ? "expire.hintRequest" : "expire.hint");
   messageDaysField.hidden = kind !== "message";
@@ -1933,46 +1998,38 @@ async function insertMessage() {
   });
 }
 
-// --- Tabs ------------------------------------------------------------------------------
-
-/** "send" | "shares" while writing ("Senden" | "Verlauf"), "mail" | "shares" while reading. */
-type Tab = "send" | "mail" | "shares";
-/** The tab shown – also while the guide covers it, so closing the guide returns there. */
-let currentTab: Tab = "send";
-
-/** Shows a tab and closes the guide; `load: false` when the list is loaded elsewhere. */
-function selectTab(tab: Tab, load = true) {
-  currentTab = tab;
-  tabSend.setAttribute("aria-selected", String(tab === "send"));
-  tabMail.setAttribute("aria-selected", String(tab === "mail"));
-  tabShares.setAttribute("aria-selected", String(tab === "shares"));
-  showHelp(false);
-  if (tab !== "send" && load) loadShares().catch((err) => setStatus(errorMessage(err), "error"));
-}
-
-/** What covers the current tab: the user guide or the settings (both in the account menu), or nothing. */
-type Overlay = "help" | "settings" | "proofs" | null;
-
-/** Shows the guide or the settings in place of the current tab; closed, that tab shows again. */
-/** The page shown in place of the tabs (settings, proofs, help) – null: a tab. */
-let currentOverlay: Overlay = null;
+// --- The view and its pages ------------------------------------------------------------
 
 /**
- * Settings, proofs and help are pages of their own: the tab bar goes while one is open (no tab looks active behind
- * it), the page has "←" before its title; "←" or Escape leads back to the tab.
+ * No tabs: writing shows "Senden", reading the links of that mail ("mail"). "Verlauf", "Zustellnachweise", the
+ * settings and the help are pages of the account menu that cover it (showOverlay).
  */
+type View = "send" | "mail";
+let currentView: View = "send";
+
+/** The page shown in place of the view (history, proofs, settings, help) – null: the view itself. */
+type Overlay = "shares" | "help" | "settings" | "proofs" | "feedback" | null;
+let currentOverlay: Overlay = null;
+
+/** Every page has "←" before its title; "←" or Escape leads back to the view. */
 function showOverlay(overlay: Overlay) {
   currentOverlay = overlay;
-  document.querySelector<HTMLElement>(".tabbar")!.hidden = overlay !== null;
   helpToggle.setAttribute("aria-expanded", String(overlay === "help"));
   panelHelp.hidden = overlay !== "help";
   panelSettings.hidden = overlay !== "settings";
   panelProofs.hidden = overlay !== "proofs";
-  panelSend.hidden = overlay !== null || currentTab !== "send";
-  panelMail.hidden = overlay !== null || currentTab !== "mail";
-  panelShares.hidden = overlay !== null || currentTab !== "shares";
-  // "Aktualisieren" only where there is a link list to reload.
-  refreshSharesButton.hidden = overlay !== null || currentTab === "send";
+  panelShares.hidden = overlay !== "shares";
+  panelFeedback.hidden = overlay !== "feedback";
+  panelSend.hidden = overlay !== null || currentView !== "send";
+  panelMail.hidden = overlay !== null || currentView !== "mail";
+}
+
+/** "Verlauf" in the account menu: every valid link, freshly loaded, the search field first. */
+function openShares() {
+  showAccountMenu(false);
+  showOverlay("shares");
+  sharesSearch.focus();
+  loadShares().catch((err) => setStatus(errorMessage(err), "error"));
 }
 
 const showHelp = (open: boolean) => showOverlay(open ? "help" : null);
@@ -1984,9 +2041,12 @@ document.addEventListener("keydown", (event) => {
   accountToggle.focus();
 });
 
-tabSend.addEventListener("click", () => selectTab("send"));
-tabMail.addEventListener("click", () => selectTab("mail"));
-tabShares.addEventListener("click", () => selectTab("shares"));
+sharesOpen.addEventListener("click", openShares);
+sharesClose.addEventListener("click", () => {
+  showOverlay(null);
+  accountToggle.focus();
+});
+sharesSearch.addEventListener("input", () => renderShareList());
 // "Hilfe" in the account menu opens the guide in place of the current tab; "×" closes it, the focus goes back to the
 // account.
 helpToggle.addEventListener("click", () => {
@@ -2003,7 +2063,6 @@ const settingsView = initSettings({
   token: getToken,
   setStatus,
   errorMessage,
-  close: () => closeSettings(),
   onChanged: () => {
     if (readMode) return;
     // New ways for "Kennwort senden an": a mail without links yet switches to the preselected way if its own is no
@@ -2064,10 +2123,10 @@ interface ProofItem {
   passwordTo: string[] | null;
 }
 
-type ProofFilter = "all" | "fetched" | "unfetched";
+
 
 let proofItems: ProofItem[] = [];
-let proofFilter: ProofFilter = "all";
+
 
 /**
  * The seal of a proof, coloured by its state (grey sent, blue address confirmed, green fetched); the state and the
@@ -2150,13 +2209,10 @@ async function openProofMail(id: string) {
   }
 }
 
-const proofMatchesFilter = (p: ProofItem) =>
-  proofFilter === "all" || (proofFilter === "fetched") === (p.state === "fetched");
-
-/** The proofs the filter and the search let through. */
+/** The proofs the search lets through. */
 function shownProofs(): ProofItem[] {
   const query = proofsSearch.value.trim().toLowerCase();
-  return proofItems.filter((p) => proofMatchesFilter(p) &&
+  return proofItems.filter((p) =>
     (!query || [p.id, p.subject ?? "", ...p.recipients, ...p.files].some((s) => s.toLowerCase().includes(query))));
 }
 
@@ -2184,25 +2240,43 @@ async function openProofs() {
 }
 
 proofsOpen.addEventListener("click", () => void openProofs());
-proofsSearch.addEventListener("input", renderProofs);
-proofsFilter.addEventListener("change", (event) => {
-  proofFilter = (event.target as HTMLInputElement).value as ProofFilter;
-  renderProofs();
+// "Feedback senden": a page like the settings; after sending back to the view.
+const feedbackView = initFeedback({
+  token: getToken,
+  setStatus,
+  errorMessage,
+  close: () => {
+    showOverlay(null);
+    accountToggle.focus();
+  },
 });
+feedbackOpen.addEventListener("click", () => {
+  showAccountMenu(false);
+  showOverlay("feedback");
+  feedbackView.open();
+});
+feedbackClose.addEventListener("click", () => {
+  showOverlay(null);
+  accountToggle.focus();
+});
+proofsSearch.addEventListener("input", renderProofs);
 proofsClose.addEventListener("click", () => {
   showOverlay(null);
   accountToggle.focus();
 });
-refreshSharesButton.addEventListener("click", () => {
-  refreshSharesButton.disabled = true;
-  refreshSharesButton.setAttribute("aria-busy", "true");
-  loadShares()
-    .catch((err) => setStatus(errorMessage(err), "error"))
-    .then(() => {
-      refreshSharesButton.disabled = false;
-      refreshSharesButton.removeAttribute("aria-busy");
-    });
-});
+// "Aktualisieren" on "Verlauf" and on the links of a mail being read.
+for (const button of [refreshSharesButton, refreshMailButton]) {
+  button.addEventListener("click", () => {
+    button.disabled = true;
+    button.setAttribute("aria-busy", "true");
+    loadShares()
+      .catch((err) => setStatus(errorMessage(err), "error"))
+      .then(() => {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+      });
+  });
+}
 
 // --- History ("Verlauf") -----------------------------------------------------
 
@@ -2423,6 +2497,12 @@ interface SentPassword {
   otherTo: string[];
   /** Number of the SMS (E.164, "" if none) – suggested for sending it again by SMS. */
   sms: string;
+  /**
+   * "Zustellnachweis": the password is held back until a recipient confirmed their address with the code. Sent again
+   * only after that – to the recipients only the `verified` addresses (the server enforces it, the pane says so).
+   */
+  deferred?: boolean;
+  verified?: string[];
 }
 
 type ResendChannel = "recipients" | "mail" | "sms";
@@ -2483,11 +2563,27 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
   });
 
   const channel = panel.querySelector<HTMLSelectElement>(`#${id}-channel`)!;
+  // Delivery proof, nobody confirmed yet: nothing to send again – the password goes out by itself after the code.
+  const verified = sent.verified ?? [];
+  if (sent.deferred && verified.length === 0) {
+    const held = document.createElement("p");
+    held.className = "hint";
+    held.textContent = t("resend.held");
+    channelLabel.nextElementSibling?.remove(); // the select
+    for (const element of [channelLabel, panel.querySelector(`#${id}-to`), panel.querySelector(`#${id}-hint`), panel.querySelector(".send-password")]) {
+      element?.remove();
+    }
+    panel.append(held);
+    return;
+  }
   // Preselected: the way the password went the first time – offered even if the settings leave it out now.
   const first: ResendChannel =
     share.password?.channel === "sms" && serverConfig.smsEnabled ? "sms" : sent.otherTo.length > 0 ? "mail" : "recipients";
   const offered = userSettings().channels as string[];
-  const options: Array<[ResendChannel, string]> = [["recipients", t("channel.recipients")], ["mail", t("channel.mail")]];
+  const options: Array<[ResendChannel, string]> = [
+    ["recipients", t(sent.deferred ? "resend.verifiedRecipients" : "channel.recipients")],
+    ["mail", t("channel.mail")],
+  ];
   if (serverConfig.smsEnabled) options.push(["sms", t("channel.sms")]);
   for (const [value, text] of options) if (offered.includes(value) || value === first) channel.add(new Option(text, value));
   channel.value = first;
@@ -2506,7 +2602,9 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
     target.setAttribute("aria-label", t(sms ? "resend.smsLabel" : "resend.mailLabel"));
     hint.textContent =
       value === "recipients"
-        ? t("resend.recipientsHint", { list: distributionText(sent.recipients) })
+        ? sent.deferred
+          ? t("resend.verifiedHint", { list: verified.join(", ") })
+          : t("resend.recipientsHint", { list: distributionText(sent.recipients) })
         : sms
           ? t("resend.smsHint") + smsCountriesHint()
           : t("resend.mailHint");
@@ -2835,33 +2933,47 @@ async function linkAgain(share: ShareItem, button: HTMLButtonElement) {
 /** When the list was last loaded – it reloads when the pane comes back into view, at most every 10 s. */
 let sharesLoadedAt = 0;
 
-/** All valid links (newest first); there is no refresh button – the list loads with the tab and on return. */
+/** The valid links last loaded – "Verlauf" shows those the search lets through. */
+let loadedShares: ShareItem[] = [];
+
+/** All valid links (newest first): for "Verlauf" and, reading a mail, the links of that mail. */
 async function loadShares() {
   sharesLoadedAt = Date.now();
   const shares = (await api<ShareItem[]>("/api/shares", {}, await getToken())).filter(isValid);
+  loadedShares = shares;
   if (readMode) {
-    // "Nachricht": the links of the mail being read; "Verlauf": all of them.
+    // The links of the mail being read.
     const tokens = await mailTokens();
     const inMail = (share: ShareItem) => tokens.has(share.url ? shareToken(share.url) : (share.accessId ?? ""));
     mailShares.replaceChildren(...shares.filter(inMail).map(shareRow));
   }
-  sharesList.replaceChildren(...shares.map(shareRow));
-  renderEmptyLists();
+  renderShareList();
+}
+
+/** "Verlauf" with the search: subject, what went out (file name or kind), recipients and password way, case-insensitive. */
+function renderShareList() {
+  const query = sharesSearch.value.trim().toLowerCase();
+  const text = (s: ShareItem) =>
+    [s.subject ?? "", s.name, ...(s.sentTo ? [...s.sentTo.to, ...s.sentTo.cc] : []), s.password?.to ?? "", s.proofId ?? ""].join(" ").toLowerCase();
+  sharesList.replaceChildren(...loadedShares.filter((s) => !query || text(s).includes(query)).map(shareRow));
+  renderEmptyLists(query !== "");
 }
 
 /** Back in the pane (other window, other app): fresh download and password states, unless a panel is open. */
 function reloadSharesOnReturn() {
   const panelOpen = document.querySelector(".password-panel:not([hidden])") !== null;
-  if (currentTab === "send" || helpToggle.getAttribute("aria-expanded") === "true" || panelOpen) return;
+  // Only where a link list is in sight: "Verlauf", or the links of a mail being read.
+  if (!(currentOverlay === "shares" || (currentOverlay === null && currentView === "mail")) || panelOpen) return;
   if (document.visibilityState !== "visible" || Date.now() - sharesLoadedAt < 10_000) return;
   loadShares().catch(() => undefined);
 }
 window.addEventListener("focus", reloadSharesOnReturn);
 document.addEventListener("visibilitychange", reloadSharesOnReturn);
 
-/** "Noch keine Freigaben" / "keine Links in dieser Nachricht" when a list is (or became) empty. */
-function renderEmptyLists() {
+/** "Noch keine Freigaben" (or "nothing matches the search") / "keine Links in dieser Nachricht" when a list is empty. */
+function renderEmptyLists(searching = sharesSearch.value.trim() !== "") {
   noShares.hidden = sharesList.childElementCount > 0;
+  noShares.textContent = t(searching && loadedShares.length > 0 ? "shares.noMatch" : "shares.none");
   mailNone.hidden = mailShares.childElementCount > 0;
 }
 
@@ -2880,17 +2992,17 @@ async function mailTokens(): Promise<Set<string>> {
 }
 
 /**
- * Read mode: tabs "Nachricht" (the links of the mail being read, in place of "Senden") and "Verlauf"
- * (plus "Hilfe"); follows the selected mail while the pane is pinned.
+ * Read mode: the links of the mail being read in place of "Senden" ("Verlauf" and the rest in the account menu);
+ * follows the selected mail while the pane is pinned.
  */
 async function startReadView() {
-  tabSend.hidden = true;
-  tabMail.hidden = false;
-  selectTab("mail", false); // loaded as soon as the connection is known (showConnection)
+  currentView = "mail";
+  showOverlay(null); // loaded as soon as the connection is known (showConnection)
   try {
     Office.context.mailbox.addHandlerAsync(Office.EventType.ItemChanged, () => {
       setStatus(""); // a message about the previous mail (e.g. a revoked link) does not belong to this one
-      selectTab("mail"); // another mail: its links
+      showOverlay(null); // another mail: its links
+      loadShares().catch((err) => setStatus(errorMessage(err), "error"));
     });
   } catch {
     // Pinning is not available in every Outlook version – the pane then closes with the mail anyway.
@@ -2947,6 +3059,7 @@ Office.onReady(async () => {
   }
   // "Zustellnachweise" in the account menu – also while reading a mail – only where the server has the delivery proof.
   proofsOpen.hidden = !serverConfig.deliveryProof;
+  feedbackOpen.hidden = !serverConfig.feedback;
   if (readMode) return startReadView();
 
   const state = await readDraftState();

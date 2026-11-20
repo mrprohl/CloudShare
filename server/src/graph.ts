@@ -278,6 +278,50 @@ export async function sentMailState(graphToken: string, immutableId: string): Pr
  */
 export const GRAPH_LABEL_SCOPES = ["https://graph.microsoft.com/InformationProtectionPolicy.Read"];
 
+/**
+ * Delegated permission for the user's own Outlook contacts – optional: the suggestions under "Kennwort an" (another
+ * address, SMS number). Without consent the fields stay plain inputs.
+ */
+export const GRAPH_CONTACT_SCOPES = ["https://graph.microsoft.com/Contacts.Read"];
+
+/** One personal contact: its name, mail addresses and phone numbers (as stored, not normalized). */
+export interface Contact {
+  name: string;
+  emails: string[];
+  phones: { number: string; type: "mobile" | "business" | "home" }[];
+}
+
+/** The contacts of the user's default contacts folder (Graph /me/contacts), at most 5,000. */
+export async function fetchContacts(graphToken: string): Promise<Contact[]> {
+  const contacts: Contact[] = [];
+  type GraphContact = {
+    displayName?: string | null; emailAddresses?: { name?: string; address?: string }[] | null; mobilePhone?: string | null;
+    businessPhones?: string[] | null; homePhones?: string[] | null;
+  };
+  let url: string | undefined =
+    "https://graph.microsoft.com/v1.0/me/contacts?$select=displayName,emailAddresses,mobilePhone,businessPhones,homePhones&$top=500";
+  for (let page = 0; url && page < 10; page++) {
+    const res: Response = await fetch(url, { headers: { Authorization: `Bearer ${graphToken}` } });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new HttpError(502, `Graph contacts failed (HTTP ${res.status}): ${text.slice(0, 300)}`);
+    }
+    const json = (await res.json()) as { value?: GraphContact[]; "@odata.nextLink"?: string };
+    for (const contact of json.value ?? []) {
+      const emails = (contact.emailAddresses ?? []).map((e) => (e.address ?? "").trim()).filter(Boolean);
+      const phones: Contact["phones"] = [
+        ...(contact.mobilePhone ? [{ number: contact.mobilePhone, type: "mobile" as const }] : []),
+        ...(contact.businessPhones ?? []).map((number) => ({ number, type: "business" as const })),
+        ...(contact.homePhones ?? []).map((number) => ({ number, type: "home" as const })),
+      ].filter((phone) => phone.number.trim());
+      const name = (contact.displayName ?? "").trim() || emails[0] || "";
+      if (name && (emails.length || phones.length)) contacts.push({ name, emails, phones });
+    }
+    url = json["@odata.nextLink"];
+  }
+  return contacts;
+}
+
 export interface SensitivityLabel {
   /** GUID, lower case without braces. */
   id: string;

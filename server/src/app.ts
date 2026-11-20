@@ -9,7 +9,7 @@ import { existsSync } from "node:fs";
 import { appGraphToken, authenticate, HttpError, onBehalfOf, type User } from "./auth.js";
 import { config, SEND_DAYS_LIMIT } from "./config.js";
 import { getCredentials, removeCredentials, saveCredentials } from "./credentials.js";
-import { ewsIdFor, fetchProfile, fetchSensitivityLabels, GRAPH_LABEL_SCOPES, GRAPH_PROFILE_SCOPES, GRAPH_SCOPES, sendMail, sendMailAsApp, sentMailState, type MailRecipients, type SensitivityLabel } from "./graph.js";
+import { ewsIdFor, fetchContacts, fetchProfile, fetchSensitivityLabels, GRAPH_CONTACT_SCOPES, GRAPH_LABEL_SCOPES, type Contact, GRAPH_PROFILE_SCOPES, GRAPH_SCOPES, sendMail, sendMailAsApp, sentMailState, type MailRecipients, type SensitivityLabel } from "./graph.js";
 import {
   addFileToJob,
   addNoticeShare,
@@ -62,6 +62,8 @@ import {
 import { accessIdOf, isMessageToken, messageFor, messagesOf, recordDraftSubject, recordMessage, sentMailFor, updateDraftSubject } from "./history.js";
 import { isCloudShareShare, isRequestShare, revokeMessage, revokeShare, tokenOf } from "./shares.js";
 import { defaultTemplates, render, smsFiles, templatesFor } from "./templates.js";
+import { matchContacts } from "./contacts.js";
+import { FEEDBACK_MAX_LENGTH, feedbackMail, parseFeedback } from "./feedback.js";
 import { clampInt, isEmailAddress } from "./limits.js";
 import { formatDate, inRecipientLanguage, inSenderLanguage, knownLanguage, locale, requestLanguageCode, t, tIn, withRequestLanguage } from "./i18n.js";
 import { passwordProblem } from "./password.js";
@@ -70,6 +72,7 @@ import { availableSettings, defaultSettings, parseSettings, resetSettings, saveS
 import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } from "./store.js";
 import { addLink, caseById, caseFor, caseForLink, caseOfToken, casesOf, caseSummary, gatewayUrl, linkUrlFor, type ProofCase, type ProofLink } from "./proof.js";
 import { caseSubject } from "./proofMail.js";
+import { verifiedAddresses } from "./proofPassword.js";
 import { confirmFromMail, gatewayCsp, openGateway, requestCode, verifyCode, type GatewayResult, type Visitor } from "./proofGateway.js";
 import { signedProofPdf } from "./proofPdf.js";
 import { refreshCase } from "./proofWatcher.js";
@@ -564,6 +567,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     nextcloudUrl: config.nextcloudUrl,
     // "Zustellnachweis" in "Gültigkeit und Sprache" (DELIVERY_PROOF).
     deliveryProof: config.deliveryProof,
+    // "Feedback senden" in the account menu (FEEDBACK_MAIL; the address itself stays on the server).
+    feedback: Boolean(config.feedbackMail),
     // Sensitivity labels of shared files (LABEL_POLICY, LABEL_ENCRYPTED).
     labelPolicy: config.labelPolicy,
     labelEncrypted: config.labelEncrypted,
@@ -628,6 +633,26 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     return fetchProfile(token);
   });
 
+  /**
+   * "Feedback senden": a bug report or an idea, mailed from the user's own mailbox to FEEDBACK_MAIL (feedback.ts) in
+   * the organisation's language. 404 without FEEDBACK_MAIL. The text is not logged.
+   */
+  app.post("/api/feedback", { config: { rateLimit: strictLimit } }, async (req) => {
+    const user = await authenticate(req);
+    if (!config.feedbackMail) throw new HttpError(404, t("server.feedbackOff"), "FEEDBACK_OFF");
+    const feedback = parseFeedback(req.body);
+    if (!feedback) throw new HttpError(400, t("server.feedbackInvalid", { max: FEEDBACK_MAX_LENGTH }));
+    const name = await onBehalfOf(user, GRAPH_PROFILE_SCOPES)
+      .then(({ token }) => fetchProfile(token))
+      .then((profile) => profile.displayName || user.upn)
+      .catch(() => user.upn);
+    const mail = inRecipientLanguage(config.language, () => feedbackMail(feedback, { name, address: user.upn }));
+    const { token } = await onBehalfOf(user, GRAPH_SCOPES);
+    await sendMail(token, { to: [config.feedbackMail], cc: [], bcc: [] }, mail.subject, mail.html);
+    req.log.info({ user: user.upn, kind: feedback.kind, details: Boolean(feedback.diagnostics) }, "Feedback sent");
+    return { ok: true };
+  });
+
   // --- Personal settings (⚙ in the add-in, settings.ts) ------------------------
 
   /** The settings that apply, the defaults of the environment ("Zurücksetzen") and what the server offers at all. */
@@ -655,6 +680,32 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     if (labelCache.size > 5000) labelCache.clear();
     labelCache.set(key, { at: Date.now(), labels });
     return { labels };
+  });
+
+  /**
+   * Suggestions from the user's own Outlook contacts (Graph, optional delegated Contacts.Read) for "Kennwort an":
+   * `kind=mail` matches names and addresses, `kind=sms` names and the digits of the numbers. `contacts: null` when the
+   * permission is not consented (or Graph fails): the pane then stops asking. The contacts are kept in memory only, ten
+   * minutes per user – never stored, the query is not logged.
+   */
+  const contactCache = new Map<string, { at: number; contacts: Contact[] | null }>();
+  app.get("/api/contacts", async (req) => {
+    const user = await authenticate(req);
+    const { q, kind } = req.query as { q?: string; kind?: string };
+    const cached = contactCache.get(user.oid);
+    let contacts = cached && Date.now() - cached.at < 10 * 60_000 ? cached.contacts : undefined;
+    if (contacts === undefined) {
+      contacts = await onBehalfOf(user, GRAPH_CONTACT_SCOPES)
+        .then(({ token }) => fetchContacts(token))
+        .catch((err) => {
+          req.log.info({ user: user.upn, err: (err as Error).message }, "Contacts not readable via Graph");
+          return null;
+        });
+      if (contactCache.size > 1000) contactCache.clear();
+      contactCache.set(user.oid, { at: Date.now(), contacts });
+    }
+    if (contacts === null) return { contacts: null };
+    return { contacts: matchContacts(contacts, String(q ?? "").slice(0, 100), kind === "sms" ? "sms" : "mail", config.smsDefaultCountry) };
   });
 
   app.get("/api/settings", async (req) => settingsResponse((await authenticate(req)).oid));
@@ -1107,7 +1158,9 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     const ref = await ownPasswordRef(user, req.params.id);
     const password = await readSendPassword(ref.sendId);
     req.log.info({ user: user.upn, shareId: req.params.id }, "Password shown to its sender");
-    return { password, recipients: originalRecipients(ref), otherTo: ref.otherTo ?? [], sms: ref.sms ?? "" };
+    // Held back for the delivery proof: sent again only after (and, to the recipients, only to) confirmed addresses.
+    const held = ref.deferred ? { deferred: true, verified: verifiedAddresses(caseOfToken(ref.tokens[0] ?? ""), ref.tokens) } : {};
+    return { password, recipients: originalRecipients(ref), otherTo: ref.otherTo ?? [], sms: ref.sms ?? "", ...held };
   });
 
   /**
@@ -1127,6 +1180,11 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const target = typeof req.body?.to === "string" ? req.body.to : "";
       const templates = inRecipientLanguage(ref.language, () => templatesFor({ upn: ref.ownerUpn, department: ref.department }));
       const channel = req.body?.channel;
+      // "Zustellnachweis": the password of this step is held back until a recipient confirmed their address with the
+      // code (proofPassword.ts). Sending it again must not get round that: nothing before the first confirmation, and
+      // "Empfänger der Nachricht" means the confirmed addresses only – each in a mail of its own.
+      const verified = ref.deferred ? verifiedAddresses(caseOfToken(ref.tokens[0] ?? ""), ref.tokens) : [];
+      if (ref.deferred && verified.length === 0) throw new HttpError(409, t("server.passwordHeld"), "PASSWORD_HELD");
 
       if (channel === "sms") {
         if (!smsEnabled()) throw new HttpError(409, t("server.smsNotConfigured"));
@@ -1147,7 +1205,9 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       // Who gets a mail: the original distribution in one mail, or every other address in a mail of its own.
       let mails: MailRecipients[];
       let others: string[] = [];
-      if (channel === "recipients") {
+      if (channel === "recipients" && ref.deferred) {
+        mails = verified.map((address) => ({ to: [address], cc: [], bcc: [] }));
+      } else if (channel === "recipients") {
         const original = originalRecipients(ref);
         if (original.to.length + original.cc.length + original.bcc.length === 0) {
           throw new HttpError(400, t("server.recipientsInvalid", { max: 20 }));
@@ -1185,7 +1245,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       for (const recipients of mails) await sendMail(token, recipients, subject, html, ref.from);
 
       // Shown in "Verlauf" like the first time: To and Cc (Bcc stays hidden), or the other addresses.
-      const shown = (channel === "recipients" ? [...mails[0].to, ...mails[0].cc] : others).join(", ");
+      const shown = (channel === "recipients" ? (ref.deferred ? verified : [...mails[0].to, ...mails[0].cc]) : others).join(", ");
       await recordDelivery(ref.tokens, { owner: user.oid, channel: "mail", to: shown, at: Date.now() });
       await updatePasswordRef(ref.sendId, { otherTo: channel === "mail" ? others : undefined, resentSend: send.id });
       req.log.info({ user: user.upn, channel, mails: mails.length }, "Password sent again by mail");
