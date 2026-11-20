@@ -289,14 +289,16 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* Like the hint under "Kennwort an": right below its option, the same gap above and below. */
 .password-field > #password-hint { margin-top: 0; margin-bottom: 4px; }
 /* After the rules of an own password (not right below an option) the hint needs the same gap as below it. */
-.password-field > .rules + #password-hint { margin-top: 6px; }
+.password-field > .rules:not([hidden]) + #password-hint { margin-top: 6px; } /* a hidden list is still the neighbour */
 .proof-row { margin-top: 20px; }
 /* "Kennwort an": radio buttons like the password choices; the address or number field and its hint indented below the
    chosen option (the width of the dot plus its gap). */
 .channel-options .channel-group, .channel-options > .hint { margin-left: 24px; }
 .channel-options .channel-group { margin-top: 2px; margin-bottom: 4px; }
 /* The same gap above (to the field) and below (to the next way), like the hint under the password. */
-.channel-options > .hint { margin-top: 4px; margin-bottom: 2px; }
+.channel-options > .hint { margin-top: 0; margin-bottom: 4px; }
+/* … with 4px only when the address or number field is shown above it (a hidden field is still a neighbour). */
+.channel-options > .channel-group:not([hidden]) ~ .hint { margin-top: 4px; margin-bottom: 2px; }
 .inline-row { display: grid; grid-template-columns: 7em minmax(0, 1fr); align-items: center; column-gap: 12px; }
 .inline-label { color: var(--fg1); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -596,7 +598,8 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 .password-panel .label:first-child { margin-top: 0; }
 .password-panel .hint { margin-bottom: 8px; }
 /* "Erneut senden an": the hint under the chosen way as in "Senden" – not 8px more before the next way. */
-.password-panel .channel-options > .hint { margin-bottom: 2px; }
+.password-panel .channel-options > .hint { margin-bottom: 4px; }
+.password-panel .channel-options > .channel-group:not([hidden]) ~ .hint { margin-bottom: 2px; }
 .password-panel .channel-options + .send-password { margin-top: 8px; }
 .share-actions .show-password[aria-expanded="true"] { background: var(--bg1-pressed); color: var(--fg1); }
 
