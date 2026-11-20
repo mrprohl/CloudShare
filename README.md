@@ -97,7 +97,7 @@ three.
    - **No password** – only for files and only if your Nextcloud allows links without a password. Anyone with the
      link can download the file while the link is valid; no password goes out, and that mail cannot get a
      confidential message or upload link any more (the pane says so).
-3. **"Recipients"**, always in sight: **"Password to"** – the recipients of the mail (default), **another e-mail address** (e.g. a colleague),
+3. Right below the password, always in sight: **"Password to"** – the recipients of the mail (default), **another e-mail address** (e.g. a colleague),
    or a **phone number (SMS)** if SMS is set up – the password arrives as plain text, sent after the mail. While you
    type the address or number, matching entries of your **Outlook contacts** drop down below the field (name and
    address or number; arrow keys and Enter or a click), and the **address book** icon next to the field opens all of
@@ -411,7 +411,7 @@ corrected number) or as a password mail. Two kinds of failure:
 
 For mails where the sender may later have to show **that and when** recipients got something. On with
 `DELIVERY_PROOF=true` (unset it follows `DOWNLOAD_NOTICE`; it needs the same application permission `Mail.Send`).
-The sender switches on **"Proof of delivery"** under "Recipients" before inserting files as a link – never on by
+The sender switches on **"Proof of delivery"** (the switch below the password) before inserting files as a link – never on by
 default, offered for "Files" only (not for a confidential message or an upload link). Details: [architecture.md → 2.12](docs/architecture.md#212-delivery-proof-zustellnachweis).
 
 - **Tracking ID** per mail (e.g. `20261117-1146-7Q2F`) in the link card, the password mail, the download

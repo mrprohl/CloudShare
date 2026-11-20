@@ -1413,7 +1413,10 @@ test("Zustellnachweis: not offered without DELIVERY_PROOF on the server", async 
 test("Zustellnachweis: only for files; ticked, it goes with the upload and the card names the tracking ID", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Plan.pdf", 2 * MiB)], config: { deliveryProof: true } });
   await expect(page.locator("#password")).not.toHaveValue("");
-  // Under "Empfänger", in sight – not there at all for a message or an upload link.
+  // Below the password, in sight (no heading "Empfänger": "Kennwort an" belongs to the password) – not there at all for a
+  // message or an upload link.
+  await expect(page.locator("#panel-send h2", { hasText: /^Empfänger$/ })).toHaveCount(0);
+  expect(await page.locator(".password-field + #password-to-field + #proof-field").count()).toBe(1);
   for (const kind of ["message", "request"] as const) {
     await chooseKind(page, kind);
     await expect(page.locator("#proof-field")).toBeHidden();
