@@ -115,11 +115,11 @@ section > .section-title:first-child { margin-top: 16px; }
 .caption, .hint { font-size: 12px; line-height: 16px; color: var(--fg3); margin: 4px 0 0; }
 /* Below the password: why nothing can be inserted (mail already has links without password). */
 .hint.warning { color: var(--danger-fg); }
-/* A description under an item looks the same everywhere: 12px from the bottom of the item (its letters, a field's or
-   a switch's edge) to the top of the description's letters, measured in the rendered pane. The empty space around the
-   lines differs, so the margins do: under a field 8px, under an option (4px padding of its row) 2px, under a switch
-   8px, under the rules of an own password 5px. */
-:is(.input-group, .select-wrap, .textarea) + .hint, .hint-row .hint { margin-top: 8px; }
+/* A description under an item sits as close as the line under "Gültigkeit" everywhere: 5px from the bottom of the item
+   (its letters, a field's or a switch's edge) to the top of the description's letters, measured in the rendered pane.
+   The empty space around the lines differs, so the margins do: under a field or a switch 2px, under an option (4px
+   padding of its row) -4px, under the rules of an own password -1px. */
+:is(.input-group, .select-wrap, .textarea) + .hint, .hint-row .hint { margin-top: 2px; }
 a { color: var(--brand-fg); text-decoration: none; }
 a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* Links inside running text must not rely on colour alone (WCAG 1.4.1, axe link-in-text-block). */
@@ -296,18 +296,18 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* The password field, its rules and the hint indented below the chosen option (dot 16px + gap 8px), like "Kennwort an". */
 .password-field > .input-group, .password-field > .rules, .password-field > #password-hint { margin-left: 24px; }
 /* Like the hint under "Kennwort an": right below its option, the same gap above and below. */
-.password-field > #password-hint { margin-top: 2px; margin-bottom: 4px; }
+.password-field > #password-hint { margin-top: -4px; margin-bottom: 4px; }
 /* After the rules of an own password (not right below an option) the hint needs the same gap as below it. */
-.password-field > .rules:not([hidden]) + #password-hint { margin-top: 5px; } /* a hidden list is still the neighbour */
+.password-field > .rules:not([hidden]) + #password-hint { margin-top: -1px; } /* a hidden list is still the neighbour */
 .proof-row { margin-top: 20px; }
 /* "Kennwort an": radio buttons like the password choices; the address or number field and its hint indented below the
    chosen option (the width of the dot plus its gap). */
 .channel-options .channel-group, .channel-options > .hint { margin-left: 24px; }
-.channel-options .channel-group { margin-top: 3px; margin-bottom: 4px; }
+.channel-options .channel-group { margin-top: 3px; margin-bottom: 0; } /* its hint always follows */
 /* The same gap above (to the field) and below (to the next way), like the hint under the password. */
-.channel-options > .hint { margin-top: 2px; margin-bottom: 4px; }
+.channel-options > .hint { margin-top: -4px; margin-bottom: 4px; }
 /* … with 4px only when the address or number field is shown above it (a hidden field is still a neighbour). */
-.channel-options > .channel-group:not([hidden]) ~ .hint { margin-top: 8px; margin-bottom: 2px; }
+.channel-options > .channel-group:not([hidden]) ~ .hint { margin-top: 2px; margin-bottom: 2px; }
 .inline-row { display: grid; grid-template-columns: 7em minmax(0, 1fr); align-items: center; column-gap: 12px; }
 .inline-label { color: var(--fg1); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -322,11 +322,11 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* Fixed for this mail (it has links with or without a proof already): greyed out like Outlook's locked switches. */
 .switch input:disabled, .switch:has(input:disabled) { cursor: not-allowed; }
 .switch input:disabled + .switch-track { opacity: .5; }
-.switch-field .hint { margin-top: 8px; }
+.switch-field .hint { margin-top: 2px; }
 /* An option that does not exist for the chosen kind: greyed out, the reason as a hint below it – indented like the hint
    under a chosen option (showUnavailable). */
 .unavailable .radio { cursor: default; }
-.unavailable .why { margin: 2px 0 4px 24px; }
+.unavailable .why { margin: -4px 0 4px 24px; }
 /* "Kennwort senden an": native select in the look of the inputs, own chevron (follows the theme colours). */
 .select-wrap { position: relative; }
 .select-wrap::after {
@@ -339,7 +339,7 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .suffix { color: var(--fg2); }
 /* Confidential message: multi-line, grows by hand, same look as the inputs. */
 .input.textarea { display: block; width: 100%; height: auto; min-height: 92px; padding: 6px 10px; resize: vertical; }
-#message-count { margin: 8px 0 0; }
+#message-count { margin: 2px 0 0; }
 #message-count.over { color: var(--danger-fg); }
 
 /* --- Checkbox ------------------------------------------------------------------ */
