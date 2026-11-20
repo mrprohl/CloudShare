@@ -140,7 +140,7 @@ read) and is not shown for the other two.
 
 <br clear="right">
 
-<img src="docs/images/taskpane-shares.png" alt="History, a page of the account menu with a search field: like the proofs of delivery - the day and recipients, Password to ..., Valid until ... with a calendar and the download status on its own line, and the icons Copy, Password, Insert, Revoke next to the subject; the first link has the seal of a proof of delivery after its file name and Password is open with the password and Send again to" width="300" align="right">
+<img src="docs/images/taskpane-shares.png" alt="History, a page of the account menu with a search field: like the proofs of delivery - the day and recipients (message and password to ... when they are the same), Password to ..., Valid until ... with a calendar and the download status on its own line, and the icons Copy, Password, Insert, Revoke next to the subject; the first link has the seal of a proof of delivery after its file name and Password is open with the password and Send again to" width="300" align="right">
 
 **"History"** – a page of the account menu at the bottom left, above "Proofs of delivery" – lists everything you sent
 with CloudShare that is still valid – links and confidential messages, newest first; the search field at the top
@@ -150,7 +150,8 @@ a click opens that mail in Outlook (only mails
 of your own mailbox) –, below it what went out – the file name, "File request" or "Confidential message" (the symbol on the left shows the
 kind: a document, an upload arrow, an envelope with a lock)
 –, then one short line each for
-the day and recipients, the password (with / without, or how it went out: "Password by text message to …
+the day and recipients – "message and password to …" when the password went to the same addresses –, else the password
+(with / without, or how it went out: "Password by text message to …
 – delivered"), **"Valid until 24.11.2026"** with a calendar (orange in the last two days) and, on its own line, the
 downloads (or received files; Vaultwarden does not report whether a message was opened). A
 confidential message has no "Copy" or "Insert" – CloudShare does not keep its key – but "Password" and "Revoke"

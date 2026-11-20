@@ -521,14 +521,15 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 .share-meta { font-size: 12px; line-height: 16px; color: var(--fg3); }
 .share-password.failed { color: var(--danger-fg); }
 .share-unsent { color: var(--fg2); font-weight: 600; }
-.share-state { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; margin-top: 2px; color: var(--fg2); }
+.share-state { display: flex; align-items: center; gap: 4px; font-size: 12px; line-height: 16px; margin-top: 2px; color: var(--fg2); }
 /* The state ("1× heruntergeladen · …") on one line – shortened with "…", the whole text in its tooltip. */
 .share-state .state-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* "Gültig bis 03.12.2026" above the state: a calendar before it, orange from two days before the end. */
 .share-valid { display: flex; align-items: center; gap: 4px; margin-top: 2px; color: var(--fg2); }
 .share-valid .icon { width: 14px; height: 14px; flex: none; }
 .share-valid.soon { color: var(--warning-fg); }
-.share-state .dot-state { width: 8px; height: 8px; border-radius: 50%; background: var(--stroke1); flex: none; }
+/* The dot centred in the 14px column of the calendar above, so both symbols and both texts line up. */
+.share-state .dot-state { width: 8px; height: 8px; margin: 0 3px; border-radius: 50%; background: var(--stroke1); flex: none; }
 .share-state.done .dot-state { background: var(--success-fg); }
 /* Icon buttons at the right of the name; the revoke button shows "Wirklich?" as text until confirmed. */
 .share-actions { display: flex; flex: none; margin-right: -6px; }

@@ -2184,6 +2184,15 @@ function proofSeal(id: string, state: ProofState | null | undefined): HTMLButton
 
 const dayOf = (date: string) => formatDate(Date.parse(`${date}T12:00:00Z`));
 
+/**
+ * The password went by mail to exactly the addresses the message went to (To, Cc): then one line says both –
+ * "Nachricht und Kennwort an …" – instead of the same addresses twice. Any other address or an SMS keeps two lines.
+ */
+function sameAddresses(a: string[], b: string[]): boolean {
+  const norm = (list: string[]) => [...new Set(list.map((s) => s.trim().toLowerCase()).filter(Boolean))].sort().join(",");
+  return a.length > 0 && norm(a) === norm(b);
+}
+
 /** The line "Gültig bis 03.12.2026" of an entry in "Verlauf" and "Zustellnachweise" – above its state. */
 const VALID_LINE =
   `<div class="share-meta share-valid" hidden><svg class="icon" viewBox="0 0 16 16" aria-hidden="true">` +
@@ -2245,10 +2254,13 @@ function proofRow(p: ProofItem): HTMLElement {
   item.textContent = p.kind === "file" ? p.files.join(", ") : t(`shares.kind.${p.kind}`);
   item.title = p.files.join(", ");
   item.append(proofSeal(p.id, p.state));
+  // "Nachricht und Kennwort an …" when both went to the same addresses, else "Nachricht an …" and "Kennwort an …" –
+  // like the lines of "Verlauf".
+  const together = p.passwordTo !== null && sameAddresses(p.passwordTo, p.recipients);
   row.querySelector<HTMLElement>(".proof-sent")!.textContent =
-    t("proofs.sentTo", { date: formatDate(p.sentAt), to: p.recipients.join(", ") || "–" });
-  // "Kennwort an erika@example.com" – like the password line of "Verlauf".
+    t(together ? "proofs.sentWithPasswordTo" : "proofs.sentTo", { date: formatDate(p.sentAt), to: p.recipients.join(", ") || "–" });
   const password = row.querySelector<HTMLElement>(".proof-password")!;
+  password.hidden = together;
   password.textContent = p.passwordTo === null
     ? t("proofs.withoutPassword")
     : p.passwordTo.length ? t("proofs.passwordTo", { to: p.passwordTo.join(", ") }) : t("proofs.passwordPending");
@@ -2828,14 +2840,17 @@ function shareRow(share: ShareItem): HTMLElement {
     row.querySelector(".share-head")!.after(item);
   }
 
-  // The same lines as an entry of "Zustellnachweise": "18.11.2026 · an erika@example.com", "Kennwort an …", and the
-  // state ending in "endet 02.12.2026".
+  // The same lines as an entry of "Zustellnachweise": "18.11.2026 · Nachricht und Kennwort an erika@example.com" when
+  // the password went by mail to exactly the recipients, else "… · Nachricht an …" and "Kennwort an …" (other address,
+  // SMS) – then "Gültig bis …" and the state.
   const sentLine = row.querySelector<HTMLElement>(".share-sent")!;
   const sentTo = share.sentTo ? [...share.sentTo.to, ...share.sentTo.cc] : [];
+  const together = share.password?.channel === "mail" && sentTo.length > 0 && sameAddresses(share.password.to.split(/,\s*/), sentTo);
   sentLine.textContent = sentTo.length
-    ? t("proofs.sentTo", { date: formatDate(share.sentAt ?? share.sharedAt), to: sentTo.join(", ") })
+    ? t(together ? "proofs.sentWithPasswordTo" : "proofs.sentTo", { date: formatDate(share.sentAt ?? share.sharedAt), to: sentTo.join(", ") })
     : formatDate(share.sharedAt);
-  sentLine.title = t("shares.sharedOn", { date: formatDate(share.sharedAt) });
+  sentLine.title = [t("shares.sharedOn", { date: formatDate(share.sharedAt) }), together && share.password ? passwordText(share.password) : ""]
+    .filter(Boolean).join("\n");
   const passwordLine = row.querySelector<HTMLElement>(".share-password")!;
   passwordLine.textContent = share.password
     ? passwordShort(share.password)
@@ -2843,7 +2858,8 @@ function shareRow(share: ShareItem): HTMLElement {
       ? t("proofs.withoutPassword")
       : t("shares.withPasswordLine");
   // Not sent yet: the bold line below says so – no "Kennwort noch nicht gesendet" on top of it.
-  passwordLine.parentElement!.hidden = Boolean(share.unsent && !share.password && share.protected !== false);
+  // Said in the line above already ("Nachricht und Kennwort an …").
+  passwordLine.parentElement!.hidden = together || Boolean(share.unsent && !share.password && share.protected !== false);
   fillValidLine(row, share.expiration);
   passwordLine.title = share.password ? passwordText(share.password) : "";
   passwordLine.classList.toggle("failed", share.password?.status === "failed");
