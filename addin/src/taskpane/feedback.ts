@@ -87,7 +87,7 @@ export function initFeedback(options: Options) {
     toggle.textContent = t(open ? "feedback.hideDetails" : "feedback.showDetails");
     if (open) renderDetails();
   };
-  toggle.addEventListener("click", () => showDetails(details.hidden));
+  toggle.addEventListener("click", () => showDetails(details.hidden === true));
   withDetails.addEventListener("change", () => {
     toggle.hidden = !withDetails.checked;
     if (!withDetails.checked) showDetails(false);
