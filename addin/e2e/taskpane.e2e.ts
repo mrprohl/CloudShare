@@ -58,6 +58,8 @@ interface Scenario {
   passwordInfo?: Record<string, unknown>;
   /** GET /api/proofs: the user's delivery proofs. */
   proofs?: unknown[];
+  /** Lists and settings answer only after this many ms – to see the loading placeholders. */
+  slowLoads?: number;
   mailLabel?: string;
   /** Opened from a mail being read (taskpane.html?view=read) with this HTML body. */
   readBody?: string;
@@ -133,6 +135,9 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     calls.push(call);
     const json = (body: unknown, status = 200) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     const route_ = `${call.method} ${call.path}`;
+    if (scenario.slowLoads && /^GET \/api\/(shares|proofs|settings)$/.test(route_)) {
+      await new Promise((resolve) => setTimeout(resolve, scenario.slowLoads));
+    }
 
     // "Zustellnachweise": the user's cases, and the signed address of a PDF.
     if (route_ === "GET /api/proofs") return json(scenario.proofs ?? []);
@@ -2191,6 +2196,42 @@ test("Hilfe: the magnifier searches the guide – only sections with a hit, open
   await expect(shown).toHaveCount(all);
   await expect(page.locator("#panel-help mark.help-hit")).toHaveCount(0);
   await expect(page.locator("#panel-help .help-intro")).toBeVisible();
+});
+
+test("loading: placeholders while the pane starts and while lists and settings load – replaced once they are there", async ({ page }) => {
+  await openTaskpane(page, { shares: SHARES, proofs: [], config: { deliveryProof: true }, slowLoads: 1500 });
+  // The start: placeholders in the shape of "Senden" (before any answer), read out as "Wird geladen …".
+  const start = page.locator("#start-view");
+  await expect(start).toBeVisible();
+  await expect(start.locator("[role=status]")).toHaveAttribute("aria-busy", "true");
+  await expect(start).toContainText("Wird geladen …");
+  await expect(start).toBeHidden({ timeout: 10_000 });
+  await expect(page.locator("#panel-send")).toBeVisible();
+
+  // "Verlauf": placeholder rows until the list is there, then the entries – no "Noch keine Freigaben" in between.
+  await openHistory(page);
+  await expect(page.locator("#shares .skeleton")).toBeVisible();
+  await expect(page.locator("#no-shares")).toBeHidden();
+  await expect(page.locator("#shares .share")).toHaveCount(3, { timeout: 10_000 });
+  await expect(page.locator("#shares .skeleton")).toHaveCount(0);
+
+  // "Zustellnachweise" the same way; "Einstellungen" were loaded at the start already and show at once.
+  await page.click("#shares-close");
+  await page.click("#account-toggle");
+  await page.click("#proofs-open");
+  await expect(page.locator("#proofs-list .skeleton")).toBeVisible();
+  await expect(page.locator("#proofs-list .skeleton")).toHaveCount(0, { timeout: 10_000 });
+  await page.keyboard.press("Escape");
+  await openSettings(page);
+  await expect(page.locator("#settings-form")).toBeVisible();
+  await expect(page.locator("#settings-loading")).toBeHidden();
+});
+test("loading: reading a mail, its links show placeholders until they are loaded", async ({ page }) => {
+  await openTaskpane(page, { shares: SHARES, readBody: SENT_MAIL, slowLoads: 1500 });
+  await expect(page.locator("#mail-shares .skeleton")).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator("#mail-none")).toBeHidden();
+  await expect(page.locator("#mail-shares .share").first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.locator("#mail-shares .skeleton")).toHaveCount(0);
 });
 
 test("Nextcloud öffnen opens the user's Nextcloud in the browser", async ({ page }) => {

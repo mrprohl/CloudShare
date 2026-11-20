@@ -9,6 +9,7 @@
  */
 import { desiredLanguage, language, languageChoices, SETTINGS_CACHE_KEY, t } from "../shared/i18n";
 import { api, type Channel, type SettingsResponse, type UserSettings } from "../shared/office";
+import { skeletonForm } from "./skeleton";
 
 const CHANNELS: Channel[] = ["recipients", "mail", "sms"];
 /** Profile fields a signature may use (server/src/graph.ts, Profile; filled by server/src/signature.ts). */
@@ -76,7 +77,7 @@ const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as 
 /** Wires the settings form (panel-settings in taskpane.html); called once when taskpane.ts starts. */
 export function initSettings(options: Options) {
   const form = $<HTMLFormElement>("settings-form");
-  const loading = $<HTMLParagraphElement>("settings-loading");
+  const loading = $<HTMLDivElement>("settings-loading");
   const channelBoxes = $<HTMLDivElement>("settings-channels");
   const defaultChannel = $<HTMLSelectElement>("settings-default-channel");
   const noticesGroup = $<HTMLFieldSetElement>("settings-notices-group");
@@ -206,6 +207,8 @@ export function initSettings(options: Options) {
   async function open() {
     form.hidden = !current;
     loading.hidden = Boolean(current);
+    // Not loaded yet: placeholders in the shape of the form until it is there.
+    if (!current) loading.replaceChildren(skeletonForm(4));
     if (current) fill(current);
     try {
       current = await api<SettingsResponse>("/api/settings", {}, await options.token());
