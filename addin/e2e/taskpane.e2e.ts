@@ -1415,7 +1415,7 @@ test("Zustellnachweis: only for files; ticked, it goes with the upload and the c
   await expect(page.locator("#password")).not.toHaveValue("");
   // Below the password, in sight (no heading "Empfänger": "Kennwort an" belongs to the password) – not there at all for a
   // message or an upload link.
-  await expect(page.locator("#panel-send h2", { hasText: "Empfänger" })).toHaveCount(0);
+  await expect(page.locator("#panel-send h2", { hasText: /^Empfänger$/ })).toHaveCount(0);
   expect(await page.locator(".password-field + #password-to-field + #proof-field").count()).toBe(1);
   for (const kind of ["message", "request"] as const) {
     await chooseKind(page, kind);
