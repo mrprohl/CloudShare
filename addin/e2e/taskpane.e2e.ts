@@ -276,6 +276,10 @@ async function expectNoHorizontalScroll(page: Page) {
 
 /** "Dateien" / "Nachricht" / "Anfordern" – click the visible segment like a user (the radio is styled away). */
 const chooseKind = (page: Page, kind: "files" | "message" | "request") => page.click(`label:has(#kind-${kind})`);
+/** "Kennwort an": a radio button – click its visible label (the radio itself is styled away). */
+const channelRadio = (page: Page, channel: "recipients" | "mail" | "sms") => page.locator(`#password-channel input[value="${channel}"]`);
+const chooseChannel = (page: Page, channel: "recipients" | "mail" | "sms") =>
+  page.click(`#password-channel label:has(input[value="${channel}"])`);
 
 /** Opens the guide: account at the bottom left → "Hilfe". */
 async function openHelp(page: Page) {
@@ -501,9 +505,9 @@ test("settings: notices and signature in sight, the rest under \"Weitere Einstel
   await expect(page.locator("#panel-send")).toBeVisible();
   await expect(page.locator("#account-toggle")).toBeFocused();
   // No links in this mail yet: it switches to the preselected way, the ways left out are not offered.
-  await expect(page.locator("#password-channel")).toHaveValue("sms");
-  await expect(page.locator('#password-channel option[value="recipients"]')).toHaveJSProperty("hidden", true);
-  await expect(page.locator('#password-channel option[value="mail"]')).toHaveJSProperty("hidden", false);
+  await expect(channelRadio(page, "sms")).toBeChecked();
+  await expect(page.locator('#password-channel label:has(input[value="recipients"])')).toBeHidden();
+  await expect(page.locator('#password-channel label:has(input[value="mail"])')).toBeVisible();
 });
 
 test("settings and help: the heading with its back arrow stays in sight while scrolling", async ({ page }) => {
@@ -524,10 +528,10 @@ test("settings and help: the heading with its back arrow stays in sight while sc
 
 test("settings: a new mail starts with the preselected way and offers only the chosen ones", async ({ page }) => {
   await openTaskpane(page, { config: { smsEnabled: true }, settings: { channels: ["recipients", "sms"], defaultChannel: "sms" } });
-  await expect(page.locator("#password-channel")).toHaveValue("sms");
+  await expect(channelRadio(page, "sms")).toBeChecked();
   await expect(page.locator("#password-sms")).toBeVisible();
-  await expect(page.locator('#password-channel option[value="mail"]')).toHaveJSProperty("hidden", true);
-  await expect(page.locator('#password-channel option[value="recipients"]')).toHaveJSProperty("hidden", false);
+  await expect(page.locator('#password-channel label:has(input[value="mail"])')).toBeHidden();
+  await expect(page.locator('#password-channel label:has(input[value="recipients"])')).toBeVisible();
 });
 
 test("settings: an own signature is plain text with paragraphs – stored as typed, not in the link card", async ({ page }) => {
@@ -625,7 +629,7 @@ test("ticks every attachment and proposes a random password", async ({ page }) =
   await rows.nth(1).locator(".file-name").click();
   await expect(page.locator("#validity-section")).toBeHidden();
   await expect(page.locator("#validity-summary")).toHaveText("Link 14 Tage · Kennwort-Link 5 Tage, 3-mal abrufbar");
-  await expect(page.locator('#password-channel option[value="sms"]')).toHaveCount(1);
+  await expect(channelRadio(page, "sms")).toHaveCount(1);
 
   await expectAccessible(page);
   await expectNoHorizontalScroll(page);
@@ -716,7 +720,7 @@ test("uploads a large attachment in chunks, removes it and inserts the card", as
   await expect(page.locator("#password-hint")).toHaveText("Diese Nachricht hat schon ein Kennwort. Weitere Dateien, Nachrichten und Upload-Links erhalten dasselbe Kennwort auf demselben Weg.");
   expect(JSON.parse((await officeLog(page)).session["cloudshare-state"]).lastStep.password).toBe(password);
   for (const mode of ["#mode-random", "#mode-own", "#mode-none"]) await expect(page.locator(mode)).toBeDisabled();
-  await expect(page.locator("#password-channel")).toBeDisabled();
+  await expect(page.locator("#password-channel input:checked")).toBeDisabled();
   await shot(page, "after-upload");
 
   // "Kennwort abrufbar" applies to the next link.
@@ -778,7 +782,7 @@ test("one password per mail: every further file, message or upload link joins th
   });
   await expect(page.locator("#submit")).toHaveText("2 Dateien als Link einfügen");
   await expect(page.locator("#mode-same-row")).toBeHidden(); // nothing to share yet
-  await expect(page.locator("#password-channel")).toBeEnabled();
+  await expect(page.locator("#password-channel input:checked")).toBeEnabled();
   await page.click("#submit"); // click 1: both files together
   await expect(page.locator("#status")).toContainText("2 Links wurden eingefügt.");
 
@@ -786,7 +790,7 @@ test("one password per mail: every further file, message or upload link joins th
   await expect(page.locator("#mode-same")).toBeChecked();
   await expect(page.locator("#mode-random")).toBeDisabled();
   await expect(page.locator("#mode-own")).toBeDisabled();
-  await expect(page.locator("#password-channel")).toBeDisabled();
+  await expect(page.locator("#password-channel input:checked")).toBeDisabled();
   await page.locator("label").filter({ has: page.locator("#kind-message") }).click();
   await page.fill("#message", "Zugangsdaten folgen");
   await page.click("#submit");
@@ -812,7 +816,7 @@ test("one password per mail: every further file, message or upload link joins th
 test("Kennwort an eine andere E-Mail-Adresse: stored on the job once it exists", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)] });
   await expect(page.locator("#password-to")).toBeHidden();
-  await page.selectOption("#password-channel", "mail");
+  await chooseChannel(page, "mail");
   await expect(page.locator("#password-to-hint")).toContainText("Nur diese Adresse erhält das Kennwort");
 
   await page.fill("#password-to", "keine adresse");
@@ -834,13 +838,13 @@ test("Kennwort an eine andere E-Mail-Adresse: stored on the job once it exists",
 
 test("Kennwort per SMS: not offered without seven.io on the server", async ({ page }) => {
   await openTaskpane(page);
-  await expect(page.locator("#password-channel option")).toHaveText(["Empfänger der Nachricht", "Andere E-Mail-Adresse"]);
-  await expect(page.locator('#password-channel option[value="sms"]')).toHaveCount(0); // no SMS without seven.io on the server
+  await expect(page.locator("#password-channel label.radio")).toHaveText(["Empfänger der Nachricht", "Andere E-Mail-Adresse"]);
+  await expect(channelRadio(page, "sms")).toHaveCount(0); // no SMS without seven.io on the server
 });
 
 test("Kennwort per SMS: number required, normalized to E.164 and stored on the job", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)], config: { smsEnabled: true, smsDefaultCountry: "49" } });
-  await page.selectOption("#password-channel", "sms");
+  await chooseChannel(page, "sms");
   await expect(page.locator("#password-sms")).toBeVisible();
   // Both ways of writing a number are accepted – both are shown as examples.
   await expect(page.locator("#password-sms")).toHaveAttribute("placeholder", "0170 1234567 oder +49 170 1234567");
@@ -870,7 +874,7 @@ test("Kennwort per SMS: numbers of other countries and service numbers are refus
     attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)],
     config: { smsEnabled: true, smsCountryCodes: ["49", "43", "41"], smsCountries: "Deutschland, Österreich und Schweiz" },
   });
-  await page.selectOption("#password-channel", "sms");
+  await chooseChannel(page, "sms");
   // The hint stays short – the countries are named when a number from elsewhere is entered.
   await expect(page.locator("#password-to-hint")).toHaveText("Das Kennwort geht nach dem Senden per SMS an diese Nummer, die Empfänger erhalten keine Kennwort-Nachricht.");
 
@@ -906,7 +910,7 @@ test("Kennwort an: suggestions from the own contacts while typing – arrow keys
       { name: "Jonas Müller-Berg", value: "+44 7700 900123", type: "business" }, // no SMS to that country
     ],
   });
-  await page.selectOption("#password-channel", "mail");
+  await chooseChannel(page, "mail");
   const field = page.locator("#password-to");
   await field.fill("mül");
   const list = page.locator("#password-to-suggestions");
@@ -933,7 +937,7 @@ test("Kennwort an: suggestions from the own contacts while typing – arrow keys
   await expect(page.locator("#panel-send")).toBeVisible();
 
   // SMS: only numbers that may get one, a click fills in the number as E.164.
-  await page.selectOption("#password-channel", "sms");
+  await chooseChannel(page, "sms");
   const sms = page.locator("#password-sms");
   await sms.fill("jonas");
   const numbers = page.locator("#password-sms-suggestions [role=option]");
@@ -956,7 +960,7 @@ test("Kennwort an: the address book next to the field – all contacts A to Z, s
       { name: "Bernd Muster", value: "+44 7700 900123", type: "business" }, // no SMS to that country
     ],
   });
-  await page.selectOption("#password-channel", "mail");
+  await chooseChannel(page, "mail");
   await expect(page.locator("#password-to-book")).toBeVisible();
   await expect(page.locator("#password-to-book")).toHaveAttribute("aria-label", "Aus dem Adressbuch wählen");
   await page.click("#password-to-book");
@@ -982,7 +986,7 @@ test("Kennwort an: the address book next to the field – all contacts A to Z, s
   await expect(page.locator("#status")).toContainText("nur an bernd@example.org");
 
   // SMS: only the numbers that may get one.
-  await page.selectOption("#password-channel", "sms");
+  await chooseChannel(page, "sms");
   await page.click("#password-sms-book");
   await expect(page.locator(".contact-entry")).toHaveCount(1);
   await expect(page.locator(".contact-value")).toHaveText("+49 171 1234567 · Mobil");
@@ -998,7 +1002,7 @@ test("Kennwort an: the address book next to the field – all contacts A to Z, s
 
 test("Kennwort an: without Contacts.Read the address book says so and its buttons disappear", async ({ page }) => {
   await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)] });
-  await page.selectOption("#password-channel", "mail");
+  await chooseChannel(page, "mail");
   await page.click("#password-to-book");
   await expect(page.locator("#status")).toContainText("Ihre Outlook-Kontakte sind für CloudShare nicht freigegeben");
   await expect(page.locator("#panel-contacts")).toBeHidden();
@@ -1008,7 +1012,7 @@ test("Kennwort an: without Contacts.Read the address book says so and its button
 
 test("Kennwort an without the permission Contacts.Read: a plain field, asked only once", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)] });
-  await page.selectOption("#password-channel", "mail");
+  await chooseChannel(page, "mail");
   const field = page.locator("#password-to");
   await field.pressSequentially("mül", { delay: 50 });
   await expect.poll(() => calls.filter((c) => c.path === "/api/contacts").length).toBe(1);
@@ -1019,7 +1023,7 @@ test("Kennwort an without the permission Contacts.Read: a plain field, asked onl
 
 test("Kennwort an eine andere E-Mail-Adresse chosen without an address: no link until it is there", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)] });
-  await page.selectOption("#password-channel", "mail");
+  await chooseChannel(page, "mail");
 
   // No address yet: greyed out for every kind, nothing is shared.
   await expect(page.locator("#submit")).toBeDisabled();
@@ -1050,7 +1054,7 @@ test("links deleted from the mail again: password options unlock, no password ma
   await expect(page.locator("#status")).toContainText("Links wurden aus der Nachricht entfernt");
   await expect(page.locator("#mode-random")).toBeEnabled();
   await expect(page.locator("#mode-none")).toBeEnabled();
-  await expect(page.locator("#password-channel")).toBeEnabled(); // one password per mail – free again
+  await expect(page.locator("#password-channel input:checked")).toBeEnabled(); // one password per mail – free again
   const log = await officeLog(page);
   expect(log.customProps.cloudshareJob).toBeUndefined(); // the send handler has nothing to arm
   expect(JSON.parse(log.session["cloudshare-state"])).toEqual({});
@@ -1065,7 +1069,7 @@ test("Feedback senden: not offered without FEEDBACK_MAIL on the server", async (
 
 test("Feedback senden: a problem report with the last error message of the pane", async ({ page }) => {
   const calls = await openTaskpane(page, { config: { feedback: true } });
-  await page.selectOption("#password-channel", "mail");
+  await chooseChannel(page, "mail");
   await page.fill("#password-to", "keine-adresse");
   await page.press("#password-to", "Tab");
   await expect(page.locator("#status")).toContainText("gültige E-Mail-Adresse"); // an error the report will carry
@@ -1287,7 +1291,10 @@ test("uploads a file picked from the computer", async ({ page }) => {
 
 test("own password: live rule check, weak passwords are not accepted", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Bericht.pdf", 1.5 * MiB)] });
+  // The field sits right below the chosen option: under "Zufälliges Kennwort" first, then under "Eigenes Kennwort".
+  await expect(page.locator("label:has(#mode-random) + #password-group")).toHaveCount(1);
   await page.check("#mode-own");
+  await expect(page.locator("label:has(#mode-own) + #password-group + #password-rules + #password-hint")).toHaveCount(1);
   const password = page.locator("#password");
   await expect(password).toHaveValue("");
   // Hidden by CSS, never type="password" – Edge would offer to save it as a login.
@@ -1545,7 +1552,7 @@ test("Kennwort per SMS: no password-link settings – the password is in the SMS
   await openValidity(page);
   await expect(page.locator("#max-access-field")).toBeVisible();
   await expect(page.locator("#password-days-field")).toBeVisible();
-  await page.selectOption("#password-channel", "sms");
+  await chooseChannel(page, "sms");
   await expect(page.locator("#max-access-field")).toBeHidden();
   await expect(page.locator("#password-days-field")).toBeHidden();
   await expect(page.locator("#password-to-hint")).toContainText("per SMS an diese Nummer");
@@ -1557,7 +1564,7 @@ test("Kennwort per SMS: no password-link settings – the password is in the SMS
   expect(JSON.parse(calls.find((c) => c.path.endsWith("/complete"))!.body!.toString()).passwordDays).toBe(30);
 
   // The mail has its password now: "Kennwort an" is fixed for the next links (one password, one way).
-  await expect(page.locator("#password-channel")).toBeDisabled();
+  await expect(page.locator("#password-channel input:checked")).toBeDisabled();
 });
 
 test("Ohne Kennwort with download confirmation: the draft is tagged so the confirmation knows the sent mail", async ({ page }) => {

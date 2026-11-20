@@ -113,7 +113,8 @@ dragged onto the pane switch it to "Files".
    out in) and the body is written back with `body.setAsync`; if the card cannot be found it goes to the cursor. Text
    mails always insert at the cursor. It tags the draft with the custom property `cloudshareJob` (job ID) and records the link
    token in the draft state.
-5. One password per mail: after the step the taskpane selects "Gleiches Kennwort wie zuvor" (`mode-same`,
+5. The password field (with its rules and hint) sits indented right below the chosen option (`setPasswordMode`), like
+   the address or number of "Kennwort an". One password per mail: after the step the taskpane selects "Gleiches Kennwort wie zuvor" (`mode-same`,
    `DraftState.lastStep` = step ID and password) and greys out "Zufällig", "Eigenes", "Ohne Kennwort" and "Kennwort an"
    (`lockSeparate`, `lockChannel`): the next link – files, message or upload link – is sent with the same `step` and
    joins that part (`findPart`/`addFileToPart` on the server: same password, same Send, one password mail or SMS). The
@@ -196,7 +197,7 @@ wins) – Nextcloud's housekeeping deletes expired shares, so the date could not
 
 ### 2.5 Password channel: recipients, another address or SMS
 
-"Kennwort an" (a select right below the password) in the taskpane decides **per insertion** where the password goes: every link carries
+"Kennwort an" (radio buttons right below the password, the address or number field indented under the chosen one – `showChannel`) in the taskpane decides **per insertion** where the password goes: every link carries
 its way in its request (`passwordTo` – `""` = the recipients – or `passwordSms`, `deliveryFrom` in `app.ts`), and the
 step collects the ways of its links (`SeparatePart.deliveries`). A step with links for the recipients and one of the
 same password by SMS sends one password mail and one SMS; each way exactly once, also after an error in another one
