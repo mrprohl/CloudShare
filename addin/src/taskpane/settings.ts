@@ -103,7 +103,7 @@ export function initSettings(options: Options) {
       const small = document.createElement("span");
       small.className = "hint checkbox-hint";
       small.textContent = hint;
-      text.append(document.createElement("br"), small);
+      text.append(small); // a block of its own right under the label (.checkbox-hint)
     }
     return row;
   };

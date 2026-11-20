@@ -144,7 +144,7 @@ read) and is not shown for the other two.
 
 <br clear="right">
 
-<img src="docs/images/taskpane-shares.png" alt="History, a page of the account menu with a magnifier for the search: like the proofs of delivery - the day and recipients (message and password to ... when they are the same), Password to ..., Valid until ... with a calendar and the download status on its own line, and the icons Copy, Password, Insert, Revoke next to the subject; the first link has the seal of a proof of delivery after its file name and Password is open with the password and Send again to" width="300" align="right">
+<img src="docs/images/taskpane-shares.png" alt="History, a page of the account menu with a magnifier for the search: like the proofs of delivery - the day and recipients (message and password to ... when they are the same), Password to ..., Valid until ... with a calendar and the download status on its own line, and the icons Copy, Password, Insert, Revoke next to the subject; the first link has a proof of delivery: its case number under the file name with the seal after it and Password is open with the password and Send again to" width="300" align="right">
 
 **"History"** – a page of the account menu at the bottom left, above "Proofs of delivery" – lists everything you sent
 with CloudShare that is still valid – links and confidential messages, newest first; the **magnifier** at the top right
@@ -413,7 +413,7 @@ corrected number) or as a password mail. Two kinds of failure:
 
 ### Proof of delivery (optional)
 
-<img src="docs/images/taskpane-proofs.png" alt="Proofs of delivery, opened from the account menu: a magnifier for the search and three proofs with subject, date and recipient, files and download state, case number and whether it is complete; the seal on the left opens the signed PDF" width="300" align="right">
+<img src="docs/images/taskpane-proofs.png" alt="Proofs of delivery, opened from the account menu: a magnifier for the search and three proofs with subject, the files and right under them the case number with the seal after it (which opens the signed PDF), date and recipients, validity and download state" width="300" align="right">
 
 For mails where the sender may later have to show **that and when** recipients got something. On with
 `DELIVERY_PROOF=true` (unset it follows `DOWNLOAD_NOTICE`; it needs the same application permission `Mail.Send`).
@@ -453,8 +453,9 @@ default, offered for "Files" only (not for a confidential message or an upload l
 - **Finding a proof later**: "Proofs of delivery" in the account menu lists the proof of every sent mail – also those whose links expired
   long ago and no longer show in "History" – searchable via the magnifier at the top right by case number, subject, recipient or
   file name (no other filters). Each entry looks and works like a row of "History": a click on the
-  subject opens the sent mail. The seal after the file name shows the state by its colour (grey sent, blue address
-  confirmed, green fetched – the same in "History") and opens the PDF; each entry says "Valid until …" (calendar, orange in
+  subject opens the sent mail. Under the file name stands the case number alone, the seal after it shows the state by
+  its colour (grey sent, blue address confirmed, green fetched – the same in "History") and opens
+  the PDF; each entry says "Valid until …" (calendar, orange in
   the last two days) or, once finished, until when the proof is kept.
 - **The PDF** starts with the result in a frame – sent, address confirmed, downloaded (or files received, message
   opened), when the link ends and until when the proof is kept, each with a tick or a circle – followed by the record.

@@ -117,7 +117,7 @@ dragged onto the pane switch it to "Files".
    not shown (it goes out by itself, "Verlauf" → "Kennwort" shows it later). Field and hint sit indented right below the
    chosen option (`setPasswordMode`), like
    the address or number of "Kennwort an". One password per mail: after the step the taskpane selects "Gleiches Kennwort wie zuvor" (`mode-same`,
-   `DraftState.lastStep` = step ID and password) and, under "Kennwort an", "Gleicher Empfänger wie zuvor" (`#channel-same`, its hint `#channel-same-hint`); "Zufällig", "Eigenes", "Ohne Kennwort" and the three ways are greyed out – the password keeps going the way of the first link (`lockedWay`, `selectedChannel`)
+   `DraftState.lastStep` = step ID and password) and, under "Kennwort an", "Gleiche Empfänger wie zuvor" (`#channel-same`, its hint `#channel-same-hint`); "Zufällig", "Eigenes", "Ohne Kennwort" and the three ways are greyed out – the password keeps going the way of the first link (`lockedWay`, `selectedChannel`)
    (`lockSeparate`, `lockChannel`): the next link – files, message or upload link – is sent with the same `step` and
    joins that part (`findPart`/`addFileToPart` on the server: same password, same Send, one password mail or SMS). The
    server refuses a link with a password that would open a second step in the job (`assertOnePassword`, 409
@@ -808,17 +808,19 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   (`#panel-proofs`, searchable behind the magnifier `#proofs-search-toggle` like "Verlauf" and "Hilfe",
   `searchToggle.ts`); loads `GET /api/proofs` (every case of the user whose mail was sent, finished ones too) and
   every entry is built like a row of "Verlauf" (`proofRow`: kind symbol, subject as title – a click opens the sent mail
-  via `GET /api/proofs/:id/mail` when `mailAvailable` –, the file with its seal (a click opens the PDF),
-  to whom, the tracking ID in bold, then the state with its dot; no action icons – the list is for looking things up);
-  filters it while typing over tracking ID, subject, recipients and file names (no other filters); the seal of an entry (`proofSeal`, also in
-  "Verlauf" via `proofState` of `/api/shares`) is coloured by `caseSummary(c).state` – grey sent, blue confirmed, green
+  via `GET /api/proofs/:id/mail` when `mailAvailable` –, the file, right under it the tracking ID in bold (no word
+  "Vorgang") with the seal after it (a click opens the PDF), then to whom, "Gültig bis" and the state with its dot; no action icons – the list is for looking things up);
+  filters it while typing over tracking ID, subject, recipients and file names (no other filters); the seal of an entry (`proofSeal`, after the tracking ID
+  under the file – the same line `.proof-case` in "Verlauf", via `proofId`/`proofState` of `/api/shares`) is coloured by `caseSummary(c).state` – grey sent, blue confirmed, green
   fetched – and opens its signed PDF; the sent line says "Nachricht und Kennwort an …" when the password went to exactly
   the recipients (`sameAddresses`, the password line hidden), else "Nachricht an …" and "Kennwort an …"; each entry has the
   line "Gültig bis …" (`endsOn`, `fillValidLine` – a calendar,
   orange from two days before the end; the same line in "Verlauf") or "Aufbewahrt bis …" (`keptUntil`), and the state
   alone on the line below.
 - **Help** ("Hilfe" in the account menu of the bottom bar, `#help-toggle`; `#panel-help` in `taskpane.html`, shown in place of the
-  view like the history, the settings and the proofs (`showOverlay`, `currentOverlay`), "←" before the title (`.page-back`) or Escape leads back): a user guide for everyday users – short `<details>`
+  view like the history, the settings and the proofs (`showOverlay`, `currentOverlay`), "←" before the title (`.page-back`) or Escape leads back;
+  every page opens at its top, back to the view – or from the address book to its page – the pane stands where it was
+  left, `scrolledTo`): a user guide for everyday users – short `<details>`
   sections (getting started, sending files, password and channel, confidential message, receiving files, "History",
   FAQ), the most common one open. A magnifier in its head (`#help-search-toggle`, `helpSearch.ts`) folds out a search:
   sections without every word get `.search-miss` (never `hidden`, which server switches use), the others open with the
