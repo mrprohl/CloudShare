@@ -25,6 +25,7 @@ import { filesCard, filesText, messageCard, messageText, requestCard, requestTex
 import { initSettings, loadSettings, userSettings } from "./settings";
 import { labelCatalog, mailLabel, readFileLabel, setMailLabel, type FileLabel, type LabelDetails } from "./labels";
 import { attachContactSuggestions } from "./contactSuggest";
+import { initAddressBook } from "./addressBook";
 import { withCardAfterLast } from "./cardPlace";
 import { initFeedback, noteError } from "./feedback";
 
@@ -62,7 +63,6 @@ const modeNone = $<HTMLInputElement>("mode-none");
 const modeNoneRow = $<HTMLLabelElement>("mode-none-row");
 /** "Ohne Kennwort" / "Zustellnachweis" shown greyed out where they do not exist, with an "i" that says why. */
 const modeNoneUnavailable = $<HTMLDivElement>("mode-none-unavailable");
-const proofUnavailable = $<HTMLDivElement>("proof-unavailable");
 const modeSame = $<HTMLInputElement>("mode-same");
 const modeSameRow = $<HTMLLabelElement>("mode-same-row");
 const passwordGroup = $<HTMLDivElement>("password-group");
@@ -71,12 +71,10 @@ const passwordDaysField = $<HTMLDivElement>("password-days-field");
 const passwordDaysInput = $<HTMLInputElement>("password-days");
 const messageDaysInput = $<HTMLInputElement>("message-days");
 const passwordToField = $<HTMLDivElement>("password-to-field");
-const recipientLanguageField = $<HTMLDivElement>("recipient-language-field");
-const recipientLanguageSelect = $<HTMLSelectElement>("recipient-language");
 const proofField = $<HTMLDivElement>("proof-field");
 const proofInput = $<HTMLInputElement>("proof");
-const proofLockNote = $<HTMLDivElement>("proof-lock-note");
-const proofLockText = $<HTMLSpanElement>("proof-lock-text");
+const proofLockToggle = $<HTMLButtonElement>("proof-lock-toggle");
+const proofLockWhy = $<HTMLParagraphElement>("proof-lock-why");
 const encryptedField = $<HTMLDivElement>("encrypted-field");
 const encryptedText = $<HTMLParagraphElement>("encrypted-text");
 const encryptedConfirm = $<HTMLInputElement>("encrypted-confirm");
@@ -88,6 +86,10 @@ const channelSelect = $<HTMLSelectElement>("password-channel");
 const channelSmsOption = $<HTMLOptionElement>("channel-sms-option");
 const passwordSmsInput = $<HTMLInputElement>("password-sms");
 const passwordToInput = $<HTMLInputElement>("password-to");
+/** Each with its "Adressbuch" button (addressBook.ts). */
+const passwordToGroup = $<HTMLDivElement>("password-to-group");
+const passwordSmsGroup = $<HTMLDivElement>("password-sms-group");
+const panelContacts = $<HTMLElement>("panel-contacts");
 const passwordToHint = $<HTMLParagraphElement>("password-to-hint");
 const rulesList = $<HTMLUListElement>("password-rules");
 const kindRadios = Array.from(document.querySelectorAll<HTMLInputElement>('input[name="kind"]'));
@@ -869,19 +871,15 @@ async function shareSettingsBody(step: string) {
 }
 
 /**
- * "Sprache für die Empfänger": the languages CloudShare has (by their own name), `selected` preselected – this mail's
- * choice or the one from the settings. Hidden while there is only one language.
+ * The language the recipients get the link card, password mail and SMS in: only from the settings ("Sprache für die
+ * Empfänger" under "Weitere Einstellungen") – no choice per mail. A language CloudShare no longer has falls back to the
+ * first one it has.
  */
-function renderRecipientLanguages(selected: string) {
+function recipientLanguage(): string | undefined {
   const choices = languageChoices();
-  recipientLanguageSelect.replaceChildren(...choices.map((l) => new Option(l.name, l.code)));
-  recipientLanguageSelect.value = choices.some((l) => l.code === selected) ? selected : (choices[0]?.code ?? "");
-  recipientLanguageField.hidden = choices.length < 2;
-  renderValidity(); // the summary names the language
+  const wanted = userSettings().recipientLanguage;
+  return choices.some((l) => l.code === wanted) ? wanted : choices[0]?.code;
 }
-
-/** The language the recipients get the link card, password mail and SMS in. */
-const recipientLanguage = () => recipientLanguageSelect.value || undefined;
 
 /**
  * One mail, one kind: with "Zustellnachweis" only files with a proof, without it no proof – the proof's password would
@@ -892,9 +890,13 @@ function applyProofLock(proofMail: boolean | undefined) {
   const locked = proofMail !== undefined && serverConfig?.deliveryProof === true;
   if (locked) proofInput.checked = proofMail;
   proofInput.disabled = locked;
-  // The hint under the switch always says what a proof does; why things are fixed stays in a box at the top.
-  proofLockNote.hidden = !locked;
-  proofLockText.textContent = locked ? t(proofMail ? "proof.lockedOn" : "proof.lockedOff") : "";
+  // The hint under the switch always says what a proof does; why it is fixed folds out from the "i" next to it.
+  proofLockToggle.hidden = !locked;
+  proofLockWhy.textContent = locked ? t(proofMail ? "proof.lockedOn" : "proof.lockedOff") : "";
+  if (!locked) {
+    proofLockWhy.hidden = true;
+    proofLockToggle.setAttribute("aria-expanded", "false");
+  }
   // With a proof: no confidential message, no upload link in this mail (they have no confirmation page).
   for (const radio of kindRadios) {
     const blocked = locked && proofMail === true && radio.value !== "files";
@@ -926,12 +928,6 @@ async function proofRequest() {
 proofInput.addEventListener("change", () => {
   void updateDraftState({ proof: proofInput.checked });
   renderValidity();
-});
-
-// A choice for this mail is kept with the draft: the pane opened again shows it, and new links follow it.
-recipientLanguageSelect.addEventListener("change", () => {
-  renderValidity();
-  void updateDraftState({ recipientLanguage: recipientLanguageSelect.value });
 });
 
 /** New ID for one click on "Als Link einfügen" / "Link zum Hochladen einfügen" / "Verlauf → Als Link einfügen". */
@@ -1031,10 +1027,24 @@ function showChannel(channel: Channel) {
   channelSelect.value = channel;
   passwordToInput.hidden = channel !== "mail";
   passwordSmsInput.hidden = channel !== "sms";
+  passwordToGroup.hidden = passwordToInput.hidden;
+  passwordSmsGroup.hidden = passwordSmsInput.hidden;
   passwordToHint.hidden = channel === "recipients";
   passwordToHint.textContent = channelHint(channel);
   renderValidity();
   renderSubmit(); // another address or SMS needs its input first
+}
+
+/**
+ * One password per mail: once it has a password, "Kennwort an" is fixed too – the one password goes the way it went
+ * first (greyed out like the password choices; the hint under the password says why).
+ */
+function lockChannel(locked: boolean) {
+  channelSelect.disabled = locked;
+  channelSelect.title = locked ? t("password.hintOnePassword") : "";
+  passwordToInput.readOnly = locked;
+  passwordSmsInput.readOnly = locked;
+  for (const id of ["password-to-book", "password-sms-book"]) $<HTMLButtonElement>(id).disabled = locked;
 }
 
 /** "Kennwort senden an" offers the ways chosen in the settings – and always the one this mail already uses. */
@@ -1126,12 +1136,30 @@ passwordSmsInput.addEventListener("change", () => {
   void applyChannel({ passwordTo: undefined, passwordSms: number });
 });
 
-// Suggestions from the own Outlook contacts while typing (optional Contacts.Read); for SMS only numbers that may get one.
-attachContactSuggestions(passwordToInput, "mail", looksLikeEmail);
-attachContactSuggestions(passwordSmsInput, "sms", (value) => {
+// "Adressbuch" next to the field: the own contacts A to Z on a page of their own; a click takes the entry.
+/** A contact entry that can get the password: an address, or a number SMS may go to. */
+function contactUsable(kind: "mail" | "sms", value: string): boolean {
+  if (kind === "mail") return looksLikeEmail(value);
   const number = normalizePhone(value);
   return number !== null && !smsNumberProblem(number);
+}
+/** The page the address book was opened from ("Senden" = null, or "Verlauf" for "Erneut senden an"). */
+let contactsReturn: Overlay = null;
+const addressBook = initAddressBook({
+  token: getToken,
+  setStatus,
+  errorMessage,
+  show: (open) => {
+    if (open) {
+      contactsReturn = currentOverlay === "contacts" ? contactsReturn : currentOverlay;
+      showOverlay("contacts");
+    } else showOverlay(contactsReturn);
+  },
+  usable: contactUsable,
 });
+// Suggestions from the own Outlook contacts while typing (optional Contacts.Read); for SMS only numbers that may get one.
+attachContactSuggestions(passwordToInput, "mail", (value) => contactUsable("mail", value));
+attachContactSuggestions(passwordSmsInput, "sms", (value) => contactUsable("sms", value));
 
 /**
  * Why a new link cannot be created with the current settings, or null. Upload links always need a password;
@@ -1265,7 +1293,8 @@ async function insertLinks(results: UploadResult[]) {
 const withoutPassword = () => modeNone.checked;
 
 function setRevealed(revealed: boolean) {
-  passwordInput.type = revealed ? "text" : "password";
+  // Always a text field, masked by CSS only: a real type="password" makes Edge (WebView2) offer to save it as a login.
+  passwordInput.classList.toggle("masked", !revealed);
   revealButton.setAttribute("aria-pressed", String(revealed));
   const label = t(revealed ? "password.hide" : "password.show");
   revealButton.title = label;
@@ -1314,7 +1343,7 @@ function setPasswordMode(mode: "same" | "random" | "own" | "none") {
   if (none) {
     passwordInput.value = "";
   } else if (same) {
-    passwordInput.type = "text";
+    passwordInput.classList.remove("masked");
     passwordInput.value = lastStep!.password;
   } else if (own) {
     passwordInput.value = "";
@@ -1322,7 +1351,7 @@ function setPasswordMode(mode: "same" | "random" | "own" | "none") {
     renderRules();
     passwordInput.focus();
   } else {
-    passwordInput.type = "text";
+    passwordInput.classList.remove("masked");
     passwordInput.value = generatePassword();
   }
   renderPasswordHint();
@@ -1339,9 +1368,8 @@ function renderPasswordHint() {
   let key: string;
   if (blockedByNoPassword()) key = `${kind}.needsPasswordLocked`;
   else if (modeNone.checked) key = modeNone.disabled ? "password.hintLockedNone" : "password.hintNone";
+  else if (modeSame.checked) key = modeRandom.disabled ? "password.hintOnePassword" : "password.hintSame";
   else if (modeRandom.disabled) key = "password.hintLocked"; // one password for the whole mail (older drafts)
-  else if (modeSame.checked) key = "password.hintSame";
-  else if (perStep) key = "password.hintSeparate";
   else key = "password.hint";
   passwordHint.textContent = t(key);
   passwordHint.classList.toggle("warning", blockedByNoPassword());
@@ -1352,7 +1380,7 @@ modeRandom.addEventListener("change", () => setPasswordMode("random"));
 modeOwn.addEventListener("change", () => setPasswordMode("own"));
 modeNone.addEventListener("change", () => setPasswordMode("none"));
 passwordInput.addEventListener("input", renderRules);
-revealButton.addEventListener("click", () => setRevealed(passwordInput.type === "password"));
+revealButton.addEventListener("click", () => setRevealed(passwordInput.classList.contains("masked")));
 
 /** From the first upload on, the password applies to the whole mail and can no longer be changed. */
 function lockPassword() {
@@ -1364,26 +1392,31 @@ function lockPassword() {
   rulesList.hidden = true;
   revealButton.hidden = false;
   setRevealed(false);
+  lockChannel(true);
   renderPasswordHint();
 }
 
-/** The mail has links with a password per step: every further click gets a new password. */
+/** The mail has links with a password (in steps). */
 let perStep = false;
 
 /**
- * After the first link with a password: every "Als Link einfügen" gets its own password and password mail, so the
- * password stays open for the next step – only "Ohne Kennwort" is no longer possible in this mail.
+ * One password per mail: after the first link with a password every further file, message or upload link joins its
+ * step – "Gleiches Kennwort wie zuvor" is selected, "Zufällig", "Eigenes" and "Ohne Kennwort" are greyed out and so is
+ * "Kennwort an". The server refuses a second password as well (409 ONE_PASSWORD). Needs `lastStep` set first.
  */
 function lockSeparate() {
   perStep = true;
   modeNone.disabled = true;
+  if (lastStep) {
+    modeRandom.disabled = true;
+    modeOwn.disabled = true;
+    lockChannel(true);
+    setPasswordMode("same");
+  }
   renderPasswordHint();
 }
 
-/**
- * After a step: the next link joins it by default ("Gleiches Kennwort wie zuvor" – one password and one password mail
- * for file, message and upload link of the same mail); "Zufällig" or "Eigenes" start a new step with a new password.
- */
+/** After a step: the next link joins it ("Gleiches Kennwort wie zuvor" – one password and one password mail per mail). */
 function nextStepPassword() {
   if (!perStep) return;
   if (lastStep) {
@@ -1418,6 +1451,7 @@ function unlockPassword() {
   modeRandom.disabled = false;
   modeOwn.disabled = false;
   modeNone.disabled = false;
+  lockChannel(false);
   perStep = false;
   lastStep = null;
   maxAccessInput.readOnly = false;
@@ -1567,7 +1601,7 @@ function showUnavailable(block: HTMLElement, shown: boolean) {
     block.querySelector<HTMLElement>(".why")!.hidden = true;
   }
 }
-for (const block of [modeNoneUnavailable, proofUnavailable]) {
+for (const block of [modeNoneUnavailable]) {
   const toggle = block.querySelector<HTMLButtonElement>(".why-toggle")!;
   const why = block.querySelector<HTMLElement>(".why")!;
   toggle.addEventListener("click", () => {
@@ -1575,6 +1609,12 @@ for (const block of [modeNoneUnavailable, proofUnavailable]) {
     toggle.setAttribute("aria-expanded", String(!why.hidden));
   });
 }
+// The "i" next to a fixed "Zustellnachweis" (applyProofLock) – inside the switch's label, so it must not toggle it.
+proofLockToggle.addEventListener("click", (event) => {
+  event.preventDefault();
+  proofLockWhy.hidden = !proofLockWhy.hidden;
+  proofLockToggle.setAttribute("aria-expanded", String(!proofLockWhy.hidden));
+});
 
 /**
  * Shows the part of the chosen kind. "Ohne Kennwort" exists only for files – a confidential message or an upload link
@@ -1649,10 +1689,8 @@ function renderValidity() {
   // "Kennwort abrufbar" / "Kennwort-Link gültig für" only for a password link: not without password, not by SMS (the
   // password is in the SMS itself and works as long as the link does).
   const passwordLink = !withoutPassword() && selectedChannel() !== "sms";
-  // "Zustellnachweis" only for files (offered with DELIVERY_PROOF) – for a message or an upload link greyed out, the
-  // "i" says why.
+  // "Zustellnachweis" only for files (offered with DELIVERY_PROOF) – not shown at all for a message or an upload link.
   proofField.hidden = !serverConfig.deliveryProof || kind !== "files";
-  showUnavailable(proofUnavailable, serverConfig.deliveryProof === true && kind !== "files");
   expireField.hidden = kind === "message";
   expireHint.textContent = t(kind === "request" ? "expire.hintRequest" : "expire.hint");
   messageDaysField.hidden = kind !== "message";
@@ -2008,7 +2046,7 @@ type View = "send" | "mail";
 let currentView: View = "send";
 
 /** The page shown in place of the view (history, proofs, settings, help) – null: the view itself. */
-type Overlay = "shares" | "help" | "settings" | "proofs" | "feedback" | null;
+type Overlay = "shares" | "help" | "settings" | "proofs" | "feedback" | "contacts" | null;
 let currentOverlay: Overlay = null;
 
 /** Every page has "←" before its title; "←" or Escape leads back to the view. */
@@ -2020,6 +2058,7 @@ function showOverlay(overlay: Overlay) {
   panelProofs.hidden = overlay !== "proofs";
   panelShares.hidden = overlay !== "shares";
   panelFeedback.hidden = overlay !== "feedback";
+  panelContacts.hidden = overlay !== "contacts";
   panelSend.hidden = overlay !== null || currentView !== "send";
   panelMail.hidden = overlay !== null || currentView !== "mail";
 }
@@ -2037,6 +2076,8 @@ const showHelp = (open: boolean) => showOverlay(open ? "help" : null);
 // Escape on a page: back to the tab, the focus on the account (where the page was opened).
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape" || currentOverlay === null || event.defaultPrevented) return;
+  // The address book leads back to where it was opened – "Senden" or "Verlauf" –, the focus into the field.
+  if (currentOverlay === "contacts") return addressBook.back();
   showOverlay(null);
   accountToggle.focus();
 });
@@ -2073,8 +2114,6 @@ const settingsView = initSettings({
       const next = state.jobId || channels.includes(current) ? current : defaultChannel;
       applyChannelChoices(next);
       if (next !== current) showChannel(next);
-      // A new default language for the recipients applies unless this mail has its own choice.
-      if (!state.recipientLanguage) renderRecipientLanguages(userSettings().recipientLanguage);
     });
   },
 });
@@ -2145,6 +2184,32 @@ function proofSeal(id: string, state: ProofState | null | undefined): HTMLButton
 
 const dayOf = (date: string) => formatDate(Date.parse(`${date}T12:00:00Z`));
 
+/** The line "Gültig bis 03.12.2026" of an entry in "Verlauf" and "Zustellnachweise" – above its state. */
+const VALID_LINE =
+  `<div class="share-meta share-valid" hidden><svg class="icon" viewBox="0 0 16 16" aria-hidden="true">` +
+  `<rect x="2.5" y="3.5" width="11" height="10" rx="1.5" fill="none" stroke="currentColor"/>` +
+  `<path d="M2.5 6.5h11M5.5 2v3M10.5 2v3" fill="none" stroke="currentColor" stroke-linecap="round"/></svg>` +
+  `<span class="valid-text"></span></div>`;
+
+/**
+ * Fills the "Gültig bis" line: the last valid day (YYYY-MM-DD), orange from two days before; a finished proof says how
+ * long it is kept instead. Hidden when there is neither.
+ */
+function fillValidLine(row: HTMLElement, day: string | null, keptUntil?: number) {
+  const line = row.querySelector<HTMLElement>(".share-valid")!;
+  const text = line.querySelector<HTMLElement>(".valid-text")!;
+  line.hidden = !day && keptUntil === undefined;
+  line.classList.remove("soon");
+  if (day) {
+    text.textContent = t("shares.validUntil", { date: dayOf(day) });
+    const today = new Date();
+    const todayNoon = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate(), 12);
+    line.classList.toggle("soon", (Date.parse(`${day}T12:00:00Z`) - todayNoon) / 86_400_000 <= 2);
+  } else if (keptUntil !== undefined) {
+    text.textContent = t("proofs.keptUntil", { date: formatDate(keptUntil) });
+  }
+}
+
 /**
  * An entry like a row of "Verlauf": the kind symbol on the left, the subject as the title (a click opens the sent mail),
  * the PDF button next to it, below it what went out with the seal (state by its colour), to whom and when, the state
@@ -2161,6 +2226,7 @@ function proofRow(p: ProofItem): HTMLElement {
     `<div class="share-meta proof-sent"></div>` +
     `<div class="share-meta proof-password"></div>` +
     `<div class="share-meta proof-case"></div>` +
+    VALID_LINE +
     `<div class="share-state${p.state === "fetched" ? " done" : ""}"><span class="dot-state" aria-hidden="true"></span><span class="state-text"></span></div>` +
     `</div>`;
   const subject = p.subject || t("shares.noSubject");
@@ -2186,10 +2252,12 @@ function proofRow(p: ProofItem): HTMLElement {
   password.textContent = p.passwordTo === null
     ? t("proofs.withoutPassword")
     : p.passwordTo.length ? t("proofs.passwordTo", { to: p.passwordTo.join(", ") }) : t("proofs.passwordPending");
-  row.querySelector<HTMLElement>(".state-text")!.textContent = [
-    p.downloads > 0 ? t("proofs.downloaded", { count: p.downloads }) : p.fetched > 0 ? t("proofs.fetched", { count: p.fetched }) : t("proofs.notFetched"),
-    p.endsOn ? t("proofs.endsOn", { date: dayOf(p.endsOn) }) : t("proofs.keptUntil", { date: formatDate(p.keptUntil) }),
-  ].join(" · ");
+  // "Gültig bis …" above the state (or how long a finished proof is kept); the state alone on its line.
+  fillValidLine(row, p.endsOn, p.endsOn ? undefined : p.keptUntil);
+  const stateText = row.querySelector<HTMLElement>(".state-text")!;
+  stateText.textContent =
+    p.downloads > 0 ? t("proofs.downloaded", { count: p.downloads }) : p.fetched > 0 ? t("proofs.fetched", { count: p.fetched }) : t("proofs.notFetched");
+  stateText.title = stateText.textContent;
   row.querySelector<HTMLElement>(".proof-case")!.textContent = t("proofs.case", { id: p.id });
   return row;
 }
@@ -2464,6 +2532,13 @@ const COPY_ICON =
   '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="7" width="9" height="10" rx="1.5" fill="none" ' +
   'stroke="currentColor" stroke-width="1.4"/><path d="M13 4.5V4a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h.5" ' +
   'fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
+/** "Adressbuch" – the same symbol as next to "Kennwort an" in "Senden" (taskpane.html). */
+const BOOK_ICON =
+  '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true">' +
+  '<path d="M5 3.5h10a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.2"/>' +
+  '<path d="M4 6.5h-1.2M4 10h-1.2M4 13.5h-1.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>' +
+  '<circle cx="10" cy="8.5" r="2" fill="none" stroke="currentColor" stroke-width="1.2"/>' +
+  '<path d="M6.8 14c.5-1.7 1.7-2.6 3.2-2.6s2.7.9 3.2 2.6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
 
 /** Icons of the actions in "Verlauf" (Fluent style, 20 × 20) – also shown next to their explanation in the help. */
 const icon = (paths: string) =>
@@ -2546,7 +2621,10 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
     `<button type="button" class="btn btn-icon copy-password">${COPY_ICON}</button></div>` +
     `<label class="label" for="${id}-channel"></label>` +
     `<div class="select-wrap"><select id="${id}-channel" class="input select"></select></div>` +
-    `<input id="${id}-to" class="input channel-input" spellcheck="false" aria-describedby="${id}-hint" />` +
+    // Several addresses, separated by commas; suggestions while typing and the address book like under "Kennwort an".
+    `<div class="input-group channel-group"><input id="${id}-to" class="input channel-input" spellcheck="false" ` +
+    `aria-describedby="${id}-hint" data-multiple />` +
+    `<button type="button" class="btn btn-icon book-open" aria-controls="panel-contacts" data-target="${id}-to">${BOOK_ICON}</button></div>` +
     `<p class="hint" id="${id}-hint"></p>` +
     `<button type="button" class="btn send-password"></button>`;
   const [passwordLabel, channelLabel] = Array.from(panel.querySelectorAll("label"));
@@ -2570,7 +2648,7 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
     held.className = "hint";
     held.textContent = t("resend.held");
     channelLabel.nextElementSibling?.remove(); // the select
-    for (const element of [channelLabel, panel.querySelector(`#${id}-to`), panel.querySelector(`#${id}-hint`), panel.querySelector(".send-password")]) {
+    for (const element of [channelLabel, panel.querySelector(".channel-group"), panel.querySelector(`#${id}-hint`), panel.querySelector(".send-password")]) {
       element?.remove();
     }
     panel.append(held);
@@ -2589,12 +2667,20 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
   channel.value = first;
 
   const target = panel.querySelector<HTMLInputElement>(`#${id}-to`)!;
+  const targetGroup = target.closest<HTMLElement>(".channel-group")!;
   const hint = panel.querySelector<HTMLParagraphElement>(`#${id}-hint`)!;
+  const book = targetGroup.querySelector<HTMLButtonElement>(".book-open")!;
+  book.title = t("contacts.bookOpen");
+  book.setAttribute("aria-label", t("contacts.bookOpen"));
+  addressBook.register(book);
+  const targetKind = () => (channel.value === "sms" ? "sms" : "mail") as "mail" | "sms";
+  attachContactSuggestions(target, targetKind, (value, kind) => contactUsable(kind, value));
   const showChannel = () => {
     const value = channel.value as ResendChannel;
     const sms = value === "sms";
     // The recipients of the message need no input – the hint names them.
     target.hidden = value === "recipients";
+    targetGroup.hidden = target.hidden;
     target.type = sms ? "tel" : "text";
     target.autocomplete = sms ? "tel" : "email";
     target.value = sms ? sent.sms : value === "mail" ? sent.otherTo.join(", ") : "";
@@ -2678,8 +2764,9 @@ function shareRow(share: ShareItem): HTMLElement {
     `<div class="share-meta share-sent"></div>` +
     `<div class="share-meta"><span class="share-password"></span></div>` +
     `<div class="share-meta share-unsent" hidden></div>` +
+    VALID_LINE +
     `<div class="share-state${state.done ? " done" : ""}">` +
-    `<span class="dot-state" aria-hidden="true"></span><span class="state-text"></span><span class="share-ends"></span></div>` +
+    `<span class="dot-state" aria-hidden="true"></span><span class="state-text"></span></div>` +
     `<div class="password-panel" hidden></div></div>`;
   const label = (button: HTMLButtonElement, text: string) => {
     button.title = text;
@@ -2757,24 +2844,17 @@ function shareRow(share: ShareItem): HTMLElement {
       : t("shares.withPasswordLine");
   // Not sent yet: the bold line below says so – no "Kennwort noch nicht gesendet" on top of it.
   passwordLine.parentElement!.hidden = Boolean(share.unsent && !share.password && share.protected !== false);
-  if (share.expiration) {
-    row.querySelector<HTMLElement>(".share-ends")!.textContent =
-      t("proofs.endsOn", { date: formatDate(`${share.expiration}T12:00:00`) }); // set apart from the state by the line's gap
-  }
+  fillValidLine(row, share.expiration);
   passwordLine.title = share.password ? passwordText(share.password) : "";
   passwordLine.classList.toggle("failed", share.password?.status === "failed");
 
-  row.querySelector<HTMLElement>(".state-text")!.textContent = state.text;
-  // A message: no download state (Vaultwarden does not report it), no link to copy or insert again (no key kept).
+  const stateText = row.querySelector<HTMLElement>(".state-text")!;
+  stateText.textContent = state.text;
+  stateText.title = state.text; // the line may be shortened with "…"
+  // A message: no download state (Vaultwarden does not report it) – only "Gültig bis …" –, no link to copy or insert
+  // again (no key kept).
   if (share.kind === "message") {
-    // No download state – only when it ends.
-    const stateText = row.querySelector<HTMLElement>(".state-text")!;
-    stateText.textContent = "";
-    stateText.hidden = true; // no empty gap before "Endet …"
-    row.querySelector<HTMLElement>(".share-ends")!.style.marginLeft = "0";
-    const ends = row.querySelector<HTMLElement>(".share-ends")!;
-    ends.textContent = share.expiration ? t("shares.endsOnly", { date: formatDate(`${share.expiration}T12:00:00`) }) : "";
-    row.querySelector<HTMLElement>(".share-state")!.hidden = !share.expiration;
+    row.querySelector<HTMLElement>(".share-state")!.hidden = true;
     row.querySelector<HTMLElement>(".copy")!.hidden = true;
   }
   if (share.unsent) {
@@ -3084,10 +3164,10 @@ Office.onReady(async () => {
   } else if (state.noPassword) {
     lockNoPassword();
   } else if (state.separate) {
-    lockSeparate();
-    // The pane opened again on a mail with links: the next link joins the last step by default.
+    // The pane opened again on a mail with links: the next link joins the last step, nothing else is offered.
     lastStep = state.lastStep ?? null;
-    setPasswordMode(lastStep ? "same" : "random");
+    if (!lastStep) setPasswordMode("random");
+    lockSeparate();
   } else {
     setPasswordMode("random");
   }
@@ -3108,8 +3188,6 @@ Office.onReady(async () => {
           : preferred;
   applyChannelChoices(channel);
   showChannel(channel);
-  // "Sprache für die Empfänger": this mail's choice, else the one from the settings.
-  renderRecipientLanguages(state.recipientLanguage ?? userSettings().recipientLanguage);
   renderKind();
   // Outlook has no "body changed" event: check when the pane gets focus and every few seconds while locked.
   await releaseIfLinksDeleted();

@@ -84,3 +84,28 @@ export function matchContacts(contacts: Contact[], query: string, kind: "mail" |
     .slice(0, MAX_SUGGESTIONS)
     .map(({ score: _score, ...suggestion }) => suggestion);
 }
+
+/** Most entries of the address book page – one per address or number. */
+export const MAX_BOOK = 2000;
+
+/**
+ * The address book page ("Adressbuch" next to the field): every address (`mail`) or number (`sms`) of the contacts,
+ * by name from A to Z – the pane filters it while the user types.
+ */
+export function listContacts(contacts: Contact[], kind: "mail" | "sms"): ContactSuggestion[] {
+  const entries: ContactSuggestion[] = [];
+  for (const contact of contacts) {
+    if (kind === "mail") for (const address of contact.emails) entries.push({ name: contact.name, value: address });
+    else for (const phone of contact.phones) entries.push({ name: contact.name, value: phone.number.trim(), type: phone.type });
+  }
+  const seen = new Set<string>();
+  return entries
+    .sort((a, b) => a.name.localeCompare(b.name, "de", { sensitivity: "base" }) || a.value.localeCompare(b.value))
+    .filter((entry) => {
+      const key = `${entry.name}|${entry.value.toLowerCase()}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, MAX_BOOK);
+}

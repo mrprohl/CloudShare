@@ -99,7 +99,7 @@ Outlook ──Office SSO──► token for "api://cloudshare.example.com/<clien
 | `Mail.Read.Shared` | the same for shared mailboxes the user sends from |
 | `Mail.Send` | send the password mail as the sender |
 | `Mail.Send.Shared` | send it from the shared mailbox the mail came from |
-| `Contacts.Read` | *optional:* suggestions from the user's own Outlook contacts (default contacts folder) while typing another address or an SMS number under *Password to*. Read on demand, kept in memory ten minutes, never stored. Without it the fields are plain inputs |
+| `Contacts.Read` | *optional:* suggestions from the user's own Outlook contacts (default contacts folder) while typing another address or an SMS number under *Password to*, and the address book page next to that field. Read on demand, kept in memory ten minutes, never stored. Without it the fields are plain inputs |
 | `InformationProtectionPolicy.Read` | *optional:* the names and the priority of the sensitivity labels published to the user (a shared file's label in the pane, which label is higher). Without it the pane uses Outlook's own label catalog – names may then be missing in some Outlook versions |
 
 Then **Grant admin consent for \<organisation\>** (*Administratorzustimmung für … erteilen*). Every line must show a

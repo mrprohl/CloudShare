@@ -36,6 +36,7 @@
   --success-bg: #f1faf1;
   --success-stroke: #9fd89f;
   --success-fg: #0e700e;
+  --warning-fg: #bc4b09;
   --shadow: 0 0 2px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.14);
 }
 
@@ -69,6 +70,7 @@
   --success-bg: #052505;
   --success-stroke: #107c10;
   --success-fg: #54b054;
+  --warning-fg: #f98845;
 }
 
 /* Before Office reports its theme, follow the system setting. */
@@ -76,6 +78,7 @@
   :root:not([data-theme]) {
     --fg1: #ffffff; --fg2: #d6d6d6; --fg3: #adadad; --bg1: #292929; --bg1-hover: #3d3d3d; --bg3: #333333;
     --stroke1: #666666; --stroke2: #525252; --stroke-accessible: #adadad; --brand-fg: #479ef5;
+    --warning-fg: #f98845;
   }
 }
 
@@ -246,8 +249,25 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .input:focus { outline: none; border-bottom-color: var(--brand-bg); box-shadow: inset 0 -1px 0 var(--brand-bg); }
 .input[readonly] { background: var(--bg3); border-color: var(--stroke2); color: var(--fg2); }
 .input.mono { font-family: var(--font-mono); letter-spacing: 0.02em; }
+/* An own password while hidden: dots without type="password" (setRevealed) – no save prompt from the browser. */
+.input.masked { -webkit-text-security: disc; }
 .input-narrow .input { flex: 0 0 88px; }
 .channel-input { display: block; width: 100%; margin-top: 4px; }
+/* The address / number with its "Adressbuch" button (addressBook.ts). */
+.channel-group { margin-top: 4px; }
+.channel-group .channel-input { flex: 1; min-width: 0; margin-top: 0; }
+/* "Adressbuch": the own contacts A to Z under their first letter; each entry a button that takes it. */
+.contacts-list { margin-top: 8px; }
+.contacts-letter { margin: 10px 0 2px; padding: 0 0 2px; font: 600 12px/16px var(--font); color: var(--fg2); border-bottom: 1px solid var(--stroke2); }
+.contacts-items { list-style: none; margin: 0; padding: 0; }
+.contact-entry {
+  display: flex; flex-direction: column; align-items: flex-start; width: 100%; padding: 6px 8px; border: 0; border-radius: 4px;
+  background: transparent; text-align: left; cursor: pointer; font: inherit; color: var(--fg1);
+}
+.contact-entry:hover { background: var(--bg1-hover); }
+.contact-entry:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.contact-name { font: 400 14px/20px var(--font); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.contact-value { font: 400 12px/16px var(--font); color: var(--fg2); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* Suggestions from the own contacts under the address / number (contactSuggest.ts), a Fluent listbox flyout. */
 #password-to-field { position: relative; }
 .suggestions {
@@ -281,8 +301,8 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .unavailable-row { display: flex; align-items: center; gap: 2px; }
 .unavailable .radio, .unavailable .switch { cursor: default; }
 .unavailable-label { display: inline-flex; align-items: center; gap: 2px; }
-.unavailable .why-toggle { margin: 0; cursor: pointer; }
-.unavailable .why { margin: 2px 0 4px; }
+.unavailable .why-toggle, #proof-lock-toggle { margin: 0; cursor: pointer; }
+.unavailable .why, #proof-lock-why { margin: 2px 0 4px; }
 /* "Kennwort senden an": native select in the look of the inputs, own chevron (follows the theme colours). */
 .select-wrap { position: relative; }
 .select-wrap::after {
@@ -381,13 +401,6 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* Not ".progress": that is the class of a message of kind "progress" (setStatus), which would get cut to 2px. */
 .progress-track { height: 2px; margin-bottom: 12px; background: var(--stroke2); border-radius: 1px; overflow: hidden; }
 .progress-bar { height: 100%; width: 0; background: var(--brand-bg); transition: width 0.2s ease; }
-
-/* A note that stays at the top of "Senden" while it applies (e.g. why "Nachricht" and "Anfordern" are greyed out). */
-.note-box {
-  display: flex; align-items: flex-start; gap: 8px; margin: 0 0 12px; padding: 8px 12px;
-  border: 1px solid var(--brand-tint-stroke); border-radius: 4px; background: var(--brand-tint-bg); color: var(--fg1);
-}
-.note-box .icon { flex: none; width: 16px; height: 16px; margin-top: 2px; color: var(--brand-fg); }
 
 /* The note about an encrypted file: its "×" on the right of the title leaves the file out. */
 .encrypted-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
@@ -509,8 +522,12 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 .share-password.failed { color: var(--danger-fg); }
 .share-unsent { color: var(--fg2); font-weight: 600; }
 .share-state { display: flex; align-items: center; gap: 6px; font-size: 12px; line-height: 16px; margin-top: 2px; color: var(--fg2); }
-/* "endet 02.12.2026" after the state, kept on one line. */
-.share-state .share-ends { white-space: nowrap; margin-left: 4px; }
+/* The state ("1× heruntergeladen · …") on one line – shortened with "…", the whole text in its tooltip. */
+.share-state .state-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* "Gültig bis 03.12.2026" above the state: a calendar before it, orange from two days before the end. */
+.share-valid { display: flex; align-items: center; gap: 4px; margin-top: 2px; color: var(--fg2); }
+.share-valid .icon { width: 14px; height: 14px; flex: none; }
+.share-valid.soon { color: var(--warning-fg); }
 .share-state .dot-state { width: 8px; height: 8px; border-radius: 50%; background: var(--stroke1); flex: none; }
 .share-state.done .dot-state { background: var(--success-fg); }
 /* Icon buttons at the right of the name; the revoke button shows "Wirklich?" as text until confirmed. */
@@ -554,6 +571,7 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 
 /* --- "Kennwort" at a sent link: show the password and send it again ------------------------- */
 .password-panel {
+  position: relative; /* the contact suggestions of "Erneut senden an" open below the field */
   margin: 8px 0 2px; padding: 10px 12px;
   border: 1px solid var(--stroke2); border-radius: 6px; background: var(--bg1);
 }

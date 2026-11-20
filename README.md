@@ -100,11 +100,11 @@ three.
 3. **"Recipients"**, always in sight: **"Password to"** – the recipients of the mail (default), **another e-mail address** (e.g. a colleague),
    or a **phone number (SMS)** if SMS is set up – the password arrives as plain text, sent after the mail. While you
    type the address or number, matching entries of your **Outlook contacts** drop down below the field (name and
-   address or number; arrow keys and Enter or a click) – only with the optional permission `Contacts.Read`
+   address or number; arrow keys and Enter or a click), and the **address book** icon next to the field opens all of
+   them A to Z on a page of their own to search and pick from – only with the optional permission `Contacts.Read`
    ([microsoft-365.md → 2.4](docs/microsoft-365.md#24-api-permissions-delegated-and-admin-consent)), SMS numbers that may
-   not get one are left out; **"Language"**
-   – link card, password mail and SMS in that language (preselected in the settings); and for files, if offered, the
-   switch **"Proof of delivery"**.
+   not get one are left out; and for files, if offered, the switch **"Proof of delivery"**. The language of link card,
+   password mail and SMS is not chosen here but in the settings ("Language for the recipients").
 4. **"Validity"** is collapsed and shows its values in one line, e.g. "Link 14 days · Password link 5
    days, opens 3 times". Open it to change
    **"Link valid for"** (days the download link works – with a password at most 30, see below), **"Password can be opened"** (how
@@ -117,9 +117,10 @@ three.
    when a recipient downloads a file for the first time – also for links without password.
 
 Files selected together in one click share one password and one password mail. After the first link,
-**"Same password as before"** is preselected: the next link – more files, a confidential message or an upload link –
-joins it, so the recipients get one password for all of them in one password mail (or SMS). "Random password" or "Own
-password" give the next link its own password and password mail. If you delete all CloudShare cards from the mail
+**"Same password as before"** is selected and the only choice: there is **one password per mail**. The next link – more
+files, a confidential message or an upload link – joins it, so the recipients get one password for all of them in one
+password mail (or SMS). "Random password", "Own password", "No password" and "Password to" are greyed out (the server
+refuses a second password too, 409 `ONE_PASSWORD`). If you delete all CloudShare cards from the mail
 before sending, no password mail goes out and the password options are free again.
 
 <img src="docs/images/taskpane-message.png" alt="Pane with Message chosen: the message field with its character count, the password and the opened validity with Message valid for, Password can be opened and Password link valid for; the button Insert confidential message" width="300" align="right">
@@ -133,13 +134,13 @@ read (default 5 days, at most 30 – Vaultwarden's limit), then it is deleted.
 **Receiving files** (**Request**): **"Insert upload link"** inserts a link through which the recipients can upload
 files – also very large ones – straight into your Nextcloud (folder `CloudShare-File-Requests`).
 
-Confidential messages and upload links always have a password, so "No password" is greyed out there – as is "Proof of
-delivery", which exists for files only (Nextcloud can show that a file was downloaded, not that a text was read); the
-"i" next to such an option says why.
+Confidential messages and upload links always have a password, so "No password" is greyed out there; the "i" next to it
+says why. "Proof of delivery" exists for files only (Nextcloud can show that a file was downloaded, not that a text was
+read) and is not shown for the other two.
 
 <br clear="right">
 
-<img src="docs/images/taskpane-shares.png" alt="History, a page of the account menu with a search field: like the proofs of delivery - the day and recipients, Password to ... and the download status ending in when the link ends and the icons Copy, Password, Insert, Revoke next to the subject; the first link has the seal of a proof of delivery after its file name and Password is open with the password and Send again to" width="300" align="right">
+<img src="docs/images/taskpane-shares.png" alt="History, a page of the account menu with a search field: like the proofs of delivery - the day and recipients, Password to ..., Valid until ... with a calendar and the download status on its own line, and the icons Copy, Password, Insert, Revoke next to the subject; the first link has the seal of a proof of delivery after its file name and Password is open with the password and Send again to" width="300" align="right">
 
 **"History"** – a page of the account menu at the bottom left, above "Proofs of delivery" – lists everything you sent
 with CloudShare that is still valid – links and confidential messages, newest first; the search field at the top
@@ -149,8 +150,9 @@ a click opens that mail in Outlook (only mails
 of your own mailbox) –, below it what went out – the file name, "File request" or "Confidential message" (the symbol on the left shows the
 kind: a document, an upload arrow, an envelope with a lock)
 –, then one short line each for
-the period ("10.11. – 24.11.2026"), the password (with / without, or how it went out: "Password by text message to …
-– delivered") and the downloads (or received files; Vaultwarden does not report whether a message was opened). A
+the day and recipients, the password (with / without, or how it went out: "Password by text message to …
+– delivered"), **"Valid until 24.11.2026"** with a calendar (orange in the last two days) and, on its own line, the
+downloads (or received files; Vaultwarden does not report whether a message was opened). A
 confidential message has no "Copy" or "Insert" – CloudShare does not keep its key – but "Password" and "Revoke"
 (deletes it at once). Until the mail is sent the entry shows the subject of the draft – also one typed after inserting the link,
 while the pane is open ("(No subject yet)" until then); entries from before subjects were kept say "(Subject
@@ -168,8 +170,10 @@ The icons next to the name (their names show on hover and are explained in the h
 - **Password** (key) – for links with password, until they expire: shows the password and sends it **again**, the same
   ways as the first time (preselected: the way it went then): to the **recipients of the message** – To, Cc and Bcc
   exactly as in the sent mail –, to **other addresses** (each gets a mail of its own, nobody sees the others) or by
-  **SMS**. A mail again only contains a link to the password, never the password itself.
-- **Insert** (chain) – inserts the file again into the mail you are writing, as a *new* link with a new password.
+  **SMS**; as under "Password to", your Outlook contacts are suggested while you type and the **address book** icon
+  next to the field picks one (several addresses separated by commas). A mail again only contains a link to the
+  password, never the password itself.
+- **Insert** (chain) – inserts the file again into the mail you are writing, as a *new* link – with the password of that mail (a new one if it has none yet).
 - **Revoke** (crossed-out circle) – ends the link at once (two clicks: the icon turns into "Sure?"). The file then
   counts as expired and is moved to your Nextcloud trash.
 
@@ -225,7 +229,7 @@ Outlook add-in ──HTTPS──► Caddy (Let's Encrypt) ──► CloudShare c
   granted once; CloudShare stores it encrypted.
 - The password mail is sent **as the sender** via Microsoft Graph, only after the mail appears in "Sent
   Items" – also for shared mailboxes.
-- All texts come from a language file (`locales/de.json`, `locales/en.json`, …): the add-in follows the Outlook language (English if there is no file for it); what the recipients get – link card, password mail, SMS – comes in the language chosen under "Language for the recipients" (preselected in the settings); notes to the sender (download and upload confirmation, SMS notes) come in the language of their add-in.
+- All texts come from a language file (`locales/de.json`, `locales/en.json`, …): the add-in follows the Outlook language (English if there is no file for it); what the recipients get – link card, password mail, SMS – comes in the language chosen in the settings under "Language for the recipients" (no choice per mail); notes to the sender (download and upload confirmation, SMS notes) come in the language of their add-in.
 - One Docker container plus Caddy, no database. Details, data flows and design decisions:
   **[docs/architecture.md](docs/architecture.md)**.
 
@@ -291,7 +295,7 @@ deployed again.
 | Setting | Default | Meaning |
 |---|---|---|
 | `PUBLIC_BASE_URL` | – | Public address of CloudShare, e.g. `https://cloudshare.example.com` |
-| `LANGUAGE` | `en` | Default language: preselected "Language for the recipients" (password mail, SMS, link card), and the language of notes to the sender whose add-in language is unknown (mails sent before this version): `de`, `en` or an own one. The add-in itself follows the Outlook language, see [Languages](#languages) |
+| `LANGUAGE` | `en` | Default language: starting value of "Language for the recipients" in the settings (password mail, SMS, link card), and the language of notes to the sender whose add-in language is unknown (mails sent before this version): `de`, `en` or an own one. The add-in itself follows the Outlook language, see [Languages](#languages) |
 | `ENTRA_TENANT_ID`, `ENTRA_CLIENT_ID`, `ENTRA_CLIENT_SECRET` | – | Entra ID app registration |
 | `NEXTCLOUD_URL` | – | Public address of Nextcloud |
 | `NEXTCLOUD_FOLDER` | `CloudShare` | Folder for uploaded files in each user's Nextcloud |
@@ -443,8 +447,8 @@ default, offered for "Files" only (not for a confidential message or an upload l
   long ago and no longer show in "History" – searchable by case number, subject, recipient or file name (no other
   filters). Each entry looks and works like a row of "History": a click on the
   subject opens the sent mail. The seal after the file name shows the state by its colour (grey sent, blue address
-  confirmed, green fetched – the same in "History") and opens the PDF; each entry says when its links end or until when
-  the proof is kept.
+  confirmed, green fetched – the same in "History") and opens the PDF; each entry says "Valid until …" (calendar, orange in
+  the last two days) or, once finished, until when the proof is kept.
 - **The PDF** starts with the result in a frame – sent, address confirmed, downloaded (or files received, message
   opened), when the link ends and until when the proof is kept, each with a tick or a circle – followed by the record.
 - **Reminder**: if nothing was fetched once half of the validity has passed (14 days → after 7, 2 days → after 1; never
@@ -457,7 +461,7 @@ default, offered for "Files" only (not for a confidential message or an upload l
 - **One mail, one kind**: a mail with a proof of delivery takes only files with a proof – no confidential message, no
   upload link, no file without a proof (they have no confirmation page, and their password would reach the recipients
   before the confirmation). A mail with links without a proof takes no proof. The pane offers only what fits (the switch
-  is fixed after the first link, "Message" and "Request" are greyed out, a note at the top of "Send" says why); the server refuses a mix when inserting and
+  is fixed after the first link, "Message" and "Request" are greyed out, the "i" next to the fixed switch says why); the server refuses a mix when inserting and
   when sending (409 `PROOF_MIX`).
 - **Guessing**: after five addresses that are no recipients within an hour, the page takes no code requests for that
   link for an hour (the answer still reads the same) and the sender gets one mail with the attempts (time, address,
@@ -524,8 +528,8 @@ for the password, the two languages and "Reset" are folded away under **"More se
 |---|---|---|
 | Send the password to | which ways the pane offers (recipients of the message, another address, SMS) and which one a new message starts with | `DEFAULT_PASSWORD_CHANNELS`, `DEFAULT_PASSWORD_CHANNEL` |
 | Notifications | download confirmation, files received, SMS not delivered, reminder for proofs not fetched – each on or off | `DEFAULT_DOWNLOAD_NOTICE`, `DEFAULT_UPLOAD_NOTICE`, `DEFAULT_SMS_NOTICE`, `DEFAULT_PROOF_REMINDER` |
-| Language | as in Outlook, or a fixed language of the add-in | `DEFAULT_LANGUAGE` |
-| Language for the recipients | preselected language of the link card, the password mail and the SMS – changeable for each message under "Send the password to" | `LANGUAGE` |
+| CloudShare language (under "Language") | as in Outlook, or a fixed language of the add-in | `DEFAULT_LANGUAGE` |
+| Language for the recipients | language of the link card, the password mail and the SMS – only here, not per message | `LANGUAGE` |
 | Signature in mails to the recipients | at the end of every automatic mail to the recipients (password, confirmation code), so they see who it comes from: the organisation's (`MAIL_FOOTER`) or an own one – plain text, an empty line starts a paragraph, profile placeholders allowed. The link card in the message carries no signature | `MAIL_FOOTER` |
 
 Only what users changed is stored, so a new starting value in `env/cloudshare.env` reaches everyone who left that
@@ -546,8 +550,8 @@ manifest – comes from one language file per language in [`locales/`](locales) 
 come in the display language of the Outlook client; if CloudShare has no file for it, in English. A regional variant
 uses its language (`de-AT`, `de-CH` → `de`). Every language in `locales/` and in `env/config/locales/` is offered.
 
-**`LANGUAGE`** in `env/cloudshare.env` (`en` by default) is the preselected "Language for the recipients" (each user
-can choose another one in the settings and for each message – link card, password mail and SMS then come in it). The
+**`LANGUAGE`** in `env/cloudshare.env` (`en` by default) is the starting "Language for the recipients" (each user
+can choose another one in the settings – link card, password mail and SMS then come in it; there is no choice per message). The
 notes to the sender – download and upload confirmations, notes about text messages – come in the language their
 add-in had when they sent the mail; `LANGUAGE` only where that is unknown (mails sent before this version):
 

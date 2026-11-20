@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchContacts, MAX_SUGGESTIONS } from "../src/contacts.js";
+import { listContacts, matchContacts, MAX_SUGGESTIONS } from "../src/contacts.js";
 import type { Contact } from "../src/graph.js";
 
 const contacts: Contact[] = [
@@ -30,5 +30,17 @@ describe("contact suggestions", () => {
     expect(matchContacts(contacts, "j", "mail")).toEqual([]);
     const many: Contact[] = Array.from({ length: 20 }, (_, i) => ({ name: `Kontakt ${i}`, emails: [`k${i}@example.test`], phones: [] }));
     expect(matchContacts(many, "kontakt", "mail")).toHaveLength(MAX_SUGGESTIONS);
+  });
+});
+
+describe("the address book page", () => {
+  it("lists every address A to Z, or every number for SMS, one entry each", () => {
+    expect(listContacts(contacts, "mail").map((e) => e.value)).toEqual([
+      "anna@example.test", "erika@example.test", "j.mueller@example.org", "jonas@example.net",
+    ]);
+    expect(listContacts(contacts, "sms")).toEqual([
+      { name: "Anna Hamüller", value: "0251 998877", type: "business" },
+      { name: "Jonas Müller-Berg", value: "+49 (0) 171 1234567", type: "mobile" },
+    ]);
   });
 });
