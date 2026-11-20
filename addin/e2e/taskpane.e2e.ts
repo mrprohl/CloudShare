@@ -725,11 +725,12 @@ test("uploads a large attachment in chunks, removes it and inserts the card", as
   await expect(page.locator("#password-hint")).toHaveText("Diese Nachricht hat schon ein Kennwort. Weitere Dateien, Nachrichten und Upload-Links erhalten dasselbe Kennwort.");
   expect(JSON.parse((await officeLog(page)).session["cloudshare-state"]).lastStep.password).toBe(password);
   for (const mode of ["#mode-random", "#mode-own", "#mode-none"]) await expect(page.locator(mode)).toBeDisabled();
-  // "Kennwort an" the same way: "Gleicher Empfänger wie zuvor" with its hint, the three ways greyed out.
+  // "Kennwort an" the same way: "Gleiche Empfänger wie zuvor" with its hint, the three ways greyed out.
   await expect(page.locator("#channel-same")).toBeChecked();
-  await expect(page.locator("#channel-same-row")).toHaveText("Gleicher Empfänger wie zuvor");
+  await expect(page.locator("#channel-same-row")).toHaveText("Gleiche Empfänger wie zuvor");
   await expect(page.locator("#channel-same-hint")).toHaveText(
-    "Diese Nachricht hat schon einen Empfänger. Weitere Dateien, Nachrichten und Upload-Links erhalten dieselben Empfänger.");
+    "Diese Nachricht hat schon Empfänger für das Kennwort. Weitere Dateien, Nachrichten und Upload-Links erhalten dieselben Empfänger.");
+  await expect(page.locator("#password-channel")).not.toHaveAttribute("title"); // no hover text – the hints say it
   for (const way of ["recipients", "mail", "sms"] as const) {
     if (await channelRadio(page, way).count()) await expect(channelRadio(page, way)).toBeDisabled();
   }
@@ -803,7 +804,7 @@ test("one password per mail: every further file, message or upload link joins th
   await expect(page.locator("#mode-same")).toBeChecked();
   await expect(page.locator("#mode-random")).toBeDisabled();
   await expect(page.locator("#mode-own")).toBeDisabled();
-  await expect(page.locator("#channel-same")).toBeChecked(); // "Gleicher Empfänger wie zuvor" …
+  await expect(page.locator("#channel-same")).toBeChecked(); // "Gleiche Empfänger wie zuvor" …
   await expect(channelRadio(page, "recipients")).toBeDisabled(); // … the ways greyed out
   await page.locator("label").filter({ has: page.locator("#kind-message") }).click();
   await page.fill("#message", "Zugangsdaten folgen");
@@ -1315,6 +1316,12 @@ test("own password: live rule check, weak passwords are not accepted", async ({ 
   await expect(page.locator("label:has(#mode-random) + #password-group")).toHaveCount(1);
   await expect(page.locator("#password-group")).toBeHidden(); // a random password is not shown
   await page.check("#mode-own");
+  // Confirmed at the top like a new way of "Kennwort an" – never with the password.
+  await expect(page.locator("#status")).toHaveText("Sie vergeben das Kennwort selbst.");
+  await page.check("#mode-random");
+  await expect(page.locator("#status")).toHaveText("Das Kennwort wird zufällig erzeugt.");
+  await expect(page.locator("#status")).not.toContainText(await page.locator("#password").inputValue());
+  await page.check("#mode-own");
   await expect(page.locator("label:has(#mode-own) + #password-group + #password-rules + #password-hint")).toHaveCount(1);
   await expect(page.locator("#password-group")).toBeVisible(); // an own one needs its field
   const password = page.locator("#password");
@@ -1480,6 +1487,7 @@ test("Zustellnachweis: only for files; ticked, it goes with the upload and the c
     "Vertrauliche Nachricht und Upload-Link bitte in einer eigenen Nachricht.");
   await expect(page.locator('input[name="kind"][value="message"]')).toBeDisabled();
   await expect(page.locator('input[name="kind"][value="request"]')).toBeDisabled();
+  await expect(page.locator('label.segment:has(input[value="message"])')).not.toHaveAttribute("title"); // no hover text
   expect(JSON.parse((await officeLog(page)).session["cloudshare-state"])).toMatchObject({ proofMail: true });
 });
 
@@ -1585,7 +1593,7 @@ test("Kennwort per SMS: no password-link settings – the password is in the SMS
   expect(JSON.parse(calls.find((c) => c.path.endsWith("/complete"))!.body!.toString()).passwordDays).toBe(30);
 
   // The mail has its password now: "Kennwort an" is fixed for the next links (one password, one way).
-  await expect(page.locator("#channel-same")).toBeChecked(); // "Gleicher Empfänger wie zuvor" …
+  await expect(page.locator("#channel-same")).toBeChecked(); // "Gleiche Empfänger wie zuvor" …
   await expect(channelRadio(page, "recipients")).toBeDisabled(); // … the ways greyed out
 });
 
@@ -1626,6 +1634,19 @@ const SHARES = [
     expiration: "2020-01-15", downloads: { count: 0, last: null }, received: null },
 ];
 
+
+test("Verlauf: a link with a proof of delivery shows its tracking ID under the file, the seal after it", async ({ page }) => {
+  await openTaskpane(page, { shares: [{ ...SHARES[0], proofId: "20261110-0912-7Q2F", proofState: "fetched" }, SHARES[1]] });
+  await openHistory(page);
+  const rows = page.locator("#shares .share");
+  // As in "Zustellnachweise": the number alone (bold) right under the file, the seal for the PDF after it.
+  await expect(rows.nth(0).locator(".share-item + .proof-case")).toHaveText("20261110-0912-7Q2F");
+  await expect(rows.nth(0).locator(".proof-case .proof-seal")).toHaveClass(/state-fetched/);
+  await expect(rows.nth(0).locator(".share-item .proof-seal")).toHaveCount(0);
+  // Without a proof: no such line.
+  await expect(rows.nth(1).locator(".proof-case")).toHaveCount(0);
+  await expectAccessible(page);
+});
 test("Verlauf: shows the state of each link and revokes after confirmation", async ({ page }) => {
   const calls = await openTaskpane(page, { shares: SHARES });
   await openHistory(page);
@@ -2219,6 +2240,27 @@ test("Hilfe: the magnifier searches the guide – only sections with a hit, open
   await expect(page.locator("#panel-help .help-intro")).toBeVisible();
 });
 
+test("pages open at their top; back to the view it stands where it was left", async ({ page }) => {
+  await page.setViewportSize({ width: 376, height: 400 }); // short, so the pane scrolls
+  await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)] });
+  await expect(page.locator("#panel-send")).toBeVisible();
+  await page.evaluate(() => window.scrollTo(0, 150));
+  const scrolled = await page.evaluate(() => window.scrollY);
+  expect(scrolled).toBeGreaterThan(0);
+
+  // "Hilfe" from the menu: at its top, even though "Senden" was scrolled down.
+  await openHelp(page);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  await page.evaluate(() => window.scrollTo(0, 300));
+  // Another page from the menu: at its top too.
+  await openSettings(page);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  // Back to "Senden": where it was left.
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#panel-send")).toBeVisible();
+  expect(await page.evaluate(() => window.scrollY)).toBe(scrolled);
+});
+
 test("loading: placeholders while the pane starts and while lists and settings load – replaced once they are there", async ({ page }) => {
   await openTaskpane(page, { shares: SHARES, proofs: [], config: { deliveryProof: true }, slowLoads: 1500 });
   // The start: placeholders in the shape of "Senden" (before any answer), read out as "Wird geladen …".
@@ -2657,10 +2699,14 @@ test("Zustellnachweise: every proof in the account menu, filtered and searched, 
   await expect(entries.nth(0).locator(".state-text")).toHaveText("1× heruntergeladen");
   await expect(entries.nth(0).locator(".share-valid")).toHaveText("Aufbewahrt bis 18.11.2029"); // a finished proof: how long it is kept
   await expect(entries.nth(0).locator(".share-state")).toHaveClass(/done/);
-  await expect(entries.nth(0).locator(".proof-case")).toHaveText("Vorgang 20261118-1646-CBMH");
-  // "Vorgang …" bold, then "Gültig bis" and the state; no icons on the right (the list is for looking things up).
+  // Under the file: only the tracking ID (no "Vorgang") and after it the seal that opens the PDF – not after the file.
+  await expect(entries.nth(0).locator(".proof-case")).toHaveText("20261118-1646-CBMH");
+  await expect(entries.nth(0).locator(".proof-case .proof-seal")).toHaveCount(1);
+  await expect(entries.nth(0).locator(".share-item .proof-seal")).toHaveCount(0);
+  // The tracking ID bold right under the file, then to whom, "Gültig bis" and the state; no icons on the right.
   await expect(entries.nth(0).locator(".proof-case")).toHaveCSS("font-weight", "600");
-  expect(await entries.nth(0).locator(".proof-case + .share-valid + .share-state").count()).toBe(1);
+  await expect(entries.nth(0).locator(".share-item + .proof-case + .proof-sent")).toHaveCount(1);
+  await expect(entries.nth(0).locator(".proof-password + .share-valid + .share-state")).toHaveCount(1);
   await expect(entries.nth(0).locator(".share-actions")).toHaveCount(0);
   await expect(entries.nth(1).locator(".state-text")).toHaveText("Noch nicht abgerufen");
   await expect(entries.nth(1).locator(".share-valid")).toHaveText("Gültig bis 26.11.2026");

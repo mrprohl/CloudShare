@@ -533,8 +533,8 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 .share-item { display: flex; align-items: center; min-width: 0; margin: 2px 0; font-size: 13px; line-height: 18px; color: var(--fg2); }
 .share-item .share-name { font-weight: 400; flex: 0 1 auto; }
 /* "Zustellnachweis": a small seal after the file name – a click opens the PDF, the tracking ID is in its tooltip. */
-.share-item .proof-seal { flex: none; width: 22px; height: 22px; min-width: 0; padding: 1px; margin-left: 4px; color: var(--fg2); }
-.share-item .proof-seal .icon { width: 16px; height: 16px; }
+:is(.share-item, .proof-case) .proof-seal { flex: none; width: 22px; height: 22px; min-width: 0; padding: 1px; margin-left: 4px; color: var(--fg2); }
+:is(.share-item, .proof-case) .proof-seal .icon { width: 16px; height: 16px; }
 /* "Zustellnachweise" (account menu): the search field and one entry per proof, the seal on the left opens the PDF. */
 .proofs-search { display: block; width: 100%; margin: 4px 0 12px; }
 /* The seal tells the state – the symbol itself in the colour: grey sent, blue address confirmed, green fetched
@@ -543,8 +543,8 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 .proof-seal.state-sent, .proof-seal.state-open { color: var(--fg3); }
 .proof-seal.state-confirmed { color: var(--brand-fg); }
 .proof-seal.state-fetched { color: var(--success-fg); }
-/* "Vorgang …" of a proof: bold, above its state – the number to quote. */
-.proof-entry .proof-case { font-weight: 600; color: var(--fg2); }
+/* The tracking ID of a proof: bold, right under its file – the number to quote –, the seal for the PDF after it. */
+.proof-case { display: flex; align-items: center; font-weight: 600; color: var(--fg2); } /* "Zustellnachweise" and "Verlauf" */
 /* Filter of "Zustellnachweise": the switch like Dateien / Nachricht / Anfordern, one line. */
 .share-meta { font-size: 12px; line-height: 16px; color: var(--fg3); }
 .share-password.failed { color: var(--danger-fg); }
@@ -665,10 +665,12 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 /* --- Personal settings (gear in the account line, settings.ts) ------------------- */
 .settings-group { margin: 0 0 8px; padding: 0 0 12px; border: 0; border-bottom: 1px solid var(--stroke2); min-width: 0; }
 .settings-group legend { padding: 0; margin-top: 12px; }
-.settings-text { margin: 0 0 4px; } /* under a heading (like the text under "Anhänge"), not under an item */
+.settings-text { margin: 0 0 4px; }
+/* The text under a settings heading as close as under the headings of "Senden" (see .section-text). */
+.settings-group legend + .settings-text { margin-top: -9px; }
 .settings-field { margin: 8px 0 0; }
 .checkbox-text { flex: 1; min-width: 0; }
-.checkbox-hint { display: inline-block; margin: 2px 0 0; }
+.checkbox-hint { display: block; margin: 0; } /* right under its box's text, as close as the line under "Gültigkeit" */
 .signature-input { margin-top: 8px; }
 .settings-actions { display: flex; gap: 8px; margin: 16px 0 4px; }
 /* "Feedback senden" (feedback.ts): kind, text, the technical details shown before they go. */

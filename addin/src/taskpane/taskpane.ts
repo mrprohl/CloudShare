@@ -87,7 +87,7 @@ let encryptedShown = "";
 /** "Kennwort an": radio buttons (recipients / another address / SMS) in the group #password-channel. */
 const channelGroup = $<HTMLDivElement>("password-channel");
 const channelRadios = Array.from(channelGroup.querySelectorAll<HTMLInputElement>('input[name="password-channel"]'))
-  .filter((radio) => radio.value !== "same"); // the three ways; "Gleicher Empfänger wie zuvor" is channelSame
+  .filter((radio) => radio.value !== "same"); // the three ways; "Gleiche Empfänger wie zuvor" is channelSame
 const channelSame = $<HTMLInputElement>("channel-same");
 const channelSameRow = $<HTMLLabelElement>("channel-same-row");
 const channelSameHint = $<HTMLParagraphElement>("channel-same-hint");
@@ -908,7 +908,6 @@ function applyProofLock(proofMail: boolean | undefined) {
   for (const radio of kindRadios) {
     const blocked = locked && proofMail === true && radio.value !== "files";
     radio.disabled = blocked;
-    radio.closest<HTMLElement>(".segment")!.title = blocked ? t("proof.kindBlocked") : "";
   }
   if (locked && proofMail && selectedKind() !== "files") selectKind("files");
 }
@@ -1024,7 +1023,7 @@ const smsCountriesHint = () =>
 type Channel = "recipients" | "mail" | "sms";
 
 /**
- * Fixed for this mail (lockChannel): "Gleicher Empfänger wie zuvor" is chosen and the password keeps going the way of
+ * Fixed for this mail (lockChannel): "Gleiche Empfänger wie zuvor" is chosen and the password keeps going the way of
  * the first link – `lockedWay` – with its address or number.
  */
 let channelLocked = false;
@@ -1043,7 +1042,7 @@ const channelHint = (channel: Channel) =>
 
 function showChannel(channel: Channel) {
   if (channelLocked) {
-    // Fixed for this mail: the way is remembered, the pane keeps showing "Gleicher Empfänger wie zuvor".
+    // Fixed for this mail: the way is remembered, the pane keeps showing "Gleiche Empfänger wie zuvor".
     lockedWay = channel;
     renderValidity();
     renderSubmit();
@@ -1071,14 +1070,13 @@ function showChannel(channel: Channel) {
 
 /**
  * One password per mail: once it has a password, "Kennwort an" is fixed too – like "Gleiches Kennwort wie zuvor" above
- * it, "Gleicher Empfänger wie zuvor" is chosen with its hint, the three ways are greyed out, and the password keeps
+ * it, "Gleiche Empfänger wie zuvor" is chosen with its hint, the three ways are greyed out, and the password keeps
  * going the way of the first link (`lockedWay`, with its address or number). Unlocked, that way is shown again.
  */
 function lockChannel(locked: boolean) {
   const wasLocked = channelLocked;
   if (locked && !wasLocked) lockedWay = checkedWay();
   channelLocked = locked;
-  channelGroup.title = locked ? t("password.hintOnePassword") : "";
   channelSameRow.hidden = !locked;
   channelSameHint.hidden = !locked;
   passwordToInput.readOnly = locked;
@@ -1424,10 +1422,17 @@ function renderPasswordHint() {
   passwordHint.classList.toggle("warning", blockedByNoPassword());
 }
 
+// A choice by the user is confirmed at the top, like a new way of "Kennwort an" – never with the password itself.
+const choosePasswordMode = (mode: "random" | "own" | "none") => {
+  setPasswordMode(mode);
+  setStatus(t(`password.saved.${mode}`), "success");
+};
+// "Gleiches Kennwort wie zuvor" is never chosen by a click: it shows only once the mail has its password, already
+// selected and with every other choice greyed out (lockSeparate).
 modeSame.addEventListener("change", () => setPasswordMode("same"));
-modeRandom.addEventListener("change", () => setPasswordMode("random"));
-modeOwn.addEventListener("change", () => setPasswordMode("own"));
-modeNone.addEventListener("change", () => setPasswordMode("none"));
+modeRandom.addEventListener("change", () => choosePasswordMode("random"));
+modeOwn.addEventListener("change", () => choosePasswordMode("own"));
+modeNone.addEventListener("change", () => choosePasswordMode("none"));
 passwordInput.addEventListener("input", renderRules);
 
 /** From the first upload on, the password applies to the whole mail and can no longer be changed. */
@@ -2084,7 +2089,12 @@ const proofsSearchToggle = initSearchToggle({
   onChange: () => renderProofs(),
 });
 
+/** Where the view and the pages were scrolled to when they were left – for the way back (see showOverlay). */
+const scrolledTo = new Map<Overlay, number>();
+
 function showOverlay(overlay: Overlay) {
+  const previous = currentOverlay;
+  if (previous !== overlay) scrolledTo.set(previous, window.scrollY);
   if (currentOverlay === "help" && overlay !== "help") helpSearch.reset(); // no search left over for the next opening
   // The same for "Verlauf" (not when its address book opens on top of it) and "Zustellnachweise".
   if (currentOverlay === "shares" && overlay !== "shares" && overlay !== "contacts") sharesSearchToggle.reset();
@@ -2099,6 +2109,12 @@ function showOverlay(overlay: Overlay) {
   panelContacts.hidden = overlay !== "contacts";
   panelSend.hidden = overlay !== null || currentView !== "send";
   panelMail.hidden = overlay !== null || currentView !== "mail";
+  // A page opens at its top; back to the view – or from the address book to the page it was opened from – the pane
+  // stands where it was left.
+  if (previous !== overlay) {
+    const back = overlay === null || previous === "contacts";
+    window.scrollTo(0, back ? (scrolledTo.get(overlay) ?? 0) : 0);
+  }
 }
 
 /** "Verlauf" in the account menu: every valid link, freshly loaded; the search behind the magnifier. */
@@ -2277,9 +2293,10 @@ function proofRow(p: ProofItem): HTMLElement {
     `<div class="share-body">` +
     `<div class="share-head"><div class="share-title"></div></div>` +
     `<div class="share-item"></div>` +
+    // The tracking ID right under the file – the number to quote –, then to whom, "Gültig bis" and the state.
+    `<div class="share-meta proof-case"></div>` +
     `<div class="share-meta proof-sent"></div>` +
     `<div class="share-meta proof-password"></div>` +
-    `<div class="share-meta proof-case"></div>` +
     VALID_LINE +
     `<div class="share-state${p.state === "fetched" ? " done" : ""}"><span class="dot-state" aria-hidden="true"></span><span class="state-text"></span></div>` +
     `</div>`;
@@ -2298,7 +2315,6 @@ function proofRow(p: ProofItem): HTMLElement {
   const item = row.querySelector<HTMLElement>(".share-item")!;
   item.textContent = p.kind === "file" ? p.files.join(", ") : t(`shares.kind.${p.kind}`);
   item.title = p.files.join(", ");
-  item.append(proofSeal(p.id, p.state));
   // "Nachricht und Kennwort an …" when both went to the same addresses, else "Nachricht an …" and "Kennwort an …" –
   // like the lines of "Verlauf".
   const together = p.passwordTo !== null && sameAddresses(p.passwordTo, p.recipients);
@@ -2315,7 +2331,10 @@ function proofRow(p: ProofItem): HTMLElement {
   stateText.textContent =
     p.downloads > 0 ? t("proofs.downloaded", { count: p.downloads }) : p.fetched > 0 ? t("proofs.fetched", { count: p.fetched }) : t("proofs.notFetched");
   stateText.title = stateText.textContent;
-  row.querySelector<HTMLElement>(".proof-case")!.textContent = t("proofs.case", { id: p.id });
+  // Under the file: the tracking ID alone (no word before it), then the seal that opens the PDF.
+  const caseLine = row.querySelector<HTMLElement>(".proof-case")!;
+  caseLine.textContent = p.id;
+  caseLine.append(proofSeal(p.id, p.state));
   return row;
 }
 
@@ -2910,9 +2929,16 @@ function shareRow(share: ShareItem): HTMLElement {
     } else {
       item.textContent = t(`shares.kind.${share.kind}`);
     }
-    // "Zustellnachweis": a small seal after it – the tracking ID in its tooltip, a click opens the PDF ("Nachweis").
-    if (share.proofId) item.append(proofSeal(share.proofId, share.proofState));
     row.querySelector(".share-head")!.after(item);
+    // "Zustellnachweis": as in "Zustellnachweise", the tracking ID right under the file (bold, no word before it) and the
+    // seal after it – its colour shows the state, a click opens the PDF.
+    if (share.proofId) {
+      const caseLine = document.createElement("div");
+      caseLine.className = "share-meta proof-case";
+      caseLine.textContent = share.proofId;
+      caseLine.append(proofSeal(share.proofId, share.proofState));
+      item.after(caseLine);
+    }
   }
 
   // The same lines as an entry of "Zustellnachweise": "18.11.2026 · Nachricht und Kennwort an erika@example.com" when
