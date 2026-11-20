@@ -45,6 +45,10 @@ vi.mock("../src/graph.js", async (importOriginal) => ({
   })),
   sendMail: vi.fn(async () => undefined),
   sendMailAsApp: vi.fn(async () => undefined),
+  fetchContacts: vi.fn(async () => [
+    { name: "Jonas Müller-Berg", emails: ["j.mueller@example.org"], phones: [{ number: "0171 1234567", type: "mobile" }] },
+    { name: "Erika Beispiel", emails: ["erika@example.test"], phones: [] },
+  ]),
   fetchSensitivityLabels: vi.fn(async () => [{ id: "aaaaaaaa-0000-4000-8000-000000000002", name: "Vertraulich", rank: 4, protection: false }]),
   ewsIdFor: vi.fn(async (_token: string, id: string) => (id === "AAMk-gone" ? null : `ews-${id}`)),
   sentMailState: vi.fn(async (_token: string, id: string) => (id === "AAMk-deleted" ? "deleted" : "ok")),
@@ -1264,6 +1268,67 @@ describe("sensitivity labels (/api/labels)", () => {
   });
 });
 
+describe("feedback (/api/feedback)", () => {
+  it("mails a problem report from the user's mailbox to FEEDBACK_MAIL – only known details", async () => {
+    const graph = await import("../src/graph.js");
+    const sendMail = vi.mocked(graph.sendMail);
+    sendMail.mockClear();
+    const config = (await app.inject({ method: "GET", url: "/api/config" })).json();
+    expect(config.feedback).toBe(true);
+    expect(JSON.stringify(config)).not.toContain("cloudshare-support"); // the address stays on the server
+    const res = await app.inject({
+      method: "POST", url: "/api/feedback", headers: as("anna"),
+      payload: { kind: "bug", text: "Der Link landet in der Karte.", diagnostics: { outlook: "Outlook 16.0 (PC)", secret: "nein" } },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(sendMail).toHaveBeenCalledOnce();
+    const [, recipients, subject, html, from] = sendMail.mock.calls[0];
+    expect(recipients).toEqual({ to: ["cloudshare-support@example.test"], cc: [], bcc: [] });
+    expect(subject).toBe("CloudShare: Fehlermeldung von Anna Muster");
+    expect(html).toContain("Der Link landet in der Karte.");
+    expect(html).toContain("Outlook 16.0 (PC)");
+    expect(html).not.toContain("nein");
+    expect(from).toBeUndefined(); // from the user's own mailbox
+  });
+
+  it("refuses an empty text, and answers 404 without FEEDBACK_MAIL", async () => {
+    const empty = await app.inject({ method: "POST", url: "/api/feedback", headers: as("anna"), payload: { kind: "idea", text: " " } });
+    expect(empty.statusCode).toBe(400);
+    const { config } = await import("../src/config.js");
+    const address = config.feedbackMail;
+    config.feedbackMail = "";
+    try {
+      const off = await app.inject({ method: "POST", url: "/api/feedback", headers: as("anna"), payload: { kind: "idea", text: "Hallo" } });
+      expect(off.statusCode).toBe(404);
+      expect(off.json().code).toBe("FEEDBACK_OFF");
+      expect((await app.inject({ method: "GET", url: "/api/config" })).json().feedback).toBe(false);
+    } finally {
+      config.feedbackMail = address;
+    }
+  });
+});
+
+describe("contact suggestions (/api/contacts)", () => {
+  it("matches names and addresses, or the numbers for SMS – Graph asked once per user", async () => {
+    const graph = await import("../src/graph.js");
+    const fetchContacts = vi.mocked(graph.fetchContacts);
+    fetchContacts.mockClear();
+    const mail = await app.inject({ method: "GET", url: "/api/contacts?q=m%C3%BCl&kind=mail", headers: as("lena") });
+    expect(mail.json()).toEqual({ contacts: [{ name: "Jonas Müller-Berg", value: "j.mueller@example.org" }] });
+    const sms = await app.inject({ method: "GET", url: "/api/contacts?q=0171&kind=sms", headers: as("lena") });
+    expect(sms.json()).toEqual({ contacts: [{ name: "Jonas Müller-Berg", value: "0171 1234567", type: "mobile" }] });
+    expect(fetchContacts).toHaveBeenCalledOnce();
+  });
+
+  it("without the permission: contacts null (the pane stops asking)", async () => {
+    const graph = await import("../src/graph.js");
+    vi.mocked(graph.fetchContacts).mockRejectedValueOnce(new Error("Graph contacts failed (HTTP 403)"));
+    const res = await app.inject({ method: "GET", url: "/api/contacts?q=er", headers: as("moritz") });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ contacts: null });
+  });
+});
+
 describe("delivery proof – guessing addresses", () => {
   const form = (fields: Record<string, string>) => ({
     headers: { "content-type": "application/x-www-form-urlencoded" },
@@ -1353,6 +1418,53 @@ describe("delivery proof – password after the confirmation", () => {
 
     const types = caseById(proofId)!.events.map((e) => e.type);
     expect(types).toEqual(expect.arrayContaining(["recipient.verified", "password.sent"]));
+  });
+
+  it("\"Kennwort erneut senden\" never gets round the proof: nothing before a confirmation, then only to confirmed addresses", async () => {
+    nc.createPublicShare.mockResolvedValue("https://cloud.example.test/s/proof-again");
+    const { body } = await startUpload("anna", "Plan.pdf");
+    await putChunk("anna", body.uploadId, 1);
+    await complete("anna", body.uploadId, { proof: true });
+    const { recordMailSent } = await import("../src/proof.js");
+    recordMailSent(["proof-again"], { subject: "Plan", messageId: "<a@example.test>", from: "anna@example.test", to: ["erika@example.test", "bernd@example.test"], cc: [], bcc: [] });
+    const { registerPasswordRef } = await import("../src/passwordRefs.js");
+    await registerPasswordRef({
+      owner: "oid-anna", ownerUpn: "anna@example.test", sendId: "send-again", tokens: ["proof-again"], fileNames: ["Plan.pdf"],
+      keepUntil: Date.now() + 7 * DAY, subject: "Plan", recipients: { to: ["erika@example.test", "bernd@example.test"], cc: [], bcc: [] },
+      maxAccessCount: 3, deferred: true, toRecipients: true,
+    });
+    nc.listPublicShares.mockResolvedValue([{ id: "77", path: "/CloudShare/2026-11-20_ab/Plan.pdf", url: "https://cloud.example.test/s/proof-again",
+      expiration: "2099-12-01", sharedAt: Date.now(), fileId: 77, isFolder: false, permissions: 1, label: "", size: 1, hasPassword: true }]);
+    const graph = await import("../src/graph.js");
+    const sendMail = vi.mocked(graph.sendMail);
+    const sendMailAsApp = vi.mocked(graph.sendMailAsApp);
+    const resend = (payload: Record<string, unknown>) =>
+      app.inject({ method: "POST", url: "/api/shares/77/password/send", headers: as("anna"), remoteAddress: "192.0.2.50", payload });
+
+    // Nobody confirmed yet: the pane is told, and no way sends it – not to the recipients, not elsewhere, not by SMS.
+    const shown = (await app.inject({ method: "GET", url: "/api/shares/77/password", headers: as("anna"), remoteAddress: "192.0.2.50" })).json();
+    expect(shown).toMatchObject({ deferred: true, verified: [] });
+    sendMail.mockClear();
+    for (const payload of [{ channel: "recipients" }, { channel: "mail", to: "kollege@example.test" }, { channel: "sms", to: "+491701234567" }]) {
+      const refused = await resend(payload);
+      expect(refused.statusCode).toBe(409);
+      expect(refused.json().code).toBe("PASSWORD_HELD");
+    }
+    expect(sendMail).not.toHaveBeenCalled();
+
+    // Erika confirms with the code: sent again to the recipients means to her only, Bernd has not confirmed.
+    sendMailAsApp.mockClear();
+    await app.inject({ method: "POST", url: "/r/s/proof-again/code", remoteAddress: "192.0.2.11", ...form({ address: "erika@example.test" }) });
+    await vi.waitFor(() => expect(sendMailAsApp).toHaveBeenCalledOnce());
+    const code = />(\d{6})</.exec(String(sendMailAsApp.mock.calls[0][4]))![1];
+    await app.inject({ method: "POST", url: "/r/s/proof-again/verify", remoteAddress: "192.0.2.11", ...form({ address: "erika@example.test", code }) });
+    expect((await app.inject({ method: "GET", url: "/api/shares/77/password", headers: as("anna"), remoteAddress: "192.0.2.50" })).json().verified).toEqual(["erika@example.test"]);
+    sendMail.mockClear();
+    const again = await resend({ channel: "recipients" });
+    expect(again.statusCode).toBe(200);
+    expect(again.json()).toEqual({ channel: "recipients", to: "erika@example.test" });
+    expect(sendMail).toHaveBeenCalledOnce();
+    expect(sendMail.mock.calls[0][1]).toEqual({ to: ["erika@example.test"], cc: [], bcc: [] });
   });
 });
 

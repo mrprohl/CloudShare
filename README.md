@@ -98,7 +98,11 @@ three.
      link can download the file while the link is valid; no password goes out, and that mail cannot get a
      confidential message or upload link any more (the pane says so).
 3. **"Recipients"**, always in sight: **"Password to"** – the recipients of the mail (default), **another e-mail address** (e.g. a colleague),
-   or a **phone number (SMS)** if SMS is set up – the password arrives as plain text, sent after the mail; **"Language"**
+   or a **phone number (SMS)** if SMS is set up – the password arrives as plain text, sent after the mail. While you
+   type the address or number, matching entries of your **Outlook contacts** drop down below the field (name and
+   address or number; arrow keys and Enter or a click) – only with the optional permission `Contacts.Read`
+   ([microsoft-365.md → 2.4](docs/microsoft-365.md#24-api-permissions-delegated-and-admin-consent)), SMS numbers that may
+   not get one are left out; **"Language"**
    – link card, password mail and SMS in that language (preselected in the settings); and for files, if offered, the
    switch **"Proof of delivery"**.
 4. **"Validity"** is collapsed and shows its values in one line, e.g. "Link 14 days · Password link 5
@@ -129,14 +133,18 @@ read (default 5 days, at most 30 – Vaultwarden's limit), then it is deleted.
 **Receiving files** (**Request**): **"Insert upload link"** inserts a link through which the recipients can upload
 files – also very large ones – straight into your Nextcloud (folder `CloudShare-File-Requests`).
 
-Confidential messages and upload links always have a password, so "No password" is not offered there.
+Confidential messages and upload links always have a password, so "No password" is greyed out there – as is "Proof of
+delivery", which exists for files only (Nextcloud can show that a file was downloaded, not that a text was read); the
+"i" next to such an option says why.
 
 <br clear="right">
 
-<img src="docs/images/taskpane-shares.png" alt="Tab History: like the proofs of delivery - the day and recipients, Password to ... and the download status ending in when the link ends and the icons Copy, Password, Insert, Revoke next to the subject; the first link has the seal of a proof of delivery after its file name and Password is open with the password and Send again to" width="300" align="right">
+<img src="docs/images/taskpane-shares.png" alt="History, a page of the account menu with a search field: like the proofs of delivery - the day and recipients, Password to ... and the download status ending in when the link ends and the icons Copy, Password, Insert, Revoke next to the subject; the first link has the seal of a proof of delivery after its file name and Password is open with the password and Send again to" width="300" align="right">
 
-**"History"** lists everything you sent with CloudShare that is still valid – links and confidential messages,
-newest first. Each entry is titled with the **subject of its mail** – hovering it shows when and to whom it went (To, Cc),
+**"History"** – a page of the account menu at the bottom left, above "Proofs of delivery" – lists everything you sent
+with CloudShare that is still valid – links and confidential messages, newest first; the search field at the top
+filters by subject, file name and recipient. The pane has no tabs: while writing it shows "Send", the history and the
+proofs open from the account menu. Each entry is titled with the **subject of its mail** – hovering it shows when and to whom it went (To, Cc),
 a click opens that mail in Outlook (only mails
 of your own mailbox) –, below it what went out – the file name, "File request" or "Confidential message" (the symbol on the left shows the
 kind: a document, an upload arrow, an envelope with a lock)
@@ -147,9 +155,9 @@ confidential message has no "Copy" or "Insert" – CloudShare does not keep its 
 (deletes it at once). Until the mail is sent the entry shows the subject of the draft – also one typed after inserting the link,
 while the pane is open ("(No subject yet)" until then); entries from before subjects were kept say "(Subject
 unknown)". It
-loads when you open the tab and again when you come back to
-the pane; **Refresh** (⟳ in the tab bar) reloads it at any time. Expired links are not listed. At the bottom, as in
-"Send": the account, as a menu – at the top the whole account name and its storage (a bar filled with the used share when there is a quota), then "Open Nextcloud" (your Nextcloud in the browser), "Proofs of delivery" (with `DELIVERY_PROOF`: every proof, searchable), "Settings", "Help" and "Disconnect" (takes a second click). A link is created when it is inserted;
+loads when you open the page and again when you come back to
+the pane; **Refresh** (⟳ at the top right of the page) reloads it at any time. Expired links are not listed. At the bottom, as in
+"Send": the account, as a menu – at the top the whole account name and its storage (a bar filled with the used share when there is a quota), then "Open Nextcloud" (your Nextcloud in the browser), "History" (every valid link, searchable), "Proofs of delivery" (with `DELIVERY_PROOF`: every proof, searchable), "Settings", "Send feedback" (with `FEEDBACK_MAIL`: a problem or a suggestion by mail to whoever looks after CloudShare), "Help" and "Disconnect" (takes a second click). A link is created when it is inserted;
 until its mail has been sent it says **"Not sent"**. If the mail is never sent (draft discarded), CloudShare revokes
 the link after 7 days – unless it was already downloaded (opened by yourself, or the mail went out from an Outlook
 without CloudShare): then it says **"Password not sent yet."** and stays until you revoke it.
@@ -186,7 +194,7 @@ everyday users without IT knowledge – e.g. clerks in an administration: the fi
 step by step, choosing the password and how it is sent (with a clear note that personal or confidential data always go
 with a password), the confidential message, receiving files, "History" and frequently asked questions ("The
 recipients did not get a password", "I sent the link to the wrong person" …). Short sections to open as needed; the
-most common one is open. It opens as a page of its own in place of the tabs (the tab bar is hidden meanwhile, like the settings and the proofs of delivery); the arrow "←" before its title or Escape leads back. It is
+most common one is open. It opens as a page of its own in place of "Send", like the history, the settings and the proofs of delivery; the arrow "←" before its title or Escape leads back. It is
 also there when the pane was opened from a sent mail. Its last sentence points to the IT support – put your own
 contact there, see [Languages](#languages) (`help.support`).
 
@@ -316,11 +324,12 @@ deployed again.
 | `PROOF_RETENTION_MONTHS` | `36` | Months a proof of delivery is kept after its last event (three years, the regular limitation period) – independent of `DATA_RETENTION_DAYS` |
 | `COMPANY_NAME` | empty | Your organisation's name, shown after the CloudShare logo at the top of the recipients' pages (delivery proof) |
 | `COMPANY_WEBSITE_URL` / `IMPRINT_URL` / `PRIVACY_URL` | empty | Links at the bottom of the recipients' pages: your website (shown by its host name), imprint and privacy notice; each optional, http(s) only |
-| `PROOF_SIGN_CERT_FILE` / `PROOF_SIGN_KEY_FILE` | empty | PEM files of a certificate and its key that sign the proof PDF (e.g. one of a CA trusted by Adobe, under `/config`). Empty: CloudShare makes its own certificate once (kept sealed in the database) – a change of the PDF still shows, but the reader names the signer "unknown" |
+| `PROOF_SIGN_CERT_FILE` / `PROOF_SIGN_KEY_FILE` | empty | PEM files of a certificate and its key that sign the proof PDF (e.g. one of a CA trusted by Adobe, under `/config`). Empty: CloudShare makes its own certificate once (kept sealed in the database) – a change of the PDF still shows, but the reader names the signer "unknown". Set but not readable or not matching: the start log says so (`Proof signing files not usable`) and the PDFs are signed with the own certificate until the files are fixed and the container restarted |
 | `PROOF_SIGN_NAME` / `PROOF_SIGN_ORGANIZATION` | `CloudShare` / empty | Name (CN) and organisation (O) of the certificate CloudShare makes itself |
 | `PROOF_TSA_URL` | `http://timestamp.digicert.com` | RFC 3161 time stamp authority for the signature – proves the PDF existed unchanged at that time (only a hash is sent); `off` = none, a qualified one for legal weight |
 | `CLEANUP_AFTER_DAYS` | `0` | Uploaded files go to the Nextcloud trash this many days after their link expired or was revoked; `off` = never. Received files are never deleted |
 | `DATA_RETENTION_DAYS` | `365` | Entries in `/data/cloudshare.db` not changed for this many days are deleted (daily, then the file is shrunk); `off` = never. A safety net – entries normally leave on their own (jobs after 7 days, links' data when they expire, SMS states after 120 days). Nextcloud connections and the cleanup list are never affected. At least `SHARE_MAX_EXPIRE_DAYS` |
+| `FEEDBACK_MAIL` | empty | Address for "Send feedback" in the account menu of the add-in (e.g. whoever looks after CloudShare): problem reports and suggestions go there by mail from the user's own mailbox, with technical details if the user leaves them ticked – never anywhere public. Empty: the entry is not offered |
 | `MAIL_FOOTER` | empty | Signature of the mails to the recipients (password mail, code mail of a proof of delivery) for users without an own one (settings), filled from the sender's Microsoft 365 profile, e.g. `'{displayName} · {department}\n{company} · Tel. {phone} · {email}'` – recipients see who the password comes from; placeholders and rules in `cloudshare.env.example`. Empty = no signature (`setup.sh`: Enter). The link card in the message carries none |
 | `VAULTWARDEN_URL`, `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD` | – | Vaultwarden service account |
 | `RATE_LIMIT_PER_MINUTE` | `600` | Requests per minute and user |
@@ -408,7 +417,9 @@ default, offered for "Files" only (not for a confidential message or an upload l
   received, revoked or expired links. Each entry carries the hash of the one before, so a change afterwards shows.
 - **No password mail with the link mail**: for links with proof of delivery the password is held back. Only after a
   recipient confirmed their address with the code does the password go out – a password mail to exactly that address
-  (every recipient confirms for themselves), to another address or by SMS (once, after the first confirmation). The
+  (every recipient confirms for themselves), to another address or by SMS (once, after the first confirmation).
+  **Sending it again** from "History" does not get round this: before the first confirmation it is not possible (the
+  pane says why), afterwards "Confirmed recipients" reaches only the addresses that confirmed. The
   page then says what to do next ("We have just sent you the password … · click „Show password“ · click „To the
   download“ here") and leads on to the link; the link card says the password comes after the confirmation. The
   password mail shows two numbered steps in its card – 1 "Show password", 2 "To the download", each with its address
@@ -429,8 +440,8 @@ default, offered for "Files" only (not for a confidential message or an upload l
   reader only names the signer "unknown". For legal weight: a certificate of a CA trusted by Adobe or a qualified
   seal, and a qualified time stamp authority – no code change needed.
 - **Finding a proof later**: "Proofs of delivery" in the account menu lists the proof of every sent mail – also those whose links expired
-  long ago and no longer show in "History" – searchable by case number, subject, recipient or file name and filtered
-  with the switch All | Fetched | Pending (not fetched yet). Each entry looks and works like a row of "History": a click on the
+  long ago and no longer show in "History" – searchable by case number, subject, recipient or file name (no other
+  filters). Each entry looks and works like a row of "History": a click on the
   subject opens the sent mail. The seal after the file name shows the state by its colour (grey sent, blue address
   confirmed, green fetched – the same in "History") and opens the PDF; each entry says when its links end or until when
   the proof is kept.
@@ -505,7 +516,9 @@ The built-in texts are those of the configured language (section `templates` of 
 ## Personal settings
 
 "Einstellungen" in the account menu (a click on the Nextcloud account at the bottom left) opens each user's own settings. They are stored
-on the server per Microsoft account (encrypted like everything in `/data/cloudshare.db`) and apply on every computer:
+on the server per Microsoft account (encrypted like everything in `/data/cloudshare.db`) and apply on every computer.
+Every change is saved at once – there is no "Save" button. In sight are the notifications and the signature; the ways
+for the password, the two languages and "Reset" are folded away under **"More settings"**:
 
 | Setting | Choice | Starting value |
 |---|---|---|
@@ -614,7 +627,8 @@ publishes ports.
 | Nextcloud throttles CloudShare | All requests come from the server's address – allow it in Nextcloud's brute-force settings. |
 | CloudShare does not start after setting `LANGUAGE` | The log names the problem and the available languages: `docker logs cloudshare 2>&1 \| grep LANGUAGE`. An own language needs `env/config/locales/<language>.json` (directory `755`, file `644`, valid JSON). |
 | Outlook still shows the old language | Outlook caches the add-in: clear the cache in classic Outlook (see *Operation*), reload Outlook on the web. The ribbon label and description come from the manifest – Outlook may take up to 24 hours to pick it up. |
-| A text shows a key like `tabs.send` | The text is missing in the own language file and in English – add it (keys: [`locales/en.json`](locales/en.json)). |
+| Users want to report a problem | Set `FEEDBACK_MAIL`: "Send feedback" in the account menu mails the report with Outlook version, languages and the last error messages of the pane. Before you turn one into a public GitHub issue, remove names, addresses, file names and subjects. |
+| A text shows a key like `kind.files` | The text is missing in the own language file and in English – add it (keys: [`locales/en.json`](locales/en.json)). |
 
 ## Development and tests
 

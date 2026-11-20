@@ -69,6 +69,21 @@ async function mailPassword(c: ProofCase, ref: PasswordRef, password: string, to
 }
 
 /**
+ * The addresses that confirmed themselves with the code for one of `tokens` (lower case, in the order they did) –
+ * "Kennwort erneut senden" of a held-back step may only reach them (app.ts), never someone who has not confirmed.
+ */
+export function verifiedAddresses(c: ProofCase | undefined, tokens: string[]): string[] {
+  const found: string[] = [];
+  for (const event of c?.events ?? []) {
+    if (event.type !== "recipient.verified") continue;
+    const links = Array.isArray(event.data.links) ? (event.data.links as unknown[]) : [];
+    const address = typeof event.data.address === "string" ? event.data.address.toLowerCase() : "";
+    if (address && links.some((link) => tokens.includes(String(link))) && !found.includes(address)) found.push(address);
+  }
+  return found;
+}
+
+/**
  * After `address` confirmed itself for the link `token`: sends what is still held back for it. Null when nothing was
  * held back (link without password, or a mail from before) – the gateway then goes straight on to the link.
  */

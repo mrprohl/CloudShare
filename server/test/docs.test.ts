@@ -215,11 +215,11 @@ describe("documentation", () => {
       expect(menu.filter((key) => !paragraph.includes(texts[key].toLowerCase())), `${file}: help.shares.account misses menu entries`).toEqual([]);
     }
     const keys = [
-      // The switches Dateien / Nachricht / Anfordern and Alle / Abgerufen / Ausstehend, and the switch "Zustellnachweis".
-      ...[...html.matchAll(/name="(?:kind|proof-filter)"[^>]*\/>\s*<span>%%t:addin\.([\w.]+)%%<\/span>/g)].map((m) => m[1]),
+      // The switches Dateien / Nachricht / Anfordern, and the switch "Zustellnachweis".
+      ...[...html.matchAll(/name="kind"[^>]*\/>\s*<span>%%t:addin\.([\w.]+)%%<\/span>/g)].map((m) => m[1]),
       ...[...html.matchAll(/class="switch-text">%%t:addin\.([\w.]+)%%/g)].map((m) => m[1]),
     ];
-    expect(keys.length).toBeGreaterThan(5);
+    expect(keys.length).toBeGreaterThan(3);
     for (const file of readdirSync(path.join(repo, "locales")).filter((f) => f.endsWith(".json"))) {
       const texts = (JSON.parse(read(`locales/${file}`)) as { addin: Record<string, string> }).addin;
       const help = Object.entries(texts).filter(([key]) => key.startsWith("help.")).map(([, text]) => text).join("\n").toLowerCase();

@@ -121,15 +121,15 @@ describe("i18n", () => {
     const fr = loadLocale("fr", { builtin: builtinLocalesDir, custom });
     expect(fr._meta.locale).toBe("fr-FR");
     expect(fr.addin["submit.button"]).toBe("Insérer comme lien");
-    expect(fr.addin["tabs.send"]).toBe(en.addin["tabs.send"]);
+    expect(fr.addin["kind.files"]).toBe(en.addin["kind.files"]);
   });
 
   it("changes single texts of a built-in language from the custom directory", () => {
     const custom = mkdtempSync(path.join(tmpdir(), "cloudshare-locales-"));
-    writeFileSync(path.join(custom, "de.json"), JSON.stringify({ addin: { "tabs.shares": "Freigaben" } }));
+    writeFileSync(path.join(custom, "de.json"), JSON.stringify({ addin: { "shares.open": "Freigaben" } }));
     const de = loadLocale("de", { builtin: builtinLocalesDir, custom });
-    expect(de.addin["tabs.shares"]).toBe("Freigaben");
-    expect(de.addin["tabs.send"]).toBe("Senden");
+    expect(de.addin["shares.open"]).toBe("Freigaben");
+    expect(de.addin["kind.files"]).toBe("Dateien");
     expect(de._meta.locale).toBe("de-DE");
   });
 
@@ -141,7 +141,7 @@ describe("i18n", () => {
   it("fills the add-in files at startup with every language", () => {
     const dir = mkdtempSync(path.join(tmpdir(), "cloudshare-public-"));
     mkdirSync(path.join(dir, "assets"));
-    writeFileSync(path.join(dir, "taskpane.html"), '<html lang="%%LANG%%"><button title="%%t:addin.tabs.shares%%">%%t:addin.submit.button%%</button></html>');
+    writeFileSync(path.join(dir, "taskpane.html"), '<html lang="%%LANG%%"><button title="%%t:addin.shares.open%%">%%t:addin.submit.button%%</button></html>');
     writeFileSync(
       path.join(dir, "manifest.xml"),
       '<DefaultLocale>%%LOCALE%%</DefaultLocale><Description DefaultValue="%%t:manifest.description%%"/>' +
@@ -189,7 +189,7 @@ describe("i18n", () => {
     expect(context.result?.languages.en.messages["files.remove"]).toBe("Remove “{name}”");
     expect(context.result?.languages.de.locale).toBe("de-DE");
     expect((context.result?.languages.de as { name?: string }).name).toBe("Deutsch"); // for the language choice
-    expect(context.result?.languages.de.messages["tabs.send"]).toBe("Senden");
+    expect(context.result?.languages.de.messages["kind.files"]).toBe("Dateien");
   });
 
   it("picks the client's language, else English", () => {

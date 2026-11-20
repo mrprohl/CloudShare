@@ -248,6 +248,18 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .input.mono { font-family: var(--font-mono); letter-spacing: 0.02em; }
 .input-narrow .input { flex: 0 0 88px; }
 .channel-input { display: block; width: 100%; margin-top: 4px; }
+/* Suggestions from the own contacts under the address / number (contactSuggest.ts), a Fluent listbox flyout. */
+#password-to-field { position: relative; }
+.suggestions {
+  position: absolute; left: 0; right: 0; z-index: 3; margin: 2px 0 0; padding: 4px; list-style: none; max-height: 240px;
+  overflow-y: auto; background: var(--bg1); border: 1px solid var(--stroke2); border-radius: 6px;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.14), 0 0 2px rgba(0, 0, 0, 0.12);
+}
+.suggestion { display: flex; flex-direction: column; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+.suggestion:hover { background: var(--bg1-hover); }
+.suggestion[aria-selected="true"] { background: var(--bg1-pressed); }
+.suggestion-name { font: 400 14px/20px var(--font); color: var(--fg1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.suggestion-value { font: 400 12px/16px var(--font); color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* "Empfänger": label and control in one row ("Kennwort an [ … ▾ ]", "Sprache [ … ▾ ]"), the switch below. */
 .recipients > * + * { margin-top: 8px; }
 .inline-row { display: grid; grid-template-columns: 7em minmax(0, 1fr); align-items: center; column-gap: 12px; }
@@ -265,6 +277,12 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .switch input:disabled, .switch:has(input:disabled) { cursor: not-allowed; }
 .switch input:disabled + .switch-track { opacity: .5; }
 .switch-field .hint { margin-top: 2px; }
+/* An option that does not exist for the chosen kind: greyed out, its "i" folds out the reason below (showUnavailable). */
+.unavailable-row { display: flex; align-items: center; gap: 2px; }
+.unavailable .radio, .unavailable .switch { cursor: default; }
+.unavailable-label { display: inline-flex; align-items: center; gap: 2px; }
+.unavailable .why-toggle { margin: 0; cursor: pointer; }
+.unavailable .why { margin: 2px 0 4px; }
 /* "Kennwort senden an": native select in the look of the inputs, own chevron (follows the theme colours). */
 .select-wrap { position: relative; }
 .select-wrap::after {
@@ -407,35 +425,6 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .rules li.fail::before { content: "✕"; }
 .btn-icon[aria-pressed="true"] { background: var(--bg1-pressed); }
 
-/* --- Tabs (Fluent 2 TabList) ------------------------------------------------------ */
-/* Tab names never wrap; in a pane narrower than Outlook's default a name is shortened with "…" (full name in title). */
-.tabs { display: flex; gap: 4px; padding: 4px 12px 0; border-bottom: 1px solid var(--stroke2); }
-.tab {
-  position: relative;
-  min-width: 0;
-  padding: 10px 10px 12px;
-  border: none;
-  background: transparent;
-  color: var(--fg2);
-  font: 400 14px/20px var(--font);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  cursor: pointer;
-}
-.tab:hover { color: var(--fg1); }
-.tab[aria-selected="true"] { color: var(--fg1); font-weight: 600; }
-.tab[aria-selected="true"]::after {
-  content: "";
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: -1px;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--brand-bg);
-}
-.tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 4px; }
 .panel { display: flex; flex-direction: column; flex: 1; position: relative; }
 /* Drop zone in "Anhänge": dashed box like common upload forms; the whole box opens the file dialog. */
 .dropzone {
@@ -516,7 +505,6 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 /* "Vorgang …" of a proof: bold, above its state – the number to quote. */
 .proof-entry .proof-case { font-weight: 600; color: var(--fg2); }
 /* Filter of "Zustellnachweise": the switch like Dateien / Nachricht / Anfordern, one line. */
-.proofs-filter { margin: 0 0 12px; }
 .share-meta { font-size: 12px; line-height: 16px; color: var(--fg3); }
 .share-password.failed { color: var(--danger-fg); }
 .share-unsent { color: var(--fg2); font-weight: 600; }
@@ -575,10 +563,6 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 .share-actions .show-password[aria-expanded="true"] { background: var(--bg1-pressed); color: var(--fg1); }
 
 /* --- Help ("Hilfe"): short sections to open as needed ------------------------------------------- */
-/* The "?" at the right of the tab row opens the guide in place of the current tab. */
-.tabbar { display: flex; align-items: stretch; border-bottom: 1px solid var(--stroke2); padding-right: 8px; }
-.tabbar .tabs { flex: 1; min-width: 0; border-bottom: 0; }
-.tabbar-action { align-self: center; margin: 0; color: var(--fg2); }
 /* Head of a page (settings, proofs, help – the tab bar is hidden meanwhile): "←" back, the title, actions on the
    right; it stays at the top while the page scrolls below it, like the pages of Outlook's settings. */
 .help-header {
@@ -587,6 +571,10 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 }
 .help-header .subtitle { font-size: 18px; line-height: 24px; }
 .help-header .page-back { margin: 0 0 0 -8px; }
+.help-header .page-action { margin: 0 -6px 0 auto; }
+/* Reading a mail: the title of its links and "Aktualisieren" on the right. */
+.list-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; }
+.list-head .btn-icon { margin: 0 -6px 0 0; }
 .help { color: var(--fg1); }
 .help-intro { margin: 4px 0 12px; color: var(--fg2); }
 .help-section { border-bottom: 1px solid var(--stroke2); }
@@ -629,6 +617,19 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 .checkbox-hint { display: inline-block; margin: 2px 0 0; }
 .signature-input { margin-top: 8px; }
 .settings-actions { display: flex; gap: 8px; margin: 16px 0 4px; }
+/* "Feedback senden" (feedback.ts): kind, text, the technical details shown before they go. */
+#feedback-form .segmented { margin: 0 0 12px; }
+#feedback-form .checkbox { margin-top: 4px; }
+.feedback-details-toggle { margin: 2px 0 0 26px; padding: 2px 4px; min-height: 0; }
+.feedback-details {
+  margin: 4px 0 0; padding: 8px 10px; max-height: 180px; overflow: auto; white-space: pre-wrap; word-break: break-word;
+  font: 400 12px/16px Consolas, "Courier New", monospace; color: var(--fg2); background: var(--bg2, transparent);
+  border: 1px solid var(--stroke2); border-radius: 4px;
+}
+/* "Weitere Einstellungen": folded like a section of the guide, right under the line of the signature group. */
+.settings .settings-more { border-top: 0; }
+.settings-more > .settings-group:last-of-type { border-bottom: 0; padding-bottom: 0; }
+.settings-more > .settings-actions { margin: 8px 0 12px; }
 /* Signature: hint with the "i" for the placeholders beside it; the list folds out below. */
 .hint-row { display: flex; align-items: flex-start; gap: 4px; }
 .hint-row .hint { flex: 1; }

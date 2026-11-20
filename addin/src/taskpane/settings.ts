@@ -3,7 +3,9 @@
  * the language of the add-in and an own text signature for the password mails. Stored on the server per user
  * (server/src/settings.ts, /api/settings); the language is also kept in roamingSettings (SETTINGS_CACHE_KEY), so the
  * pane and the event handlers start in it without a request. What the organisation decides (notices switched off,
- * SMS without seven.io, SMS countries and blocked numbers) is not offered here.
+ * SMS without seven.io, SMS countries and blocked numbers) is not offered here. Every change is saved at once
+ * (no "Speichern"); notices and signature are in sight, the ways for the password, the languages and "Zurücksetzen"
+ * under "Weitere Einstellungen".
  */
 import { desiredLanguage, language, languageChoices, SETTINGS_CACHE_KEY, t } from "../shared/i18n";
 import { api, type Channel, type SettingsResponse, type UserSettings } from "../shared/office";
@@ -67,8 +69,6 @@ interface Options {
   errorMessage: (err: unknown) => string;
   /** The settings changed (not the language – the page reloads for that). */
   onChanged: () => void;
-  /** Closes the settings as the "×" does – after "Speichern" (not after "Zurücksetzen": the defaults stay in sight). */
-  close: () => void;
 }
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -86,7 +86,6 @@ export function initSettings(options: Options) {
   const signatureFormat = $<HTMLSelectElement>("settings-signature-format");
   const signatureText = $<HTMLTextAreaElement>("settings-signature-text");
   const signatureHint = $<HTMLParagraphElement>("settings-signature-hint");
-  const save = $<HTMLButtonElement>("settings-save");
   const reset = $<HTMLButtonElement>("settings-reset");
 
   const checkbox = (name: string, value: string, label: string, checked: boolean, hint?: string) => {
@@ -140,6 +139,7 @@ export function initSettings(options: Options) {
         const end = signatureText.selectionEnd ?? start;
         signatureText.setRangeText(`{${name}}`, start, end, "end");
         signatureText.focus();
+        signatureText.dispatchEvent(new Event("input")); // saved like typed text
       });
       const label = document.createElement("span");
       label.textContent = t(`settings.placeholders.${name}`);
@@ -220,25 +220,24 @@ export function initSettings(options: Options) {
   channelBoxes.addEventListener("change", () => renderDefaultChannel(defaultChannel.value as Channel));
   signatureFormat.addEventListener("change", showSignatureFormat);
 
-  const apply = async (response: SettingsResponse, message: string) => {
+  /** Takes the stored settings; a new language reloads the page. `refill`: show them in the form (after "Zurücksetzen"). */
+  const apply = async (response: SettingsResponse, message: string, refill: boolean) => {
     current = response;
     await cacheLanguage(response.settings);
     if (desiredLanguage() !== language()) {
       location.reload(); // the page and every text in the new language
       return;
     }
-    fill(response);
+    // While typing, the form stays as it is (a signature still empty is not switched back to the organisation's).
+    if (refill) fill(response);
     options.onChanged();
     options.setStatus(message, "success");
   };
 
-  form.addEventListener("submit", async (event) => {
-    event.preventDefault();
+  /** What the form shows, as the body of PUT /api/settings; null while no way for the password is ticked. */
+  const formSettings = (): Partial<UserSettings> | null => {
     const channels = checkedChannels();
-    if (channels.length === 0) {
-      options.setStatus(t("settings.channelsNone"), "error");
-      return;
-    }
+    if (channels.length === 0) return null;
     // Plain text; an empty line starts a new paragraph in the password mail.
     const text = signatureText.value.trim();
     const signature: UserSettings["signature"] = signatureFormat.value === "text" && text ? { format: "text", content: text } : null;
@@ -252,23 +251,49 @@ export function initSettings(options: Options) {
     for (const input of notices.querySelectorAll<HTMLInputElement>("input")) {
       (body as Record<string, unknown>)[input.name] = input.checked;
     }
-    save.disabled = true;
-    try {
-      const response = await api<SettingsResponse>("/api/settings", { method: "PUT", body: JSON.stringify(body) }, await options.token());
-      await apply(response, t("settings.saved"));
-      options.close();
-    } catch (err) {
-      options.setStatus(t("settings.saveFailed", { error: options.errorMessage(err) }), "error");
-    } finally {
-      save.disabled = false;
-    }
+    return body;
+  };
+
+  // Saved at once: every change of a box or a list, the signature after a pause in typing and when leaving it. One
+  // save at a time; a change meanwhile is saved right after with what the form then shows.
+  let saving: Promise<void> = Promise.resolve();
+  let lastSaved = "";
+  const saveNow = () => {
+    saving = saving.then(async () => {
+      const body = formSettings();
+      if (!body) {
+        options.setStatus(t("settings.channelsNone"), "error");
+        return;
+      }
+      const json = JSON.stringify(body);
+      if (json === lastSaved) return;
+      try {
+        const response = await api<SettingsResponse>("/api/settings", { method: "PUT", body: json }, await options.token());
+        lastSaved = json;
+        await apply(response, t("settings.saved"), false);
+      } catch (err) {
+        options.setStatus(t("settings.saveFailed", { error: options.errorMessage(err) }), "error");
+      }
+    });
+    return saving;
+  };
+  let typing: ReturnType<typeof setTimeout> | undefined;
+  form.addEventListener("submit", (event) => event.preventDefault());
+  form.addEventListener("change", () => {
+    clearTimeout(typing);
+    void saveNow();
+  });
+  signatureText.addEventListener("input", () => {
+    clearTimeout(typing);
+    typing = setTimeout(() => void saveNow(), 1000);
   });
 
   reset.addEventListener("click", async () => {
     reset.disabled = true;
     try {
       const response = await api<SettingsResponse>("/api/settings", { method: "DELETE" }, await options.token());
-      await apply(response, t("settings.resetDone"));
+      lastSaved = "";
+      await apply(response, t("settings.resetDone"), true);
     } catch (err) {
       options.setStatus(t("settings.saveFailed", { error: options.errorMessage(err) }), "error");
     } finally {

@@ -36,23 +36,23 @@ describe("language of the add-in", () => {
     setLanguages(languages);
     withClient("en-US");
     expect(language()).toBe("en");
-    expect(t("tabs.send")).toBe("Send");
+    expect(t("kind.files")).toBe("Files");
     expect(locale()).toBe("en-GB");
 
     withClient("de-AT");
     expect(language()).toBe("de");
-    expect(t("tabs.send")).toBe("Senden");
+    expect(t("kind.files")).toBe("Dateien");
     expect(locale()).toBe("de-DE");
 
     withClient("ja-JP");
-    expect(t("tabs.send")).toBe("Send");
+    expect(t("kind.files")).toBe("Files");
   });
 
   it("stays in a forced language (the taskpane page could not be switched)", () => {
     setLanguages(languages);
     withClient("en-US");
     forceLanguage("de");
-    expect(t("tabs.send")).toBe("Senden");
+    expect(t("kind.files")).toBe("Dateien");
     forceLanguage("xx"); // unknown: ignored
     expect(language()).toBe("de");
   });

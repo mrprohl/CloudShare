@@ -75,12 +75,38 @@ export function makeCertificate(name: string, organization: string, key: KeyObje
 
 let cached: Identity | undefined;
 
-/** The signing identity: the configured PEM files, else the one CloudShare made itself (made on first use). */
+/** The configured PEM files as an identity; throws when they cannot be read or the key does not belong to the certificate. */
+function configuredIdentity(): Identity {
+  const cert = new X509Certificate(readFileSync(config.proofSignCertFile));
+  const key = createPrivateKey(readFileSync(config.proofSignKeyFile));
+  if (!cert.checkPrivateKey(key)) throw new Error(`the key ${config.proofSignKeyFile} does not belong to the certificate ${config.proofSignCertFile}`);
+  return { key, cert: cert.raw };
+}
+
+/**
+ * Why the configured PEM files (PROOF_SIGN_CERT_FILE, PROOF_SIGN_KEY_FILE) cannot sign, or null when none are set or
+ * they work – checked at start, so a wrong path shows in the log before the first proof.
+ */
+export function signingFilesProblem(): string | null {
+  if (!config.proofSignCertFile && !config.proofSignKeyFile) return null;
+  if (!config.proofSignCertFile || !config.proofSignKeyFile) return "PROOF_SIGN_CERT_FILE and PROOF_SIGN_KEY_FILE must both be set";
+  try {
+    configuredIdentity();
+    return null;
+  } catch (err) {
+    return (err as Error).message;
+  }
+}
+
+/**
+ * The signing identity: the configured PEM files, else the one CloudShare made itself (made on first use). PEM files
+ * that cannot be used never leave a proof unsigned: it is signed with the own certificate instead (the start log names
+ * the problem, `signingFilesProblem`); after fixing them a restart takes them.
+ */
 export function signingIdentity(): Identity {
   if (cached) return cached;
-  if (config.proofSignCertFile && config.proofSignKeyFile) {
-    const cert = new X509Certificate(readFileSync(config.proofSignCertFile));
-    cached = { key: createPrivateKey(readFileSync(config.proofSignKeyFile)), cert: cert.raw };
+  if (config.proofSignCertFile && config.proofSignKeyFile && signingFilesProblem() === null) {
+    cached = configuredIdentity();
     return cached;
   }
   const stored = store.get("default");

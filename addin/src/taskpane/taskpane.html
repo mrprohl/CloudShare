@@ -30,38 +30,25 @@
       </section>
 
       <section id="send-view" class="send-view" hidden>
-        <div class="tabbar">
-          <div class="tabs" id="tabs" role="tablist" aria-label="CloudShare">
-            <button type="button" role="tab" id="tab-send" class="tab" title="%%t:addin.tabs.send%%" aria-selected="true" aria-controls="panel-send">%%t:addin.tabs.send%%</button>
-            <!-- Reading a mail: "Nachricht" takes the place of "Senden". -->
-            <button type="button" role="tab" id="tab-mail" class="tab" title="%%t:addin.tabs.mail%%" aria-selected="false" aria-controls="panel-mail" hidden>%%t:addin.tabs.mail%%</button>
-            <button type="button" role="tab" id="tab-shares" class="tab" title="%%t:addin.tabs.shares%%" aria-selected="false" aria-controls="panel-shares">%%t:addin.tabs.shares%%</button>
-          </div>
-          <!-- Reloads the link lists; only on "Nachricht" and "Verlauf" (selectTab). -->
-          <button type="button" id="refresh-shares" class="btn btn-icon btn-subtle tabbar-action" title="%%t:addin.shares.refresh%%"
-            aria-label="%%t:addin.shares.refresh%%" hidden>
-            <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
-              <path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-          </button>
-        </div>
-
+        <!-- No tabs: writing shows "Senden", reading the links of that mail; "Verlauf", "Zustellnachweise", settings and
+             help are pages of the account menu (showOverlay). -->
         <!-- Only when the pane was opened from a mail being read (taskpane.html?view=read): the links of that mail. -->
-        <div id="panel-mail" class="panel" role="tabpanel" aria-labelledby="tab-mail" hidden>
+        <section id="panel-mail" class="panel" aria-labelledby="mail-heading" hidden>
           <div class="content">
+            <div class="list-head">
+              <h2 class="subtitle" id="mail-heading">%%t:addin.read.heading%%</h2>
+              <button type="button" id="refresh-mail" class="btn btn-icon btn-subtle" title="%%t:addin.shares.refresh%%" aria-label="%%t:addin.shares.refresh%%">
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
             <div id="mail-shares" class="share-list" aria-live="polite"></div>
             <p class="caption" id="mail-none" hidden>%%t:addin.read.none%%</p>
           </div>
-        </div>
+        </section>
 
-        <div id="panel-shares" class="panel" role="tabpanel" aria-labelledby="tab-shares" hidden>
-          <div class="content">
-            <div id="shares" class="share-list" aria-live="polite"></div>
-            <p class="caption" id="no-shares" hidden>%%t:addin.shares.none%%</p>
-          </div>
-        </div>
-
-        <div id="panel-send" class="panel" role="tabpanel" aria-labelledby="tab-send">
+        <div id="panel-send" class="panel">
         <div class="content">
           <!-- Why "Nachricht"/"Anfordern" or the proof switch are fixed in this mail (applyProofLock) – stays while it applies. -->
           <div class="note-box" id="proof-lock-note" role="note" hidden>
@@ -162,6 +149,27 @@
               <span class="dot" aria-hidden="true"></span>
               <span>%%t:addin.password.none%%</span>
             </label>
+            <!-- "Ohne Kennwort" for a message or an upload link: shown greyed out, the "i" says why (taskpane.ts,
+                 renderKind) – the real option above stays hidden, so its lock logic is untouched. -->
+            <div class="unavailable" id="mode-none-unavailable" hidden>
+              <div class="unavailable-row">
+                <label class="radio">
+                  <input type="radio" disabled aria-describedby="mode-none-why" />
+                  <span class="dot" aria-hidden="true"></span>
+                  <span>%%t:addin.password.none%%</span>
+                </label>
+                <button type="button" id="mode-none-why-toggle" class="btn btn-icon btn-subtle info-toggle why-toggle"
+                  title="%%t:addin.unavailable.why%%" aria-label="%%t:addin.unavailable.why%%" aria-expanded="false" aria-controls="mode-none-why">
+                  <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                      <circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                      <path d="M10 9v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                      <circle cx="10" cy="6.3" r=".95" fill="currentColor"/>
+                    </svg>
+
+                </button>
+              </div>
+              <p class="hint why" id="mode-none-why" hidden>%%t:addin.password.noneFilesOnly%%</p>
+            </div>
             <div class="input-group" id="password-group">
               <input type="text" id="password" class="input mono" autocomplete="new-password" spellcheck="false"
                 aria-labelledby="password-label" aria-describedby="password-rules password-hint" />
@@ -225,6 +233,26 @@
               </label>
               <p class="hint" id="proof-hint">%%t:addin.proof.hint%%</p>
             </div>
+            <!-- "Zustellnachweis" for a message or an upload link: greyed out, the "i" says why (renderValidity). -->
+            <div class="switch-field unavailable" id="proof-unavailable" hidden>
+              <div class="switch">
+                <span class="unavailable-label">
+                  <span class="switch-text" id="proof-unavailable-label">%%t:addin.proof.label%%</span>
+                  <button type="button" id="proof-why-toggle" class="btn btn-icon btn-subtle info-toggle why-toggle"
+                    title="%%t:addin.unavailable.why%%" aria-label="%%t:addin.unavailable.why%%" aria-expanded="false" aria-controls="proof-why">
+                    <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                      <circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                      <path d="M10 9v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                      <circle cx="10" cy="6.3" r=".95" fill="currentColor"/>
+                    </svg>
+
+                  </button>
+                </span>
+                <input type="checkbox" role="switch" disabled aria-labelledby="proof-unavailable-label" aria-describedby="proof-why" />
+                <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+              </div>
+              <p class="hint why" id="proof-why" hidden>%%t:addin.proof.filesOnly%%</p>
+            </div>
           </div>
 
           <!-- "Gültigkeit": lifetimes and accesses – rarely changed, so collapsed behind a one-line summary (renderValidity). -->
@@ -286,6 +314,29 @@
         </div>
 
         <!-- Personal settings (gear in the account line): in place of the current tab like the guide (settings.ts). -->
+        <!-- "Verlauf" (account menu): every valid link with its actions, searchable (GET /api/shares). -->
+        <section id="panel-shares" class="panel" aria-labelledby="shares-heading" hidden>
+          <div class="content help">
+            <div class="help-header">
+              <button type="button" id="shares-close" class="btn btn-icon btn-subtle page-back" title="%%t:addin.shares.close%%" aria-label="%%t:addin.shares.close%%">
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M16 10H4m0 0 5-5M4 10l5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <h2 class="subtitle" id="shares-heading">%%t:addin.shares.heading%%</h2>
+              <button type="button" id="refresh-shares" class="btn btn-icon btn-subtle page-action" title="%%t:addin.shares.refresh%%" aria-label="%%t:addin.shares.refresh%%">
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+            <input type="search" id="shares-search" class="input proofs-search" placeholder="%%t:addin.shares.searchPlaceholder%%"
+              aria-label="%%t:addin.shares.searchLabel%%" aria-controls="shares" />
+            <div id="shares" class="share-list" aria-live="polite"></div>
+            <p class="caption" id="no-shares" hidden>%%t:addin.shares.none%%</p>
+          </div>
+        </section>
+
         <!-- "Zustellnachweise" (account menu): search field and the list of every delivery proof (GET /api/proofs). -->
         <section id="panel-proofs" class="panel" aria-labelledby="proofs-heading" hidden>
           <div class="content help proofs">
@@ -299,11 +350,6 @@
             </div>
             <input type="search" id="proofs-search" class="input proofs-search" placeholder="%%t:addin.proofs.searchPlaceholder%%"
               aria-label="%%t:addin.proofs.searchLabel%%" aria-controls="proofs-list" />
-            <div class="segmented proofs-filter" id="proofs-filter" role="radiogroup" aria-label="%%t:addin.proofs.filterLabel%%">
-              <label class="segment"><input type="radio" name="proof-filter" value="all" checked /><span>%%t:addin.proofs.filter.all%%</span></label>
-              <label class="segment"><input type="radio" name="proof-filter" value="fetched" /><span>%%t:addin.proofs.filter.fetched%%</span></label>
-              <label class="segment"><input type="radio" name="proof-filter" value="unfetched" /><span>%%t:addin.proofs.filter.unfetched%%</span></label>
-            </div>
             <p class="caption proofs-empty" id="proofs-empty" role="status" hidden></p>
             <div id="proofs-list" class="proofs-list"></div>
           </div>
@@ -321,33 +367,12 @@
             </div>
             <p class="help-intro">%%t:addin.settings.intro%%</p>
             <p class="caption" id="settings-loading">%%t:addin.settings.loading%%</p>
+            <!-- Every change is saved at once (settings.ts, no "Speichern"): what most people change in sight, the rest
+                 folded away under "Weitere Einstellungen". -->
             <form id="settings-form" novalidate hidden>
-              <fieldset class="settings-group">
-                <legend class="section-title">%%t:addin.settings.channels.heading%%</legend>
-                <p class="hint settings-text">%%t:addin.settings.channels.hint%%</p>
-                <div id="settings-channels"></div>
-                <div class="field settings-field">
-                  <label for="settings-default-channel" class="label">%%t:addin.settings.channels.default%%</label>
-                  <div class="select-wrap"><select id="settings-default-channel" class="input select"></select></div>
-                </div>
-              </fieldset>
               <fieldset class="settings-group" id="settings-notices-group">
                 <legend class="section-title">%%t:addin.settings.notices.heading%%</legend>
                 <div id="settings-notices"></div>
-              </fieldset>
-              <fieldset class="settings-group">
-                <legend class="section-title">%%t:addin.settings.language.heading%%</legend>
-                <div class="select-wrap">
-                  <select id="settings-language" class="input select" aria-label="%%t:addin.settings.language.heading%%"
-                    aria-describedby="settings-language-hint"></select>
-                </div>
-                <p class="hint" id="settings-language-hint">%%t:addin.settings.language.hint%%</p>
-                <!-- Preselected "Sprache für die Empfänger" in the "Senden" tab. -->
-                <label for="settings-recipient-language" class="label settings-sublabel">%%t:addin.settings.recipientLanguage.label%%</label>
-                <div class="select-wrap">
-                  <select id="settings-recipient-language" class="input select" aria-describedby="settings-recipient-language-hint"></select>
-                </div>
-                <p class="hint" id="settings-recipient-language-hint">%%t:addin.settings.recipientLanguage.hint%%</p>
               </fieldset>
               <fieldset class="settings-group">
                 <legend class="section-title">%%t:addin.settings.signature.heading%%</legend>
@@ -379,9 +404,79 @@
                   <ul class="placeholder-list" id="settings-placeholder-list"></ul>
                 </div>
               </fieldset>
+              <details class="help-section settings-more" id="settings-more">
+                <summary>%%t:addin.settings.more%%</summary>
+                <fieldset class="settings-group">
+                  <legend class="section-title">%%t:addin.settings.channels.heading%%</legend>
+                  <p class="hint settings-text">%%t:addin.settings.channels.hint%%</p>
+                  <div id="settings-channels"></div>
+                  <div class="field settings-field">
+                    <label for="settings-default-channel" class="label">%%t:addin.settings.channels.default%%</label>
+                    <div class="select-wrap"><select id="settings-default-channel" class="input select"></select></div>
+                  </div>
+                </fieldset>
+                <fieldset class="settings-group">
+                  <legend class="section-title">%%t:addin.settings.language.heading%%</legend>
+                  <div class="select-wrap">
+                    <select id="settings-language" class="input select" aria-label="%%t:addin.settings.language.heading%%"
+                      aria-describedby="settings-language-hint"></select>
+                  </div>
+                  <p class="hint" id="settings-language-hint">%%t:addin.settings.language.hint%%</p>
+                  <!-- Preselected "Sprache für die Empfänger" in the "Senden" tab. -->
+                  <label for="settings-recipient-language" class="label settings-sublabel">%%t:addin.settings.recipientLanguage.label%%</label>
+                  <div class="select-wrap">
+                    <select id="settings-recipient-language" class="input select" aria-describedby="settings-recipient-language-hint"></select>
+                  </div>
+                  <p class="hint" id="settings-recipient-language-hint">%%t:addin.settings.recipientLanguage.hint%%</p>
+                </fieldset>
+                <div class="settings-actions">
+                  <button type="button" id="settings-reset" class="btn">%%t:addin.settings.reset%%</button>
+                </div>
+              </details>
+            </form>
+          </div>
+        </section>
+
+        <!-- "Feedback senden" (account menu, only with FEEDBACK_MAIL on the server): a bug report or an idea goes by mail
+             from the user's own mailbox to the address of the organisation – never anywhere public (feedback.ts). The
+             technical details are shown before they go and can be left out. -->
+        <section id="panel-feedback" class="panel" aria-labelledby="feedback-heading" hidden>
+          <div class="content help settings">
+            <div class="help-header">
+              <button type="button" id="feedback-close" class="btn btn-icon btn-subtle page-back" title="%%t:addin.feedback.close%%" aria-label="%%t:addin.feedback.close%%">
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M16 10H4m0 0 5-5M4 10l5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <h2 class="subtitle" id="feedback-heading">%%t:addin.feedback.heading%%</h2>
+            </div>
+            <p class="help-intro">%%t:addin.feedback.intro%%</p>
+            <form id="feedback-form" novalidate>
+              <div class="segmented" role="radiogroup" aria-label="%%t:addin.feedback.kindLabel%%">
+                <label class="segment">
+                  <input type="radio" name="feedback-kind" id="feedback-kind-bug" value="bug" />
+                  <span>%%t:addin.feedback.kind.bug%%</span>
+                </label>
+                <label class="segment">
+                  <input type="radio" name="feedback-kind" id="feedback-kind-idea" value="idea" checked />
+                  <span>%%t:addin.feedback.kind.idea%%</span>
+                </label>
+              </div>
+              <div class="field">
+                <label for="feedback-text" class="label">%%t:addin.feedback.textLabel%%</label>
+                <textarea id="feedback-text" class="input textarea" rows="7" maxlength="5000" aria-describedby="feedback-text-hint"></textarea>
+                <p class="hint" id="feedback-text-hint">%%t:addin.feedback.textHint%%</p>
+              </div>
+              <label class="checkbox">
+                <input type="checkbox" id="feedback-diagnostics" checked />
+                <span class="box" aria-hidden="true"></span>
+                <span class="checkbox-text">%%t:addin.feedback.diagnostics%%</span>
+              </label>
+              <button type="button" id="feedback-details-toggle" class="btn btn-subtle feedback-details-toggle" aria-expanded="false"
+                aria-controls="feedback-details">%%t:addin.feedback.showDetails%%</button>
+              <pre id="feedback-details" class="feedback-details" hidden></pre>
               <div class="settings-actions">
-                <button type="submit" id="settings-save" class="btn btn-primary">%%t:addin.settings.save%%</button>
-                <button type="button" id="settings-reset" class="btn">%%t:addin.settings.reset%%</button>
+                <button type="submit" id="feedback-send" class="btn btn-primary">%%t:addin.feedback.send%%</button>
               </div>
             </form>
           </div>
@@ -541,6 +636,11 @@
                 </svg>
                 <span>%%t:addin.nextcloud.open%%</span>
               </button>
+              <!-- "Verlauf": every valid link with copy, password, insert and revoke, searchable – a page like the settings. -->
+              <button type="button" id="shares-open" class="account-menu-item" aria-controls="panel-shares">
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 10a6.5 6.5 0 1 0 1.9-4.6"/><path d="M3.5 3.5v3h3"/><path d="M10 6.5V10l2.5 1.5"/></svg>
+                <span>%%t:addin.shares.open%%</span>
+              </button>
               <!-- "Zustellnachweise": every delivery proof, searchable – also when "Verlauf" no longer lists the link
                    (DELIVERY_PROOF only; proofs.ts). Shown in place of the current tab like the settings. -->
               <button type="button" id="proofs-open" class="account-menu-item" aria-controls="panel-proofs" hidden>
@@ -555,6 +655,14 @@
                   <circle cx="10" cy="10" r="2.5" fill="none" stroke="currentColor" stroke-width="1.2"/>
                 </svg>
                 <span>%%t:addin.settings.button%%</span>
+              </button>
+              <!-- "Feedback senden": only with FEEDBACK_MAIL on the server (serverConfig.feedback). -->
+              <button type="button" id="feedback-open" class="account-menu-item" aria-controls="panel-feedback" hidden>
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M4 4.5h12a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1H9l-3.5 3v-3H4a1 1 0 0 1-1-1v-7a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>
+                  <path d="M6.5 8h7M6.5 10.5h4.5" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                </svg>
+                <span>%%t:addin.feedback.open%%</span>
               </button>
               <!-- User guide: opens in place of the current tab, "×" closes it. -->
               <button type="button" id="help-toggle" class="account-menu-item" aria-expanded="false" aria-controls="panel-help">

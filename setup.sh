@@ -46,6 +46,7 @@ echo "Signature of the mails to the recipients – placeholders from the M365 pr
 echo '  {department} {company} {email} {phone} {mobile} {office}; \n = new line. Enter = none, e.g.'
 echo '  {displayName} · {department}\n{company} · Tel. {phone} · {email}'
 ask MAIL_FOOTER             "Signature template (empty = none)"           ""
+ask FEEDBACK_MAIL           "Address for feedback from the add-in (empty = off)" ""
 echo; echo "-- Microsoft Entra ID (app registration \"CloudShare\") --"
 ask ENTRA_TENANT_ID     "Directory (tenant) ID"     ""
 ask ENTRA_CLIENT_ID     "Application (client) ID"   ""
@@ -85,7 +86,7 @@ umask 077
 {
   echo "# written by setup.sh on $(date '+%Y-%m-%d %H:%M') – contains secrets"
   for var in PUBLIC_BASE_URL LANGUAGE ATTACHMENT_THRESHOLD_MB ATTACHMENT_POLICY SHARE_EXPIRE_DAYS SHARE_MAX_EXPIRE_DAYS \
-           MAIL_FOOTER ENTRA_TENANT_ID ENTRA_CLIENT_ID ENTRA_CLIENT_SECRET \
+           MAIL_FOOTER FEEDBACK_MAIL ENTRA_TENANT_ID ENTRA_CLIENT_ID ENTRA_CLIENT_SECRET \
            NEXTCLOUD_URL NEXTCLOUD_FOLDER NEXTCLOUD_REQUEST_FOLDER \
            CREDENTIAL_KEY VAULTWARDEN_URL BW_CLIENTID BW_CLIENTSECRET BW_PASSWORD \
            SEND_MAX_ACCESS_COUNT SEND_MAX_ACCESS_LIMIT SEND_EXPIRE_DAYS; do

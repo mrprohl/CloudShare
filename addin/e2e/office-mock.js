@@ -110,6 +110,11 @@
               if (!cfg.bodyRejectsInsert) log.inserted.push({ data, coercionType: options.coercionType, at: "top" });
               cb(ok());
             },
+            // The whole body written back (a further card right after the last one): it replaces what was inserted.
+            setAsync(data, options, cb) {
+              if (!cfg.bodyRejectsInsert) log.inserted.splice(0, log.inserted.length, { data, coercionType: options.coercionType, at: "body" });
+              cb(ok());
+            },
             // A mail being read (cfg.readBody, may change during the test) or the draft with what was inserted.
             getAsync(_coercionType, cb) {
               const read = (window.__officeConfig || {}).readBody;

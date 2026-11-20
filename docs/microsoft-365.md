@@ -99,6 +99,7 @@ Outlook ──Office SSO──► token for "api://cloudshare.example.com/<clien
 | `Mail.Read.Shared` | the same for shared mailboxes the user sends from |
 | `Mail.Send` | send the password mail as the sender |
 | `Mail.Send.Shared` | send it from the shared mailbox the mail came from |
+| `Contacts.Read` | *optional:* suggestions from the user's own Outlook contacts (default contacts folder) while typing another address or an SMS number under *Password to*. Read on demand, kept in memory ten minutes, never stored. Without it the fields are plain inputs |
 | `InformationProtectionPolicy.Read` | *optional:* the names and the priority of the sensitivity labels published to the user (a shared file's label in the pane, which label is higher). Without it the pane uses Outlook's own label catalog – names may then be missing in some Outlook versions |
 
 Then **Grant admin consent for \<organisation\>** (*Administratorzustimmung für … erteilen*). Every line must show a
@@ -300,6 +301,8 @@ failed, retrying later`); everything else keeps working.
    it as signed and unchanged (signer "unknown" with the certificate CloudShare made itself).
 7. With `InformationProtectionPolicy.Read` (2.4): attach a labelled Office file → its label name shows under it in
    the pane.
+8. With `Contacts.Read` (2.4): *Password to* → *Another email address*, type two letters of a contact → the contact
+   drops down below the field; Enter fills in the address.
 
 ## 7. Maintenance
 
@@ -331,7 +334,9 @@ Messages are quoted in English (the default, `LANGUAGE=en`), the German text (`L
 | Download confirmation fails with `ErrorAccessDenied` | application permission missing or RBAC scope does not contain the sender | 5 |
 | Delivery proof: recipients get no code, or the page says the password could not be sent; log `Graph sendMail (app) failed (HTTP 403)` | application `Mail.Send` missing, or the sender's mailbox (or the shared mailbox the mail came from) is outside the RBAC scope | 5 |
 | Label names missing in the pane ("Sensitivity label"), log `Sensitivity labels not readable via Graph` | `InformationProtectionPolicy.Read` not added or no admin consent – Outlook's own catalog is used instead | 2.4 |
-| Proof PDF not signed, log `Delivery proof PDF not signed` | `PROOF_SIGN_CERT_FILE` / `PROOF_SIGN_KEY_FILE` not readable or not matching | check the paths under `/config` and that key and certificate belong together |
+| No suggestions under *Password to*, log `Contacts not readable via Graph` | `Contacts.Read` not added or no consent – the fields stay plain inputs | 2.4 |
+| Start log `Proof signing files not usable` (the PDFs carry the self-made certificate instead of your own) | `PROOF_SIGN_CERT_FILE` / `PROOF_SIGN_KEY_FILE` set but the file is missing (`ENOENT`, e.g. the example lines taken over without the files), not readable, or the key does not belong to the certificate | put the PEM files into `env/config` (= `/config`) or remove both lines to use the self-made certificate; then `docker compose up -d --force-recreate cloudshare` |
+| Proof PDF not signed, log `Delivery proof PDF not signed` | signing itself failed (the log names the error) | check the log; the PDF is made anew, signed, when it is opened again |
 | Pane: "Nextcloud (…) cannot be reached" („Nextcloud (…) ist nicht erreichbar“), "The password service cannot be reached" or "… cannot be reached"; log `fetch failed` with `ENOTFOUND` / `ECONNREFUSED` / `ETIMEDOUT` | `NEXTCLOUD_URL` (or another address in `env/cloudshare.env`) wrong – e.g. still the example value –, DNS, or a firewall between the container and that host; the password service is `bw serve` inside the container (Vaultwarden login failed at start) | correct `env/cloudshare.env`, then `docker compose up -d --force-recreate cloudshare`; check the start log |
 | Pane: sign-in error right after a new deployment, `ENTRA_CLIENT_ID` shows the ID of a registration **without** client secret | the registration Microsoft 365 created for the deployment was taken instead of the one of step 2 | use the client ID of 2.1 (the registration with the secret); see the notes of 3 |
 | The CloudShare button does not appear | deployment still in progress (up to 24 h), user not assigned, or an old Outlook cache | admin center → *Integrated apps*; classic Outlook: clear `%LOCALAPPDATA%\Microsoft\Office\16.0\Wef\` |

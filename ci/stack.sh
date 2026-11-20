@@ -45,6 +45,7 @@ de
 14
 90
 {displayName} · {jobTitle}\n{company}
+cloudshare-support@example.com
 00000000-0000-0000-0000-000000000001
 00000000-0000-0000-0000-000000000002
 ci-dummy-secret
