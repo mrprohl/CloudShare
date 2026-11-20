@@ -808,7 +808,9 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   to whom, the tracking ID in bold, then the state with its dot; no action icons – the list is for looking things up);
   filters it while typing over tracking ID, subject, recipients and file names (no other filters); the seal of an entry (`proofSeal`, also in
   "Verlauf" via `proofState` of `/api/shares`) is coloured by `caseSummary(c).state` – grey sent, blue confirmed, green
-  fetched – and opens its signed PDF; each entry has the line "Gültig bis …" (`endsOn`, `fillValidLine` – a calendar,
+  fetched – and opens its signed PDF; the sent line says "Nachricht und Kennwort an …" when the password went to exactly
+  the recipients (`sameAddresses`, the password line hidden), else "Nachricht an …" and "Kennwort an …"; each entry has the
+  line "Gültig bis …" (`endsOn`, `fillValidLine` – a calendar,
   orange from two days before the end; the same line in "Verlauf") or "Aufbewahrt bis …" (`keptUntil`), and the state
   alone on the line below.
 - **Help** ("Hilfe" in the account menu of the bottom bar, `#help-toggle`; `#panel-help` in `taskpane.html`, shown in place of the

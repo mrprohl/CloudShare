@@ -713,7 +713,7 @@ test("uploads a large attachment in chunks, removes it and inserts the card", as
   // "Zufällig", "Eigenes", "Ohne Kennwort" and "Kennwort an" are greyed out.
   await expect(page.locator("#mode-same")).toBeChecked();
   await expect(page.locator("#password")).toHaveValue(password);
-  await expect(page.locator("#password-hint")).toContainText("pro Nachricht nur ein Kennwort");
+  await expect(page.locator("#password-hint")).toHaveText("Diese Nachricht hat schon ein Kennwort. Weitere Dateien, Nachrichten und Upload-Links erhalten dasselbe Kennwort auf demselben Weg.");
   expect(JSON.parse((await officeLog(page)).session["cloudshare-state"]).lastStep.password).toBe(password);
   for (const mode of ["#mode-random", "#mode-own", "#mode-none"]) await expect(page.locator(mode)).toBeDisabled();
   await expect(page.locator("#password-channel")).toBeDisabled();
@@ -1916,6 +1916,7 @@ const SENT_MAIL = '<p>Hallo,</p><a href="https://cloud.example.com/s/a">Herunter
 test("Verlauf: the subject is the title and opens the mail; confidential messages with password and revoke only", async ({ page }) => {
   const message = { id: "msg-s1", kind: "message", name: "Vertrauliche Nachricht", url: null, accessId: "acc9", sharedAt: Date.parse("2026-11-12"),
     expiration: "2099-11-17", downloads: null, received: null, protected: true, passwordAvailable: true, subject: "Zugangsdaten", mailId: "AAMk-mail",
+    sentAt: Date.parse("2026-11-12T09:00:00Z"), sentTo: { to: ["Erika@example.com"], cc: [] },
     password: { channel: "mail", to: "erika@example.com", status: null, at: Date.parse("2026-11-12T08:00:00Z"), deliveredAt: null } };
   const calls = await openTaskpane(page, {
     shares: [
@@ -1936,7 +1937,8 @@ test("Verlauf: the subject is the title and opens the mail; confidential message
   );
   await expect(rows.nth(0).locator(".share-title")).toHaveAttribute("aria-label", "Unterlagen Neubau, Nachricht öffnen");
   // Like "Zustellnachweise": the day it went out and to whom (To and Cc) right in the entry.
-  await expect(rows.nth(0).locator(".share-sent")).toHaveText("16.11.2026 · an erika@example.com, max@example.com, chef@example.com");
+  await expect(rows.nth(0).locator(".share-sent")).toHaveText("16.11.2026 · Nachricht an erika@example.com, max@example.com, chef@example.com");
+  await expect(rows.nth(0).locator(".share-password")).toHaveText("Kennwort an +49 170 •••• 67 – zugestellt"); // SMS: its own line
   // Below the subject what went out, in plain text: the file name (the document symbol on the left shows the kind).
   await expect(rows.nth(0).locator(".share-item")).toHaveText("Präsentation.pptx");
   await expect(rows.nth(0).locator(".badge")).toHaveCount(0);
@@ -1961,6 +1963,9 @@ test("Verlauf: the subject is the title and opens the mail; confidential message
   await expect(msg.locator(".insert")).toBeHidden();
   await expect(msg.locator(".share-state")).toBeHidden(); // no download state for a message
   await expect(msg.locator(".share-valid")).toHaveText("Gültig bis 17.11.2099");
+  // Message and password to the same address (case does not matter): one line, the password line hidden.
+  await expect(msg.locator(".share-sent")).toHaveText("12.11.2026 · Nachricht und Kennwort an Erika@example.com");
+  await expect(msg.locator(".share-password")).toBeHidden();
   await expectAccessible(page);
 
   // Revoked: deleted in Vaultwarden.
@@ -2526,7 +2531,9 @@ test("Zustellnachweise: every proof in the account menu, filtered and searched, 
   const entries = page.locator("#proofs-list .proof-entry");
   await expect(entries).toHaveCount(2);
   await expect(entries.nth(0).locator(".share-title")).toHaveText("Unterlagen Neubau");
-  await expect(entries.nth(0)).toContainText("18.11.2026 · an erika@example.com");
+  // Message and password to the same address: one line instead of the address twice.
+  await expect(entries.nth(0).locator(".proof-sent")).toHaveText("18.11.2026 · Nachricht und Kennwort an erika@example.com");
+  await expect(entries.nth(0).locator(".proof-password")).toBeHidden();
   // Like a row of "Verlauf": the file with its seal, to whom, the state with its dot, the tracking ID.
   await expect(entries.nth(0).locator(".share-item")).toHaveText("Angebot.zip");
   await expect(entries.nth(0).locator(".state-text")).toHaveText("1× heruntergeladen");
@@ -2539,7 +2546,9 @@ test("Zustellnachweise: every proof in the account menu, filtered and searched, 
   await expect(entries.nth(0).locator(".share-actions")).toHaveCount(0);
   await expect(entries.nth(1).locator(".state-text")).toHaveText("Noch nicht abgerufen");
   await expect(entries.nth(1).locator(".share-valid")).toHaveText("Gültig bis 26.11.2026");
-  await expect(entries.nth(0).locator(".proof-password")).toHaveText("Kennwort an erika@example.com");
+  // The password went to another address: two lines.
+  await expect(entries.nth(1).locator(".proof-sent")).toHaveText("12.11.2026 · Nachricht an kunde@example.org");
+  await expect(entries.nth(1).locator(".proof-password")).toHaveText("Kennwort an erika@example.com");
   // The subject opens the sent mail, as in "Verlauf" – only where the mail is known.
   await entries.nth(0).locator("button.share-title").click();
   await expect.poll(async () => (await officeLog(page)).openedMails).toContain("ews-proof-20261118-1646-CBMH");
