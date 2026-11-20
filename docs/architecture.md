@@ -86,13 +86,13 @@ every language ([2.8](#28-languages)). So one image serves every installation an
 
 The "Send" tab starts with a switch for **what** goes into the mail – **Files**, **Message** (a confidential message) or
 **Request** (an upload link) – and shows only that part; the one button in the footer names what it inserts ("Insert 2
-files as links", "Insert confidential message", "Insert upload link"). Password, the block "Empfänger" ("Kennwort an", "Sprache", for files the switch "Zustellnachweis") and the collapsed
+files as links", "Insert confidential message", "Insert upload link"). Password, the block "Empfänger" ("Kennwort an", for files the switch "Zustellnachweis") and the collapsed
 "Gültigkeit" (one-line summary of the times for the chosen kind) apply to all three. "No password" is offered for files
 only; a mail already fixed to links without password disables the button for the other two and says why. An option
-that does not exist for the chosen kind is not hidden without a word: "Ohne Kennwort" and "Zustellnachweis" show
-greyed out for "Nachricht"/"Anfordern" (`#mode-none-unavailable`, `#proof-unavailable` – own disabled copies, so the
-lock logic of the real ones stays untouched) with an "i" (`.why-toggle`, `showUnavailable`) that folds out the reason
-(`password.noneFilesOnly`, `proof.filesOnly`). Nextcloud enforcing passwords still hides "Ohne Kennwort" (a rule of the organisation, not of the kind). Files
+that does not exist for the chosen kind is not hidden without a word: "Ohne Kennwort" shows
+greyed out for "Nachricht"/"Anfordern" (`#mode-none-unavailable` – an own disabled copy, so the
+lock logic of the real one stays untouched) with an "i" (`.why-toggle`, `showUnavailable`) that folds out the reason
+(`password.noneFilesOnly`); "Zustellnachweis" is simply not shown there. Nextcloud enforcing passwords still hides "Ohne Kennwort" (a rule of the organisation, not of the kind). Files
 dragged onto the pane switch it to "Files".
 
 1. The taskpane lists the mail's file attachments (all ticked – whoever opens CloudShare sends through it; the threshold
@@ -113,10 +113,14 @@ dragged onto the pane switch it to "Files".
    out in) and the body is written back with `body.setAsync`; if the card cannot be found it goes to the cursor. Text
    mails always insert at the cursor. It tags the draft with the custom property `cloudshareJob` (job ID) and records the link
    token in the draft state.
-5. After the step the taskpane preselects "Gleiches Kennwort wie zuvor" (`mode-same`, `DraftState.lastStep` = step ID
-   and password): the next link – files, message or upload link – is sent with the same `step` and joins that part
-   (`findPart`/`addFileToPart` on the server: same password, same Send, one password mail or SMS). "Zufällig" or
-   "Eigenes" start a new step with a new password and its own password mail (`stepForClick`).
+5. One password per mail: after the step the taskpane selects "Gleiches Kennwort wie zuvor" (`mode-same`,
+   `DraftState.lastStep` = step ID and password) and greys out "Zufällig", "Eigenes", "Ohne Kennwort" and "Kennwort an"
+   (`lockSeparate`, `lockChannel`): the next link – files, message or upload link – is sent with the same `step` and
+   joins that part (`findPart`/`addFileToPart` on the server: same password, same Send, one password mail or SMS). The
+   server refuses a link with a password that would open a second step in the job (`assertOnePassword`, 409
+   `ONE_PASSWORD`, before any link is created); mails started with one shared password (no `separate`) are not affected. The password field is
+   always `type="text"`; an own password is hidden by CSS (`.masked`, `-webkit-text-security`, `setRevealed`), because
+   a real password field made Edge (WebView2) offer to save it as a login after the click.
 
 Variants: **"Request"** (`POST /api/requests`) creates a folder in `NEXTCLOUD_REQUEST_FOLDER` with
 a create-only link ("file drop") – same password rules, its own step. **"No password"** (`noPassword: true`, file
@@ -124,7 +128,7 @@ links only) creates a link without password and Send; with `DOWNLOAD_NOTICE=true
 (`createNoticeJob`, `PasswordJob.noPassword`, the links in `noticeShares`), which the send handler arms like any job –
 the watcher sends nothing and only registers the links for the download confirmation once the mail is in "Sent
 Items". Without the confirmation there is no job (`jobId: null`). The answer always says `noPassword: true`. **"History → Insert"**
-(`POST /api/shares/:id/link`) creates a new link to an existing upload with a new password, as a new step.
+(`POST /api/shares/:id/link`) creates a new link to an existing upload – in a mail that already has a password it joins its step (same password).
 
 **"Message"** (`POST /api/messages`): a text instead of a file. It is never written to Nextcloud or to
 `/data`: `createMessageSend` stores it as a Vaultwarden **text Send protected with the step's password** (Send access
@@ -200,7 +204,13 @@ same password by SMS sends one password mail and one SMS; each way exactly once,
 one shared password keep the mail's one way (`PasswordJob.passwordTo` / `passwordSms`, `PATCH /api/jobs/:id`, `/arm`).
 While typing another address or an SMS number the pane suggests entries of the user's own Outlook contacts
 (`contactSuggest.ts`: ARIA combobox, from two characters, `GET /api/contacts`; for SMS only numbers `smsNumberProblem`
-accepts); a picked entry is filled in and saved like a typed one. Without the optional delegated `Contacts.Read` the
+accepts); a picked entry is filled in and saved like a typed one. The address book button next to the field
+(`.book-open`, `addressBook.ts`) opens the page "Adressbuch" (`#panel-contacts`, `showOverlay("contacts")`): every
+entry of that kind A to Z under its first letter (`GET /api/contacts?all=1`), filtered while typing; a click takes it
+the same way and leads back to where it was opened (`contactsReturn`). "Erneut senden an" in "Verlauf" has the same
+field with both (`addressBook.register`, `attachContactSuggestions` with the kind following the select); it takes several
+addresses (`data-multiple`): the suggestions match the part after the last comma and a picked address is added to the list
+(`addToList`). Without the permission the buttons disappear (`onContactsUnavailable`). Without the optional delegated `Contacts.Read` the
 server answers `contacts: null` and the pane stops asking for the session.
 The ways:
 
@@ -275,8 +285,8 @@ Two kinds of language:
   server returns to the add-in.
 - **`LANGUAGE`** (default `en`) is the first guess of the taskpane page, the preselected language for the recipients
   and the fallback for notes to the sender whose add-in language is unknown.
-- **"Language for the recipients"** (`#recipient-language` under "Empfänger", preselected from the personal
-  setting `recipientLanguage`, kept per draft in `DraftState.recipientLanguage`): the link card is rendered in it
+- **"Language for the recipients"** (only the personal setting `recipientLanguage` – `#settings-recipient-language`;
+  "Senden" has no choice per mail, `recipientLanguage()` in `taskpane.ts`): the link card is rendered in it
   (`inLanguage` in `addin/src/shared/i18n.ts`), and every link request carries it as `language`. The server keeps it
   per step (`SeparatePart.language`, the first link of a step decides) and writes the step's password mail and SMS in
   it (`inRecipientLanguage` in `i18n.ts`: sections `mail` and `templates`, dates); sending the password again uses the
@@ -486,7 +496,7 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   of the other kind into the mail's job (`jobId`) answers 409 `PROOF_MIX` (files with `proof`, upload links and messages
   never have one); `/arm` refuses a job that mixes them anyway, so the send handler holds the mail back. The pane fixes
   the kind with the first link (`DraftState.proofMail`, `applyProofLock`: the switch fixed, "Nachricht" and
-  "Anfordern" disabled with a proof; the reason stays in a note at the top of "Senden", `#proof-lock-note` - the hint under
+  "Anfordern" disabled with a proof; the reason folds out from an "i" next to the fixed switch, `#proof-lock-toggle` – the hint under
   the switch never changes).
 - **Password after the confirmation** (`proofPassword.ts`): the mail to the confirmed address says so ("Sie haben eben Ihre
   E-Mail-Adresse bestätigt …") and its card has two numbered steps (`MailCard.steps`: 1 "Kennwort anzeigen", 2 "Zum Download", each button with its address as plain text below), the download to the gateway – never to Nextcloud: the confirmed browser goes
@@ -631,7 +641,7 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `GET/PUT/DELETE /api/settings` | Personal settings (2.11): `{ settings, defaults, available }`; `PUT` changes single fields, `DELETE` resets |
 | `GET /api/labels` | Sensitivity labels published to the user (Graph `/me/security/informationProtection/sensitivityLabels`, delegated `InformationProtectionPolicy.Read`): `{ labels: [{ id, name, rank, protection }] }` in the add-in's language, kept an hour per user; `labels: null` without the permission (2.13) |
 | `POST /api/feedback` | "Feedback senden" (2.15): `{ kind: "bug"\|"idea", text, diagnostics? }` → a mail from the user's own mailbox (delegated `Mail.Send`) to `FEEDBACK_MAIL` in `LANGUAGE`; 404 `FEEDBACK_OFF` without it, 400 for an empty or too long text (5,000 characters); the text is not logged |
-| `GET /api/contacts` | Suggestions for "Kennwort an" from the user's own Outlook contacts (Graph `/me/contacts`, delegated `Contacts.Read`, optional): `?kind=mail\|sms&q=…` → `{ contacts: [{ name, value, type? }] }` (at most 8; names and addresses, for SMS names and the digits of the numbers – `matchContacts` in `contacts.ts`); the contacts are kept in memory ten minutes per user, never stored, the query is not logged; `contacts: null` without the permission |
+| `GET /api/contacts` | Suggestions for "Kennwort an" from the user's own Outlook contacts (Graph `/me/contacts`, delegated `Contacts.Read`, optional): `?kind=mail\|sms&q=…` → `{ contacts: [{ name, value, type? }] }` (`all=1`: every entry of that kind A to Z for the address book page, at most 2,000 – `listContacts`; otherwise at most 8; names and addresses, for SMS names and the digits of the numbers – `matchContacts` in `contacts.ts`); the contacts are kept in memory ten minutes per user, never stored, the query is not logged; `contacts: null` without the permission |
 | `GET /api/nextcloud/status` | Connected?, storage (free/used/total), `passwordEnforced` |
 | `POST /api/nextcloud/connect`, `…/connect/:id/poll`, `DELETE /api/nextcloud/connection` | Login Flow v2, disconnect |
 | `POST /api/uploads`, `PUT …/:id/chunks/:n`, `POST …/:id/complete`, `DELETE …/:id` | Chunked upload, share link |
@@ -798,8 +808,9 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   to whom, the tracking ID in bold, then the state with its dot; no action icons – the list is for looking things up);
   filters it while typing over tracking ID, subject, recipients and file names (no other filters); the seal of an entry (`proofSeal`, also in
   "Verlauf" via `proofState` of `/api/shares`) is coloured by `caseSummary(c).state` – grey sent, blue confirmed, green
-  fetched – and opens its signed PDF; each entry names when its links end (`endsOn`) or until when the case is kept
-  (`keptUntil`).
+  fetched – and opens its signed PDF; each entry has the line "Gültig bis …" (`endsOn`, `fillValidLine` – a calendar,
+  orange from two days before the end; the same line in "Verlauf") or "Aufbewahrt bis …" (`keptUntil`), and the state
+  alone on the line below.
 - **Help** ("Hilfe" in the account menu of the bottom bar, `#help-toggle`; `#panel-help` in `taskpane.html`, shown in place of the
   view like the history, the settings and the proofs (`showOverlay`, `currentOverlay`), "←" before the title (`.page-back`) or Escape leads back): a user guide for everyday users – short `<details>`
   sections (getting started, sending files, password and channel, confidential message, receiving files, "History",

@@ -62,7 +62,7 @@ import {
 import { accessIdOf, isMessageToken, messageFor, messagesOf, recordDraftSubject, recordMessage, sentMailFor, updateDraftSubject } from "./history.js";
 import { isCloudShareShare, isRequestShare, revokeMessage, revokeShare, tokenOf } from "./shares.js";
 import { defaultTemplates, render, smsFiles, templatesFor } from "./templates.js";
-import { matchContacts } from "./contacts.js";
+import { listContacts, matchContacts } from "./contacts.js";
 import { FEEDBACK_MAX_LENGTH, feedbackMail, parseFeedback } from "./feedback.js";
 import { clampInt, isEmailAddress } from "./limits.js";
 import { formatDate, inRecipientLanguage, inSenderLanguage, knownLanguage, locale, requestLanguageCode, t, tIn, withRequestLanguage } from "./i18n.js";
@@ -191,6 +191,21 @@ function assertNoProofMix(body: ShareRequest & { jobId?: unknown } | undefined, 
   if (kind === "mixed" || (kind === "proof") !== withProof) {
     throw new HttpError(409, t(kind === "proof" ? "server.proofMixNeedsProof" : "server.proofMixNoProof"), "PROOF_MIX");
   }
+}
+
+/**
+ * One password per mail: once the mail's job has a step with a password, every further link with a password must join
+ * that step ("Gleiches Kennwort wie zuvor" – the pane offers nothing else). A new step would create a second password
+ * and a second password mail – refused before any link is created (409 ONE_PASSWORD). Mails started with one shared
+ * password (no `separate`) and sent ones (a new job follows) are not affected.
+ */
+function assertOnePassword(body: ShareRequest & { jobId?: unknown } | undefined, owner: string, noPassword = false) {
+  if (noPassword) return;
+  const job = typeof body?.jobId === "string" ? getJob(body.jobId) : undefined;
+  if (!job || job.owner !== owner || job.dispatched || !job.separate?.length) return;
+  const step = typeof body?.step === "string" ? body.step : undefined;
+  if (step && job.separate.some((part) => part.step === step)) return;
+  throw new HttpError(409, t("server.onePassword"), "ONE_PASSWORD");
 }
 
 /** The way the password of a new link goes out (see ShareRequest), checked like PATCH /api/jobs/:id does. */
@@ -684,14 +699,15 @@ export async function buildApp(options: { logger?: boolean } = {}) {
 
   /**
    * Suggestions from the user's own Outlook contacts (Graph, optional delegated Contacts.Read) for "Kennwort an":
-   * `kind=mail` matches names and addresses, `kind=sms` names and the digits of the numbers. `contacts: null` when the
+   * `kind=mail` matches names and addresses, `kind=sms` names and the digits of the numbers; `all=1` lists every entry
+   * of that kind A to Z for the "Adressbuch" page. `contacts: null` when the
    * permission is not consented (or Graph fails): the pane then stops asking. The contacts are kept in memory only, ten
    * minutes per user – never stored, the query is not logged.
    */
   const contactCache = new Map<string, { at: number; contacts: Contact[] | null }>();
   app.get("/api/contacts", async (req) => {
     const user = await authenticate(req);
-    const { q, kind } = req.query as { q?: string; kind?: string };
+    const { q, kind, all } = req.query as { q?: string; kind?: string; all?: string };
     const cached = contactCache.get(user.oid);
     let contacts = cached && Date.now() - cached.at < 10 * 60_000 ? cached.contacts : undefined;
     if (contacts === undefined) {
@@ -705,6 +721,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       contactCache.set(user.oid, { at: Date.now(), contacts });
     }
     if (contacts === null) return { contacts: null };
+    // The address book page: all of them, A to Z (`all=1`).
+    if (all === "1") return { contacts: listContacts(contacts, kind === "sms" ? "sms" : "mail") };
     return { contacts: matchContacts(contacts, String(q ?? "").slice(0, 100), kind === "sms" ? "sms" : "mail", config.smsDefaultCountry) };
   });
 
@@ -868,6 +886,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       assertNoProofMix(req.body, user.oid, config.deliveryProof && req.body?.proof === true);
       // "Ohne Kennwort": plain public link – no Vaultwarden Send, no password job, no password mail.
       const noPassword = req.body?.noPassword === true;
+      assertOnePassword(req.body, user.oid, noPassword);
       const { password, expireDate, passwordLink } = shareSettings(req.body, !noPassword);
       const delivery = noPassword ? undefined : deliveryFrom(req.body);
 
@@ -903,6 +922,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
   app.post<{ Body: ShareRequest & { jobId?: string } }>("/api/requests", { config: { rateLimit: strictLimit } }, async (req) => {
     const user = await authenticate(req);
     assertNoProofMix(req.body, user.oid, false); // an upload link never has a proof
+    assertOnePassword(req.body, user.oid);
     const { password, expireDate, passwordLink } = shareSettings(req.body);
     const delivery = deliveryFrom(req.body);
 
@@ -938,6 +958,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       throw new HttpError(400, t("server.messageInvalid", { max: MESSAGE_MAX_LENGTH }));
     }
     assertNoProofMix(req.body, user.oid, false); // a confidential message has no gateway
+    assertOnePassword(req.body, user.oid);
     const { password, passwordLink } = shareSettings(req.body);
     const delivery = deliveryFrom(req.body);
     const days = clampInt(req.body?.messageDays, config.sendExpireDays, 1, config.sendMaxExpireDays);
@@ -1270,6 +1291,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const request = isRequestShare(share);
       assertNoProofMix(req.body, user.oid, !request && config.deliveryProof && req.body?.proof === true);
       const noPassword = req.body?.noPassword === true;
+      assertOnePassword(req.body, user.oid, noPassword);
       if (request && noPassword) throw new HttpError(400, t("server.requestNeedsPassword"));
       const { password, expireDate, passwordLink } = shareSettings(req.body, !noPassword);
       const delivery = noPassword ? undefined : deliveryFrom(req.body);

@@ -280,26 +280,39 @@ describe("uploads", () => {
     expect(createPasswordSend).not.toHaveBeenCalled();
   });
 
-  it("gives every 'Als Link einfügen' step its own password and Send; files of one step share them", async () => {
+  it("keeps one password per mail: further links join the first step, a second password is refused", async () => {
     const upload = async (name: string, body: Record<string, unknown>) => {
       const started = await startUpload("anna", name);
       await putChunk("anna", started.body.uploadId, 1);
-      return (await complete("anna", started.body.uploadId, body)).json();
+      return complete("anna", started.body.uploadId, body);
     };
-    // Step 1: two files selected together.
-    const { jobId } = await upload("a.pdf", { step: "s1", maxAccess: 2 });
+    // Step 1: two files selected together, then another file with "Gleiches Kennwort wie zuvor".
+    const { jobId } = (await upload("a.pdf", { step: "s1", maxAccess: 2 })).json();
     await upload("b.pdf", { step: "s1", jobId, maxAccess: 2 });
-    // Step 2: another click with a new password.
+    await upload("c.pdf", { step: "s1", jobId, maxAccess: 2 });
+    // A second password in the same mail: refused before any link is created.
     const OTHER = "Zr8!mQ4#vT1x_Lp9Wk2s";
-    const res = await upload("c.pdf", { step: "s2", jobId, password: OTHER, maxAccess: 5 });
-    expect(res.jobId).toBe(jobId);
+    nc.createPublicShare.mockClear();
+    const refused = await upload("d.pdf", { step: "s2", jobId, password: OTHER, maxAccess: 5 });
+    expect(refused.statusCode).toBe(409);
+    expect(refused.json().code).toBe("ONE_PASSWORD");
+    expect(nc.createPublicShare).not.toHaveBeenCalled();
+    // The same for an upload link and a confidential message, and for a link without a step.
+    for (const [url, payload] of [
+      ["/api/requests", { jobId, step: "s3", password: OTHER }],
+      ["/api/messages", { jobId, step: "s4", password: OTHER, text: "geheim" }],
+      ["/api/requests", { jobId, password: OTHER }],
+    ] as const) {
+      const res = await app.inject({ method: "POST", url, headers: as("anna"), payload });
+      expect(res.json().code).toBe("ONE_PASSWORD");
+    }
 
-    expect(createPasswordSend.mock.calls.map((c) => [c[1], c[2]])).toEqual([[STRONG, 2], [OTHER, 5]]);
-    expect(getJob(jobId)?.separate?.map((p) => [p.step, p.fileNames, p.maxAccessCount])).toEqual([
-      ["s1", ["a.pdf", "b.pdf"], 2],
-      ["s2", ["c.pdf"], 5],
-    ]);
-    expect(getJob(jobId)?.fileNames).toEqual(["a.pdf", "b.pdf", "c.pdf"]);
+    expect(createPasswordSend.mock.calls.map((c) => [c[1], c[2]])).toEqual([[STRONG, 2]]);
+    expect(getJob(jobId)?.separate?.map((p) => [p.step, p.fileNames])).toEqual([["s1", ["a.pdf", "b.pdf", "c.pdf"]]]);
+    // An upload link and a message join the step as well.
+    const request = await app.inject({ method: "POST", url: "/api/requests", headers: as("anna"), payload: { jobId, step: "s1", password: STRONG } });
+    expect(request.statusCode).toBe(200);
+    expect(getJob(jobId)?.separate).toHaveLength(1);
   });
 
   it("keeps one shared password for mails started without steps (drafts from before)", async () => {
@@ -414,7 +427,7 @@ describe("upload links", () => {
     expect(getJob(jobId)?.separate?.[0].deliveries).toEqual([{ channel: "recipients" }, { channel: "sms", to: "+491701234567" }]);
     // A number SMS may not go to is refused before any link is created.
     const refused = await app.inject({
-      method: "POST", url: "/api/requests", headers: as("anna"), payload: { password: STRONG, step: "way-2", jobId, passwordSms: "0800 1234567" },
+      method: "POST", url: "/api/requests", headers: as("anna"), payload: { password: STRONG, step: "way-1", jobId, passwordSms: "0800 1234567" },
     });
     expect(refused.statusCode).toBe(400);
     expect(getJob(jobId)?.separate).toHaveLength(1);
@@ -436,7 +449,8 @@ describe("password by SMS: the link of the Send is never sent", () => {
 
     const second = await startUpload("anna", "b.pdf");
     await putChunk("anna", second.body.uploadId, 1);
-    await complete("anna", second.body.uploadId, { password: STRONG, passwordDays: 3, step: "s2", jobId });
+    // A new mail whose password goes by SMS: its Send lasts as long as it may (one password per mail – no second step here).
+    await complete("anna", second.body.uploadId, { password: STRONG, passwordDays: 3, step: "s2", passwordSms: "0170 1234567" });
     expect(createPasswordSend.mock.calls[1][3]).toBe(30);
   });
 });
@@ -1317,6 +1331,10 @@ describe("contact suggestions (/api/contacts)", () => {
     expect(mail.json()).toEqual({ contacts: [{ name: "Jonas Müller-Berg", value: "j.mueller@example.org" }] });
     const sms = await app.inject({ method: "GET", url: "/api/contacts?q=0171&kind=sms", headers: as("lena") });
     expect(sms.json()).toEqual({ contacts: [{ name: "Jonas Müller-Berg", value: "0171 1234567", type: "mobile" }] });
+    expect(fetchContacts).toHaveBeenCalledOnce();
+    // The address book page: every address A to Z.
+    const book = await app.inject({ method: "GET", url: "/api/contacts?kind=mail&all=1", headers: as("lena") });
+    expect(book.json().contacts.map((c: { name: string }) => c.name)).toEqual(["Erika Beispiel", "Jonas Müller-Berg"]);
     expect(fetchContacts).toHaveBeenCalledOnce();
   });
 

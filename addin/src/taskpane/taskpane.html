@@ -50,11 +50,6 @@
 
         <div id="panel-send" class="panel">
         <div class="content">
-          <!-- Why "Nachricht"/"Anfordern" or the proof switch are fixed in this mail (applyProofLock) – stays while it applies. -->
-          <div class="note-box" id="proof-lock-note" role="note" hidden>
-            <svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor"/><path d="M8 7v4M8 4.8v.4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-            <span id="proof-lock-text"></span>
-          </div>
           <!-- What goes into the mail: one kind at a time, the button in the footer inserts it (taskpane.ts, selectKind). -->
           <div class="segmented" role="radiogroup" aria-label="%%t:addin.kind.label%%">
             <label class="segment">
@@ -171,7 +166,7 @@
               <p class="hint why" id="mode-none-why" hidden>%%t:addin.password.noneFilesOnly%%</p>
             </div>
             <div class="input-group" id="password-group">
-              <input type="text" id="password" class="input mono" autocomplete="new-password" spellcheck="false"
+              <input type="text" id="password" class="input mono" autocomplete="off" spellcheck="false"
                 aria-labelledby="password-label" aria-describedby="password-rules password-hint" />
               <button type="button" id="generate" class="btn btn-icon" title="%%t:addin.password.generate%%" aria-label="%%t:addin.password.generate%%">
                 <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
@@ -194,10 +189,8 @@
           </div>
 
           <!-- "Empfänger": what concerns the recipients of this mail, always in sight – how the password goes out (to the
-               recipients, another address, or by SMS), the language of the link card, the password mail and the SMS
-               (preselected from the settings, renderRecipientLanguages; hidden with only one language) and
-               "Zustellnachweis" (DELIVERY_PROOF, files only, never on by default – proofRequest). Label and control in
-               one row each. -->
+               recipients, another address, or by SMS) and "Zustellnachweis" (DELIVERY_PROOF, files only, never on by default – proofRequest). Label and control in
+               one row each. The recipients' language is chosen only in the settings (recipientLanguage). -->
           <h2 class="section-title" id="recipients-heading">%%t:addin.recipients.heading%%</h2>
           <div class="field recipients" role="group" aria-labelledby="recipients-heading">
             <div id="password-to-field">
@@ -211,47 +204,55 @@
                   </select>
                 </div>
               </div>
-              <input type="email" id="password-to" class="input channel-input" placeholder="%%t:addin.channel.mailPlaceholder%%" autocomplete="email"
-                spellcheck="false" aria-label="%%t:addin.channel.mailLabel%%" aria-describedby="password-to-hint" hidden />
-              <input type="tel" id="password-sms" class="input channel-input" placeholder="%%t:addin.channel.smsPlaceholder%%" autocomplete="tel"
-                aria-label="%%t:addin.channel.smsLabel%%" aria-describedby="password-to-hint" hidden />
-              <p class="hint" id="password-to-hint" hidden></p>
-            </div>
-            <div class="inline-row" id="recipient-language-field">
-              <label for="recipient-language" class="inline-label">%%t:addin.recipientLanguage.short%%</label>
-              <div class="select-wrap">
-                <select id="recipient-language" class="input select" title="%%t:addin.recipientLanguage.hint%%"
-                  aria-describedby="recipient-language-hint"></select>
+              <!-- The address or number, typed (suggestions from the own contacts, contactSuggest.ts) or picked from the
+                   "Adressbuch" page behind the button (addressBook.ts; hidden without Contacts.Read). -->
+              <div class="input-group channel-group" id="password-to-group" hidden>
+                <input type="email" id="password-to" class="input channel-input" placeholder="%%t:addin.channel.mailPlaceholder%%" autocomplete="email"
+                  spellcheck="false" aria-label="%%t:addin.channel.mailLabel%%" aria-describedby="password-to-hint" hidden />
+                <button type="button" id="password-to-book" class="btn btn-icon book-open" title="%%t:addin.contacts.bookOpen%%"
+                  aria-label="%%t:addin.contacts.bookOpen%%" aria-controls="panel-contacts" data-target="password-to">
+                  <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M5 3.5h10a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.2"/>
+                    <path d="M4 6.5h-1.2M4 10h-1.2M4 13.5h-1.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                    <circle cx="10" cy="8.5" r="2" fill="none" stroke="currentColor" stroke-width="1.2"/>
+                    <path d="M6.8 14c.5-1.7 1.7-2.6 3.2-2.6s2.7.9 3.2 2.6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                  </svg>
+                </button>
               </div>
-              <p class="visually-hidden" id="recipient-language-hint">%%t:addin.recipientLanguage.hint%%</p>
+              <div class="input-group channel-group" id="password-sms-group" hidden>
+                <input type="tel" id="password-sms" class="input channel-input" placeholder="%%t:addin.channel.smsPlaceholder%%" autocomplete="tel"
+                  aria-label="%%t:addin.channel.smsLabel%%" aria-describedby="password-to-hint" hidden />
+                <button type="button" id="password-sms-book" class="btn btn-icon book-open" title="%%t:addin.contacts.bookOpen%%"
+                  aria-label="%%t:addin.contacts.bookOpen%%" aria-controls="panel-contacts" data-target="password-sms">
+                  <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M5 3.5h10a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.2"/>
+                    <path d="M4 6.5h-1.2M4 10h-1.2M4 13.5h-1.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                    <circle cx="10" cy="8.5" r="2" fill="none" stroke="currentColor" stroke-width="1.2"/>
+                    <path d="M6.8 14c.5-1.7 1.7-2.6 3.2-2.6s2.7.9 3.2 2.6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                  </svg>
+                </button>
+              </div>
+              <p class="hint" id="password-to-hint" hidden></p>
             </div>
             <div class="switch-field" id="proof-field" hidden>
               <label class="switch" for="proof">
-                <span class="switch-text">%%t:addin.proof.label%%</span>
-                <input type="checkbox" role="switch" id="proof" aria-describedby="proof-hint" />
-                <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
-              </label>
-              <p class="hint" id="proof-hint">%%t:addin.proof.hint%%</p>
-            </div>
-            <!-- "Zustellnachweis" for a message or an upload link: greyed out, the "i" says why (renderValidity). -->
-            <div class="switch-field unavailable" id="proof-unavailable" hidden>
-              <div class="switch">
                 <span class="unavailable-label">
-                  <span class="switch-text" id="proof-unavailable-label">%%t:addin.proof.label%%</span>
-                  <button type="button" id="proof-why-toggle" class="btn btn-icon btn-subtle info-toggle why-toggle"
-                    title="%%t:addin.unavailable.why%%" aria-label="%%t:addin.unavailable.why%%" aria-expanded="false" aria-controls="proof-why">
+                  <span class="switch-text">%%t:addin.proof.label%%</span>
+                  <!-- Fixed for this mail (applyProofLock): the "i" folds out why, like the greyed-out options. -->
+                  <button type="button" id="proof-lock-toggle" class="btn btn-icon btn-subtle info-toggle why-toggle" hidden
+                    title="%%t:addin.unavailable.why%%" aria-label="%%t:addin.unavailable.why%%" aria-expanded="false" aria-controls="proof-lock-why">
                     <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
                       <circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
                       <path d="M10 9v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
                       <circle cx="10" cy="6.3" r=".95" fill="currentColor"/>
                     </svg>
-
                   </button>
                 </span>
-                <input type="checkbox" role="switch" disabled aria-labelledby="proof-unavailable-label" aria-describedby="proof-why" />
+                <input type="checkbox" role="switch" id="proof" aria-describedby="proof-hint proof-lock-why" />
                 <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
-              </div>
-              <p class="hint why" id="proof-why" hidden>%%t:addin.proof.filesOnly%%</p>
+              </label>
+              <p class="hint why" id="proof-lock-why" hidden></p>
+              <p class="hint" id="proof-hint">%%t:addin.proof.hint%%</p>
             </div>
           </div>
 
@@ -417,12 +418,13 @@
                 </fieldset>
                 <fieldset class="settings-group">
                   <legend class="section-title">%%t:addin.settings.language.heading%%</legend>
+                  <!-- Each select with its own label: the add-in's language, then the recipients'. -->
+                  <label for="settings-language" class="label">%%t:addin.settings.language.label%%</label>
                   <div class="select-wrap">
-                    <select id="settings-language" class="input select" aria-label="%%t:addin.settings.language.heading%%"
-                      aria-describedby="settings-language-hint"></select>
+                    <select id="settings-language" class="input select" aria-describedby="settings-language-hint"></select>
                   </div>
                   <p class="hint" id="settings-language-hint">%%t:addin.settings.language.hint%%</p>
-                  <!-- Preselected "Sprache für die Empfänger" in the "Senden" tab. -->
+                  <!-- "Sprache für die Empfänger": the only place to choose it – "Senden" has no choice per mail. -->
                   <label for="settings-recipient-language" class="label settings-sublabel">%%t:addin.settings.recipientLanguage.label%%</label>
                   <div class="select-wrap">
                     <select id="settings-recipient-language" class="input select" aria-describedby="settings-recipient-language-hint"></select>
@@ -434,6 +436,25 @@
                 </div>
               </details>
             </form>
+          </div>
+        </section>
+
+        <!-- "Adressbuch": the own Outlook contacts A to Z (Contacts.Read), opened by the button next to "Andere
+             E-Mail-Adresse" / "Rufnummer (SMS)"; a click takes the address or number and leads back (addressBook.ts). -->
+        <section id="panel-contacts" class="panel" aria-labelledby="contacts-heading" hidden>
+          <div class="content help">
+            <div class="help-header">
+              <button type="button" id="contacts-close" class="btn btn-icon btn-subtle page-back" title="%%t:addin.contacts.close%%" aria-label="%%t:addin.contacts.close%%">
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M16 10H4m0 0 5-5M4 10l5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <h2 class="subtitle" id="contacts-heading">%%t:addin.contacts.book%%</h2>
+            </div>
+            <input type="search" id="contacts-search" class="input proofs-search" placeholder="%%t:addin.contacts.searchPlaceholder%%"
+              aria-label="%%t:addin.contacts.searchLabel%%" aria-controls="contacts-list" spellcheck="false" autocomplete="off" />
+            <div id="contacts-list" class="contacts-list"></div>
+            <p class="caption" id="contacts-empty" hidden></p>
           </div>
         </section>
 
