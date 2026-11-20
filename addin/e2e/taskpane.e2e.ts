@@ -486,9 +486,11 @@ test("settings: notices and signature in sight, the rest under \"Weitere Einstel
   await expect(page.locator("#settings-default-channel")).toBeVisible();
   await expect(page.locator("#settings-reset")).toBeVisible();
   await expectAccessible(page);
+  // SMS preselected first, then "Empfänger der Nachricht" left out: each saved at once, the mail (no links yet) moves
+  // to the preselected way as soon as its own is no longer offered.
+  await page.locator("#settings-default-channel").selectOption("sms");
   await row('input[value="recipients"]').click();
   await expect(page.locator('#settings-channels input[value="recipients"]')).not.toBeChecked();
-  await page.locator("#settings-default-channel").selectOption("sms");
   await expect.poll(() => puts().at(-1)).toMatchObject({ channels: ["mail", "sms"], defaultChannel: "sms", downloadNotice: false });
 
   // The settings stay open; back to "Senden" with the arrow.
@@ -2002,7 +2004,7 @@ test("Hilfe: \"Hilfe\" in the account menu opens the guide in place of the tab, 
   for (const icon of ["copy", "password", "insert", "revoke", "refresh"]) {
     await expect(shares.locator(`[data-icon="${icon}"] svg`)).toHaveCount(1);
   }
-  await expect(shares).toContainText("Aktualisieren – oben rechts neben den Reitern");
+  await expect(shares).toContainText("Aktualisieren – oben rechts auf der Seite „Verlauf“");
   await expect(shares).toContainText("„Verbindung trennen“ – Trennen braucht zur Sicherheit einen zweiten Klick");
   await expect(help).toContainText("Personenbezogene oder vertrauliche Daten versenden Sie bitte immer mit Kennwort.");
   await expectAccessible(page);

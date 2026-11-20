@@ -628,7 +628,7 @@ publishes ports.
 | CloudShare does not start after setting `LANGUAGE` | The log names the problem and the available languages: `docker logs cloudshare 2>&1 \| grep LANGUAGE`. An own language needs `env/config/locales/<language>.json` (directory `755`, file `644`, valid JSON). |
 | Outlook still shows the old language | Outlook caches the add-in: clear the cache in classic Outlook (see *Operation*), reload Outlook on the web. The ribbon label and description come from the manifest – Outlook may take up to 24 hours to pick it up. |
 | Users want to report a problem | Set `FEEDBACK_MAIL`: "Send feedback" in the account menu mails the report with Outlook version, languages and the last error messages of the pane. Before you turn one into a public GitHub issue, remove names, addresses, file names and subjects. |
-| A text shows a key like `tabs.send` | The text is missing in the own language file and in English – add it (keys: [`locales/en.json`](locales/en.json)). |
+| A text shows a key like `kind.files` | The text is missing in the own language file and in English – add it (keys: [`locales/en.json`](locales/en.json)). |
 
 ## Development and tests
 

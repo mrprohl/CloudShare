@@ -110,7 +110,9 @@ export function initFeedback(options: Options) {
         method: "POST",
         body: JSON.stringify({ kind, text: message, ...(withDetails.checked ? { diagnostics: diagnostics() } : {}) }),
       }, await options.token());
+      // Empty for the next time: no text, a suggestion as the kind again.
       text.value = "";
+      $<HTMLInputElement>("feedback-kind-idea").checked = true;
       showDetails(false);
       options.setStatus(t("feedback.sent"), "success");
       options.close();
