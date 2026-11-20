@@ -1604,15 +1604,9 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   // All valid links, no expired one ("Alt.zip"), no "last 30 days".
   await expect(rows).toHaveCount(3);
   await expect(page.locator("#shares")).not.toContainText("Alt.zip");
-  // "Aktualisieren" in the head of the page reloads the list; "Senden" has none.
-  const loads = () => calls.filter((c) => c.path === "/api/shares").length;
-  const refresh = page.locator("#refresh-shares");
-  await expect(refresh).toBeVisible();
-  await expect(refresh).toHaveAttribute("aria-label", "Aktualisieren");
-  const before = loads();
-  await refresh.click();
-  await expect.poll(loads).toBe(before + 1);
-  await expect(refresh).toBeEnabled();
+  // No "Aktualisieren" in the head of the page: the list loads when opened (and again on focus).
+  await expect(page.locator("#panel-shares .help-header button")).toHaveCount(1); // only "←"
+  expect(calls.filter((c) => c.path === "/api/shares").length).toBeGreaterThan(0);
   // One quiet bottom bar for every tab: only the account, as a menu (like the menus of Outlook and OneDrive).
   const toggle = page.locator("#account-toggle");
   const menu = page.locator("#account-menu");
@@ -1650,7 +1644,7 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   await page.locator("#shares").click({ position: { x: 5, y: 5 } });
   await expect(menu).toBeHidden();
   await page.click("#shares-close");
-  await expect(refresh).toBeHidden();
+  await expect(page.locator("#panel-shares")).toBeHidden();
   await expect(page.locator("#panel-send")).toBeVisible();
   await openHistory(page);
   await expect(rows.nth(0).locator(".state-text")).toHaveText("2× heruntergeladen · 11.11.2026, 10:30 Uhr");
@@ -2110,13 +2104,14 @@ test("Hilfe: \"Hilfe\" in the account menu opens the guide in place of the tab, 
   await settings.locator("summary").click();
   await expect(settings).toContainText("auf Ihr Konto und dann auf „Einstellungen“");
   await expect(settings).toContainText("Zurücksetzen");
-  // "Verlauf" explains every icon with the icon itself – also "Aktualisieren" in the tab bar.
+  // "Verlauf" explains every icon with the icon itself (no "Aktualisieren" – the list reloads by itself).
   const shares = sections.filter({ has: page.locator("summary", { hasText: "Verlauf" }) });
   await shares.locator("summary").click();
-  for (const icon of ["copy", "password", "insert", "revoke", "refresh"]) {
+  for (const icon of ["copy", "password", "insert", "revoke"]) {
     await expect(shares.locator(`[data-icon="${icon}"] svg`)).toHaveCount(1);
   }
-  await expect(shares).toContainText("Aktualisieren – oben rechts auf der Seite „Verlauf“");
+  await expect(shares).toContainText("Die Liste ist immer aktuell");
+  await expect(shares.locator('[data-icon="refresh"]')).toHaveCount(0);
   await expect(shares).toContainText("„Verbindung trennen“ – Trennen braucht zur Sicherheit einen zweiten Klick");
   await expect(help).toContainText("Personenbezogene oder vertrauliche Daten versenden Sie bitte immer mit Kennwort.");
   await expectAccessible(page);

@@ -104,7 +104,6 @@ const validitySummary = $<HTMLSpanElement>("validity-summary");
 const expireField = $<HTMLDivElement>("expire-field");
 const messageDaysField = $<HTMLDivElement>("message-days-field");
 const expireHint = $<HTMLParagraphElement>("expire-hint");
-const refreshSharesButton = $<HTMLButtonElement>("refresh-shares");
 const refreshMailButton = $<HTMLButtonElement>("refresh-mail");
 const sharesOpen = $<HTMLButtonElement>("shares-open");
 const sharesClose = $<HTMLButtonElement>("shares-close");
@@ -2344,19 +2343,17 @@ proofsClose.addEventListener("click", () => {
   showOverlay(null);
   accountToggle.focus();
 });
-// "Aktualisieren" on "Verlauf" and on the links of a mail being read.
-for (const button of [refreshSharesButton, refreshMailButton]) {
-  button.addEventListener("click", () => {
-    button.disabled = true;
-    button.setAttribute("aria-busy", "true");
-    loadShares()
-      .catch((err) => setStatus(errorMessage(err), "error"))
-      .then(() => {
-        button.disabled = false;
-        button.removeAttribute("aria-busy");
-      });
-  });
-}
+// "Aktualisieren" on the links of a mail being read ("Verlauf" reloads by itself when opened and on focus).
+refreshMailButton.addEventListener("click", () => {
+  refreshMailButton.disabled = true;
+  refreshMailButton.setAttribute("aria-busy", "true");
+  loadShares()
+    .catch((err) => setStatus(errorMessage(err), "error"))
+    .then(() => {
+      refreshMailButton.disabled = false;
+      refreshMailButton.removeAttribute("aria-busy");
+    });
+});
 
 // --- History ("Verlauf") -----------------------------------------------------
 
@@ -2568,7 +2565,6 @@ const ICONS = {
   /** "Nachweis": a document with a seal (the PDF of the delivery proof). */
   proof: icon('<path d="M11.5 3H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h3"/><path d="M11.5 3L15 6.5V9"/><path d="M8 7h3M8 10h2"/><circle cx="14" cy="13" r="2.5"/><path d="M12.8 15.2L12.5 18l1.5-.8 1.5.8-.3-2.8"/>'),
   /** Same drawing as the refresh button in the tab bar (taskpane.html). */
-  refresh: icon('<path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11"/>'),
 } as const;
 
 /** The help explains the actions with their icons: `<span data-icon="copy">` gets the icon. */
