@@ -797,8 +797,8 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   (sent in `/api/config` as `nextcloudUrl`) in the default browser (`openBrowserWindow`, in the browser a new tab) – the
   browser's own Nextcloud session or a sign-in there; the app password of the connection never leaves the server.
 - **History** ("Verlauf", `#shares-open`, right above "Zustellnachweise"): a page like the settings (`#panel-shares`,
-  `showOverlay("shares")`) – every valid link with its actions, reloaded when opened, by `#refresh-shares` in its head
-  and on return to the pane; the search `#shares-search` filters by subject, name, recipients, password address and
+  `showOverlay("shares")`) – every valid link with its actions, reloaded when opened and on return to the pane
+  (no refresh button); the search `#shares-search` filters by subject, name, recipients, password address and
   tracking ID (`renderShareList`). The pane has no tabs any more: the view is "Senden" (or, reading, the links of that
   mail – `currentView`), every other thing is a page of the account menu.
 - **Proofs of delivery** ("Zustellnachweise", `#proofs-open`, only with `DELIVERY_PROOF`): a page like the settings

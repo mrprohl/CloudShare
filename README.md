@@ -159,7 +159,7 @@ confidential message has no "Copy" or "Insert" – CloudShare does not keep its 
 while the pane is open ("(No subject yet)" until then); entries from before subjects were kept say "(Subject
 unknown)". It
 loads when you open the page and again when you come back to
-the pane; **Refresh** (⟳ at the top right of the page) reloads it at any time. Expired links are not listed. At the bottom, as in
+the pane, so it is always current (no refresh button). Expired links are not listed. At the bottom, as in
 "Send": the account, as a menu – at the top the whole account name and its storage (a bar filled with the used share when there is a quota), then "Open Nextcloud" (your Nextcloud in the browser), "History" (every valid link, searchable), "Proofs of delivery" (with `DELIVERY_PROOF`: every proof, searchable), "Settings", "Send feedback" (with `FEEDBACK_MAIL`: a problem or a suggestion by mail to whoever looks after CloudShare), "Help" and "Disconnect" (takes a second click). A link is created when it is inserted;
 until its mail has been sent it says **"Not sent"**. If the mail is never sent (draft discarded), CloudShare revokes
 the link after 7 days – unless it was already downloaded (opened by yourself, or the mail went out from an Outlook
