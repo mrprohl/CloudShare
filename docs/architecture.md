@@ -91,8 +91,8 @@ files as links", "Insert confidential message", "Insert upload link"). Password 
 only; a mail already fixed to links without password disables the button for the other two and says why. An option
 that does not exist for the chosen kind is not hidden without a word: "Ohne Kennwort" shows
 greyed out for "Nachricht"/"Anfordern" (`#mode-none-unavailable` – an own disabled copy, so the
-lock logic of the real one stays untouched) with an "i" (`.why-toggle`, `showUnavailable`) that folds out the reason
-(`password.noneFilesOnly`); "Zustellnachweis" is simply not shown there. Nextcloud enforcing passwords still hides "Ohne Kennwort" (a rule of the organisation, not of the kind). Files
+lock logic of the real one stays untouched) with the reason as a hint right below it (`#mode-none-why`, `showUnavailable`,
+`password.noneFilesOnly` – no "i"); "Zustellnachweis" is simply not shown there. Nextcloud enforcing passwords still hides "Ohne Kennwort" (a rule of the organisation, not of the kind). Files
 dragged onto the pane switch it to "Files".
 
 1. The taskpane lists the mail's file attachments (all ticked – whoever opens CloudShare sends through it; the threshold
@@ -122,8 +122,9 @@ dragged onto the pane switch it to "Files".
    joins that part (`findPart`/`addFileToPart` on the server: same password, same Send, one password mail or SMS). The
    server refuses a link with a password that would open a second step in the job (`assertOnePassword`, 409
    `ONE_PASSWORD`, before any link is created); mails started with one shared password (no `separate`) are not affected. The password field is
-   always `type="text"`; an own password is hidden by CSS (`.masked`, `-webkit-text-security`, `setRevealed`), because
-   a real password field made Edge (WebView2) offer to save it as a login after the click.
+   always `type="text"` – a real password field made Edge (WebView2) offer to save it as a login after the click; an own
+   password stays visible while it is typed (no eye). Only the password shown in "Verlauf" is hidden by CSS until its eye
+   is clicked (`.masked`, `-webkit-text-security`, `.reveal-password`).
 
 Variants: **"Request"** (`POST /api/requests`) creates a folder in `NEXTCLOUD_REQUEST_FOLDER` with
 a create-only link ("file drop") – same password rules, its own step. **"No password"** (`noPassword: true`, file
@@ -211,9 +212,8 @@ accepts); a picked entry is filled in and saved like a typed one. The address bo
 (`.book-open`, `addressBook.ts`) opens the page "Adressbuch" (`#panel-contacts`, `showOverlay("contacts")`): every
 entry of that kind A to Z under its first letter (`GET /api/contacts?all=1`), filtered while typing; a click takes it
 the same way and leads back to where it was opened (`contactsReturn`). "Erneut senden an" in "Verlauf" has the same
-field with both (`addressBook.register`, `attachContactSuggestions` with the kind following the chosen way – radio buttons like "Kennwort an", preselected with the way it went first, field and hint indented under the chosen one); it takes several
-addresses (`data-multiple`): the suggestions match the part after the last comma and a picked address is added to the list
-(`addToList`). Without the permission the buttons disappear (`onContactsUnavailable`). Without the optional delegated `Contacts.Read` the
+field with both (`addressBook.register`, `attachContactSuggestions` with the kind following the chosen way – radio buttons like "Kennwort an", preselected with the way it went first, field and hint indented under the chosen one); like "Kennwort an" it takes
+one address – a picked entry replaces the field. Without the permission the buttons disappear (`onContactsUnavailable`). Without the optional delegated `Contacts.Read` the
 server answers `contacts: null` and the pane stops asking for the session.
 The ways:
 
@@ -391,8 +391,8 @@ In "History" and in the read mode (2.9) such links get **Password** (`passwordAv
 - `POST /api/shares/:id/password/send` – the same ways as the first time (the pane preselects the way it went then):
   `{ channel: "recipients" }` sends the password mail with the **distribution of the sent mail** – To, Cc and Bcc as
   they were (`PasswordRef.recipients`, taken from "Sent Items"; older entries fall back to `mailTo`);
-  `{ channel: "mail", to }` sends it to up to 20 other addresses, **each in a mail of its own**, so nobody sees the
-  others (remembered in `otherTo`); `{ channel: "sms", to }` sends an SMS to that number (same template and daily
+  `{ channel: "mail", to }` sends it to **one** other address (like "Kennwort an" when sending; a list – from an older
+  add-in – is refused with 400 before anything goes out, several recipients use `recipients`; remembered in `otherTo`); `{ channel: "sms", to }` sends an SMS to that number (same template and daily
   limit as the first one). A mail gets a **new** Send with the same password (default access and days, deleted with
   the links) and goes out as the user via Graph (delegated, like the first one, also from a shared mailbox); it never
   contains the password itself. "History" shows the new delivery – To and Cc, never Bcc.
@@ -499,8 +499,8 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   of the other kind into the mail's job (`jobId`) answers 409 `PROOF_MIX` (files with `proof`, upload links and messages
   never have one); `/arm` refuses a job that mixes them anyway, so the send handler holds the mail back. The pane fixes
   the kind with the first link (`DraftState.proofMail`, `applyProofLock`: the switch fixed, "Nachricht" and
-  "Anfordern" disabled with a proof; the reason folds out from an "i" next to the fixed switch, `#proof-lock-toggle` – the hint under
-  the switch never changes).
+  "Anfordern" disabled with a proof; the reason is appended to the hint under the fixed switch, `#proof-hint` – no "i",
+  no note box).
 - **Password after the confirmation** (`proofPassword.ts`): the mail to the confirmed address says so ("Sie haben eben Ihre
   E-Mail-Adresse bestätigt …") and its card has two numbered steps (`MailCard.steps`: 1 "Kennwort anzeigen", 2 "Zum Download", each button with its address as plain text below), the download to the gateway – never to Nextcloud: the confirmed browser goes
   straight on, another one or a forwarded mail is asked for the code again, so link and password never travel together
@@ -819,7 +819,9 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
 - **Help** ("Hilfe" in the account menu of the bottom bar, `#help-toggle`; `#panel-help` in `taskpane.html`, shown in place of the
   view like the history, the settings and the proofs (`showOverlay`, `currentOverlay`), "←" before the title (`.page-back`) or Escape leads back): a user guide for everyday users – short `<details>`
   sections (getting started, sending files, password and channel, confidential message, receiving files, "History",
-  FAQ), the most common one open. Texts in the language files (`help.*`); admins put their own support contact into
+  FAQ), the most common one open. A magnifier in its head (`#help-search-toggle`, `helpSearch.ts`) folds out a search:
+  sections without every word get `.search-miss` (never `hidden`, which server switches use), the others open with the
+  hits as `mark.help-hit`; Escape or an empty field restores the guide, leaving the page resets it. Texts in the language files (`help.*`); admins put their own support contact into
   `help.support` (`/config/locales`). Plain words, the button names of the pane, no technical terms.
 - **Messages** (`#status`, `setStatus`): progress (kind `progress`) and a failed start (with "Erneut versuchen") stay until the next message; all other messages – success, error, grey notes – disappear
   after `SUCCESS_MESSAGE_SECONDS` (default 5, `0` = they stay, served in `/api/config`) – the ring around the tick, "!" or "i" runs

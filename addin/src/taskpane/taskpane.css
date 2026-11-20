@@ -37,6 +37,7 @@
   --success-stroke: #9fd89f;
   --success-fg: #0e700e;
   --warning-fg: #bc4b09;
+  --highlight-bg: #fff4ce;
   --shadow: 0 0 2px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.14);
 }
 
@@ -71,6 +72,7 @@
   --success-stroke: #107c10;
   --success-fg: #54b054;
   --warning-fg: #f98845;
+  --highlight-bg: #5c4b00;
 }
 
 /* Before Office reports its theme, follow the system setting. */
@@ -78,7 +80,7 @@
   :root:not([data-theme]) {
     --fg1: #ffffff; --fg2: #d6d6d6; --fg3: #adadad; --bg1: #292929; --bg1-hover: #3d3d3d; --bg3: #333333;
     --stroke1: #666666; --stroke2: #525252; --stroke-accessible: #adadad; --brand-fg: #479ef5;
-    --warning-fg: #f98845;
+    --warning-fg: #f98845; --highlight-bg: #5c4b00;
   }
 }
 
@@ -249,7 +251,7 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .input:focus { outline: none; border-bottom-color: var(--brand-bg); box-shadow: inset 0 -1px 0 var(--brand-bg); }
 .input[readonly] { background: var(--bg3); border-color: var(--stroke2); color: var(--fg2); }
 .input.mono { font-family: var(--font-mono); letter-spacing: 0.02em; }
-/* An own password while hidden: dots without type="password" (setRevealed) – no save prompt from the browser. */
+/* The password in "Verlauf" while hidden: dots without type="password" (.reveal-password) – no save prompt from the browser. */
 .input.masked { -webkit-text-security: disc; }
 .input-narrow .input { flex: 0 0 88px; }
 .channel-input { display: block; width: 100%; margin-top: 4px; }
@@ -284,13 +286,17 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* "Kennwort an" a section of its own with a heading like "Kennwort"; "Zustellnachweis" set apart like a section, without one. */
 /* The password field, its rules and the hint indented below the chosen option (dot 16px + gap 8px), like "Kennwort an". */
 .password-field > .input-group, .password-field > .rules, .password-field > #password-hint { margin-left: 24px; }
-.password-field > #password-hint { margin-bottom: 4px; }
+/* Like the hint under "Kennwort an": right below its option, the same gap above and below. */
+.password-field > #password-hint { margin-top: 0; margin-bottom: 4px; }
+/* After the rules of an own password (not right below an option) the hint needs the same gap as below it. */
+.password-field > .rules + #password-hint { margin-top: 6px; }
 .proof-row { margin-top: 20px; }
 /* "Kennwort an": radio buttons like the password choices; the address or number field and its hint indented below the
    chosen option (the width of the dot plus its gap). */
 .channel-options .channel-group, .channel-options > .hint { margin-left: 24px; }
 .channel-options .channel-group { margin-top: 2px; margin-bottom: 4px; }
-.channel-options > .hint { margin-top: 0; margin-bottom: 4px; }
+/* The same gap above (to the field) and below (to the next way), like the hint under the password. */
+.channel-options > .hint { margin-top: 4px; margin-bottom: 2px; }
 .inline-row { display: grid; grid-template-columns: 7em minmax(0, 1fr); align-items: center; column-gap: 12px; }
 .inline-label { color: var(--fg1); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -306,12 +312,10 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .switch input:disabled, .switch:has(input:disabled) { cursor: not-allowed; }
 .switch input:disabled + .switch-track { opacity: .5; }
 .switch-field .hint { margin-top: 2px; }
-/* An option that does not exist for the chosen kind: greyed out, its "i" folds out the reason below (showUnavailable). */
-.unavailable-row { display: flex; align-items: center; gap: 2px; }
-.unavailable .radio, .unavailable .switch { cursor: default; }
-.unavailable-label { display: inline-flex; align-items: center; gap: 2px; }
-.unavailable .why-toggle, #proof-lock-toggle { margin: 0; cursor: pointer; }
-.unavailable .why, #proof-lock-why { margin: 2px 0 4px; }
+/* An option that does not exist for the chosen kind: greyed out, the reason as a hint below it – indented like the hint
+   under a chosen option (showUnavailable). */
+.unavailable .radio { cursor: default; }
+.unavailable .why { margin: 0 0 4px 24px; }
 /* "Kennwort senden an": native select in the look of the inputs, own chevron (follows the theme colours). */
 .select-wrap { position: relative; }
 .select-wrap::after {
@@ -480,7 +484,10 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .panel.dropping .dropzone { border: 2px solid var(--brand-fg); padding: 13px 11px; background: var(--brand-tint-bg); }
 .panel.dropping .dropzone .idle, .panel.dropping .dropzone-sub { display: none; }
 .panel.dropping .dropzone .drop { display: inline; color: var(--brand-tint-fg); }
-.section-text { margin: 0 0 8px; }
+/* The text under a heading: the same gap to what follows as to the heading above it. */
+.section-text { margin: 0 0 14px; }
+/* "Keine Dateianhänge" under "Anhänge": the drop zone as far below it as the heading is above it. */
+#no-attachments:not([hidden]) ~ .dropzone { margin-top: 14px; }
 
 /* --- My shares ----------------------------------------------------------------------- */
 .share-list { display: flex; flex-direction: column; }
@@ -588,6 +595,9 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 .password-panel .label { margin: 10px 0 4px; }
 .password-panel .label:first-child { margin-top: 0; }
 .password-panel .hint { margin-bottom: 8px; }
+/* "Erneut senden an": the hint under the chosen way as in "Senden" – not 8px more before the next way. */
+.password-panel .channel-options > .hint { margin-bottom: 2px; }
+.password-panel .channel-options + .send-password { margin-top: 8px; }
 .share-actions .show-password[aria-expanded="true"] { background: var(--bg1-pressed); color: var(--fg1); }
 
 /* --- Help ("Hilfe"): short sections to open as needed ------------------------------------------- */
@@ -623,6 +633,10 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 .help-section[open] > summary::before { transform: rotate(45deg); }
 .help-section > summary:hover { color: var(--brand-fg-hover); }
 .help-section > summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; border-radius: 2px; }
+/* Search of the guide (helpSearch.ts): sections without a hit hidden, hits marked like Outlook's find. */
+.help .search-miss { display: none; }
+.help mark.help-hit { background: var(--highlight-bg); color: inherit; border-radius: 2px; padding: 0 1px; }
+#help-search-none { margin: -8px 0 12px; } /* right under the field (it keeps its gap to the sections) */
 .help-section ol, .help-section ul { margin: 0 0 10px; padding-left: 22px; }
 .help-section li { margin: 0 0 6px; }
 .help-section p { margin: 0 0 10px; }

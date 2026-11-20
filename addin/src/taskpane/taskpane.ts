@@ -26,6 +26,7 @@ import { initSettings, loadSettings, userSettings } from "./settings";
 import { labelCatalog, mailLabel, readFileLabel, setMailLabel, type FileLabel, type LabelDetails } from "./labels";
 import { attachContactSuggestions } from "./contactSuggest";
 import { initAddressBook } from "./addressBook";
+import { initHelpSearch } from "./helpSearch";
 import { withCardAfterLast } from "./cardPlace";
 import { initFeedback, noteError } from "./feedback";
 
@@ -55,12 +56,11 @@ const noAttachments = $<HTMLParagraphElement>("no-attachments");
 const fileInput = $<HTMLInputElement>("file");
 const passwordInput = $<HTMLInputElement>("password");
 const passwordHint = $<HTMLParagraphElement>("password-hint");
-const revealButton = $<HTMLButtonElement>("reveal");
 const modeRandom = $<HTMLInputElement>("mode-random");
 const modeOwn = $<HTMLInputElement>("mode-own");
 const modeNone = $<HTMLInputElement>("mode-none");
 const modeNoneRow = $<HTMLLabelElement>("mode-none-row");
-/** "Ohne Kennwort" / "Zustellnachweis" shown greyed out where they do not exist, with an "i" that says why. */
+/** "Ohne Kennwort" shown greyed out where it does not exist, with the reason below it. */
 const modeNoneUnavailable = $<HTMLDivElement>("mode-none-unavailable");
 const modeSame = $<HTMLInputElement>("mode-same");
 const modeSameRow = $<HTMLLabelElement>("mode-same-row");
@@ -72,8 +72,7 @@ const messageDaysInput = $<HTMLInputElement>("message-days");
 const passwordToField = $<HTMLDivElement>("password-to-field");
 const proofField = $<HTMLDivElement>("proof-field");
 const proofInput = $<HTMLInputElement>("proof");
-const proofLockToggle = $<HTMLButtonElement>("proof-lock-toggle");
-const proofLockWhy = $<HTMLParagraphElement>("proof-lock-why");
+const proofHint = $<HTMLParagraphElement>("proof-hint");
 const encryptedField = $<HTMLDivElement>("encrypted-field");
 const encryptedText = $<HTMLParagraphElement>("encrypted-text");
 const encryptedConfirm = $<HTMLInputElement>("encrypted-confirm");
@@ -889,13 +888,8 @@ function applyProofLock(proofMail: boolean | undefined) {
   const locked = proofMail !== undefined && serverConfig?.deliveryProof === true;
   if (locked) proofInput.checked = proofMail;
   proofInput.disabled = locked;
-  // The hint under the switch always says what a proof does; why it is fixed folds out from the "i" next to it.
-  proofLockToggle.hidden = !locked;
-  proofLockWhy.textContent = locked ? t(proofMail ? "proof.lockedOn" : "proof.lockedOff") : "";
-  if (!locked) {
-    proofLockWhy.hidden = true;
-    proofLockToggle.setAttribute("aria-expanded", "false");
-  }
+  // The hint under the switch says what a proof does; when it is fixed for this mail, the reason follows in the same text.
+  proofHint.textContent = locked ? `${t("proof.hint")} ${t(proofMail ? "proof.lockedOn" : "proof.lockedOff")}` : t("proof.hint");
   // With a proof: no confidential message, no upload link in this mail (they have no confirmation page).
   for (const radio of kindRadios) {
     const blocked = locked && proofMail === true && radio.value !== "files";
@@ -1309,15 +1303,6 @@ async function insertLinks(results: UploadResult[]) {
 /** "Ohne Kennwort" selected (file links only – upload links always keep a password). */
 const withoutPassword = () => modeNone.checked;
 
-function setRevealed(revealed: boolean) {
-  // Always a text field, masked by CSS only: a real type="password" makes Edge (WebView2) offer to save it as a login.
-  passwordInput.classList.toggle("masked", !revealed);
-  revealButton.setAttribute("aria-pressed", String(revealed));
-  const label = t(revealed ? "password.hide" : "password.show");
-  revealButton.title = label;
-  revealButton.setAttribute("aria-label", label);
-}
-
 /** Live feedback for an own password; rules are only marked as failed once something has been typed. */
 function renderRules() {
   const check = checkPassword(passwordInput.value);
@@ -1360,20 +1345,16 @@ function setPasswordMode(mode: "same" | "random" | "own" | "none") {
   option.after(passwordGroup, rulesList, passwordHint);
   applyLinkMax();
   passwordInput.readOnly = !own;
-  revealButton.hidden = !own;
   rulesList.hidden = !own;
   if (none) {
     passwordInput.value = "";
   } else if (same) {
-    passwordInput.classList.remove("masked");
     passwordInput.value = lastStep!.password;
   } else if (own) {
     passwordInput.value = "";
-    setRevealed(false);
     renderRules();
     passwordInput.focus();
   } else {
-    passwordInput.classList.remove("masked");
     passwordInput.value = generatePassword();
   }
   renderPasswordHint();
@@ -1402,7 +1383,6 @@ modeRandom.addEventListener("change", () => setPasswordMode("random"));
 modeOwn.addEventListener("change", () => setPasswordMode("own"));
 modeNone.addEventListener("change", () => setPasswordMode("none"));
 passwordInput.addEventListener("input", renderRules);
-revealButton.addEventListener("click", () => setRevealed(passwordInput.classList.contains("masked")));
 
 /** From the first upload on, the password applies to the whole mail and can no longer be changed. */
 function lockPassword() {
@@ -1412,8 +1392,6 @@ function lockPassword() {
   modeNone.disabled = true;
   passwordGroup.hidden = true; // not shown, like a random password (see setPasswordMode)
   rulesList.hidden = true;
-  revealButton.hidden = false;
-  setRevealed(false);
   lockChannel(true);
   // A mail from before steps: its one password under the checked option (random by default), like setPasswordMode.
   (modeOwn.checked ? modeOwn : modeRandom).closest<HTMLElement>("label")!.after(passwordGroup, rulesList, passwordHint);
@@ -1609,32 +1587,10 @@ function selectKind(kind: Kind) {
 
 for (const radio of kindRadios) radio.addEventListener("change", () => renderKind());
 
-/**
- * A greyed-out option with its "i" (`.unavailable`: "Ohne Kennwort", "Zustellnachweis" for a message or an upload
- * link). Shown or hidden; the reason folds out below on a click on the "i" and folds in again when it is hidden.
- */
+/** A greyed-out option (`.unavailable`: "Ohne Kennwort" for a message or an upload link) with its reason as a hint below. */
 function showUnavailable(block: HTMLElement, shown: boolean) {
   block.hidden = !shown;
-  if (!shown) {
-    const toggle = block.querySelector<HTMLButtonElement>(".why-toggle")!;
-    toggle.setAttribute("aria-expanded", "false");
-    block.querySelector<HTMLElement>(".why")!.hidden = true;
-  }
 }
-for (const block of [modeNoneUnavailable]) {
-  const toggle = block.querySelector<HTMLButtonElement>(".why-toggle")!;
-  const why = block.querySelector<HTMLElement>(".why")!;
-  toggle.addEventListener("click", () => {
-    why.hidden = !why.hidden;
-    toggle.setAttribute("aria-expanded", String(!why.hidden));
-  });
-}
-// The "i" next to a fixed "Zustellnachweis" (applyProofLock) – inside the switch's label, so it must not toggle it.
-proofLockToggle.addEventListener("click", (event) => {
-  event.preventDefault();
-  proofLockWhy.hidden = !proofLockWhy.hidden;
-  proofLockToggle.setAttribute("aria-expanded", String(!proofLockWhy.hidden));
-});
 
 /**
  * Shows the part of the chosen kind. "Ohne Kennwort" exists only for files – a confidential message or an upload link
@@ -1651,7 +1607,7 @@ function renderKind() {
   const lockedNone = modeNone.checked && modeNone.disabled;
   // A mail fixed to "Ohne Kennwort" keeps showing it, so the note below explains why nothing else can be inserted.
   modeNoneRow.hidden = !lockedNone && (passwordEnforced || kind !== "files");
-  // Not for this kind: greyed out with the reason behind the "i", instead of silently gone (Nextcloud's own rule for
+  // Not for this kind: greyed out with the reason below it, instead of silently gone (Nextcloud's own rule for
   // passwords stays without – it is the organisation's choice, not the kind's).
   showUnavailable(modeNoneUnavailable, modeNoneRow.hidden && !passwordEnforced && kind !== "files");
   renderPasswordHint();
@@ -2070,7 +2026,11 @@ type Overlay = "shares" | "help" | "settings" | "proofs" | "feedback" | "contact
 let currentOverlay: Overlay = null;
 
 /** Every page has "←" before its title; "←" or Escape leads back to the view. */
+/** The search of the "Hilfe" page (magnifier in its head). */
+const helpSearch = initHelpSearch();
+
 function showOverlay(overlay: Overlay) {
+  if (currentOverlay === "help" && overlay !== "help") helpSearch.reset(); // no search left over for the next opening
   currentOverlay = overlay;
   helpToggle.setAttribute("aria-expanded", String(overlay === "help"));
   panelHelp.hidden = overlay !== "help";
@@ -2647,9 +2607,9 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
     // indented right below the chosen way (showChannel moves them there).
     `<span class="label" id="${id}-channel-label"></span>` +
     `<div class="channel-options" id="${id}-channel" role="radiogroup" aria-labelledby="${id}-channel-label">` +
-    // Several addresses, separated by commas; suggestions while typing and the address book like under "Kennwort an".
+    // One address, like "Kennwort an" when sending; suggestions while typing and the address book as there.
     `<div class="input-group channel-group"><input id="${id}-to" class="input channel-input" spellcheck="false" ` +
-    `aria-describedby="${id}-hint" data-multiple />` +
+    `aria-describedby="${id}-hint" />` +
     `<button type="button" class="btn btn-icon book-open" aria-controls="panel-contacts" data-target="${id}-to">${BOOK_ICON}</button></div>` +
     `<p class="hint" id="${id}-hint"></p></div>` +
     `<button type="button" class="btn send-password"></button>`;
@@ -2736,9 +2696,9 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
     // The recipients of the message need no input – the hint names them.
     target.hidden = value === "recipients";
     targetGroup.hidden = target.hidden;
-    target.type = sms ? "tel" : "text";
+    target.type = sms ? "tel" : "email";
     target.autocomplete = sms ? "tel" : "email";
-    target.value = sms ? sent.sms : value === "mail" ? sent.otherTo.join(", ") : "";
+    target.value = sms ? sent.sms : value === "mail" ? (sent.otherTo[0] ?? "") : "";
     target.placeholder = t(sms ? "channel.smsPlaceholder" : "resend.mailPlaceholder");
     target.setAttribute("aria-label", t(sms ? "resend.smsLabel" : "resend.mailLabel"));
     hint.textContent =

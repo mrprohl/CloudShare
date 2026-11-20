@@ -1004,18 +1004,23 @@ describe("showing and sending the password again", () => {
     expect(deliveryFor("tokvertrag", "oid-anna")).toMatchObject({ channel: "mail", to: "erika@example.test, chef@example.test" });
   });
 
-  it("sends it again to other addresses, each in a mail of its own – nobody sees the others", async () => {
+  it("sends it again to one other address – like \"Kennwort an\" when sending; a list is refused", async () => {
     createPasswordSend.mockClear();
-    const res = await resend("anna", { channel: "mail", to: "kollege@example.test; buergerin@example.test" });
+    // Several addresses (an older add-in): refused before anything goes out – several recipients get it with "recipients".
+    const list = await resend("anna", { channel: "mail", to: "kollege@example.test; buergerin@example.test" });
+    expect(list.statusCode).toBe(400);
+    expect(list.json().error).toContain("genau eine gültige E-Mail-Adresse");
+    expect(createPasswordSend).not.toHaveBeenCalled();
+    expect((await sendMail()).mock.calls).toHaveLength(0);
+
+    const res = await resend("anna", { channel: "mail", to: " kollege@example.test " });
     expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ channel: "mail", to: "kollege@example.test" });
     expect(createPasswordSend).toHaveBeenCalledOnce();
-    expect((await sendMail()).mock.calls.map((c) => c[1])).toEqual([
-      { to: ["kollege@example.test"], cc: [], bcc: [] },
-      { to: ["buergerin@example.test"], cc: [], bcc: [] },
-    ]);
+    expect((await sendMail()).mock.calls.map((c) => c[1])).toEqual([{ to: ["kollege@example.test"], cc: [], bcc: [] }]);
     // Suggested again next time.
     const shown = (await app.inject({ method: "GET", url: "/api/shares/41/password", headers: as("anna") })).json();
-    expect(shown.otherTo).toEqual(["kollege@example.test", "buergerin@example.test"]);
+    expect(shown.otherTo).toEqual(["kollege@example.test"]);
   });
 
   it("sends it again by SMS to a number of the sender's choice", async () => {
