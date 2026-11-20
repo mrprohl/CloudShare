@@ -281,16 +281,13 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .suggestion-name { font: 400 14px/20px var(--font); color: var(--fg1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .suggestion-value { font: 400 12px/16px var(--font); color: var(--fg2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* "Empfänger": label and control in one row ("Kennwort an [ … ▾ ]", "Sprache [ … ▾ ]"), the switch below. */
-/* "Kennwort an" right below the password (part of it); "Zustellnachweis" set apart like a section, without a heading. */
-.password-field { margin-bottom: 8px; }
-.password-field:has(+ #password-to-field[hidden]) { margin-bottom: 16px; }
+/* "Kennwort an" a section of its own with a heading like "Kennwort"; "Zustellnachweis" set apart like a section, without one. */
 /* The password field, its rules and the hint indented below the chosen option (dot 16px + gap 8px), like "Kennwort an". */
 .password-field > .input-group, .password-field > .rules, .password-field > #password-hint { margin-left: 24px; }
 .password-field > #password-hint { margin-bottom: 4px; }
 .proof-row { margin-top: 20px; }
 /* "Kennwort an": radio buttons like the password choices; the address or number field and its hint indented below the
    chosen option (the width of the dot plus its gap). */
-.channel-label { margin: 0 0 2px; }
 .channel-options .channel-group, .channel-options > .hint { margin-left: 24px; }
 .channel-options .channel-group { margin-top: 2px; margin-bottom: 4px; }
 .channel-options > .hint { margin-top: 0; margin-bottom: 4px; }
@@ -603,7 +600,7 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 .help-header .subtitle { font-size: 18px; line-height: 24px; }
 .help-header .page-back { margin: 0 0 0 -8px; }
 .help-header .page-action { margin: 0 -6px 0 auto; }
-/* Reading a mail: the title of its links and "Aktualisieren" on the right. */
+/* Reading a mail: the title of its links (no refresh button – the list reloads by itself). */
 .list-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; }
 .list-head .btn-icon { margin: 0 -6px 0 0; }
 .help { color: var(--fg1); }

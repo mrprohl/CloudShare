@@ -720,7 +720,8 @@ test("uploads a large attachment in chunks, removes it and inserts the card", as
   await expect(page.locator("#password-hint")).toHaveText("Diese Nachricht hat schon ein Kennwort. Weitere Dateien, Nachrichten und Upload-Links erhalten dasselbe Kennwort auf demselben Weg.");
   expect(JSON.parse((await officeLog(page)).session["cloudshare-state"]).lastStep.password).toBe(password);
   for (const mode of ["#mode-random", "#mode-own", "#mode-none"]) await expect(page.locator(mode)).toBeDisabled();
-  await expect(page.locator("#password-channel input:checked")).toBeDisabled();
+  await expect(page.locator("#password-channel input:checked")).toBeEnabled(); // the chosen way stays active …
+  await expect(page.locator("#password-channel input:not(:checked)").first()).toBeDisabled(); // … the others are greyed out
   await shot(page, "after-upload");
 
   // "Kennwort abrufbar" applies to the next link.
@@ -790,7 +791,8 @@ test("one password per mail: every further file, message or upload link joins th
   await expect(page.locator("#mode-same")).toBeChecked();
   await expect(page.locator("#mode-random")).toBeDisabled();
   await expect(page.locator("#mode-own")).toBeDisabled();
-  await expect(page.locator("#password-channel input:checked")).toBeDisabled();
+  await expect(page.locator("#password-channel input:checked")).toBeEnabled(); // the chosen way stays active …
+  await expect(page.locator("#password-channel input:not(:checked)").first()).toBeDisabled(); // … the others are greyed out
   await page.locator("label").filter({ has: page.locator("#kind-message") }).click();
   await page.fill("#message", "Zugangsdaten folgen");
   await page.click("#submit");
@@ -1055,6 +1057,7 @@ test("links deleted from the mail again: password options unlock, no password ma
   await expect(page.locator("#mode-random")).toBeEnabled();
   await expect(page.locator("#mode-none")).toBeEnabled();
   await expect(page.locator("#password-channel input:checked")).toBeEnabled(); // one password per mail – free again
+  await expect(page.locator("#password-channel input:not(:checked)").first()).toBeEnabled();
   const log = await officeLog(page);
   expect(log.customProps.cloudshareJob).toBeUndefined(); // the send handler has nothing to arm
   expect(JSON.parse(log.session["cloudshare-state"])).toEqual({});
@@ -1293,8 +1296,10 @@ test("own password: live rule check, weak passwords are not accepted", async ({ 
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Bericht.pdf", 1.5 * MiB)] });
   // The field sits right below the chosen option: under "Zufälliges Kennwort" first, then under "Eigenes Kennwort".
   await expect(page.locator("label:has(#mode-random) + #password-group")).toHaveCount(1);
+  await expect(page.locator("#password-group")).toBeHidden(); // a random password is not shown
   await page.check("#mode-own");
   await expect(page.locator("label:has(#mode-own) + #password-group + #password-rules + #password-hint")).toHaveCount(1);
+  await expect(page.locator("#password-group")).toBeVisible(); // an own one needs its field
   const password = page.locator("#password");
   await expect(password).toHaveValue("");
   // Hidden by CSS, never type="password" – Edge would offer to save it as a login.
@@ -1376,7 +1381,7 @@ test("Nachricht / Anfordern: 'Ohne Kennwort' is not offered – a choice made fo
     "Nur für Dateien: Eine vertrauliche Nachricht und ein Upload-Link sind immer mit einem Kennwort geschützt.");
   await expectAccessible(page);
   await expect(page.locator("#mode-random")).toBeChecked();
-  await expect(page.locator("#password-group")).toBeVisible();
+  await expect(page.locator("#password-group")).toBeHidden(); // a random password is not shown – it goes out by itself
   await expect(page.locator("#password")).not.toHaveValue("");
   await expect(page.locator("#submit")).toHaveText("Link zum Hochladen einfügen");
   await chooseKind(page, "files");
@@ -1390,7 +1395,7 @@ test("Nextcloud enforces link passwords: no 'Ohne Kennwort' option", async ({ pa
   await expect(page.locator("#account")).toContainText("max.mustermann"); // connection status has arrived
   await expect(page.locator("label:has(#mode-none)")).toBeHidden();
   await expect(page.locator("#mode-random")).toBeChecked();
-  await expect(page.locator("#password-group")).toBeVisible();
+  await expect(page.locator("#password-group")).toBeHidden(); // the random password is not shown
 });
 
 test("Dateien von Empfängern erhalten inserts an upload link with the same password", async ({ page }) => {
@@ -1424,6 +1429,7 @@ test("Zustellnachweis: only for files; ticked, it goes with the upload and the c
   // message or an upload link.
   await expect(page.locator("#panel-send h2", { hasText: /^Empfänger$/ })).toHaveCount(0);
   expect(await page.locator(".password-field + #password-to-field + #proof-field").count()).toBe(1);
+  await expect(page.locator("#password-to-field h2.section-title")).toHaveText("Kennwort an"); // a heading like "Kennwort"
   for (const kind of ["message", "request"] as const) {
     await chooseKind(page, kind);
     await expect(page.locator("#proof-field")).toBeHidden();
@@ -1564,7 +1570,8 @@ test("Kennwort per SMS: no password-link settings – the password is in the SMS
   expect(JSON.parse(calls.find((c) => c.path.endsWith("/complete"))!.body!.toString()).passwordDays).toBe(30);
 
   // The mail has its password now: "Kennwort an" is fixed for the next links (one password, one way).
-  await expect(page.locator("#password-channel input:checked")).toBeDisabled();
+  await expect(page.locator("#password-channel input:checked")).toBeEnabled(); // the chosen way stays active …
+  await expect(page.locator("#password-channel input:not(:checked)").first()).toBeDisabled(); // … the others are greyed out
 });
 
 test("Ohne Kennwort with download confirmation: the draft is tagged so the confirmation knows the sent mail", async ({ page }) => {
@@ -1782,17 +1789,27 @@ test("Verlauf: Kennwort shows the password and sends it again the same ways as t
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
   const panel = rows.nth(0).locator(".password-panel");
   await expect(panel.locator("input.mono")).toHaveValue("KateGeteFi45");
+  // Hidden at first; the eye shows it (and hides it again); copying works without showing it.
+  await expect(panel.locator("input.mono")).toHaveClass(/\bmasked\b/);
+  await expect(panel.locator(".reveal-password")).toHaveAttribute("aria-label", "Kennwort anzeigen");
+  await panel.locator(".reveal-password").click();
+  await expect(panel.locator("input.mono")).not.toHaveClass(/\bmasked\b/);
+  await expect(panel.locator(".reveal-password")).toHaveAttribute("aria-pressed", "true");
+  await panel.locator(".reveal-password").click();
+  await expect(panel.locator("input.mono")).toHaveClass(/\bmasked\b/);
   // The password went by SMS: SMS to the same number is suggested.
-  await expect(panel.locator("select")).toHaveValue("sms");
+  await expect(panel.locator('input[type=radio][value="sms"]')).toBeChecked();
   await expect(panel.locator(".channel-input")).toHaveValue("+491701234567");
+  // Radio buttons like "Kennwort an": the number field right below the chosen way.
+  await expect(panel.locator('label.radio:has(input[value="sms"]) + .channel-group')).toHaveCount(1);
   await expectAccessible(page);
   await shot(page, "password-panel");
 
   // The same choices as when sending: recipients of the message, another address, SMS.
-  await expect(panel.locator("select option")).toHaveText(["Empfänger der Nachricht", "Andere E-Mail-Adresse", "Rufnummer (SMS)"]);
+  await expect(panel.locator("label.radio")).toHaveText(["Empfänger der Nachricht", "Andere E-Mail-Adresse", "Rufnummer (SMS)"]);
 
   // Recipients of the message: To, Cc and Bcc as in the message – nothing to type, the hint names them.
-  await panel.locator("select").selectOption("recipients");
+  await panel.locator('label.radio:has(input[value="recipients"])').click();
   await expect(panel.locator(".channel-input")).toBeHidden();
   await expect(panel.locator(".hint")).toHaveText("Wie in der Nachricht – An: erika@example.com · Cc: chef@example.com · Bcc: archiv@example.com");
   await panel.locator(".send-password").click();
@@ -1806,7 +1823,7 @@ test("Verlauf: Kennwort shows the password and sends it again the same ways as t
   await expect.poll(() => calls.filter((c) => c.path === "/api/shares").length).toBe(2);
   await expect(panel).toBeHidden();
   await toggle.click();
-  await panel.locator("select").selectOption("mail");
+  await panel.locator('label.radio:has(input[value="mail"])').click();
   await expect(panel.locator(".channel-input")).toHaveValue("");
   await expect(panel.locator(".hint")).toHaveText("Jede Adresse erhält eine eigene Nachricht mit einem Link zum Kennwort.");
   await panel.locator(".channel-input").fill("kollege@example.com, buergerin@example.com");
@@ -1828,7 +1845,7 @@ test("Verlauf: Erneut senden an – contact suggestions and the address book add
   const row = page.locator("#shares .share").nth(0);
   await row.locator(".show-password").click();
   const panel = row.locator(".password-panel");
-  await panel.locator("select").selectOption("mail");
+  await panel.locator('label.radio:has(input[value="mail"])').click();
   const field = panel.locator(".channel-input");
   const book = panel.locator(".book-open");
   await expect(book).toBeVisible();
@@ -1858,7 +1875,7 @@ test("Verlauf: Erneut senden an – contact suggestions and the address book add
   await expect(field).toHaveValue("kollege@example.com, anna@example.com, bernd@example.org");
 
   // "Empfänger der Nachricht" needs no field – the address book button goes with it.
-  await panel.locator("select").selectOption("recipients");
+  await panel.locator('label.radio:has(input[value="recipients"])').click();
   await expect(book).toBeHidden();
   await expectAccessible(page);
 });
@@ -1875,7 +1892,7 @@ test("Verlauf: a password held back for the proof of delivery is not sent again 
   await expect(panel.locator(".hint")).toHaveText(
     "Zustellnachweis: Das Kennwort geht automatisch an jeden Empfänger, sobald er seine Adresse mit dem Code bestätigt hat. " +
     "Erneut senden können Sie es erst danach – so bleibt der Nachweis lückenlos.");
-  await expect(panel.locator("select")).toHaveCount(0);
+  await expect(panel.locator("input[type=radio]")).toHaveCount(0);
   await expect(panel.locator(".send-password")).toHaveCount(0);
   await expectAccessible(page);
   expect(calls.some((c) => c.path.endsWith("/password/send"))).toBe(false);
@@ -1889,8 +1906,8 @@ test("Verlauf: once confirmed, the password goes again to the confirmed recipien
   const row = page.locator("#shares .share").nth(0);
   await row.locator(".show-password").click();
   const panel = row.locator(".password-panel");
-  await panel.locator("select").selectOption("recipients");
-  await expect(panel.locator("select option").first()).toHaveText("Bestätigte Empfänger");
+  await panel.locator('label.radio:has(input[value="recipients"])').click();
+  await expect(panel.locator("label.radio").first()).toHaveText("Bestätigte Empfänger");
   await expect(panel.locator(".hint")).toHaveText(
     "Nur an Empfänger, die ihre Adresse mit dem Code bestätigt haben – jeder in einer eigenen Nachricht: erika@example.com");
 });
@@ -2006,8 +2023,8 @@ test("reading a mail: the links of that mail, \"Verlauf\" in the menu, nothing t
   await expect(inMail.nth(0).locator(".share-password")).toHaveAttribute("title", /zugestellt am 10.11.2026, 11:00 Uhr/);
   await expect(inMail.nth(1).locator(".share-item")).toHaveText("Dateianforderung");
   await expect(page.locator("#mail-none")).toBeHidden();
-  // Reading a mail too: "Aktualisieren" next to the title, the account at the bottom.
-  await expect(page.locator("#refresh-mail")).toBeVisible();
+  // Reading a mail too: no "Aktualisieren" next to the title (it reloads by itself), the account at the bottom.
+  await expect(page.locator("#panel-mail .list-head button")).toHaveCount(0);
   await expect(page.locator("#account-toggle")).toHaveText("max.mustermann");
   await expect(page.locator(".share .insert").first()).toBeHidden(); // a mail being read cannot take a link
   await expect(page.locator("#panel-mail")).not.toContainText("Weitere Freigaben");
@@ -2224,11 +2241,10 @@ test("narrow taskpane (320 px): no horizontal scrolling", async ({ page }) => {
   await shot(page, "send-320px");
 });
 
-test("reading a mail at 320 px: the title and its refresh button fit", async ({ page }) => {
+test("reading a mail at 320 px: the title fits", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   await openTaskpane(page, { shares: SHARES, readBody: SENT_MAIL });
   await expect(page.locator("#mail-heading")).toBeVisible();
-  await expect(page.locator("#refresh-mail")).toBeVisible();
   await expectNoHorizontalScroll(page);
   await shot(page, "read-320px");
 });

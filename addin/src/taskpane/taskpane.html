@@ -37,11 +37,7 @@
           <div class="content">
             <div class="list-head">
               <h2 class="subtitle" id="mail-heading">%%t:addin.read.heading%%</h2>
-              <button type="button" id="refresh-mail" class="btn btn-icon btn-subtle" title="%%t:addin.shares.refresh%%" aria-label="%%t:addin.shares.refresh%%">
-                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
-                  <path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </button>
+              <!-- No "Aktualisieren": the links reload on focus and when a pinned pane moves to another mail. -->
             </div>
             <div id="mail-shares" class="share-list" aria-live="polite"></div>
             <p class="caption" id="mail-none" hidden>%%t:addin.read.none%%</p>
@@ -168,11 +164,6 @@
             <div class="input-group" id="password-group">
               <input type="text" id="password" class="input mono" autocomplete="off" spellcheck="false"
                 aria-labelledby="password-label" aria-describedby="password-rules password-hint" />
-              <button type="button" id="generate" class="btn btn-icon" title="%%t:addin.password.generate%%" aria-label="%%t:addin.password.generate%%">
-                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
-                  <path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-              </button>
               <button type="button" id="reveal" class="btn btn-icon" title="%%t:addin.password.show%%" aria-label="%%t:addin.password.show%%" aria-pressed="false" hidden>
                 <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
                   <path d="M2 10s3-5.5 8-5.5 8 5.5 8 5.5-3 5.5-8 5.5S2 10 2 10Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
@@ -188,13 +179,13 @@
             <p class="hint" id="password-hint">%%t:addin.password.hint%%</p>
           </div>
 
-          <!-- "Kennwort an": part of "Kennwort" – how the password goes out (to the recipients, another address, or by
+          <!-- "Kennwort an": a section with its own heading below "Kennwort" – how the password goes out (to the recipients, another address, or by
                SMS); hidden with "Ohne Kennwort", fixed with the password once the mail has one (lockChannel). No heading
                "Empfänger" any more: the recipients' language is chosen in the settings only (recipientLanguage). -->
           <div class="field channel-field" id="password-to-field">
             <!-- Radio buttons like the password choices; the address or number field (and its hint) sits indented right
                  below the chosen option (showChannel). Only the ways offered in the settings are shown (applyChannelChoices). -->
-            <span class="label channel-label" id="password-channel-label">%%t:addin.channel.label%%</span>
+            <h2 class="section-title" id="password-channel-label">%%t:addin.channel.label%%</h2>
             <div class="channel-options" id="password-channel" role="radiogroup" aria-labelledby="password-channel-label">
               <label class="radio">
                 <input type="radio" name="password-channel" value="recipients" checked />

@@ -113,9 +113,11 @@ dragged onto the pane switch it to "Files".
    out in) and the body is written back with `body.setAsync`; if the card cannot be found it goes to the cursor. Text
    mails always insert at the cursor. It tags the draft with the custom property `cloudshareJob` (job ID) and records the link
    token in the draft state.
-5. The password field (with its rules and hint) sits indented right below the chosen option (`setPasswordMode`), like
+5. Only "Eigenes Kennwort" shows a password field (with its rules); a random password or the one of the last step is
+   not shown (it goes out by itself, "Verlauf" → "Kennwort" shows it later). Field and hint sit indented right below the
+   chosen option (`setPasswordMode`), like
    the address or number of "Kennwort an". One password per mail: after the step the taskpane selects "Gleiches Kennwort wie zuvor" (`mode-same`,
-   `DraftState.lastStep` = step ID and password) and greys out "Zufällig", "Eigenes", "Ohne Kennwort" and "Kennwort an"
+   `DraftState.lastStep` = step ID and password) and greys out "Zufällig", "Eigenes", "Ohne Kennwort" and the other ways of "Kennwort an" (the chosen way stays active, `applyChannelDisabled`)
    (`lockSeparate`, `lockChannel`): the next link – files, message or upload link – is sent with the same `step` and
    joins that part (`findPart`/`addFileToPart` on the server: same password, same Send, one password mail or SMS). The
    server refuses a link with a password that would open a second step in the job (`assertOnePassword`, 409
@@ -197,7 +199,7 @@ wins) – Nextcloud's housekeeping deletes expired shares, so the date could not
 
 ### 2.5 Password channel: recipients, another address or SMS
 
-"Kennwort an" (radio buttons right below the password, the address or number field indented under the chosen one – `showChannel`) in the taskpane decides **per insertion** where the password goes: every link carries
+"Kennwort an" (a section with its own heading right below the password, radio buttons, the address or number field indented under the chosen one – `showChannel`) in the taskpane decides **per insertion** where the password goes: every link carries
 its way in its request (`passwordTo` – `""` = the recipients – or `passwordSms`, `deliveryFrom` in `app.ts`), and the
 step collects the ways of its links (`SeparatePart.deliveries`). A step with links for the recipients and one of the
 same password by SMS sends one password mail and one SMS; each way exactly once, also after an error in another one
@@ -209,7 +211,7 @@ accepts); a picked entry is filled in and saved like a typed one. The address bo
 (`.book-open`, `addressBook.ts`) opens the page "Adressbuch" (`#panel-contacts`, `showOverlay("contacts")`): every
 entry of that kind A to Z under its first letter (`GET /api/contacts?all=1`), filtered while typing; a click takes it
 the same way and leads back to where it was opened (`contactsReturn`). "Erneut senden an" in "Verlauf" has the same
-field with both (`addressBook.register`, `attachContactSuggestions` with the kind following the select); it takes several
+field with both (`addressBook.register`, `attachContactSuggestions` with the kind following the chosen way – radio buttons like "Kennwort an", preselected with the way it went first, field and hint indented under the chosen one); it takes several
 addresses (`data-multiple`): the suggestions match the part after the last comma and a picked address is added to the list
 (`addToList`). Without the permission the buttons disappear (`onContactsUnavailable`). Without the optional delegated `Contacts.Read` the
 server answers `contacts: null` and the pane stops asking for the session.
@@ -362,7 +364,7 @@ test checks the German texts in the running stack.
 
 The manifest also adds the CloudShare button to the ribbon of a mail being **read** (`MessageReadCommandSurface`,
 pinnable via `SupportsPinning`; legacy `ItemRead` form for older clients). It opens `taskpane.html?view=read`: in place
-of "Senden" the links of that mail (`#panel-mail`, "Links in dieser Nachricht" with its own refresh `#refresh-mail`;
+of "Senden" the links of that mail (`#panel-mail`, "Links in dieser Nachricht", reloaded on focus and on `ItemChanged` – no refresh button;
 shown again when a pinned pane moves to another mail); "Verlauf" and the rest are in the account menu as while
 writing. A link revoked in one list disappears from both.
 
