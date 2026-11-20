@@ -140,36 +140,19 @@
               <span class="dot" aria-hidden="true"></span>
               <span>%%t:addin.password.none%%</span>
             </label>
-            <!-- "Ohne Kennwort" for a message or an upload link: shown greyed out, the "i" says why (taskpane.ts,
-                 renderKind) – the real option above stays hidden, so its lock logic is untouched. -->
+            <!-- "Ohne Kennwort" for a message or an upload link: shown greyed out with the reason as a hint below it
+                 (taskpane.ts, renderKind) – the real option above stays hidden, so its lock logic is untouched. -->
             <div class="unavailable" id="mode-none-unavailable" hidden>
-              <div class="unavailable-row">
-                <label class="radio">
-                  <input type="radio" disabled aria-describedby="mode-none-why" />
-                  <span class="dot" aria-hidden="true"></span>
-                  <span>%%t:addin.password.none%%</span>
-                </label>
-                <button type="button" id="mode-none-why-toggle" class="btn btn-icon btn-subtle info-toggle why-toggle"
-                  title="%%t:addin.unavailable.why%%" aria-label="%%t:addin.unavailable.why%%" aria-expanded="false" aria-controls="mode-none-why">
-                  <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
-                      <circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
-                      <path d="M10 9v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-                      <circle cx="10" cy="6.3" r=".95" fill="currentColor"/>
-                    </svg>
-
-                </button>
-              </div>
-              <p class="hint why" id="mode-none-why" hidden>%%t:addin.password.noneFilesOnly%%</p>
+              <label class="radio">
+                <input type="radio" disabled aria-describedby="mode-none-why" />
+                <span class="dot" aria-hidden="true"></span>
+                <span>%%t:addin.password.none%%</span>
+              </label>
+              <p class="hint why" id="mode-none-why">%%t:addin.password.noneFilesOnly%%</p>
             </div>
             <div class="input-group" id="password-group">
               <input type="text" id="password" class="input mono" autocomplete="off" spellcheck="false"
                 aria-labelledby="password-label" aria-describedby="password-rules password-hint" />
-              <button type="button" id="reveal" class="btn btn-icon" title="%%t:addin.password.show%%" aria-label="%%t:addin.password.show%%" aria-pressed="false" hidden>
-                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
-                  <path d="M2 10s3-5.5 8-5.5 8 5.5 8 5.5-3 5.5-8 5.5S2 10 2 10Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>
-                  <circle cx="10" cy="10" r="2.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
-                </svg>
-              </button>
             </div>
             <ul class="rules" id="password-rules" hidden>
               <li data-rule="length">%%t:addin.password.ruleLength%%</li>
@@ -235,22 +218,11 @@
                set apart from "Kennwort" like a section, without a heading. -->
           <div class="field switch-field proof-row" id="proof-field" hidden>
             <label class="switch" for="proof">
-              <span class="unavailable-label">
-                <span class="switch-text">%%t:addin.proof.label%%</span>
-                <!-- Fixed for this mail (applyProofLock): the "i" folds out why, like the greyed-out options. -->
-                <button type="button" id="proof-lock-toggle" class="btn btn-icon btn-subtle info-toggle why-toggle" hidden
-                  title="%%t:addin.unavailable.why%%" aria-label="%%t:addin.unavailable.why%%" aria-expanded="false" aria-controls="proof-lock-why">
-                  <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
-                    <circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="1.4"/>
-                    <path d="M10 9v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-                    <circle cx="10" cy="6.3" r=".95" fill="currentColor"/>
-                  </svg>
-                </button>
-              </span>
-              <input type="checkbox" role="switch" id="proof" aria-describedby="proof-hint proof-lock-why" />
+              <span class="switch-text">%%t:addin.proof.label%%</span>
+              <input type="checkbox" role="switch" id="proof" aria-describedby="proof-hint" />
               <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
             </label>
-            <p class="hint why" id="proof-lock-why" hidden></p>
+            <!-- What a proof does; when the switch is fixed for this mail (applyProofLock) the reason follows in the same text. -->
             <p class="hint" id="proof-hint">%%t:addin.proof.hint%%</p>
           </div>
 
@@ -507,6 +479,20 @@
                 </svg>
               </button>
               <h2 class="subtitle" id="help-heading">%%t:addin.help.heading%%</h2>
+              <!-- Search (helpSearch.ts): the magnifier folds out a field; sections without a hit are hidden, the others
+                   open with the hits marked. -->
+              <button type="button" id="help-search-toggle" class="btn btn-icon btn-subtle page-action" title="%%t:addin.help.searchOpen%%"
+                aria-label="%%t:addin.help.searchOpen%%" aria-expanded="false" aria-controls="help-search-row">
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                  <circle cx="8.5" cy="8.5" r="5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                  <path d="m12.2 12.2 4.3 4.3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                </svg>
+              </button>
+            </div>
+            <div id="help-search-row" hidden>
+              <input type="search" id="help-search" class="input proofs-search" placeholder="%%t:addin.help.searchPlaceholder%%"
+                aria-label="%%t:addin.help.searchLabel%%" aria-describedby="help-search-none" spellcheck="false" autocomplete="off" />
+              <p class="caption" id="help-search-none" role="status" hidden>%%t:addin.help.searchNone%%</p>
             </div>
             <p class="help-intro">%%t:addin.help.intro%%</p>
 

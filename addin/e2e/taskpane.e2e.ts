@@ -1302,9 +1302,10 @@ test("own password: live rule check, weak passwords are not accepted", async ({ 
   await expect(page.locator("#password-group")).toBeVisible(); // an own one needs its field
   const password = page.locator("#password");
   await expect(password).toHaveValue("");
-  // Hidden by CSS, never type="password" – Edge would offer to save it as a login.
+  // Visible while typing (no eye) and never type="password" – Edge would offer to save it as a login.
   await expect(password).toHaveAttribute("type", "text");
-  await expect(password).toHaveClass(/\bmasked\b/);
+  await expect(password).not.toHaveClass(/\bmasked\b/);
+  await expect(page.locator("#password-group button")).toHaveCount(0);
   await expect(page.locator("#password-rules")).toBeVisible();
 
   await password.fill("abc");
@@ -1316,8 +1317,6 @@ test("own password: live rule check, weak passwords are not accepted", async ({ 
   for (const rule of ["length", "classes", "variety"]) {
     await expect(page.locator(`#password-rules li[data-rule="${rule}"]`)).toHaveClass(/ok/);
   }
-  await page.click("#reveal");
-  await expect(password).not.toHaveClass(/\bmasked\b/);
   await page.click("#submit");
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
   const complete = calls.find((c) => c.path.endsWith("/complete"))!;
@@ -1370,13 +1369,12 @@ test("Nachricht / Anfordern: 'Ohne Kennwort' is not offered – a choice made fo
   await expect(page.locator("#password-group")).toBeHidden();
   await chooseKind(page, "request");
   await expect(page.locator("#mode-none-row")).toBeHidden();
-  // Greyed out instead of gone: the "i" folds out why.
+  // Greyed out instead of gone, the reason right below it (no "i" to click).
   const unavailable = page.locator("#mode-none-unavailable");
   await expect(unavailable).toBeVisible();
   await expect(unavailable.locator("input")).toBeDisabled();
-  await expect(page.locator("#mode-none-why")).toBeHidden();
-  await page.click("#mode-none-why-toggle");
-  await expect(page.locator("#mode-none-why-toggle")).toHaveAttribute("aria-expanded", "true");
+  await expect(unavailable.locator("button")).toHaveCount(0);
+  await expect(page.locator("#mode-none-why")).toBeVisible();
   await expect(page.locator("#mode-none-why")).toHaveText(
     "Nur für Dateien: Eine vertrauliche Nachricht und ein Upload-Link sind immer mit einem Kennwort geschützt.");
   await expectAccessible(page);
@@ -1457,12 +1455,12 @@ test("Zustellnachweis: only for files; ticked, it goes with the upload and the c
   // From now on this mail takes only files with a proof: no confidential message, no upload link, the switch fixed on.
   await expect(page.locator("#proof")).toBeChecked();
   await expect(page.locator("#proof")).toBeDisabled();
-  // No box at the top: the reason folds out from the "i" next to the switch; the hint under the switch stays as it was.
-  await expect(page.locator("#proof-lock-why")).toBeHidden();
-  await page.click("#proof-lock-toggle");
-  await expect(page.locator("#proof-lock-why")).toContainText("Diese Nachricht hat einen Zustellnachweis");
-  await expect(page.locator("#proof")).toBeChecked(); // the "i" sits in the switch's label but never toggles it
-  await expect(page.locator("#proof-hint")).toHaveText("Versand und Abrufe werden protokolliert; Empfänger bestätigen ihre Adresse mit einem Code.");
+  // No box at the top, no "i": the reason follows the text under the switch.
+  await expect(page.locator("#proof-field button")).toHaveCount(0);
+  await expect(page.locator("#proof-hint")).toHaveText(
+    "Versand und Abrufe werden protokolliert; Empfänger bestätigen ihre Adresse mit einem Code. " +
+    "Diese Nachricht hat einen Zustellnachweis – weitere Dateien gehen ebenfalls mit Nachweis. " +
+    "Vertrauliche Nachricht und Upload-Link bitte in einer eigenen Nachricht.");
   await expect(page.locator('input[name="kind"][value="message"]')).toBeDisabled();
   await expect(page.locator('input[name="kind"][value="request"]')).toBeDisabled();
   expect(JSON.parse((await officeLog(page)).session["cloudshare-state"])).toMatchObject({ proofMail: true });
@@ -1475,9 +1473,9 @@ test("Zustellnachweis: after a link without it, the mail takes no proof (never m
   await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
   await expect(page.locator("#proof")).not.toBeChecked();
   await expect(page.locator("#proof")).toBeDisabled();
-  await page.click("#proof-lock-toggle");
-  await expect(page.locator("#proof-lock-why")).toContainText("schon Links ohne Zustellnachweis");
-  await expect(page.locator("#proof-hint")).toHaveText("Versand und Abrufe werden protokolliert; Empfänger bestätigen ihre Adresse mit einem Code.");
+  await expect(page.locator("#proof-hint")).toHaveText(
+    "Versand und Abrufe werden protokolliert; Empfänger bestätigen ihre Adresse mit einem Code. " +
+    "Diese Nachricht enthält schon Links ohne Zustellnachweis. Für einen Zustellnachweis bitte eine eigene Nachricht verwenden.");
   // A message or an upload link is still fine here.
   await expect(page.locator('input[name="kind"][value="message"]')).toBeEnabled();
   await expectAccessible(page);
@@ -1818,21 +1816,22 @@ test("Verlauf: Kennwort shows the password and sends it again the same ways as t
   const sends = () => calls.filter((c) => c.path === "/api/shares/11/password/send").map((c) => JSON.parse(c.body!.toString()));
   expect(sends()[0]).toEqual({ channel: "recipients", to: "" });
 
-  // Other addresses: each gets a mail of its own (server), typed here.
+  // Another address: one, like "Kennwort an" when sending (several recipients: "Empfänger der Nachricht").
   // The list reloads after sending (new state of the password) – wait for it, then open the panel again.
   await expect.poll(() => calls.filter((c) => c.path === "/api/shares").length).toBe(2);
   await expect(panel).toBeHidden();
   await toggle.click();
   await panel.locator('label.radio:has(input[value="mail"])').click();
   await expect(panel.locator(".channel-input")).toHaveValue("");
-  await expect(panel.locator(".hint")).toHaveText("Jede Adresse erhält eine eigene Nachricht mit einem Link zum Kennwort.");
-  await panel.locator(".channel-input").fill("kollege@example.com, buergerin@example.com");
+  await expect(panel.locator(".hint")).toHaveText("Nur diese Adresse erhält eine Nachricht mit einem Link zum Kennwort.");
+  await expect(panel.locator(".channel-input")).toHaveAttribute("placeholder", "name@beispiel.de");
+  await panel.locator(".channel-input").fill("kollege@example.com");
   await panel.locator(".send-password").click();
-  await expect(page.locator("#status")).toHaveText("Das Kennwort wurde an kollege@example.com, buergerin@example.com geschickt.");
-  expect(sends()[1]).toEqual({ channel: "mail", to: "kollege@example.com, buergerin@example.com" });
+  await expect(page.locator("#status")).toHaveText("Das Kennwort wurde an kollege@example.com geschickt.");
+  expect(sends()[1]).toEqual({ channel: "mail", to: "kollege@example.com" });
 });
 
-test("Verlauf: Erneut senden an – contact suggestions and the address book add to the list and lead back", async ({ page }) => {
+test("Verlauf: Erneut senden an – contact suggestions and the address book fill in the one address and lead back", async ({ page }) => {
   await openTaskpane(page, {
     shares: [{ ...SHARES[0], passwordAvailable: true }],
     config: { smsEnabled: true },
@@ -1851,28 +1850,28 @@ test("Verlauf: Erneut senden an – contact suggestions and the address book add
   await expect(book).toBeVisible();
   await expect(book).toHaveAttribute("aria-label", "Aus dem Adressbuch wählen");
 
-  // Typing the next address of the list: suggestions for the part after the comma, the earlier address stays.
-  await field.fill("kollege@example.com, ann");
+  // Typing: suggestions from the contacts, a click takes the address (one address, no list).
+  await field.fill("ann");
   const options = panel.locator(".suggestions [role=option]");
   await expect(options).toHaveCount(1);
   await options.nth(0).click();
-  await expect(field).toHaveValue("kollege@example.com, anna@example.com");
+  await expect(field).toHaveValue("anna@example.com");
 
-  // The address book: opened from "Verlauf", a click adds the address and leads back to "Verlauf", the panel still open.
+  // The address book: opened from "Verlauf", a click replaces the address and leads back to "Verlauf", the panel still open.
   await book.click();
   await expect(page.locator("#panel-contacts")).toBeVisible();
   await expect(page.locator("#panel-shares")).toBeHidden();
   await page.locator(".contact-entry", { hasText: "Bernd Muster" }).click();
   await expect(page.locator("#panel-contacts")).toBeHidden();
   await expect(page.locator("#panel-shares")).toBeVisible();
-  await expect(field).toHaveValue("kollege@example.com, anna@example.com, bernd@example.org");
+  await expect(field).toHaveValue("bernd@example.org");
   await expect(field).toBeFocused();
 
   // Escape on the address book also leads back to "Verlauf", not to "Senden".
   await book.click();
   await page.keyboard.press("Escape");
   await expect(page.locator("#panel-shares")).toBeVisible();
-  await expect(field).toHaveValue("kollege@example.com, anna@example.com, bernd@example.org");
+  await expect(field).toHaveValue("bernd@example.org");
 
   // "Empfänger der Nachricht" needs no field – the address book button goes with it.
   await panel.locator('label.radio:has(input[value="recipients"])').click();
@@ -2156,6 +2155,42 @@ test("Hilfe: \"Hilfe\" in the account menu opens the guide in place of the tab, 
   await page.click("#help-close");
   await expect(page.locator("#panel-help")).toBeHidden();
   await expect(page.locator("#panel-send")).toBeVisible();
+});
+
+test("Hilfe: the magnifier searches the guide – only sections with a hit, opened and marked; Escape brings it back", async ({ page }) => {
+  await openTaskpane(page, { config: { smsEnabled: true } });
+  await openHelp(page);
+  const sections = page.locator("#panel-help details.help-section:not([hidden])");
+  const all = await sections.count();
+  const toggle = page.locator("#help-search-toggle");
+  await expect(toggle).toHaveAttribute("aria-label", "In der Hilfe suchen");
+  await expect(page.locator("#help-search")).toBeHidden();
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(page.locator("#help-search")).toBeFocused();
+
+  // Every word must be in a section; the others go, the hits are marked (case and umlauts do not matter).
+  await page.locator("#help-search").fill("SMS zugestellt");
+  const shown = page.locator("#panel-help details.help-section:not([hidden]):not(.search-miss)");
+  await expect.poll(() => shown.count()).toBeGreaterThan(0);
+  expect(await shown.count()).toBeLessThan(all);
+  for (const section of await shown.all()) await expect(section).toHaveAttribute("open", "");
+  await expect(page.locator("#panel-help mark.help-hit").first()).toBeVisible();
+  await expect(page.locator(".help-intro")).toBeHidden();
+  await expectAccessible(page);
+
+  // Nothing found: said so.
+  await page.locator("#help-search").fill("xyzzy");
+  await expect(shown).toHaveCount(0);
+  await expect(page.locator("#help-search-none")).toHaveText("Nichts gefunden – versuchen Sie ein anderes Wort.");
+
+  // Escape closes the search only – the guide is back as it was, no marks left, the page stays open.
+  await page.locator("#help-search").press("Escape");
+  await expect(page.locator("#help-search")).toBeHidden();
+  await expect(page.locator("#panel-help")).toBeVisible();
+  await expect(shown).toHaveCount(all);
+  await expect(page.locator("#panel-help mark.help-hit")).toHaveCount(0);
+  await expect(page.locator(".help-intro")).toBeVisible();
 });
 
 test("Nextcloud öffnen opens the user's Nextcloud in the browser", async ({ page }) => {

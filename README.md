@@ -94,7 +94,8 @@ three.
 2. Choose the password (radio buttons; the password field appears right under the chosen option):
    - **Random password** (default) – easy to read out, in varying patterns, e.g. `KateGeteFi45`, `47RantoBeKiwu`. It is
      not shown in the pane (it goes out by itself; if needed, "History" → **Password** shows it after inserting).
-   - **Own password** – a field to type it opens under the option; at least 12 characters, three of four character types.
+   - **Own password** – a field to type it opens under the option (visible while you type); at least 12 characters,
+     three of four character types.
    - **No password** – only for files and only if your Nextcloud allows links without a password. Anyone with the
      link can download the file while the link is valid; no password goes out, and that mail cannot get a
      confidential message or upload link any more (the pane says so).
@@ -135,8 +136,8 @@ read (default 5 days, at most 30 – Vaultwarden's limit), then it is deleted.
 **Receiving files** (**Request**): **"Insert upload link"** inserts a link through which the recipients can upload
 files – also very large ones – straight into your Nextcloud (folder `CloudShare-File-Requests`).
 
-Confidential messages and upload links always have a password, so "No password" is greyed out there; the "i" next to it
-says why. "Proof of delivery" exists for files only (Nextcloud can show that a file was downloaded, not that a text was
+Confidential messages and upload links always have a password, so "No password" is greyed out there with the reason
+right below it. "Proof of delivery" exists for files only (Nextcloud can show that a file was downloaded, not that a text was
 read) and is not shown for the other two.
 
 <br clear="right">
@@ -171,9 +172,9 @@ The icons next to the name (their names show on hover and are explained in the h
 - **Copy** – copies the link.
 - **Password** (key) – for links with password, until they expire: shows the password (hidden until you click the eye; "Copy" works without showing it) and sends it **again**, the same
   ways as the first time (radio buttons, preselected: the way it went then): to the **recipients of the message** – To, Cc and Bcc
-  exactly as in the sent mail –, to **other addresses** (each gets a mail of its own, nobody sees the others) or by
-  **SMS**; as under "Password to", your Outlook contacts are suggested while you type and the **address book** icon
-  next to the field picks one (several addresses separated by commas). A mail again only contains a link to the
+  exactly as in the sent mail –, to **another address** (exactly one, like "Password to" when sending – several
+  recipients get it with "recipients of the message") or by **SMS**; as under "Password to", your Outlook contacts are
+  suggested while you type and the **address book** icon next to the field picks one. A mail again only contains a link to the
   password, never the password itself.
 - **Insert** (chain) – inserts the file again into the mail you are writing, as a *new* link – with the password of that mail (a new one if it has none yet).
 - **Revoke** (crossed-out circle) – ends the link at once (two clicks: the icon turns into "Sure?"). The file then
@@ -195,12 +196,13 @@ there. Confidential messages are not listed (they are not stored in Nextcloud).
 
 <img src="docs/images/taskpane-help.png" alt="Help, opened from the account menu at the bottom left: a short introduction and sections to open – Getting started, Sending large files (open), Password and how it is sent, Confidential message, Receiving files from others, History, Frequently asked questions" width="300" align="right">
 
-**Help for users:** the **question mark** at the bottom right of the pane opens a short guide ("Hilfe") written for
+**Help for users:** **"Help"** in the account menu (bottom left) opens a short guide ("Hilfe") written for
 everyday users without IT knowledge – e.g. clerks in an administration: the first connection, sending large files
 step by step, choosing the password and how it is sent (with a clear note that personal or confidential data always go
 with a password), the confidential message, receiving files, "History" and frequently asked questions ("The
 recipients did not get a password", "I sent the link to the wrong person" …). Short sections to open as needed; the
-most common one is open. It opens as a page of its own in place of "Send", like the history, the settings and the proofs of delivery; the arrow "←" before its title or Escape leads back. It is
+most common one is open; the **magnifier** at the top right searches it (only sections with a hit stay, opened, the hits
+marked; Escape ends the search). It opens as a page of its own in place of "Send", like the history, the settings and the proofs of delivery; the arrow "←" before its title or Escape leads back. It is
 also there when the pane was opened from a sent mail. Its last sentence points to the IT support – put your own
 contact there, see [Languages](#languages) (`help.support`).
 
@@ -463,7 +465,7 @@ default, offered for "Files" only (not for a confidential message or an upload l
 - **One mail, one kind**: a mail with a proof of delivery takes only files with a proof – no confidential message, no
   upload link, no file without a proof (they have no confirmation page, and their password would reach the recipients
   before the confirmation). A mail with links without a proof takes no proof. The pane offers only what fits (the switch
-  is fixed after the first link, "Message" and "Request" are greyed out, the "i" next to the fixed switch says why); the server refuses a mix when inserting and
+  is fixed after the first link, "Message" and "Request" are greyed out, the text under the fixed switch says why); the server refuses a mix when inserting and
   when sending (409 `PROOF_MIX`).
 - **Guessing**: after five addresses that are no recipients within an hour, the page takes no code requests for that
   link for an hour (the answer still reads the same) and the sender gets one mail with the attempts (time, address,

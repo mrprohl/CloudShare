@@ -37,8 +37,7 @@ export function onContactsUnavailable(listener: () => void): void {
  * Turns `input` into a combobox with suggestions of `kind`. `usable` leaves out entries that could not be used (an SMS
  * number of a country that is not allowed). A picked entry is filled in and announced like typed text ("input",
  * "change"), so the field checks and saves it as usual. `kind` may be a function for a field that switches between
- * address and number ("Erneut senden an"); a field for several addresses (`data-multiple`) searches the part after the
- * last comma and adds the picked address to the list.
+ * address and number ("Erneut senden an").
  */
 export function attachContactSuggestions(
   input: HTMLInputElement,
@@ -46,9 +45,7 @@ export function attachContactSuggestions(
   usable: (value: string, kind: "mail" | "sms") => boolean,
 ): void {
   const currentKind = () => (typeof kindOf === "function" ? kindOf() : kindOf);
-  const multiple = () => currentKind() === "mail" && input.dataset.multiple !== undefined;
-  /** What is searched: the whole field, or the address being typed in a list. */
-  const typed = () => (multiple() ? (input.value.split(/[,;]/).pop() ?? "") : input.value).trim();
+  const typed = () => input.value.trim();
   const list = document.createElement("ul");
   list.id = `${input.id}-suggestions`;
   list.className = "suggestions";
@@ -88,7 +85,7 @@ export function attachContactSuggestions(
   const choose = (index: number) => {
     const entry = shown[index];
     if (!entry) return;
-    input.value = multiple() ? addToList(input.value, entry.value) : entry.value;
+    input.value = entry.value;
     close();
     input.dispatchEvent(new Event("input", { bubbles: true }));
     input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -170,14 +167,4 @@ export function attachContactSuggestions(
     clearTimeout(timer);
     close();
   });
-}
-
-/** `list` ("a@x.de, b@y.de" or a half-typed last part) with `address` added – the half-typed part is replaced. */
-export function addToList(list: string, address: string): string {
-  const parts = list.split(/[,;]/).map((part) => part.trim());
-  const last = parts.pop() ?? "";
-  // A complete last address stays; a fragment ("mai") gives way to the picked one.
-  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(last)) parts.push(last);
-  const kept = parts.filter(Boolean).filter((part) => part.toLowerCase() !== address.toLowerCase());
-  return [...kept, address].join(", ");
 }

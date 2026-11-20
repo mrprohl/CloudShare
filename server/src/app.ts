@@ -1223,7 +1223,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       }
 
       if (channel !== "mail" && channel !== "recipients") throw new HttpError(400, t("server.channelInvalid"));
-      // Who gets a mail: the original distribution in one mail, or every other address in a mail of its own.
+      // Who gets a mail: the original distribution in one mail, or the one other address (like "Kennwort an" when sending).
       let mails: MailRecipients[];
       let others: string[] = [];
       if (channel === "recipients" && ref.deferred) {
@@ -1235,11 +1235,11 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         }
         mails = [original];
       } else {
-        others = [...new Set(target.split(/[\s,;]+/).filter(Boolean))];
-        if (others.length === 0 || others.length > 20 || !others.every(isEmailAddress)) {
-          throw new HttpError(400, t("server.recipientsInvalid", { max: 20 }));
-        }
-        mails = others.map((address) => ({ to: [address], cc: [], bcc: [] }));
+        // One address only – several recipients get it with "Empfänger der Nachricht" (an older add-in may send a list).
+        const address = target.trim();
+        if (!isEmailAddress(address)) throw new HttpError(400, t("server.resendOneAddress"));
+        others = [address];
+        mails = [{ to: [address], cc: [], bcc: [] }];
       }
 
       const password = await readSendPassword(ref.sendId);

@@ -2,13 +2,12 @@
  * "Adressbuch": the button next to "Andere E-Mail-Adresse" / "Rufnummer (SMS)" opens a page with the user's own
  * Outlook contacts A to Z (GET /api/contacts?all=1, optional Contacts.Read), grouped by first letter and filtered while
  * typing. A click takes the address or number into the field – checked and saved like a typed one – and leads back.
- * A field for several addresses (`data-multiple`, "Erneut senden an" in "Verlauf") gets the address added to the list.
  * Buttons in the static page are found at start, those built later (the resend panel) come in by `register`. Without
  * the permission the buttons disappear (onContactsUnavailable).
  */
 import { t } from "../shared/i18n";
 import { api } from "../shared/office";
-import { addToList, contactsUnavailable, markContactsUnavailable, onContactsUnavailable, type ContactSuggestion } from "./contactSuggest";
+import { contactsUnavailable, markContactsUnavailable, onContactsUnavailable, type ContactSuggestion } from "./contactSuggest";
 
 interface Options {
   token: () => Promise<string>;
@@ -49,7 +48,7 @@ export function initAddressBook(options: Options) {
 
   const pick = (entry: ContactSuggestion) => {
     if (!target) return;
-    target.value = kind === "mail" && target.dataset.multiple !== undefined ? addToList(target.value, entry.value) : entry.value;
+    target.value = entry.value;
     options.show(false);
     target.dispatchEvent(new Event("input", { bubbles: true }));
     target.dispatchEvent(new Event("change", { bubbles: true }));
