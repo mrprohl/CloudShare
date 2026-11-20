@@ -92,12 +92,13 @@ three.
    the file). When the attachments of the mail are larger than the threshold together (default 5 MB), Outlook also shows a hint
    above the mail.
 2. Choose the password (radio buttons; the password field appears right under the chosen option):
-   - **Random password** (default) – easy to read out, in varying patterns, e.g. `KateGeteFi45`, `47RantoBeKiwu`.
+   - **Random password** (default) – easy to read out, in varying patterns, e.g. `KateGeteFi45`, `47RantoBeKiwu`. It is
+     not shown in the pane (it goes out by itself; if needed, "History" → **Password** shows it after inserting).
    - **Own password** – a field to type it opens under the option; at least 12 characters, three of four character types.
    - **No password** – only for files and only if your Nextcloud allows links without a password. Anyone with the
      link can download the file while the link is valid; no password goes out, and that mail cannot get a
      confidential message or upload link any more (the pane says so).
-3. Right below the password, always in sight: **"Password to"** (radio buttons; the address or number field appears under the chosen one) – the recipients of the mail (default), **another e-mail address** (e.g. a colleague),
+3. Right below the password, always in sight: **"Password to"** (a heading like "Password", radio buttons; the address or number field appears under the chosen one) – the recipients of the mail (default), **another e-mail address** (e.g. a colleague),
    or a **phone number (SMS)** if SMS is set up – the password arrives as plain text, sent after the mail. While you
    type the address or number, matching entries of your **Outlook contacts** drop down below the field (name and
    address or number; arrow keys and Enter or a click), and the **address book** icon next to the field opens all of
@@ -168,8 +169,8 @@ without CloudShare): then it says **"Password not sent yet."** and stays until y
 The icons next to the name (their names show on hover and are explained in the help):
 
 - **Copy** – copies the link.
-- **Password** (key) – for links with password, until they expire: shows the password and sends it **again**, the same
-  ways as the first time (preselected: the way it went then): to the **recipients of the message** – To, Cc and Bcc
+- **Password** (key) – for links with password, until they expire: shows the password (hidden until you click the eye; "Copy" works without showing it) and sends it **again**, the same
+  ways as the first time (radio buttons, preselected: the way it went then): to the **recipients of the message** – To, Cc and Bcc
   exactly as in the sent mail –, to **other addresses** (each gets a mail of its own, nobody sees the others) or by
   **SMS**; as under "Password to", your Outlook contacts are suggested while you type and the **address book** icon
   next to the field picks one (several addresses separated by commas). A mail again only contains a link to the
@@ -667,11 +668,13 @@ swallows the screenshot):
 ```powershell
 $edge = "C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"
 $repo = (Get-Location).Path; $url = "file:///" + ($repo -replace '\\','/') + "/docs/mockups"
-$opts = "--headless=new", "--hide-scrollbars", "--user-data-dir=$env:TEMP\cloudshare-edge"
 foreach ($shot in @(("outlook-compose", "compose-send", "1440,1200"), ("mail-received", "mail-received", "760,800"),
                     ("password-mail", "password-mail", "760,692"), ("sender-notices", "sender-notices", "760,942"),
                     ("proof-gateway", "proof-gateway", "1390,640"), ("proof-pdf", "proof-pdf", "860,1060"))) {
-  Start-Process -Wait $edge ($opts + "--window-size=$($shot[2])", "--screenshot=$repo\docs\images\$($shot[0]).png", "$url/$($shot[1]).html")
+  # A fresh profile each time and a time limit: a profile left over from an earlier run can keep Edge from exiting.
+  $opts = "--headless=new", "--hide-scrollbars", "--disable-gpu", "--no-first-run", "--user-data-dir=$env:TEMP\cloudshare-edge-$(Get-Random)"
+  $p = Start-Process $edge ($opts + "--window-size=$($shot[2])", "--screenshot=$repo\docs\images\$($shot[0]).png", "$url/$($shot[1]).html") -PassThru
+  if (-not $p.WaitForExit(60000)) { $p.Kill(); Write-Warning "$($shot[0]): Edge did not finish" }
 }
 ```
 

@@ -55,7 +55,6 @@ const noAttachments = $<HTMLParagraphElement>("no-attachments");
 const fileInput = $<HTMLInputElement>("file");
 const passwordInput = $<HTMLInputElement>("password");
 const passwordHint = $<HTMLParagraphElement>("password-hint");
-const generateButton = $<HTMLButtonElement>("generate");
 const revealButton = $<HTMLButtonElement>("reveal");
 const modeRandom = $<HTMLInputElement>("mode-random");
 const modeOwn = $<HTMLInputElement>("mode-own");
@@ -106,7 +105,6 @@ const validitySummary = $<HTMLSpanElement>("validity-summary");
 const expireField = $<HTMLDivElement>("expire-field");
 const messageDaysField = $<HTMLDivElement>("message-days-field");
 const expireHint = $<HTMLParagraphElement>("expire-hint");
-const refreshMailButton = $<HTMLButtonElement>("refresh-mail");
 const sharesOpen = $<HTMLButtonElement>("shares-open");
 const sharesClose = $<HTMLButtonElement>("shares-close");
 const sharesSearch = $<HTMLInputElement>("shares-search");
@@ -1026,6 +1024,7 @@ const channelHint = (channel: Channel) =>
 
 function showChannel(channel: Channel) {
   for (const radio of channelRadios) radio.checked = radio.value === channel;
+  applyChannelDisabled(); // a fixed mail keeps only its way active
   passwordToInput.hidden = channel !== "mail";
   passwordSmsInput.hidden = channel !== "sms";
   passwordToGroup.hidden = passwordToInput.hidden;
@@ -1047,8 +1046,8 @@ function showChannel(channel: Channel) {
  * first (greyed out like the password choices; the hint under the password says why).
  */
 function lockChannel(locked: boolean) {
-  for (const radio of channelRadios) radio.disabled = locked || radio.dataset.offered === "false";
   channelGroup.title = locked ? t("password.hintOnePassword") : "";
+  applyChannelDisabled();
   passwordToInput.readOnly = locked;
   passwordSmsInput.readOnly = locked;
   for (const id of ["password-to-book", "password-sms-book"]) $<HTMLButtonElement>(id).disabled = locked;
@@ -1057,13 +1056,21 @@ function lockChannel(locked: boolean) {
 /** "Kennwort senden an" offers the ways chosen in the settings – and always the one this mail already uses. */
 function applyChannelChoices(keep: Channel) {
   const offered = new Set<string>(userSettings().channels);
-  const locked = channelGroup.title !== ""; // fixed for this mail (lockChannel)
   for (const radio of channelRadios) {
     const show = offered.has(radio.value) || radio.value === keep;
     radio.dataset.offered = String(show);
     radio.closest<HTMLElement>("label")!.hidden = !show;
-    radio.disabled = !show || locked;
   }
+  applyChannelDisabled();
+}
+
+/**
+ * Which ways can be clicked: not those left out by the settings; with the mail's one password fixed (lockChannel) only
+ * the chosen way stays active – like "Gleiches Kennwort wie zuvor" above it –, the others are greyed out.
+ */
+function applyChannelDisabled() {
+  const locked = channelGroup.title !== "";
+  for (const radio of channelRadios) radio.disabled = radio.dataset.offered === "false" || (locked && !radio.checked);
 }
 
 /** The valid target of the chosen channel ({} = recipients), or null while the address / number is not valid. */
@@ -1343,7 +1350,9 @@ function setPasswordMode(mode: "same" | "random" | "own" | "none") {
   modeRandom.checked = mode === "random";
   modeOwn.checked = own;
   modeNone.checked = none;
-  passwordGroup.hidden = none;
+  // Only an own password needs a field: a random one (or the one of the last step) goes out by itself and can be looked
+  // up later under "Verlauf" → "Kennwort" – not shown here, so nobody reads it off a shared screen.
+  passwordGroup.hidden = !own;
   passwordToField.hidden = none;
   // Like "Kennwort an": the password field (with its rules) and the hint sit indented right below the chosen option –
   // "Ohne Kennwort" only gets the hint.
@@ -1351,7 +1360,6 @@ function setPasswordMode(mode: "same" | "random" | "own" | "none") {
   option.after(passwordGroup, rulesList, passwordHint);
   applyLinkMax();
   passwordInput.readOnly = !own;
-  generateButton.hidden = own || same;
   revealButton.hidden = !own;
   rulesList.hidden = !own;
   if (none) {
@@ -1402,7 +1410,7 @@ function lockPassword() {
   modeRandom.disabled = true;
   modeOwn.disabled = true;
   modeNone.disabled = true;
-  generateButton.hidden = true;
+  passwordGroup.hidden = true; // not shown, like a random password (see setPasswordMode)
   rulesList.hidden = true;
   revealButton.hidden = false;
   setRevealed(false);
@@ -1582,10 +1590,6 @@ maxAccessInput.addEventListener("change", async () => {
     if (err instanceof ApiError && err.code === "SEND_FIXED") maxAccessInput.readOnly = true;
     setStatus(t("maxAccess.failed", { error: errorMessage(err) }), "error");
   }
-});
-
-generateButton.addEventListener("click", () => {
-  passwordInput.value = generatePassword();
 });
 
 // --- What to insert: "Dateien" / "Nachricht" / "Anfordern" ------------------------------------------------------
@@ -2360,17 +2364,6 @@ proofsClose.addEventListener("click", () => {
   showOverlay(null);
   accountToggle.focus();
 });
-// "Aktualisieren" on the links of a mail being read ("Verlauf" reloads by itself when opened and on focus).
-refreshMailButton.addEventListener("click", () => {
-  refreshMailButton.disabled = true;
-  refreshMailButton.setAttribute("aria-busy", "true");
-  loadShares()
-    .catch((err) => setStatus(errorMessage(err), "error"))
-    .then(() => {
-      refreshMailButton.disabled = false;
-      refreshMailButton.removeAttribute("aria-busy");
-    });
-});
 
 // --- History ("Verlauf") -----------------------------------------------------
 
@@ -2558,6 +2551,11 @@ const COPY_ICON =
   '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><rect x="7" y="7" width="9" height="10" rx="1.5" fill="none" ' +
   'stroke="currentColor" stroke-width="1.4"/><path d="M13 4.5V4a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h.5" ' +
   'fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
+/** "Kennwort anzeigen" – the same eye as next to an own password in "Senden" (taskpane.html, #reveal). */
+const EYE_ICON =
+  '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true">' +
+  '<path d="M2 10s3-5.5 8-5.5 8 5.5 8 5.5-3 5.5-8 5.5S2 10 2 10Z" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>' +
+  '<circle cx="10" cy="10" r="2.5" fill="none" stroke="currentColor" stroke-width="1.4"/></svg>';
 /** "Adressbuch" – the same symbol as next to "Kennwort an" in "Senden" (taskpane.html). */
 const BOOK_ICON =
   '<svg class="icon" viewBox="0 0 20 20" aria-hidden="true">' +
@@ -2581,7 +2579,6 @@ const ICONS = {
   revoke: icon('<circle cx="10" cy="10" r="6.5"/><path d="M5.4 5.4l9.2 9.2"/>'),
   /** "Nachweis": a document with a seal (the PDF of the delivery proof). */
   proof: icon('<path d="M11.5 3H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h3"/><path d="M11.5 3L15 6.5V9"/><path d="M8 7h3M8 10h2"/><circle cx="14" cy="13" r="2.5"/><path d="M12.8 15.2L12.5 18l1.5-.8 1.5.8-.3-2.8"/>'),
-  /** Same drawing as the refresh button in the tab bar (taskpane.html). */
 } as const;
 
 /** The help explains the actions with their icons: `<span data-icon="copy">` gets the icon. */
@@ -2642,20 +2639,37 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
   const id = panel.id;
   panel.innerHTML =
     `<label class="label" for="${id}-value"></label>` +
-    `<div class="input-group"><input type="text" id="${id}-value" class="input mono" readonly spellcheck="false" />` +
+    // Hidden at first (nobody reads it off a shared screen); the eye shows it, "Kopieren" works without showing it.
+    `<div class="input-group"><input type="text" id="${id}-value" class="input mono masked" readonly spellcheck="false" />` +
+    `<button type="button" class="btn btn-icon reveal-password" aria-pressed="false">${EYE_ICON}</button>` +
     `<button type="button" class="btn btn-icon copy-password">${COPY_ICON}</button></div>` +
-    `<label class="label" for="${id}-channel"></label>` +
-    `<div class="select-wrap"><select id="${id}-channel" class="input select"></select></div>` +
+    // "Erneut senden an": radio buttons like "Kennwort an" in "Senden"; the address or number field and the hint sit
+    // indented right below the chosen way (showChannel moves them there).
+    `<span class="label" id="${id}-channel-label"></span>` +
+    `<div class="channel-options" id="${id}-channel" role="radiogroup" aria-labelledby="${id}-channel-label">` +
     // Several addresses, separated by commas; suggestions while typing and the address book like under "Kennwort an".
     `<div class="input-group channel-group"><input id="${id}-to" class="input channel-input" spellcheck="false" ` +
     `aria-describedby="${id}-hint" data-multiple />` +
     `<button type="button" class="btn btn-icon book-open" aria-controls="panel-contacts" data-target="${id}-to">${BOOK_ICON}</button></div>` +
-    `<p class="hint" id="${id}-hint"></p>` +
+    `<p class="hint" id="${id}-hint"></p></div>` +
     `<button type="button" class="btn send-password"></button>`;
-  const [passwordLabel, channelLabel] = Array.from(panel.querySelectorAll("label"));
+  const passwordLabel = panel.querySelector<HTMLLabelElement>("label")!;
+  const channelLabel = panel.querySelector<HTMLElement>(`#${id}-channel-label`)!;
   passwordLabel.textContent = t("resend.password");
   channelLabel.textContent = t("resend.channel");
   panel.querySelector<HTMLInputElement>(`#${id}-value`)!.value = sent.password;
+
+  const value = panel.querySelector<HTMLInputElement>(`#${id}-value`)!;
+  const reveal = panel.querySelector<HTMLButtonElement>(".reveal-password")!;
+  const showValue = (shown: boolean) => {
+    value.classList.toggle("masked", !shown);
+    reveal.setAttribute("aria-pressed", String(shown));
+    const label = t(shown ? "password.hide" : "password.show");
+    reveal.title = label;
+    reveal.setAttribute("aria-label", label);
+  };
+  showValue(false);
+  reveal.addEventListener("click", () => showValue(value.classList.contains("masked")));
 
   const copy = panel.querySelector<HTMLButtonElement>(".copy-password")!;
   copy.title = t("resend.copy");
@@ -2665,15 +2679,16 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
     setStatus(t("resend.copied"), "success");
   });
 
-  const channel = panel.querySelector<HTMLSelectElement>(`#${id}-channel`)!;
+  const waysGroup = panel.querySelector<HTMLDivElement>(`#${id}-channel`)!;
+  const channelValue = (): ResendChannel =>
+    (waysGroup.querySelector<HTMLInputElement>("input[type=radio]:checked")?.value ?? "recipients") as ResendChannel;
   // Delivery proof, nobody confirmed yet: nothing to send again – the password goes out by itself after the code.
   const verified = sent.verified ?? [];
   if (sent.deferred && verified.length === 0) {
     const held = document.createElement("p");
     held.className = "hint";
     held.textContent = t("resend.held");
-    channelLabel.nextElementSibling?.remove(); // the select
-    for (const element of [channelLabel, panel.querySelector(".channel-group"), panel.querySelector(`#${id}-hint`), panel.querySelector(".send-password")]) {
+    for (const element of [channelLabel, waysGroup, panel.querySelector(".send-password")]) {
       element?.remove();
     }
     panel.append(held);
@@ -2688,8 +2703,23 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
     ["mail", t("channel.mail")],
   ];
   if (serverConfig.smsEnabled) options.push(["sms", t("channel.sms")]);
-  for (const [value, text] of options) if (offered.includes(value) || value === first) channel.add(new Option(text, value));
-  channel.value = first;
+  for (const [value, text] of options) {
+    if (!offered.includes(value) && value !== first) continue;
+    const label = document.createElement("label");
+    label.className = "radio";
+    const radio = document.createElement("input");
+    radio.type = "radio";
+    radio.name = `${id}-channel`;
+    radio.value = value;
+    radio.checked = value === first;
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    dot.setAttribute("aria-hidden", "true");
+    const caption = document.createElement("span");
+    caption.textContent = text;
+    label.append(radio, dot, caption);
+    waysGroup.insertBefore(label, waysGroup.querySelector(".channel-group"));
+  }
 
   const target = panel.querySelector<HTMLInputElement>(`#${id}-to`)!;
   const targetGroup = target.closest<HTMLElement>(".channel-group")!;
@@ -2698,10 +2728,10 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
   book.title = t("contacts.bookOpen");
   book.setAttribute("aria-label", t("contacts.bookOpen"));
   addressBook.register(book);
-  const targetKind = () => (channel.value === "sms" ? "sms" : "mail") as "mail" | "sms";
+  const targetKind = () => (channelValue() === "sms" ? "sms" : "mail") as "mail" | "sms";
   attachContactSuggestions(target, targetKind, (value, kind) => contactUsable(kind, value));
   const showChannel = () => {
-    const value = channel.value as ResendChannel;
+    const value = channelValue();
     const sms = value === "sms";
     // The recipients of the message need no input – the hint names them.
     target.hidden = value === "recipients";
@@ -2719,14 +2749,20 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
         : sms
           ? t("resend.smsHint") + smsCountriesHint()
           : t("resend.mailHint");
+    // Field and hint right below the chosen way (the suggestion list stays directly under the field).
+    const chosen = waysGroup.querySelector<HTMLInputElement>("input[type=radio]:checked")!.closest("label")!;
+    const list = targetGroup.nextElementSibling?.classList.contains("suggestions") ? targetGroup.nextElementSibling : null;
+    chosen.after(targetGroup, ...(list ? [list] : []), hint);
     target.removeAttribute("aria-invalid");
   };
-  channel.addEventListener("change", showChannel);
+  waysGroup.addEventListener("change", (event) => {
+    if ((event.target as HTMLInputElement).type === "radio") showChannel();
+  });
   showChannel();
 
   /** A number from a country SMS may not go to: told when it is entered and instead of sending. */
   const smsTargetProblem = (): string | null => {
-    if (channel.value !== "sms") return null;
+    if (channelValue() !== "sms") return null;
     const number = normalizePhone(target.value);
     return number ? smsNumberProblem(number, "resend") : null;
   };
@@ -2755,7 +2791,7 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
     try {
       const result = await api<{ channel: ResendChannel; to: string }>(
         `/api/shares/${encodeURIComponent(share.id)}/password/send`,
-        { method: "POST", body: JSON.stringify({ channel: channel.value, to: target.value }) },
+        { method: "POST", body: JSON.stringify({ channel: channelValue(), to: target.value }) },
         await getToken(),
       );
       const sentKey = { recipients: "resend.sentRecipients", mail: "resend.sentMail", sms: "resend.sentSms" }[result.channel];
