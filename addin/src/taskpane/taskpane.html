@@ -192,43 +192,51 @@
                SMS); hidden with "Ohne Kennwort", fixed with the password once the mail has one (lockChannel). No heading
                "Empfänger" any more: the recipients' language is chosen in the settings only (recipientLanguage). -->
           <div class="field channel-field" id="password-to-field">
-            <div class="inline-row">
-              <label for="password-channel" class="inline-label">%%t:addin.channel.label%%</label>
-              <div class="select-wrap">
-                <select id="password-channel" class="input select">
-                  <option value="recipients">%%t:addin.channel.recipients%%</option>
-                  <option value="mail">%%t:addin.channel.mail%%</option>
-                  <option value="sms" id="channel-sms-option">%%t:addin.channel.sms%%</option>
-                </select>
+            <!-- Radio buttons like the password choices; the address or number field (and its hint) sits indented right
+                 below the chosen option (showChannel). Only the ways offered in the settings are shown (applyChannelChoices). -->
+            <span class="label channel-label" id="password-channel-label">%%t:addin.channel.label%%</span>
+            <div class="channel-options" id="password-channel" role="radiogroup" aria-labelledby="password-channel-label">
+              <label class="radio">
+                <input type="radio" name="password-channel" value="recipients" checked />
+                <span class="dot" aria-hidden="true"></span>
+                <span>%%t:addin.channel.recipients%%</span>
+              </label>
+              <label class="radio">
+                <input type="radio" name="password-channel" value="mail" />
+                <span class="dot" aria-hidden="true"></span>
+                <span>%%t:addin.channel.mail%%</span>
+              </label>
+              <div class="input-group channel-group" id="password-to-group" hidden>
+                <input type="email" id="password-to" class="input channel-input" placeholder="%%t:addin.channel.mailPlaceholder%%" autocomplete="email"
+                  spellcheck="false" aria-label="%%t:addin.channel.mailLabel%%" aria-describedby="password-to-hint" hidden />
+                <button type="button" id="password-to-book" class="btn btn-icon book-open" title="%%t:addin.contacts.bookOpen%%"
+                  aria-label="%%t:addin.contacts.bookOpen%%" aria-controls="panel-contacts" data-target="password-to">
+                  <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M5 3.5h10a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.2"/>
+                    <path d="M4 6.5h-1.2M4 10h-1.2M4 13.5h-1.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                    <circle cx="10" cy="8.5" r="2" fill="none" stroke="currentColor" stroke-width="1.2"/>
+                    <path d="M6.8 14c.5-1.7 1.7-2.6 3.2-2.6s2.7.9 3.2 2.6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                  </svg>
+                </button>
               </div>
-            </div>
-            <!-- The address or number, typed (suggestions from the own contacts, contactSuggest.ts) or picked from the
-                 "Adressbuch" page behind the button (addressBook.ts; hidden without Contacts.Read). -->
-            <div class="input-group channel-group" id="password-to-group" hidden>
-              <input type="email" id="password-to" class="input channel-input" placeholder="%%t:addin.channel.mailPlaceholder%%" autocomplete="email"
-                spellcheck="false" aria-label="%%t:addin.channel.mailLabel%%" aria-describedby="password-to-hint" hidden />
-              <button type="button" id="password-to-book" class="btn btn-icon book-open" title="%%t:addin.contacts.bookOpen%%"
-                aria-label="%%t:addin.contacts.bookOpen%%" aria-controls="panel-contacts" data-target="password-to">
-                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
-                  <path d="M5 3.5h10a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.2"/>
-                  <path d="M4 6.5h-1.2M4 10h-1.2M4 13.5h-1.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-                  <circle cx="10" cy="8.5" r="2" fill="none" stroke="currentColor" stroke-width="1.2"/>
-                  <path d="M6.8 14c.5-1.7 1.7-2.6 3.2-2.6s2.7.9 3.2 2.6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-                </svg>
-              </button>
-            </div>
-            <div class="input-group channel-group" id="password-sms-group" hidden>
-              <input type="tel" id="password-sms" class="input channel-input" placeholder="%%t:addin.channel.smsPlaceholder%%" autocomplete="tel"
-                aria-label="%%t:addin.channel.smsLabel%%" aria-describedby="password-to-hint" hidden />
-              <button type="button" id="password-sms-book" class="btn btn-icon book-open" title="%%t:addin.contacts.bookOpen%%"
-                aria-label="%%t:addin.contacts.bookOpen%%" aria-controls="panel-contacts" data-target="password-sms">
-                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
-                  <path d="M5 3.5h10a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.2"/>
-                  <path d="M4 6.5h-1.2M4 10h-1.2M4 13.5h-1.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-                  <circle cx="10" cy="8.5" r="2" fill="none" stroke="currentColor" stroke-width="1.2"/>
-                  <path d="M6.8 14c.5-1.7 1.7-2.6 3.2-2.6s2.7.9 3.2 2.6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-                </svg>
-              </button>
+              <label class="radio" id="channel-sms-option">
+                <input type="radio" name="password-channel" value="sms" />
+                <span class="dot" aria-hidden="true"></span>
+                <span>%%t:addin.channel.sms%%</span>
+              </label>
+              <div class="input-group channel-group" id="password-sms-group" hidden>
+                <input type="tel" id="password-sms" class="input channel-input" placeholder="%%t:addin.channel.smsPlaceholder%%" autocomplete="tel"
+                  aria-label="%%t:addin.channel.smsLabel%%" aria-describedby="password-to-hint" hidden />
+                <button type="button" id="password-sms-book" class="btn btn-icon book-open" title="%%t:addin.contacts.bookOpen%%"
+                  aria-label="%%t:addin.contacts.bookOpen%%" aria-controls="panel-contacts" data-target="password-sms">
+                  <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M5 3.5h10a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-11a1 1 0 0 1 1-1Z" fill="none" stroke="currentColor" stroke-width="1.2"/>
+                    <path d="M4 6.5h-1.2M4 10h-1.2M4 13.5h-1.2" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                    <circle cx="10" cy="8.5" r="2" fill="none" stroke="currentColor" stroke-width="1.2"/>
+                    <path d="M6.8 14c.5-1.7 1.7-2.6 3.2-2.6s2.7.9 3.2 2.6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                  </svg>
+                </button>
+              </div>
             </div>
             <p class="hint" id="password-to-hint" hidden></p>
           </div>

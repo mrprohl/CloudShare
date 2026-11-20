@@ -91,13 +91,13 @@ three.
    Every attachment is ticked when the pane opens (untick what should go as a normal attachment; the "×" of a row removes
    the file). When the attachments of the mail are larger than the threshold together (default 5 MB), Outlook also shows a hint
    above the mail.
-2. Choose the password:
+2. Choose the password (radio buttons; the password field appears right under the chosen option):
    - **Random password** (default) – easy to read out, in varying patterns, e.g. `KateGeteFi45`, `47RantoBeKiwu`.
-   - **Own password** – at least 12 characters, three of four character types.
+   - **Own password** – a field to type it opens under the option; at least 12 characters, three of four character types.
    - **No password** – only for files and only if your Nextcloud allows links without a password. Anyone with the
      link can download the file while the link is valid; no password goes out, and that mail cannot get a
      confidential message or upload link any more (the pane says so).
-3. Right below the password, always in sight: **"Password to"** – the recipients of the mail (default), **another e-mail address** (e.g. a colleague),
+3. Right below the password, always in sight: **"Password to"** (radio buttons; the address or number field appears under the chosen one) – the recipients of the mail (default), **another e-mail address** (e.g. a colleague),
    or a **phone number (SMS)** if SMS is set up – the password arrives as plain text, sent after the mail. While you
    type the address or number, matching entries of your **Outlook contacts** drop down below the field (name and
    address or number; arrow keys and Enter or a click), and the **address book** icon next to the field opens all of

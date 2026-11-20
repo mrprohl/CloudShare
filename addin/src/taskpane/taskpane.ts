@@ -82,8 +82,10 @@ const encryptedConfirmRow = $<HTMLLabelElement>("encrypted-confirm-row");
 const encryptedDismiss = $<HTMLButtonElement>("encrypted-dismiss");
 /** Names of the encrypted files the note was shown for ("" = none). */
 let encryptedShown = "";
-const channelSelect = $<HTMLSelectElement>("password-channel");
-const channelSmsOption = $<HTMLOptionElement>("channel-sms-option");
+/** "Kennwort an": radio buttons (recipients / another address / SMS) in the group #password-channel. */
+const channelGroup = $<HTMLDivElement>("password-channel");
+const channelRadios = Array.from(channelGroup.querySelectorAll<HTMLInputElement>('input[name="password-channel"]'));
+const channelSmsOption = $<HTMLLabelElement>("channel-sms-option");
 const passwordSmsInput = $<HTMLInputElement>("password-sms");
 const passwordToInput = $<HTMLInputElement>("password-to");
 /** Each with its "Adressbuch" button (addressBook.ts). */
@@ -1015,7 +1017,7 @@ const smsCountriesHint = () =>
 
 type Channel = "recipients" | "mail" | "sms";
 const selectedChannel = (): Channel => {
-  const value = channelSelect.value;
+  const value = channelRadios.find((radio) => radio.checked)?.value;
   return value === "sms" || value === "mail" ? value : "recipients";
 };
 
@@ -1023,13 +1025,19 @@ const channelHint = (channel: Channel) =>
   channel === "mail" ? t("channel.hintMail") : channel === "sms" ? t("channel.hintSms") : "";
 
 function showChannel(channel: Channel) {
-  channelSelect.value = channel;
+  for (const radio of channelRadios) radio.checked = radio.value === channel;
   passwordToInput.hidden = channel !== "mail";
   passwordSmsInput.hidden = channel !== "sms";
   passwordToGroup.hidden = passwordToInput.hidden;
   passwordSmsGroup.hidden = passwordSmsInput.hidden;
   passwordToHint.hidden = channel === "recipients";
   passwordToHint.textContent = channelHint(channel);
+  // The hint under the field of the chosen option (its suggestion list stays right below the field).
+  if (channel !== "recipients") {
+    const group = channel === "mail" ? passwordToGroup : passwordSmsGroup;
+    const list = group.nextElementSibling?.classList.contains("suggestions") ? group.nextElementSibling : group;
+    list.after(passwordToHint);
+  }
   renderValidity();
   renderSubmit(); // another address or SMS needs its input first
 }
@@ -1039,8 +1047,8 @@ function showChannel(channel: Channel) {
  * first (greyed out like the password choices; the hint under the password says why).
  */
 function lockChannel(locked: boolean) {
-  channelSelect.disabled = locked;
-  channelSelect.title = locked ? t("password.hintOnePassword") : "";
+  for (const radio of channelRadios) radio.disabled = locked || radio.dataset.offered === "false";
+  channelGroup.title = locked ? t("password.hintOnePassword") : "";
   passwordToInput.readOnly = locked;
   passwordSmsInput.readOnly = locked;
   for (const id of ["password-to-book", "password-sms-book"]) $<HTMLButtonElement>(id).disabled = locked;
@@ -1049,10 +1057,12 @@ function lockChannel(locked: boolean) {
 /** "Kennwort senden an" offers the ways chosen in the settings – and always the one this mail already uses. */
 function applyChannelChoices(keep: Channel) {
   const offered = new Set<string>(userSettings().channels);
-  for (const option of Array.from(channelSelect.options)) {
-    const show = offered.has(option.value) || option.value === keep;
-    option.hidden = !show;
-    option.disabled = !show;
+  const locked = channelGroup.title !== ""; // fixed for this mail (lockChannel)
+  for (const radio of channelRadios) {
+    const show = offered.has(radio.value) || radio.value === keep;
+    radio.dataset.offered = String(show);
+    radio.closest<HTMLElement>("label")!.hidden = !show;
+    radio.disabled = !show || locked;
   }
 }
 
@@ -1093,7 +1103,8 @@ async function applyChannel(target: { passwordTo?: string; passwordSms?: string 
   }
 }
 
-channelSelect.addEventListener("change", () => {
+channelGroup.addEventListener("change", (event) => {
+  if (!channelRadios.includes(event.target as HTMLInputElement)) return; // the address or number field has its own
   const channel = selectedChannel();
   showChannel(channel);
   if (channel === "mail") passwordToInput.focus();
@@ -1334,6 +1345,10 @@ function setPasswordMode(mode: "same" | "random" | "own" | "none") {
   modeNone.checked = none;
   passwordGroup.hidden = none;
   passwordToField.hidden = none;
+  // Like "Kennwort an": the password field (with its rules) and the hint sit indented right below the chosen option –
+  // "Ohne Kennwort" only gets the hint.
+  const option = (same ? modeSameRow : none ? modeNoneRow : (own ? modeOwn : modeRandom).closest<HTMLElement>("label")!);
+  option.after(passwordGroup, rulesList, passwordHint);
   applyLinkMax();
   passwordInput.readOnly = !own;
   generateButton.hidden = own || same;
@@ -1392,6 +1407,8 @@ function lockPassword() {
   revealButton.hidden = false;
   setRevealed(false);
   lockChannel(true);
+  // A mail from before steps: its one password under the checked option (random by default), like setPasswordMode.
+  (modeOwn.checked ? modeOwn : modeRandom).closest<HTMLElement>("label")!.after(passwordGroup, rulesList, passwordHint);
   renderPasswordHint();
 }
 
