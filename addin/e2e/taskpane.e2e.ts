@@ -2176,7 +2176,7 @@ test("Hilfe: the magnifier searches the guide – only sections with a hit, open
   expect(await shown.count()).toBeLessThan(all);
   for (const section of await shown.all()) await expect(section).toHaveAttribute("open", "");
   await expect(page.locator("#panel-help mark.help-hit").first()).toBeVisible();
-  await expect(page.locator(".help-intro")).toBeHidden();
+  await expect(page.locator("#panel-help .help-intro")).toBeHidden();
   await expectAccessible(page);
 
   // Nothing found: said so.
@@ -2190,7 +2190,7 @@ test("Hilfe: the magnifier searches the guide – only sections with a hit, open
   await expect(page.locator("#panel-help")).toBeVisible();
   await expect(shown).toHaveCount(all);
   await expect(page.locator("#panel-help mark.help-hit")).toHaveCount(0);
-  await expect(page.locator(".help-intro")).toBeVisible();
+  await expect(page.locator("#panel-help .help-intro")).toBeVisible();
 });
 
 test("Nextcloud öffnen opens the user's Nextcloud in the browser", async ({ page }) => {

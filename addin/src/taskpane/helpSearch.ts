@@ -96,7 +96,7 @@ export function initHelpSearch() {
     }
   };
 
-  toggle.addEventListener("click", () => open(row.hidden));
+  toggle.addEventListener("click", () => open(row.hidden !== false)); // hidden may also be "until-found"
   input.addEventListener("input", search);
   input.addEventListener("keydown", (event) => {
     if (event.key !== "Escape") return;
