@@ -27,6 +27,7 @@ import { labelCatalog, mailLabel, readFileLabel, setMailLabel, type FileLabel, t
 import { attachContactSuggestions } from "./contactSuggest";
 import { initAddressBook } from "./addressBook";
 import { initHelpSearch } from "./helpSearch";
+import { skeletonRows } from "./skeleton";
 import { withCardAfterLast } from "./cardPlace";
 import { initFeedback, noteError } from "./feedback";
 
@@ -40,6 +41,8 @@ const connectButton = $<HTMLButtonElement>("connect");
 const connectHint = $<HTMLParagraphElement>("connect-hint");
 const connectLink = $<HTMLAnchorElement>("connect-link");
 const sendView = $<HTMLElement>("send-view");
+/** Placeholders while the pane starts (taskpane.html) – gone once the connection is known or the start failed. */
+const startView = $<HTMLElement>("start-view");
 const accountText = $<HTMLElement>("account");
 const accountToggle = $<HTMLButtonElement>("account-toggle");
 const accountMenu = $<HTMLDivElement>("account-menu");
@@ -289,6 +292,7 @@ function storageText(status: ConnectionStatus): string {
 }
 
 function showConnection(status: ConnectionStatus) {
+  startView.hidden = true;
   connectView.hidden = status.connected;
   sendView.hidden = !status.connected;
   connectHint.hidden = true;
@@ -316,7 +320,12 @@ function showConnection(status: ConnectionStatus) {
   showAccountMenu(false);
   applyPasswordPolicy(status.passwordEnforced === true);
   // Reading a mail: the list is all there is – load it as soon as the connection is there (also right after connecting).
-  if (readMode && status.connected) loadShares().catch((err) => setStatus(errorMessage(err), "error"));
+  if (readMode && status.connected) {
+    loadShares().catch((err) => {
+      mailShares.replaceChildren(); // no placeholders left behind
+      setStatus(errorMessage(err), "error");
+    });
+  }
 }
 
 /** Hides "Ohne Kennwort" when Nextcloud enforces link passwords (it would refuse such a link). */
@@ -2048,7 +2057,15 @@ function openShares() {
   showAccountMenu(false);
   showOverlay("shares");
   sharesSearch.focus();
-  loadShares().catch((err) => setStatus(errorMessage(err), "error"));
+  // Not loaded yet: placeholders until the list is there (a reload keeps the list in sight).
+  if (sharesList.childElementCount === 0) {
+    sharesList.replaceChildren(skeletonRows());
+    noShares.hidden = true;
+  }
+  loadShares().catch((err) => {
+    sharesList.querySelector(".skeleton")?.remove();
+    setStatus(errorMessage(err), "error");
+  });
 }
 
 const showHelp = (open: boolean) => showOverlay(open ? "help" : null);
@@ -2288,13 +2305,15 @@ async function openProofs() {
   showAccountMenu(false);
   showOverlay("proofs");
   proofsSearch.focus();
-  proofsList.replaceChildren();
-  proofsEmpty.hidden = false;
-  proofsEmpty.textContent = t("proofs.loading");
+  // Placeholders until the proofs are there.
+  proofsList.replaceChildren(skeletonRows());
+  proofsEmpty.hidden = true;
   try {
     proofItems = await api<ProofItem[]>("/api/proofs", {}, await getToken());
     renderProofs();
   } catch (err) {
+    proofsList.replaceChildren();
+    proofsEmpty.hidden = false;
     proofsEmpty.textContent = t("proofs.failed", { error: errorMessage(err) });
   }
 }
@@ -3103,11 +3122,21 @@ async function mailTokens(): Promise<Set<string>> {
 async function startReadView() {
   currentView = "mail";
   showOverlay(null); // loaded as soon as the connection is known (showConnection)
+  /** Placeholders for the links of the mail until they are loaded. */
+  const loadingMail = () => {
+    mailShares.replaceChildren(skeletonRows(2));
+    mailNone.hidden = true;
+  };
+  loadingMail();
   try {
     Office.context.mailbox.addHandlerAsync(Office.EventType.ItemChanged, () => {
       setStatus(""); // a message about the previous mail (e.g. a revoked link) does not belong to this one
       showOverlay(null); // another mail: its links
-      loadShares().catch((err) => setStatus(errorMessage(err), "error"));
+      loadingMail();
+      loadShares().catch((err) => {
+        mailShares.replaceChildren();
+        setStatus(errorMessage(err), "error");
+      });
     });
   } catch {
     // Pinning is not available in every Outlook version – the pane then closes with the mail anyway.
@@ -3115,6 +3144,7 @@ async function startReadView() {
   try {
     await refreshConnection(); // loads the shares once connected (showConnection)
   } catch (err) {
+    startView.hidden = true; // the start failed: the message says why, no placeholders
     setStatus(t("signInFailed", { error: errorMessage(err) }), "error", retryAction());
   }
 }
@@ -3150,6 +3180,7 @@ Office.onReady(async () => {
       // Caching is best effort.
     }
   } catch {
+    startView.hidden = true; // the start failed: the message says why, no placeholders
     setStatus(t("unreachable", { url: API_BASE }), "error", retryAction());
     return;
   }
@@ -3233,6 +3264,7 @@ Office.onReady(async () => {
   try {
     await refreshConnection();
   } catch (err) {
+    startView.hidden = true; // the start failed: the message says why, no placeholders
     setStatus(t("signInFailed", { error: errorMessage(err) }), "error", retryAction());
   }
 });

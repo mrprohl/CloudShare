@@ -38,6 +38,8 @@
   --success-fg: #0e700e;
   --warning-fg: #bc4b09;
   --highlight-bg: #fff4ce;
+  --skeleton-bg: #ebebeb;
+  --skeleton-shine: #f7f7f7;
   --shadow: 0 0 2px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.14);
 }
 
@@ -73,6 +75,8 @@
   --success-fg: #54b054;
   --warning-fg: #f98845;
   --highlight-bg: #5c4b00;
+  --skeleton-bg: #333333;
+  --skeleton-shine: #474747;
 }
 
 /* Before Office reports its theme, follow the system setting. */
@@ -80,7 +84,7 @@
   :root:not([data-theme]) {
     --fg1: #ffffff; --fg2: #d6d6d6; --fg3: #adadad; --bg1: #292929; --bg1-hover: #3d3d3d; --bg3: #333333;
     --stroke1: #666666; --stroke2: #525252; --stroke-accessible: #adadad; --brand-fg: #479ef5;
-    --warning-fg: #f98845; --highlight-bg: #5c4b00;
+    --warning-fg: #f98845; --highlight-bg: #5c4b00; --skeleton-bg: #333333; --skeleton-shine: #474747;
   }
 }
 
@@ -111,6 +115,11 @@ section > .section-title:first-child { margin-top: 16px; }
 .caption, .hint { font-size: 12px; line-height: 16px; color: var(--fg3); margin: 4px 0 0; }
 /* Below the password: why nothing can be inserted (mail already has links without password). */
 .hint.warning { color: var(--danger-fg); }
+/* A description under an item looks the same everywhere: 12px from the bottom of the item (its letters, a field's or
+   a switch's edge) to the top of the description's letters, measured in the rendered pane. The empty space around the
+   lines differs, so the margins do: under a field 8px, under an option (4px padding of its row) 2px, under a switch
+   8px, under the rules of an own password 5px. */
+:is(.input-group, .select-wrap, .textarea) + .hint, .hint-row .hint { margin-top: 8px; }
 a { color: var(--brand-fg); text-decoration: none; }
 a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* Links inside running text must not rely on colour alone (WCAG 1.4.1, axe link-in-text-block). */
@@ -287,18 +296,18 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* The password field, its rules and the hint indented below the chosen option (dot 16px + gap 8px), like "Kennwort an". */
 .password-field > .input-group, .password-field > .rules, .password-field > #password-hint { margin-left: 24px; }
 /* Like the hint under "Kennwort an": right below its option, the same gap above and below. */
-.password-field > #password-hint { margin-top: 0; margin-bottom: 4px; }
+.password-field > #password-hint { margin-top: 2px; margin-bottom: 4px; }
 /* After the rules of an own password (not right below an option) the hint needs the same gap as below it. */
-.password-field > .rules:not([hidden]) + #password-hint { margin-top: 6px; } /* a hidden list is still the neighbour */
+.password-field > .rules:not([hidden]) + #password-hint { margin-top: 5px; } /* a hidden list is still the neighbour */
 .proof-row { margin-top: 20px; }
 /* "Kennwort an": radio buttons like the password choices; the address or number field and its hint indented below the
    chosen option (the width of the dot plus its gap). */
 .channel-options .channel-group, .channel-options > .hint { margin-left: 24px; }
-.channel-options .channel-group { margin-top: 2px; margin-bottom: 4px; }
+.channel-options .channel-group { margin-top: 3px; margin-bottom: 4px; }
 /* The same gap above (to the field) and below (to the next way), like the hint under the password. */
-.channel-options > .hint { margin-top: 0; margin-bottom: 4px; }
+.channel-options > .hint { margin-top: 2px; margin-bottom: 4px; }
 /* … with 4px only when the address or number field is shown above it (a hidden field is still a neighbour). */
-.channel-options > .channel-group:not([hidden]) ~ .hint { margin-top: 4px; margin-bottom: 2px; }
+.channel-options > .channel-group:not([hidden]) ~ .hint { margin-top: 8px; margin-bottom: 2px; }
 .inline-row { display: grid; grid-template-columns: 7em minmax(0, 1fr); align-items: center; column-gap: 12px; }
 .inline-label { color: var(--fg1); }
 .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
@@ -313,11 +322,11 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* Fixed for this mail (it has links with or without a proof already): greyed out like Outlook's locked switches. */
 .switch input:disabled, .switch:has(input:disabled) { cursor: not-allowed; }
 .switch input:disabled + .switch-track { opacity: .5; }
-.switch-field .hint { margin-top: 2px; }
+.switch-field .hint { margin-top: 8px; }
 /* An option that does not exist for the chosen kind: greyed out, the reason as a hint below it – indented like the hint
    under a chosen option (showUnavailable). */
 .unavailable .radio { cursor: default; }
-.unavailable .why { margin: 0 0 4px 24px; }
+.unavailable .why { margin: 2px 0 4px 24px; }
 /* "Kennwort senden an": native select in the look of the inputs, own chevron (follows the theme colours). */
 .select-wrap { position: relative; }
 .select-wrap::after {
@@ -330,7 +339,7 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .suffix { color: var(--fg2); }
 /* Confidential message: multi-line, grows by hand, same look as the inputs. */
 .input.textarea { display: block; width: 100%; height: auto; min-height: 92px; padding: 6px 10px; resize: vertical; }
-#message-count { margin: 4px 0 0; }
+#message-count { margin: 8px 0 0; }
 #message-count.over { color: var(--danger-fg); }
 
 /* --- Checkbox ------------------------------------------------------------------ */
@@ -441,7 +450,7 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .radio input:focus-visible + .dot { outline: 2px solid var(--focus); outline-offset: 1px; }
 .radio input:disabled + .dot, .radio input:disabled ~ span { opacity: 0.5; }
 .radio:has(input:disabled) { cursor: default; }
-.field .radio + .input-group { margin-top: 4px; }
+.field .radio + .input-group { margin-top: 3px; }
 
 /* --- Password rules ------------------------------------------------------------- */
 .rules { list-style: none; margin: 6px 0 0; padding: 0; font-size: 12px; line-height: 16px; color: var(--fg3); }
@@ -655,9 +664,8 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 /* --- Personal settings (gear in the account line, settings.ts) ------------------- */
 .settings-group { margin: 0 0 8px; padding: 0 0 12px; border: 0; border-bottom: 1px solid var(--stroke2); min-width: 0; }
 .settings-group legend { padding: 0; margin-top: 12px; }
-.settings-text { margin: 0 0 4px; }
+.settings-text { margin: 0 0 4px; } /* under a heading (like the text under "Anhänge"), not under an item */
 .settings-field { margin: 8px 0 0; }
-.settings-group .select-wrap + .hint { margin-top: 4px; }
 .checkbox-text { flex: 1; min-width: 0; }
 .checkbox-hint { display: inline-block; margin: 2px 0 0; }
 .signature-input { margin-top: 8px; }
@@ -692,3 +700,26 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 }
 .placeholder:hover { border-color: var(--brand-bg); color: var(--brand-fg); }
 .placeholder:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+
+/* Loading placeholders (skeleton.ts, #start-view): grey bars in the shape of what is coming, shimmering like Outlook
+   while it loads; the content takes their place without a jump. No shimmer with reduced motion. */
+.skeleton { display: flex; flex-direction: column; gap: 16px; padding: 4px 0; }
+.skeleton-row { display: flex; align-items: flex-start; gap: 12px; }
+.skeleton-lines { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+.skeleton-field { display: flex; flex-direction: column; gap: 8px; }
+.skeleton-icon, .skeleton-line, .skeleton-box {
+  background: linear-gradient(90deg, var(--skeleton-bg) 25%, var(--skeleton-shine) 50%, var(--skeleton-bg) 75%);
+  background-size: 200% 100%; animation: skeleton-shimmer 1.4s ease-in-out infinite;
+}
+.skeleton-icon { flex: none; width: 20px; height: 20px; border-radius: 4px; }
+.skeleton-dot { width: 16px; height: 16px; border-radius: 50%; }
+.skeleton-line { height: 10px; border-radius: 4px; }
+.skeleton-lines .skeleton-line:first-child { height: 12px; }
+.skeleton-heading { height: 14px; margin-top: 8px; }
+.skeleton-box { height: 32px; border-radius: 4px; }
+.skeleton-tall { height: 36px; border-radius: 6px; }
+.skeleton-drop { height: 96px; border-radius: 6px; }
+.skeleton .w25 { width: 25%; } .skeleton .w30 { width: 30%; } .skeleton .w50 { width: 50%; }
+.skeleton .w55 { width: 55%; } .skeleton .w60 { width: 60%; } .skeleton .w70 { width: 70%; }
+@keyframes skeleton-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton-icon, .skeleton-line, .skeleton-box { animation: none; } }

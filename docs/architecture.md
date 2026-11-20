@@ -823,6 +823,12 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   sections without every word get `.search-miss` (never `hidden`, which server switches use), the others open with the
   hits as `mark.help-hit`; Escape or an empty field restores the guide, leaving the page resets it. Texts in the language files (`help.*`); admins put their own support contact into
   `help.support` (`/config/locales`). Plain words, the button names of the pane, no technical terms.
+- **Loading** (`skeleton.ts`, `#start-view`): while the pane starts (sign-in, settings, connection) and while "Verlauf",
+  "Zustellnachweise", the links of a mail being read or settings not loaded at the start come in, grey shimmering
+  placeholders in the shape of the content stand in their place (`skeletonRows`, `skeletonForm`; `role="status"`,
+  `aria-busy`, "Wird geladen …" for screen readers; no shimmer with `prefers-reduced-motion`). The start placeholders
+  are in `taskpane.html`, so they show before any script runs; `showConnection` or a failed start hides them. A reload
+  of a list that is already there keeps it in sight; a failure removes the placeholders and the message bar says why.
 - **Messages** (`#status`, `setStatus`): progress (kind `progress`) and a failed start (with "Erneut versuchen") stay until the next message; all other messages – success, error, grey notes – disappear
   after `SUCCESS_MESSAGE_SECONDS` (default 5, `0` = they stay, served in `/api/config`) – the ring around the tick, "!" or "i" runs
   down clockwise like an OTP timer (CSS animation `status-timer`, the message goes on `animationend`) and stops while

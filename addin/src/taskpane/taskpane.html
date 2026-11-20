@@ -14,6 +14,23 @@
     <main class="pane">
       <div id="status" class="messagebar" role="status" hidden></div>
 
+      <!-- While the pane starts (sign-in, settings, connection): placeholders in the shape of "Senden", shown before any
+           script runs; hidden once the connection is known (showConnection) or the start failed (skeleton.ts). -->
+      <section id="start-view" class="content start-view">
+        <div class="skeleton" role="status" aria-busy="true">
+          <span class="visually-hidden">%%t:addin.loading%%</span>
+          <div class="skeleton-box skeleton-tall"></div>
+          <div class="skeleton-line skeleton-heading w30"></div>
+          <div class="skeleton-box skeleton-drop"></div>
+          <div class="skeleton-line skeleton-heading w25"></div>
+          <div class="skeleton-row"><div class="skeleton-icon skeleton-dot"></div><div class="skeleton-lines"><div class="skeleton-line w70"></div></div></div>
+          <div class="skeleton-row"><div class="skeleton-icon skeleton-dot"></div><div class="skeleton-lines"><div class="skeleton-line w50"></div></div></div>
+          <div class="skeleton-line skeleton-heading w30"></div>
+          <div class="skeleton-row"><div class="skeleton-icon skeleton-dot"></div><div class="skeleton-lines"><div class="skeleton-line w60"></div></div></div>
+          <div class="skeleton-row"><div class="skeleton-icon skeleton-dot"></div><div class="skeleton-lines"><div class="skeleton-line w55"></div></div></div>
+        </div>
+      </section>
+
       <!-- Shown until the user has connected CloudShare to Nextcloud once -->
       <section id="connect-view" class="empty-state" hidden>
         <svg class="empty-icon" viewBox="0 0 48 48" aria-hidden="true">
@@ -333,7 +350,8 @@
               <h2 class="subtitle" id="settings-heading">%%t:addin.settings.heading%%</h2>
             </div>
             <p class="help-intro">%%t:addin.settings.intro%%</p>
-            <p class="caption" id="settings-loading">%%t:addin.settings.loading%%</p>
+            <!-- Placeholders until the settings are loaded (settings.ts, skeleton.ts); a failure says so here. -->
+            <div class="caption" id="settings-loading"></div>
             <!-- Every change is saved at once (settings.ts, no "Speichern"): what most people change in sight, the rest
                  folded away under "Weitere Einstellungen". -->
             <form id="settings-form" novalidate hidden>
