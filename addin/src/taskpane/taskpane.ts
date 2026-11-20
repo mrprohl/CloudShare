@@ -27,6 +27,7 @@ import { labelCatalog, mailLabel, readFileLabel, setMailLabel, type FileLabel, t
 import { attachContactSuggestions } from "./contactSuggest";
 import { initAddressBook } from "./addressBook";
 import { initHelpSearch } from "./helpSearch";
+import { initSearchToggle } from "./searchToggle";
 import { skeletonRows } from "./skeleton";
 import { withCardAfterLast } from "./cardPlace";
 import { initFeedback, noteError } from "./feedback";
@@ -85,7 +86,11 @@ const encryptedDismiss = $<HTMLButtonElement>("encrypted-dismiss");
 let encryptedShown = "";
 /** "Kennwort an": radio buttons (recipients / another address / SMS) in the group #password-channel. */
 const channelGroup = $<HTMLDivElement>("password-channel");
-const channelRadios = Array.from(channelGroup.querySelectorAll<HTMLInputElement>('input[name="password-channel"]'));
+const channelRadios = Array.from(channelGroup.querySelectorAll<HTMLInputElement>('input[name="password-channel"]'))
+  .filter((radio) => radio.value !== "same"); // the three ways; "Gleicher Empfänger wie zuvor" is channelSame
+const channelSame = $<HTMLInputElement>("channel-same");
+const channelSameRow = $<HTMLLabelElement>("channel-same-row");
+const channelSameHint = $<HTMLParagraphElement>("channel-same-hint");
 const channelSmsOption = $<HTMLLabelElement>("channel-sms-option");
 const passwordSmsInput = $<HTMLInputElement>("password-sms");
 const passwordToInput = $<HTMLInputElement>("password-to");
@@ -1017,25 +1022,45 @@ const smsCountriesHint = () =>
   (serverConfig.smsCountryCodes ?? []).length > 0 ? ` ${t("channel.smsCountries", { countries: serverConfig.smsCountries ?? "" })}` : "";
 
 type Channel = "recipients" | "mail" | "sms";
-const selectedChannel = (): Channel => {
+
+/**
+ * Fixed for this mail (lockChannel): "Gleicher Empfänger wie zuvor" is chosen and the password keeps going the way of
+ * the first link – `lockedWay` – with its address or number.
+ */
+let channelLocked = false;
+let lockedWay: Channel = "recipients";
+
+/** The way the password goes: the chosen one, or – fixed for this mail – the way of the first link. */
+const checkedWay = (): Channel => {
   const value = channelRadios.find((radio) => radio.checked)?.value;
   return value === "sms" || value === "mail" ? value : "recipients";
 };
+const selectedChannel = (): Channel => (channelLocked ? lockedWay : checkedWay());
 
+/** The hint under the chosen way – every way has one, like every password choice. */
 const channelHint = (channel: Channel) =>
-  channel === "mail" ? t("channel.hintMail") : channel === "sms" ? t("channel.hintSms") : "";
+  t(channel === "mail" ? "channel.hintMail" : channel === "sms" ? "channel.hintSms" : "channel.hintRecipients");
 
 function showChannel(channel: Channel) {
+  if (channelLocked) {
+    // Fixed for this mail: the way is remembered, the pane keeps showing "Gleicher Empfänger wie zuvor".
+    lockedWay = channel;
+    renderValidity();
+    renderSubmit();
+    return;
+  }
   for (const radio of channelRadios) radio.checked = radio.value === channel;
   applyChannelDisabled(); // a fixed mail keeps only its way active
   passwordToInput.hidden = channel !== "mail";
   passwordSmsInput.hidden = channel !== "sms";
   passwordToGroup.hidden = passwordToInput.hidden;
   passwordSmsGroup.hidden = passwordSmsInput.hidden;
-  passwordToHint.hidden = channel === "recipients";
+  passwordToHint.hidden = false;
   passwordToHint.textContent = channelHint(channel);
-  // The hint under the field of the chosen option (its suggestion list stays right below the field).
-  if (channel !== "recipients") {
+  // The hint under the chosen way – below its field if it has one (its suggestion list stays right below the field).
+  if (channel === "recipients") {
+    channelRadios.find((radio) => radio.value === "recipients")!.closest("label")!.after(passwordToHint);
+  } else {
     const group = channel === "mail" ? passwordToGroup : passwordSmsGroup;
     const list = group.nextElementSibling?.classList.contains("suggestions") ? group.nextElementSibling : group;
     list.after(passwordToHint);
@@ -1045,15 +1070,28 @@ function showChannel(channel: Channel) {
 }
 
 /**
- * One password per mail: once it has a password, "Kennwort an" is fixed too – the one password goes the way it went
- * first (greyed out like the password choices; the hint under the password says why).
+ * One password per mail: once it has a password, "Kennwort an" is fixed too – like "Gleiches Kennwort wie zuvor" above
+ * it, "Gleicher Empfänger wie zuvor" is chosen with its hint, the three ways are greyed out, and the password keeps
+ * going the way of the first link (`lockedWay`, with its address or number). Unlocked, that way is shown again.
  */
 function lockChannel(locked: boolean) {
+  const wasLocked = channelLocked;
+  if (locked && !wasLocked) lockedWay = checkedWay();
+  channelLocked = locked;
   channelGroup.title = locked ? t("password.hintOnePassword") : "";
-  applyChannelDisabled();
+  channelSameRow.hidden = !locked;
+  channelSameHint.hidden = !locked;
   passwordToInput.readOnly = locked;
   passwordSmsInput.readOnly = locked;
   for (const id of ["password-to-book", "password-sms-book"]) $<HTMLButtonElement>(id).disabled = locked;
+  if (locked) {
+    channelSame.checked = true; // unchecks the ways (one radio group)
+    for (const element of [passwordToGroup, passwordSmsGroup, passwordToHint]) element.hidden = true;
+    applyChannelDisabled();
+  } else if (wasLocked) {
+    channelSame.checked = false;
+    showChannel(lockedWay); // the way of the first link, free to change again
+  }
 }
 
 /** "Kennwort senden an" offers the ways chosen in the settings – and always the one this mail already uses. */
@@ -1072,8 +1110,7 @@ function applyChannelChoices(keep: Channel) {
  * the chosen way stays active – like "Gleiches Kennwort wie zuvor" above it –, the others are greyed out.
  */
 function applyChannelDisabled() {
-  const locked = channelGroup.title !== "";
-  for (const radio of channelRadios) radio.disabled = radio.dataset.offered === "false" || (locked && !radio.checked);
+  for (const radio of channelRadios) radio.disabled = radio.dataset.offered === "false" || channelLocked;
 }
 
 /** The valid target of the chosen channel ({} = recipients), or null while the address / number is not valid. */
@@ -2037,9 +2074,21 @@ let currentOverlay: Overlay = null;
 /** Every page has "←" before its title; "←" or Escape leads back to the view. */
 /** The search of the "Hilfe" page (magnifier in its head). */
 const helpSearch = initHelpSearch();
+/** The magnifier of "Verlauf" and "Zustellnachweise" (like the one of "Hilfe"): the list filters while typing. */
+const sharesSearchToggle = initSearchToggle({
+  toggle: $<HTMLButtonElement>("shares-search-toggle"), row: $<HTMLElement>("shares-search-row"), input: sharesSearch,
+  onChange: () => renderShareList(),
+});
+const proofsSearchToggle = initSearchToggle({
+  toggle: $<HTMLButtonElement>("proofs-search-toggle"), row: $<HTMLElement>("proofs-search-row"), input: proofsSearch,
+  onChange: () => renderProofs(),
+});
 
 function showOverlay(overlay: Overlay) {
   if (currentOverlay === "help" && overlay !== "help") helpSearch.reset(); // no search left over for the next opening
+  // The same for "Verlauf" (not when its address book opens on top of it) and "Zustellnachweise".
+  if (currentOverlay === "shares" && overlay !== "shares" && overlay !== "contacts") sharesSearchToggle.reset();
+  if (currentOverlay === "proofs" && overlay !== "proofs") proofsSearchToggle.reset();
   currentOverlay = overlay;
   helpToggle.setAttribute("aria-expanded", String(overlay === "help"));
   panelHelp.hidden = overlay !== "help";
@@ -2052,11 +2101,11 @@ function showOverlay(overlay: Overlay) {
   panelMail.hidden = overlay !== null || currentView !== "mail";
 }
 
-/** "Verlauf" in the account menu: every valid link, freshly loaded, the search field first. */
+/** "Verlauf" in the account menu: every valid link, freshly loaded; the search behind the magnifier. */
 function openShares() {
   showAccountMenu(false);
   showOverlay("shares");
-  sharesSearch.focus();
+  sharesClose.focus(); // screen readers start on the page, like in "Hilfe"
   // Not loaded yet: placeholders until the list is there (a reload keeps the list in sight).
   if (sharesList.childElementCount === 0) {
     sharesList.replaceChildren(skeletonRows());
@@ -2084,7 +2133,6 @@ sharesClose.addEventListener("click", () => {
   showOverlay(null);
   accountToggle.focus();
 });
-sharesSearch.addEventListener("input", () => renderShareList());
 // "Hilfe" in the account menu opens the guide in place of the current tab; "×" closes it, the focus goes back to the
 // account.
 helpToggle.addEventListener("click", () => {
@@ -2304,7 +2352,7 @@ function renderProofs() {
 async function openProofs() {
   showAccountMenu(false);
   showOverlay("proofs");
-  proofsSearch.focus();
+  proofsClose.focus(); // screen readers start on the page, like in "Hilfe"
   // Placeholders until the proofs are there.
   proofsList.replaceChildren(skeletonRows());
   proofsEmpty.hidden = true;
@@ -2338,7 +2386,6 @@ feedbackClose.addEventListener("click", () => {
   showOverlay(null);
   accountToggle.focus();
 });
-proofsSearch.addEventListener("input", renderProofs);
 proofsClose.addEventListener("click", () => {
   showOverlay(null);
   accountToggle.focus();

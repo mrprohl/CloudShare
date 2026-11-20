@@ -4,6 +4,7 @@
  * a server switch leaves out), they open, and the hits are marked. Escape or an empty field brings the guide back as it
  * was (the sections open before stay open); closing the page clears the search too (`reset`).
  */
+import { initSearchToggle } from "./searchToggle";
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -86,26 +87,6 @@ export function initHelpSearch() {
     none.hidden = found > 0;
   };
 
-  const open = (shown: boolean) => {
-    row.hidden = !shown;
-    toggle.setAttribute("aria-expanded", String(shown));
-    if (shown) input.focus();
-    else {
-      input.value = "";
-      search();
-    }
-  };
-
-  toggle.addEventListener("click", () => open(row.hidden !== false)); // hidden may also be "until-found"
-  input.addEventListener("input", search);
-  input.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;
-    // Escape closes the search only – not the page (the pane's Escape handler skips handled events).
-    event.preventDefault();
-    open(false);
-    toggle.focus();
-  });
-
-  /** The page is closed: no search left over for the next opening. */
-  return { reset: () => open(false) };
+  // The magnifier, the field, Escape and the reset when the page is left: as in "Verlauf" and "Zustellnachweise".
+  return initSearchToggle({ toggle, row, input, onChange: search });
 }
