@@ -856,7 +856,7 @@ test("Kennwort an eine andere E-Mail-Adresse: stored on the job once it exists",
 
 test("Kennwort per SMS: not offered without seven.io on the server", async ({ page }) => {
   await openTaskpane(page);
-  await expect(page.locator("#password-channel label.radio")).toHaveText(["Empfänger der Nachricht", "Andere E-Mail-Adresse"]);
+  await expect(page.locator("#password-channel label.radio:not(#channel-same-row)")).toHaveText(["Empfänger der Nachricht", "Andere E-Mail-Adresse"]);
   await expect(channelRadio(page, "sms")).toHaveCount(0); // no SMS without seven.io on the server
 });
 
@@ -1634,7 +1634,8 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   await expect(rows).toHaveCount(3);
   await expect(page.locator("#shares")).not.toContainText("Alt.zip");
   // No "Aktualisieren" in the head of the page: the list loads when opened (and again on focus).
-  await expect(page.locator("#panel-shares .help-header button")).toHaveCount(1); // only "←"
+  await expect(page.locator("#panel-shares .help-header button")).toHaveCount(2); // only "←" and the magnifier
+  await expect(page.locator("#refresh-shares")).toHaveCount(0);
   expect(calls.filter((c) => c.path === "/api/shares").length).toBeGreaterThan(0);
   // One quiet bottom bar for every tab: only the account, as a menu (like the menus of Outlook and OneDrive).
   const toggle = page.locator("#account-toggle");
