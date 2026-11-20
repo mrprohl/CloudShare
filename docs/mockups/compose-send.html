@@ -51,12 +51,6 @@
       <main class="pane">
         <div id="status" class="messagebar success"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor"/><path d="m5.3 8.2 1.8 1.8 3.6-3.8" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg><span>3 links were inserted. The password is sent automatically after sending.</span></div>
         <section class="send-view">
-          <div class="tabbar">
-            <div class="tabs" role="tablist">
-              <button type="button" class="tab" aria-selected="true">Send</button>
-              <button type="button" class="tab" aria-selected="false">History</button>
-            </div>
-          </div>
           <div class="panel">
             <div class="content">
               <div class="segmented" role="radiogroup">
@@ -73,21 +67,28 @@
               </section>
 
               <h2 class="section-title" id="password-label">Password</h2>
-              <div class="field">
+              <!-- After the first links: one password per mail – "Same password as before", everything else greyed out. -->
+              <div class="field password-field">
                 <label class="radio"><input type="radio" checked><span class="dot"></span><span>Same password as before</span></label>
-                <label class="radio"><input type="radio"><span class="dot"></span><span>Random password (recommended)</span></label>
-                <label class="radio"><input type="radio"><span class="dot"></span><span>Own password</span></label>
-                <label class="radio"><input type="radio" disabled><span class="dot"></span><span>No password</span></label>
-                <div class="input-group">
+                <div class="input-group" id="password-group">
                   <input type="text" class="input mono" value="KateGeteFi45" readonly>
                 </div>
-                <p class="hint">The next link gets the same password as the last one; the recipients get one message with the password for both.</p>
+                <p class="hint" id="password-hint">This message already has a password. Further files, messages and upload links get the same password the same way.</p>
+                <label class="radio"><input type="radio" disabled><span class="dot"></span><span>Random password (recommended)</span></label>
+                <label class="radio"><input type="radio" disabled><span class="dot"></span><span>Own password</span></label>
+                <label class="radio"><input type="radio" disabled><span class="dot"></span><span>No password</span></label>
               </div>
-              <h2 class="section-title">Recipients</h2>
-              <div class="field recipients">
-                <div class="inline-row"><label class="inline-label">Password to</label><div class="select-wrap"><select class="input select"><option>Recipients of the message</option></select></div></div>
-                <div class="inline-row"><label class="inline-label">Language</label><div class="select-wrap"><select class="input select"><option>English</option></select></div></div>
-                <div class="switch-field"><label class="switch"><span class="switch-text">Proof of delivery</span><input type="checkbox" role="switch"><span class="switch-track"><span class="switch-thumb"></span></span></label><p class="hint">Sending and every access are recorded; recipients confirm their address with a code.</p></div>
+              <div class="field channel-field" id="password-to-field">
+                <span class="label channel-label">Password to</span>
+                <div class="channel-options" role="radiogroup">
+                  <label class="radio"><input type="radio" checked disabled><span class="dot"></span><span>Recipients of the message</span></label>
+                  <label class="radio"><input type="radio" disabled><span class="dot"></span><span>Another email address</span></label>
+                  <label class="radio"><input type="radio" disabled><span class="dot"></span><span>Phone number (text message)</span></label>
+                </div>
+              </div>
+              <div class="field switch-field proof-row">
+                <label class="switch"><span class="unavailable-label"><span class="switch-text">Proof of delivery</span><button type="button" class="btn btn-icon btn-subtle info-toggle why-toggle"><svg class="icon" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.5" fill="none" stroke="currentColor" stroke-width="1.4"/><path d="M10 9v5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="10" cy="6.3" r=".95" fill="currentColor"/></svg></button></span><input type="checkbox" role="switch" disabled><span class="switch-track"><span class="switch-thumb"></span></span></label>
+                <p class="hint">Sending and every access are recorded; recipients confirm their address with a code.</p>
               </div>
               <div class="validity">
                 <button type="button" class="disclosure disclosure-block" aria-expanded="false"><svg class="icon chevron" viewBox="0 0 20 20"><path d="m7.5 5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="disclosure-text"><span class="disclosure-title">Validity</span><span class="disclosure-summary">Link 14 days · Password link 5 days, opens 3 times</span></span></button>
