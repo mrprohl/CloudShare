@@ -70,7 +70,7 @@
               <!-- After the first links: one password per mail – "Same password as before", everything else greyed out. -->
               <div class="field password-field">
                 <label class="radio"><input type="radio" checked><span class="dot"></span><span>Same password as before</span></label>
-                <p class="hint" id="password-hint">This message already has a password. Further files, messages and upload links get the same password the same way.</p>
+                <p class="hint" id="password-hint">This message already has a password. Further files, messages and upload links get the same password.</p>
                 <label class="radio"><input type="radio" disabled><span class="dot"></span><span>Random password (recommended)</span></label>
                 <label class="radio"><input type="radio" disabled><span class="dot"></span><span>Own password</span></label>
                 <label class="radio"><input type="radio" disabled><span class="dot"></span><span>No password</span></label>
@@ -78,7 +78,9 @@
               <div class="field channel-field" id="password-to-field">
                 <h2 class="section-title">Password to</h2>
                 <div class="channel-options" role="radiogroup">
-                  <label class="radio"><input type="radio" checked><span class="dot"></span><span>Recipients of the message</span></label>
+                  <label class="radio"><input type="radio" checked><span class="dot"></span><span>Same recipients as before</span></label>
+                  <p class="hint">This message already has its recipients. Further files, messages and upload links go to the same recipients.</p>
+                  <label class="radio"><input type="radio" disabled><span class="dot"></span><span>Recipients of the message</span></label>
                   <label class="radio"><input type="radio" disabled><span class="dot"></span><span>Another email address</span></label>
                   <label class="radio"><input type="radio" disabled><span class="dot"></span><span>Phone number (text message)</span></label>
                 </div>

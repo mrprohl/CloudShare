@@ -121,7 +121,9 @@ three.
 Files selected together in one click share one password and one password mail. After the first link,
 **"Same password as before"** is selected and the only choice: there is **one password per mail**. The next link – more
 files, a confidential message or an upload link – joins it, so the recipients get one password for all of them in one
-password mail (or SMS). "Random password", "Own password", "No password" and "Password to" are greyed out (the server
+password mail (or SMS). Under "Password to", **"Same recipients as before"** is selected the same way, with a note that
+further links go to the same recipients; "Random password", "Own password", "No password" and the ways of "Password
+to" are greyed out (the server
 refuses a second password too, 409 `ONE_PASSWORD`). If you delete all CloudShare cards from the mail
 before sending, no password mail goes out and the password options are free again.
 
@@ -142,11 +144,11 @@ read) and is not shown for the other two.
 
 <br clear="right">
 
-<img src="docs/images/taskpane-shares.png" alt="History, a page of the account menu with a search field: like the proofs of delivery - the day and recipients (message and password to ... when they are the same), Password to ..., Valid until ... with a calendar and the download status on its own line, and the icons Copy, Password, Insert, Revoke next to the subject; the first link has the seal of a proof of delivery after its file name and Password is open with the password and Send again to" width="300" align="right">
+<img src="docs/images/taskpane-shares.png" alt="History, a page of the account menu with a magnifier for the search: like the proofs of delivery - the day and recipients (message and password to ... when they are the same), Password to ..., Valid until ... with a calendar and the download status on its own line, and the icons Copy, Password, Insert, Revoke next to the subject; the first link has the seal of a proof of delivery after its file name and Password is open with the password and Send again to" width="300" align="right">
 
 **"History"** – a page of the account menu at the bottom left, above "Proofs of delivery" – lists everything you sent
-with CloudShare that is still valid – links and confidential messages, newest first; the search field at the top
-filters by subject, file name and recipient. The pane has no tabs: while writing it shows "Send", the history and the
+with CloudShare that is still valid – links and confidential messages, newest first; the **magnifier** at the top right
+folds out a search by subject, file name and recipient (Escape closes it). The pane has no tabs: while writing it shows "Send", the history and the
 proofs open from the account menu. Each entry is titled with the **subject of its mail** – hovering it shows when and to whom it went (To, Cc),
 a click opens that mail in Outlook (only mails
 of your own mailbox) –, below it what went out – the file name, "File request" or "Confidential message" (the symbol on the left shows the
@@ -411,7 +413,7 @@ corrected number) or as a password mail. Two kinds of failure:
 
 ### Proof of delivery (optional)
 
-<img src="docs/images/taskpane-proofs.png" alt="Proofs of delivery, opened from the account menu: a search field and three proofs with subject, date and recipient, files and download state, case number and whether it is complete; the seal on the left opens the signed PDF" width="300" align="right">
+<img src="docs/images/taskpane-proofs.png" alt="Proofs of delivery, opened from the account menu: a magnifier for the search and three proofs with subject, date and recipient, files and download state, case number and whether it is complete; the seal on the left opens the signed PDF" width="300" align="right">
 
 For mails where the sender may later have to show **that and when** recipients got something. On with
 `DELIVERY_PROOF=true` (unset it follows `DOWNLOAD_NOTICE`; it needs the same application permission `Mail.Send`).
@@ -449,8 +451,8 @@ default, offered for "Files" only (not for a confidential message or an upload l
   reader only names the signer "unknown". For legal weight: a certificate of a CA trusted by Adobe or a qualified
   seal, and a qualified time stamp authority – no code change needed.
 - **Finding a proof later**: "Proofs of delivery" in the account menu lists the proof of every sent mail – also those whose links expired
-  long ago and no longer show in "History" – searchable by case number, subject, recipient or file name (no other
-  filters). Each entry looks and works like a row of "History": a click on the
+  long ago and no longer show in "History" – searchable via the magnifier at the top right by case number, subject, recipient or
+  file name (no other filters). Each entry looks and works like a row of "History": a click on the
   subject opens the sent mail. The seal after the file name shows the state by its colour (grey sent, blue address
   confirmed, green fetched – the same in "History") and opens the PDF; each entry says "Valid until …" (calendar, orange in
   the last two days) or, once finished, until when the proof is kept.

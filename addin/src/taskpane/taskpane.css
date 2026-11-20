@@ -106,7 +106,7 @@ body {
 
 /* --- Type ramp ---------------------------------------------------------------- */
 .subtitle { font-size: 16px; line-height: 22px; font-weight: 600; margin: 0; }
-.section-title { font-size: 14px; line-height: 20px; font-weight: 600; margin: 20px 0 8px; }
+.section-title { display: block; font-size: 14px; line-height: 20px; font-weight: 600; margin: 20px 0 8px; } /* also a label heading ("Vertrauliche Nachricht") */
 .section-title:first-child { margin-top: 4px; }
 label.section-title { display: block; }
 /* First heading of the chosen kind (Dateien / Nachricht / Anfordern), right below the switch. */
@@ -495,10 +495,11 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .panel.dropping .dropzone { border: 2px solid var(--brand-fg); padding: 13px 11px; background: var(--brand-tint-bg); }
 .panel.dropping .dropzone .idle, .panel.dropping .dropzone-sub { display: none; }
 .panel.dropping .dropzone .drop { display: inline; color: var(--brand-tint-fg); }
-/* The text under a heading: the same gap to what follows as to the heading above it. */
-.section-text { margin: 0 0 14px; }
-/* "Keine Dateianhänge" under "Anhänge": the drop zone as far below it as the heading is above it. */
-#no-attachments:not([hidden]) ~ .dropzone { margin-top: 14px; }
+.section-text { margin: 0 0 8px; } /* then the normal gap to what follows */
+/* The text right under a heading ("Anhänge", "Vertrauliche Nachricht", "Dateien von Empfängern erhalten") sits as close as
+   the line under "Gültigkeit" – the negative margin takes back most of the heading's 8px (the empty lists of "Anhänge"
+   in between are display: none and do not count). */
+.section-title + .section-text, #files-heading ~ #no-attachments { margin-top: -9px; }
 
 /* --- My shares ----------------------------------------------------------------------- */
 .share-list { display: flex; flex-direction: column; }

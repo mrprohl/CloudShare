@@ -722,11 +722,18 @@ test("uploads a large attachment in chunks, removes it and inserts the card", as
   // "Zufällig", "Eigenes", "Ohne Kennwort" and "Kennwort an" are greyed out.
   await expect(page.locator("#mode-same")).toBeChecked();
   await expect(page.locator("#password")).toHaveValue(password);
-  await expect(page.locator("#password-hint")).toHaveText("Diese Nachricht hat schon ein Kennwort. Weitere Dateien, Nachrichten und Upload-Links erhalten dasselbe Kennwort auf demselben Weg.");
+  await expect(page.locator("#password-hint")).toHaveText("Diese Nachricht hat schon ein Kennwort. Weitere Dateien, Nachrichten und Upload-Links erhalten dasselbe Kennwort.");
   expect(JSON.parse((await officeLog(page)).session["cloudshare-state"]).lastStep.password).toBe(password);
   for (const mode of ["#mode-random", "#mode-own", "#mode-none"]) await expect(page.locator(mode)).toBeDisabled();
-  await expect(page.locator("#password-channel input:checked")).toBeEnabled(); // the chosen way stays active …
-  await expect(page.locator("#password-channel input:not(:checked)").first()).toBeDisabled(); // … the others are greyed out
+  // "Kennwort an" the same way: "Gleicher Empfänger wie zuvor" with its hint, the three ways greyed out.
+  await expect(page.locator("#channel-same")).toBeChecked();
+  await expect(page.locator("#channel-same-row")).toHaveText("Gleicher Empfänger wie zuvor");
+  await expect(page.locator("#channel-same-hint")).toHaveText(
+    "Diese Nachricht hat schon einen Empfänger. Weitere Dateien, Nachrichten und Upload-Links erhalten dieselben Empfänger.");
+  for (const way of ["recipients", "mail", "sms"] as const) {
+    if (await channelRadio(page, way).count()) await expect(channelRadio(page, way)).toBeDisabled();
+  }
+  await expect(page.locator("#password-to-hint")).toBeHidden();
   await shot(page, "after-upload");
 
   // "Kennwort abrufbar" applies to the next link.
@@ -796,8 +803,8 @@ test("one password per mail: every further file, message or upload link joins th
   await expect(page.locator("#mode-same")).toBeChecked();
   await expect(page.locator("#mode-random")).toBeDisabled();
   await expect(page.locator("#mode-own")).toBeDisabled();
-  await expect(page.locator("#password-channel input:checked")).toBeEnabled(); // the chosen way stays active …
-  await expect(page.locator("#password-channel input:not(:checked)").first()).toBeDisabled(); // … the others are greyed out
+  await expect(page.locator("#channel-same")).toBeChecked(); // "Gleicher Empfänger wie zuvor" …
+  await expect(channelRadio(page, "recipients")).toBeDisabled(); // … the ways greyed out
   await page.locator("label").filter({ has: page.locator("#kind-message") }).click();
   await page.fill("#message", "Zugangsdaten folgen");
   await page.click("#submit");
@@ -823,6 +830,10 @@ test("one password per mail: every further file, message or upload link joins th
 test("Kennwort an eine andere E-Mail-Adresse: stored on the job once it exists", async ({ page }) => {
   const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pdf", 1.5 * MiB)] });
   await expect(page.locator("#password-to")).toBeHidden();
+  // Every way has its hint right below it – also "Empfänger der Nachricht".
+  await expect(page.locator("#password-to-hint")).toHaveText(
+    "Das Kennwort geht an alle Empfänger der Nachricht.");
+  await expect(page.locator('#password-channel label:has(input[value="recipients"]) + #password-to-hint')).toHaveCount(1);
   await chooseChannel(page, "mail");
   await expect(page.locator("#password-to-hint")).toContainText("Nur diese Adresse erhält das Kennwort");
 
@@ -1061,8 +1072,9 @@ test("links deleted from the mail again: password options unlock, no password ma
   await expect(page.locator("#status")).toContainText("Links wurden aus der Nachricht entfernt");
   await expect(page.locator("#mode-random")).toBeEnabled();
   await expect(page.locator("#mode-none")).toBeEnabled();
-  await expect(page.locator("#password-channel input:checked")).toBeEnabled(); // one password per mail – free again
-  await expect(page.locator("#password-channel input:not(:checked)").first()).toBeEnabled();
+  await expect(page.locator("#channel-same-row")).toBeHidden(); // one password per mail – free again …
+  await expect(channelRadio(page, "recipients")).toBeChecked(); // … with the way it had
+  await expect(channelRadio(page, "mail")).toBeEnabled();
   const log = await officeLog(page);
   expect(log.customProps.cloudshareJob).toBeUndefined(); // the send handler has nothing to arm
   expect(JSON.parse(log.session["cloudshare-state"])).toEqual({});
@@ -1573,8 +1585,8 @@ test("Kennwort per SMS: no password-link settings – the password is in the SMS
   expect(JSON.parse(calls.find((c) => c.path.endsWith("/complete"))!.body!.toString()).passwordDays).toBe(30);
 
   // The mail has its password now: "Kennwort an" is fixed for the next links (one password, one way).
-  await expect(page.locator("#password-channel input:checked")).toBeEnabled(); // the chosen way stays active …
-  await expect(page.locator("#password-channel input:not(:checked)").first()).toBeDisabled(); // … the others are greyed out
+  await expect(page.locator("#channel-same")).toBeChecked(); // "Gleicher Empfänger wie zuvor" …
+  await expect(channelRadio(page, "recipients")).toBeDisabled(); // … the ways greyed out
 });
 
 test("Ohne Kennwort with download confirmation: the draft is tagged so the confirmation knows the sent mail", async ({ page }) => {
@@ -2080,6 +2092,11 @@ test("Verlauf: a page of the account menu with a search over subject, file and r
   await openHistory(page);
   const rows = page.locator("#shares .share");
   await expect(rows).toHaveCount(3);
+  // The search sits behind the magnifier in the head, like in "Hilfe".
+  await expect(page.locator("#shares-search")).toBeHidden();
+  await expect(page.locator("#shares-search-toggle")).toHaveAttribute("aria-label", "Verlauf durchsuchen");
+  await page.click("#shares-search-toggle");
+  await expect(page.locator("#shares-search-toggle")).toHaveAttribute("aria-expanded", "true");
   await expect(page.locator("#shares-search")).toBeFocused();
   await page.fill("#shares-search", "angebot");
   await expect(rows).toHaveCount(1);
@@ -2087,9 +2104,12 @@ test("Verlauf: a page of the account menu with a search over subject, file and r
   await page.fill("#shares-search", "nichts dergleichen");
   await expect(rows).toHaveCount(0);
   await expect(page.locator("#no-shares")).toHaveText("Kein Eintrag passt zur Suche.");
-  await page.fill("#shares-search", "");
-  await expect(rows).toHaveCount(3);
   await expectAccessible(page);
+  // Escape closes the search only (not the page) and brings the whole list back.
+  await page.locator("#shares-search").press("Escape");
+  await expect(page.locator("#shares-search")).toBeHidden();
+  await expect(page.locator("#panel-shares")).toBeVisible();
+  await expect(rows).toHaveCount(3);
 });
 
 test("Verlauf: upload links are not inserted again without password", async ({ page }) => {
@@ -2624,7 +2644,7 @@ test("Zustellnachweise: every proof in the account menu, filtered and searched, 
   await page.click("#account-toggle");
   await page.click("#proofs-open");
   await expect(page.locator("#panel-proofs")).toBeVisible();
-  await expect(page.locator("#proofs-search")).toBeFocused();
+  await expect(page.locator("#proofs-search")).toBeHidden(); // behind the magnifier, like in "Verlauf"
   const entries = page.locator("#proofs-list .proof-entry");
   await expect(entries).toHaveCount(2);
   await expect(entries.nth(0).locator(".share-title")).toHaveText("Unterlagen Neubau");
@@ -2663,7 +2683,9 @@ test("Zustellnachweise: every proof in the account menu, filtered and searched, 
   // No filters any more – the search is the way to find a proof.
   await expect(page.locator("#proofs-filter")).toHaveCount(0);
 
-  // Search: by recipient, by tracking ID (any case), nothing.
+  // Search (behind the magnifier): by recipient, by tracking ID (any case), nothing.
+  await page.click("#proofs-search-toggle");
+  await expect(page.locator("#proofs-search")).toBeFocused();
   await page.fill("#proofs-search", "kunde@");
   await expect(entries).toHaveCount(1);
   await expect(entries.nth(0).locator(".share-title")).toHaveText("Vertrag 2026");

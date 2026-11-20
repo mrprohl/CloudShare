@@ -117,7 +117,7 @@ dragged onto the pane switch it to "Files".
    not shown (it goes out by itself, "Verlauf" → "Kennwort" shows it later). Field and hint sit indented right below the
    chosen option (`setPasswordMode`), like
    the address or number of "Kennwort an". One password per mail: after the step the taskpane selects "Gleiches Kennwort wie zuvor" (`mode-same`,
-   `DraftState.lastStep` = step ID and password) and greys out "Zufällig", "Eigenes", "Ohne Kennwort" and the other ways of "Kennwort an" (the chosen way stays active, `applyChannelDisabled`)
+   `DraftState.lastStep` = step ID and password) and, under "Kennwort an", "Gleicher Empfänger wie zuvor" (`#channel-same`, its hint `#channel-same-hint`); "Zufällig", "Eigenes", "Ohne Kennwort" and the three ways are greyed out – the password keeps going the way of the first link (`lockedWay`, `selectedChannel`)
    (`lockSeparate`, `lockChannel`): the next link – files, message or upload link – is sent with the same `step` and
    joins that part (`findPart`/`addFileToPart` on the server: same password, same Send, one password mail or SMS). The
    server refuses a link with a password that would open a second step in the job (`assertOnePassword`, 409
@@ -801,11 +801,12 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   browser's own Nextcloud session or a sign-in there; the app password of the connection never leaves the server.
 - **History** ("Verlauf", `#shares-open`, right above "Zustellnachweise"): a page like the settings (`#panel-shares`,
   `showOverlay("shares")`) – every valid link with its actions, reloaded when opened and on return to the pane
-  (no refresh button); the search `#shares-search` filters by subject, name, recipients, password address and
+  (no refresh button); the magnifier `#shares-search-toggle` folds out the search `#shares-search` (`searchToggle.ts`, like "Hilfe" and "Zustellnachweise"), which filters by subject, name, recipients, password address and
   tracking ID (`renderShareList`). The pane has no tabs any more: the view is "Senden" (or, reading, the links of that
   mail – `currentView`), every other thing is a page of the account menu.
 - **Proofs of delivery** ("Zustellnachweise", `#proofs-open`, only with `DELIVERY_PROOF`): a page like the settings
-  (`#panel-proofs`); loads `GET /api/proofs` (every case of the user whose mail was sent, finished ones too) and
+  (`#panel-proofs`, searchable behind the magnifier `#proofs-search-toggle` like "Verlauf" and "Hilfe",
+  `searchToggle.ts`); loads `GET /api/proofs` (every case of the user whose mail was sent, finished ones too) and
   every entry is built like a row of "Verlauf" (`proofRow`: kind symbol, subject as title – a click opens the sent mail
   via `GET /api/proofs/:id/mail` when `mailAvailable` –, the file with its seal (a click opens the PDF),
   to whom, the tracking ID in bold, then the state with its dot; no action icons – the list is for looking things up);

@@ -187,6 +187,14 @@
                  below the chosen option (showChannel). Only the ways offered in the settings are shown (applyChannelChoices). -->
             <h2 class="section-title" id="password-channel-label">%%t:addin.channel.label%%</h2>
             <div class="channel-options" id="password-channel" role="radiogroup" aria-labelledby="password-channel-label">
+              <!-- After the first link (one password per mail, lockChannel): like "Gleiches Kennwort wie zuvor" – the way of
+                   the first link stays (lockedWay), the three ways below are greyed out. -->
+              <label class="radio" id="channel-same-row" hidden>
+                <input type="radio" name="password-channel" value="same" id="channel-same" aria-describedby="channel-same-hint" />
+                <span class="dot" aria-hidden="true"></span>
+                <span>%%t:addin.channel.same%%</span>
+              </label>
+              <p class="hint" id="channel-same-hint" hidden>%%t:addin.channel.sameHint%%</p>
               <label class="radio">
                 <input type="radio" name="password-channel" value="recipients" checked />
                 <span class="dot" aria-hidden="true"></span>
@@ -312,10 +320,20 @@
                 </svg>
               </button>
               <h2 class="subtitle" id="shares-heading">%%t:addin.shares.heading%%</h2>
-              <!-- No "Aktualisieren": the list reloads by itself when opened and when the pane gets focus again. -->
+              <!-- No "Aktualisieren": the list reloads by itself when opened and when the pane gets focus again. The
+                   magnifier folds out the search like in "Hilfe" (searchToggle.ts). -->
+              <button type="button" id="shares-search-toggle" class="btn btn-icon btn-subtle page-action" title="%%t:addin.shares.searchLabel%%"
+                aria-label="%%t:addin.shares.searchLabel%%" aria-expanded="false" aria-controls="shares-search-row">
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                  <circle cx="8.5" cy="8.5" r="5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                  <path d="m12.2 12.2 4.3 4.3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                </svg>
+              </button>
             </div>
-            <input type="search" id="shares-search" class="input proofs-search" placeholder="%%t:addin.shares.searchPlaceholder%%"
-              aria-label="%%t:addin.shares.searchLabel%%" aria-controls="shares" />
+            <div id="shares-search-row" hidden>
+              <input type="search" id="shares-search" class="input proofs-search" placeholder="%%t:addin.shares.searchPlaceholder%%"
+                aria-label="%%t:addin.shares.searchLabel%%" aria-controls="shares" />
+            </div>
             <div id="shares" class="share-list" aria-live="polite"></div>
             <p class="caption" id="no-shares" hidden>%%t:addin.shares.none%%</p>
           </div>
@@ -331,9 +349,19 @@
                 </svg>
               </button>
               <h2 class="subtitle" id="proofs-heading">%%t:addin.proofs.heading%%</h2>
+              <!-- The magnifier folds out the search like in "Hilfe" and "Verlauf" (searchToggle.ts). -->
+              <button type="button" id="proofs-search-toggle" class="btn btn-icon btn-subtle page-action" title="%%t:addin.proofs.searchLabel%%"
+                aria-label="%%t:addin.proofs.searchLabel%%" aria-expanded="false" aria-controls="proofs-search-row">
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                  <circle cx="8.5" cy="8.5" r="5" fill="none" stroke="currentColor" stroke-width="1.4"/>
+                  <path d="m12.2 12.2 4.3 4.3" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                </svg>
+              </button>
             </div>
-            <input type="search" id="proofs-search" class="input proofs-search" placeholder="%%t:addin.proofs.searchPlaceholder%%"
-              aria-label="%%t:addin.proofs.searchLabel%%" aria-controls="proofs-list" />
+            <div id="proofs-search-row" hidden>
+              <input type="search" id="proofs-search" class="input proofs-search" placeholder="%%t:addin.proofs.searchPlaceholder%%"
+                aria-label="%%t:addin.proofs.searchLabel%%" aria-controls="proofs-list" />
+            </div>
             <p class="caption proofs-empty" id="proofs-empty" role="status" hidden></p>
             <div id="proofs-list" class="proofs-list"></div>
           </div>
