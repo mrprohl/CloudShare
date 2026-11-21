@@ -2184,7 +2184,7 @@ test("Verlauf and Zustellnachweise: many recipients – the first two and \"und 
   await openHistory(page);
   const sent = page.locator("#shares .share").nth(0).locator(".share-sent");
   await expect(sent).toHaveText("12.11.2026 · Nachricht und Kennwort an erika@example.com, max@example.com und 3 weitere");
-  await expect(sent).toHaveAttribute("title", new RegExp(many.join(", ").replace(/\./g, "\\.")));
+  expect(await sent.getAttribute("title")).toContain(many.join(", "));
   // The search still finds a recipient that is not written out.
   await page.click("#shares-search-toggle");
   await page.fill("#shares-search", "maria@");
@@ -2207,7 +2207,7 @@ test("reading a mail: many recipients shortened in its links too – \"und N wei
   });
   const row = page.locator("#mail-shares .share").first();
   await expect(row.locator(".share-sent")).toHaveText("12.11.2026 · Nachricht an erika@example.com, max@example.com und 3 weitere");
-  await expect(row.locator(".share-sent")).toHaveAttribute("title", new RegExp(many.join(", ").replace(/\./g, "\\.")));
+  expect(await row.locator(".share-sent").getAttribute("title")).toContain(many.join(", "));
   await expect(row.locator(".share-password")).toHaveText("Kennwort an max@example.com, anna@example.com und 2 weitere");
 });
 
@@ -2237,8 +2237,9 @@ test("reading a mail: the links of that mail, \"Verlauf\" in the menu, nothing t
   await expect(inMail.nth(0).locator(".share-password")).toHaveAttribute("title", /zugestellt am 10.11.2026, 11:00 Uhr/);
   await expect(inMail.nth(1).locator(".share-item")).toHaveText("Dateianforderung");
   await expect(page.locator("#mail-none")).toBeHidden();
-  // Reading a mail too: no "Aktualisieren" next to the title (it reloads by itself), the account at the bottom.
-  await expect(page.locator("#panel-mail .list-head button")).toHaveCount(0);
+  // Reading a mail too: "Aktualisieren" right of the title (it also reloads by itself), the account at the bottom.
+  await expect(page.locator("#panel-mail .list-head button")).toHaveCount(1);
+  await expect(page.locator("#mail-refresh")).toHaveAttribute("aria-label", "Aktualisieren");
   await expect(page.locator("#account-toggle")).toHaveText("max.mustermann");
   await expect(page.locator(".share .insert").first()).toBeHidden(); // a mail being read cannot take a link
   await expect(page.locator("#panel-mail")).not.toContainText("Weitere Freigaben");
