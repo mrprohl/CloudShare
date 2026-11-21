@@ -1920,34 +1920,73 @@ test("Verlauf: Erneut senden an – contact suggestions and the address book fil
 
 test("Verlauf: a password held back for the proof of delivery is not sent again before a confirmation", async ({ page }) => {
   const calls = await openTaskpane(page, {
-    shares: [{ ...SHARES[0], passwordAvailable: true }], passwordInfo: { deferred: true, verified: [] },
+    shares: [{ ...SHARES[0], passwordAvailable: true, proofId: "20261117-1146-7Q2F" }],
+    passwordInfo: { deferred: true, verified: [], password: undefined, sms: "" },
   });
   await openHistory(page);
   const row = page.locator("#shares .share").nth(0);
+  await expect(row.locator(".show-password")).toHaveAttribute("aria-label", "Kennwort von „Präsentation.pptx“ erneut senden");
   await row.locator(".show-password").click();
   const panel = row.locator(".password-panel");
-  await expect(panel.locator("input.mono")).toHaveValue("KateGeteFi45"); // the sender may see it
+  await expect(panel.locator("input")).toHaveCount(0); // no password, no field, no way to pick
+  await expect(panel.locator(".reveal-password, .copy-password")).toHaveCount(0);
+  await expect(panel.locator(".label")).toHaveText("Erneut senden an");
   await expect(panel.locator(".hint")).toHaveText(
-    "Zustellnachweis: Das Kennwort geht automatisch an jeden Empfänger, sobald er seine Adresse mit dem Code bestätigt hat. " +
-    "Erneut senden können Sie es erst danach – so bleibt der Nachweis lückenlos.");
-  await expect(panel.locator("input[type=radio]")).toHaveCount(0);
+    "Bei einem Zustellnachweis wird das Kennwort nicht angezeigt. Es geht automatisch an jeden Empfänger, der seine " +
+    "Adresse mit dem Code bestätigt – erneut senden können Sie es erst danach.");
   await expect(panel.locator(".send-password")).toHaveCount(0);
   await expectAccessible(page);
   expect(calls.some((c) => c.path.endsWith("/password/send"))).toBe(false);
 });
 
-test("Verlauf: once confirmed, the password goes again to the confirmed recipients only", async ({ page }) => {
-  await openTaskpane(page, {
-    shares: [{ ...SHARES[0], passwordAvailable: true }], passwordInfo: { deferred: true, verified: ["erika@example.com"] },
+test("Verlauf: with a proof of delivery the password goes again only to the confirmed recipients ticked", async ({ page }) => {
+  const calls = await openTaskpane(page, {
+    shares: [{ ...SHARES[0], passwordAvailable: true, proofId: "20261117-1146-7Q2F" }],
+    passwordInfo: { deferred: true, verified: ["erika@example.com", "bernd@example.com"], password: undefined, sms: "" },
   });
   await openHistory(page);
   const row = page.locator("#shares .share").nth(0);
   await row.locator(".show-password").click();
   const panel = row.locator(".password-panel");
-  await panel.locator('label.radio:has(input[value="recipients"])').click();
-  await expect(panel.locator("label.radio").first()).toHaveText("Bestätigte Empfänger");
-  await expect(panel.locator(".hint")).toHaveText(
-    "Nur an Empfänger, die ihre Adresse mit dem Code bestätigt haben – jeder in einer eigenen Nachricht: erika@example.com");
+  await expect(panel.locator("input.mono")).toHaveCount(0);
+  await expect(panel.locator(".hint").first()).toHaveText(
+    "Bei einem Zustellnachweis wird das Kennwort nicht angezeigt – nur erneut gesendet, an Empfänger, die ihre Adresse " +
+    "bestätigt haben. Jeder erhält eine eigene Nachricht.");
+  const boxes = panel.locator("label.checkbox");
+  await expect(boxes).toHaveText(["erika@example.com", "bernd@example.com"]);
+  await expect(panel.locator("input[type=checkbox]:checked")).toHaveCount(0); // nobody gets it unasked
+  const send = panel.locator(".send-password");
+  await expect(send).toBeDisabled();
+  await boxes.nth(1).click();
+  await expect(send).toBeEnabled();
+  await expectAccessible(page);
+  await send.click();
+  await expect(page.locator("#status")).toContainText("Das Kennwort wurde an");
+  const sends = calls.filter((c) => c.path.endsWith("/password/send")).map((c) => JSON.parse(c.body!.toString()));
+  expect(sends).toEqual([{ channel: "recipients", to: ["bernd@example.com"] }]);
+});
+
+test("Verlauf: with a proof of delivery the password may go by SMS to a corrected number", async ({ page }) => {
+  const calls = await openTaskpane(page, {
+    config: { smsEnabled: true },
+    shares: [{ ...SHARES[0], passwordAvailable: true, proofId: "20261117-1146-7Q2F" }],
+    passwordInfo: { deferred: true, verified: ["erika@example.com"], password: undefined, sms: "+491701234567" },
+  });
+  await openHistory(page);
+  const row = page.locator("#shares .share").nth(0);
+  await row.locator(".show-password").click();
+  const panel = row.locator(".password-panel");
+  const number = panel.locator("input[type=tel]");
+  await expect(number).toBeHidden(); // only once "Per SMS" is ticked
+  await panel.locator("label.checkbox", { hasText: "Per SMS" }).click();
+  await expect(number).toBeVisible();
+  await expect(number).toHaveValue("+491701234567");
+  await number.fill("0171 2345678");
+  await expectAccessible(page);
+  await panel.locator(".send-password").click();
+  await expect(page.locator("#status")).toContainText("Das Kennwort wurde an");
+  const sends = calls.filter((c) => c.path.endsWith("/password/send")).map((c) => JSON.parse(c.body!.toString()));
+  expect(sends).toEqual([{ channel: "sms", to: "0171 2345678" }]);
 });
 
 test("Verlauf: Als Link einfügen creates a new link with this mail's password", async ({ page }) => {

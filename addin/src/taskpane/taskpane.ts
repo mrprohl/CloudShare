@@ -2632,22 +2632,150 @@ document.querySelectorAll<HTMLElement>("[data-icon]").forEach((slot) => {
 });
 
 interface SentPassword {
-  password: string;
+  /** Missing with "Zustellnachweis" – that password is never shown, not even to its sender. */
+  password?: string;
   /** Distribution of the sent mail – "Empfänger der Nachricht" sends the password again exactly like this. */
   recipients: { to: string[]; cc: string[]; bcc: string[] };
   /** Other address(es) the password went to ("Andere E-Mail-Adresse") – suggested again. */
   otherTo: string[];
-  /** Number of the SMS (E.164, "" if none) – suggested for sending it again by SMS. */
+  /** Number of the SMS (E.164, "" if none; masked with "Zustellnachweis") – suggested for sending it again by SMS. */
   sms: string;
   /**
    * "Zustellnachweis": the password is held back until a recipient confirmed their address with the code. Sent again
-   * only after that – to the recipients only the `verified` addresses (the server enforces it, the pane says so).
+   * only after that – to the `verified` addresses the sender ticks or the way of the first time (the server enforces it).
    */
   deferred?: boolean;
   verified?: string[];
 }
 
 type ResendChannel = "recipients" | "mail" | "sms";
+
+/**
+ * "Kennwort" at a link with "Zustellnachweis": no password (the server does not hand it out) – under "Erneut senden an"
+ * the reason, then one box per confirmed recipient and for the way of the first time (the other address, the SMS
+ * number). Nothing is ticked: the password goes only to whom the sender picks. Before the first confirmation only why
+ * nothing can be sent yet.
+ */
+function fillProofPasswordPanel(panel: HTMLElement, share: ShareItem, sent: SentPassword) {
+  const id = panel.id;
+  const verified = sent.verified ?? [];
+  const label = document.createElement("span");
+  label.className = "label";
+  label.id = `${id}-channel-label`;
+  label.textContent = t("resend.channel");
+  const intro = document.createElement("p");
+  intro.className = "hint";
+  intro.textContent = t(verified.length === 0 ? "resend.held" : "resend.proofIntro");
+  panel.replaceChildren(label, intro);
+  if (verified.length === 0) return;
+
+  const group = document.createElement("div");
+  group.className = "resend-picks";
+  group.setAttribute("role", "group");
+  group.setAttribute("aria-labelledby", label.id);
+  const picks: Array<{ input: HTMLInputElement; channel: ResendChannel; value: string }> = [];
+  const add = (channel: ResendChannel, value: string, text: string, hint?: string) => {
+    const row = document.createElement("label");
+    row.className = "checkbox";
+    row.innerHTML = `<input type="checkbox" /><span class="box" aria-hidden="true"></span><span class="checkbox-text"></span>`;
+    const input = row.querySelector("input")!;
+    input.value = value;
+    const caption = row.querySelector<HTMLSpanElement>(".checkbox-text")!;
+    caption.textContent = text;
+    if (hint) {
+      const small = document.createElement("span");
+      small.className = "hint checkbox-hint";
+      small.textContent = hint;
+      caption.append(small);
+    }
+    picks.push({ input, channel, value });
+    group.append(row);
+  };
+  const lower = verified.map((address) => address.toLowerCase());
+  for (const address of verified) add("recipients", address, address);
+  for (const address of sent.otherTo.filter((a) => !lower.includes(a.toLowerCase()))) {
+    add("mail", address, address, t("resend.proofOther"));
+  }
+  // By SMS: to the number of the first time or a corrected one – an SMS number is never confirmed anyway. The field
+  // sits indented right under its box while it is ticked.
+  let number: HTMLInputElement | null = null;
+  if (serverConfig.smsEnabled) {
+    add("sms", "", t("resend.proofSms"), t("resend.smsHint") + smsCountriesHint());
+    const box = picks[picks.length - 1].input;
+    const field = document.createElement("div");
+    field.className = "input-group channel-group";
+    field.hidden = true;
+    number = document.createElement("input");
+    number.id = `${id}-sms`;
+    number.className = "input channel-input";
+    number.type = "tel";
+    number.autocomplete = "tel";
+    number.spellcheck = false;
+    number.value = sent.sms;
+    number.placeholder = t("channel.smsPlaceholder");
+    number.setAttribute("aria-label", t("resend.smsLabel"));
+    field.append(number);
+    group.append(field);
+    box.addEventListener("change", () => {
+      field.hidden = !box.checked;
+      if (box.checked) number!.focus();
+    });
+  }
+
+  const send = document.createElement("button");
+  send.type = "button";
+  send.className = "btn send-password";
+  send.textContent = t("resend.send");
+  send.disabled = true;
+  group.addEventListener("change", () => {
+    send.disabled = !picks.some((pick) => pick.input.checked);
+  });
+  panel.append(group, send);
+
+  /** A number SMS may not go to: told instead of sending. */
+  const smsProblem = (): string | null => {
+    if (!number || !picks.some((pick) => pick.channel === "sms" && pick.input.checked)) return null;
+    const normalized = normalizePhone(number.value);
+    if (normalized) return smsNumberProblem(normalized, "resend");
+    return t(number.value.trim() ? "channel.smsInvalidShort" : "channel.smsMissing");
+  };
+
+  send.addEventListener("click", async () => {
+    const chosen = picks.filter((pick) => pick.input.checked);
+    if (chosen.length === 0) return;
+    const problem = smsProblem();
+    if (problem) {
+      number!.setAttribute("aria-invalid", "true");
+      number!.focus();
+      setStatus(problem, "error");
+      return;
+    }
+    number?.removeAttribute("aria-invalid");
+    send.disabled = true;
+    setStatus(t("resend.sending"), "progress");
+    const reached: string[] = [];
+    try {
+      const token = await getToken();
+      for (const channel of ["recipients", "mail", "sms"] as const) {
+        const values = chosen.filter((pick) => pick.channel === channel).map((pick) => pick.value);
+        if (values.length === 0) continue;
+        const result = await api<{ channel: ResendChannel; to: string }>(
+          `/api/shares/${encodeURIComponent(share.id)}/password/send`,
+          { method: "POST", body: JSON.stringify(channel === "sms" ? { channel, to: number!.value } : { channel, to: values }) },
+          token,
+        );
+        reached.push(result.to);
+      }
+      setStatus(t("resend.sentMail", { to: reached.join(", ") }), "success");
+      for (const pick of picks) pick.input.checked = false;
+      loadShares().catch(() => undefined); // shows the new state of the password
+    } catch (err) {
+      const done = reached.length > 0 ? ` ${t("resend.sentMail", { to: reached.join(", ") })}` : "";
+      setStatus(t("resend.failed", { error: errorMessage(err) }) + done, "error");
+      send.disabled = false;
+    }
+  });
+}
 
 /** "An: a, b · Cc: c · Bcc: d" – who gets the password again with "Empfänger der Nachricht". */
 function distributionText(r: SentPassword["recipients"]): string {
@@ -2680,6 +2808,10 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
     note.textContent = t("resend.loadFailed", { error: errorMessage(err) });
     return;
   }
+  if (sent.deferred) {
+    fillProofPasswordPanel(panel, share, sent);
+    return;
+  }
 
   const id = panel.id;
   panel.innerHTML =
@@ -2702,7 +2834,7 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
   const channelLabel = panel.querySelector<HTMLElement>(`#${id}-channel-label`)!;
   passwordLabel.textContent = t("resend.password");
   channelLabel.textContent = t("resend.channel");
-  panel.querySelector<HTMLInputElement>(`#${id}-value`)!.value = sent.password;
+  panel.querySelector<HTMLInputElement>(`#${id}-value`)!.value = sent.password ?? "";
 
   const value = panel.querySelector<HTMLInputElement>(`#${id}-value`)!;
   const reveal = panel.querySelector<HTMLButtonElement>(".reveal-password")!;
@@ -2720,31 +2852,19 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
   copy.title = t("resend.copy");
   copy.setAttribute("aria-label", t("resend.copy"));
   copy.addEventListener("click", async () => {
-    await copyText(sent.password);
+    await copyText(sent.password ?? "");
     setStatus(t("resend.copied"), "success");
   });
 
   const waysGroup = panel.querySelector<HTMLDivElement>(`#${id}-channel`)!;
   const channelValue = (): ResendChannel =>
     (waysGroup.querySelector<HTMLInputElement>("input[type=radio]:checked")?.value ?? "recipients") as ResendChannel;
-  // Delivery proof, nobody confirmed yet: nothing to send again – the password goes out by itself after the code.
-  const verified = sent.verified ?? [];
-  if (sent.deferred && verified.length === 0) {
-    const held = document.createElement("p");
-    held.className = "hint";
-    held.textContent = t("resend.held");
-    for (const element of [channelLabel, waysGroup, panel.querySelector(".send-password")]) {
-      element?.remove();
-    }
-    panel.append(held);
-    return;
-  }
   // Preselected: the way the password went the first time – offered even if the settings leave it out now.
   const first: ResendChannel =
     share.password?.channel === "sms" && serverConfig.smsEnabled ? "sms" : sent.otherTo.length > 0 ? "mail" : "recipients";
   const offered = userSettings().channels as string[];
   const options: Array<[ResendChannel, string]> = [
-    ["recipients", t(sent.deferred ? "resend.verifiedRecipients" : "channel.recipients")],
+    ["recipients", t("channel.recipients")],
     ["mail", t("channel.mail")],
   ];
   if (serverConfig.smsEnabled) options.push(["sms", t("channel.sms")]);
@@ -2788,9 +2908,7 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
     target.setAttribute("aria-label", t(sms ? "resend.smsLabel" : "resend.mailLabel"));
     hint.textContent =
       value === "recipients"
-        ? sent.deferred
-          ? t("resend.verifiedHint", { list: verified.join(", ") })
-          : t("resend.recipientsHint", { list: distributionText(sent.recipients) })
+        ? t("resend.recipientsHint", { list: distributionText(sent.recipients) })
         : sms
           ? t("resend.smsHint") + smsCountriesHint()
           : t("resend.mailHint");
@@ -2992,7 +3110,7 @@ function shareRow(share: ShareItem): HTMLElement {
     panel.id = `password-panel-${share.id.replace(/\W/g, "")}`;
     toggle.setAttribute("aria-controls", panel.id);
     toggle.hidden = false;
-    label(toggle, t("shares.passwordLabel", { name: share.name }));
+    label(toggle, t(share.proofId ? "shares.passwordLabelProof" : "shares.passwordLabel", { name: share.name }));
     toggle.addEventListener("click", () => {
       const open = panel.hidden === true;
       toggle.setAttribute("aria-expanded", String(open));
