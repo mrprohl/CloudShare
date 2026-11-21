@@ -80,11 +80,36 @@ describe("cleanup of expired uploads", () => {
     expect(cleanupEntries().some((e) => e.folder[0] !== "CloudShare")).toBe(false);
   });
 
-  it("forgets folders of users who are no longer connected", async () => {
+  it("keeps the folders of a user who is not connected until they connect again – and gives up after 90 days", async () => {
     await registerForCleanup("oid-gone", file("aaaa0005"), "2026-11-01");
     await runCleanup(quietLog(), at("2026-11-20"));
     expect(nc.deletePath).not.toHaveBeenCalledWith(expect.anything(), folder("aaaa0005"));
+    expect(cleanupEntries().some((e) => e.owner === "oid-gone")).toBe(true); // "Verbindung trennen" loses nothing
+
+    // Connected again: deleted on the next pass.
+    await saveCredentials("oid-gone", { loginName: "gone", appPassword: "pw" });
+    await runCleanup(quietLog(), at("2026-11-21"));
+    expect(nc.deletePath).toHaveBeenCalledWith("anna-uid", folder("aaaa0005"));
     expect(cleanupEntries().some((e) => e.owner === "oid-gone")).toBe(false);
+
+    // Never connected again: after 90 days the entry is given up (logged), it does not stay forever.
+    await registerForCleanup("oid-never", file("aaaa0008"), "2026-11-01");
+    await runCleanup(quietLog(), at("2027-01-15"));
+    expect(cleanupEntries().some((e) => e.owner === "oid-never")).toBe(true);
+    await runCleanup(quietLog(), at("2027-02-15"));
+    expect(cleanupEntries().some((e) => e.owner === "oid-never")).toBe(false);
+  });
+
+  it("deletes each folder on its own – one Nextcloud refuses does not hold up the others", async () => {
+    await registerForCleanup("oid-anna", file("aaaa0009"), "2026-11-01");
+    await registerForCleanup("oid-anna", file("aaaa0010"), "2026-11-01");
+    nc.deletePath.mockImplementation(async (_uid: string, target: string[]) => {
+      if (target[1].endsWith("aaaa0009")) throw new Error("423 Locked");
+    });
+    await runCleanup(quietLog(), at("2026-11-20"));
+    expect(nc.deletePath).toHaveBeenCalledWith("anna-uid", folder("aaaa0010"));
+    expect(cleanupEntries().some((e) => e.folder[1].endsWith("aaaa0010"))).toBe(false);
+    expect(cleanupEntries().some((e) => e.folder[1].endsWith("aaaa0009"))).toBe(true); // tried again next time
   });
 
   it("deletes on revoke right away and forgets the folder; keeps it while another link is valid", async () => {

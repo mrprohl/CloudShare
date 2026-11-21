@@ -11,6 +11,7 @@ import {
   linkUrlFor,
   newTrackingId,
   openCase,
+  pruneCases,
   recordMailSent,
   verifyCase,
 } from "../src/proof.js";
@@ -159,5 +160,16 @@ describe("delivery proof – state and the result at the top of the PDF", () => 
     expect(pdf).toMatch(/ re S/); // the frame
     // The result comes before the record.
     expect(pdf.indexOf("(Ergebnis)")).toBeLessThan(pdf.indexOf("(Ereignisse)") === -1 ? Infinity : pdf.indexOf("(Ereignisse)"));
+  });
+});
+
+describe("keeping proofs of delivery", () => {
+  it("deletes a case PROOF_RETENTION_MONTHS after its last event – the daily pass, whatever DELIVERY_PROOF says", () => {
+    const id = openCase("oid-anna", "anna@example.test", { host: "Outlook", platform: "PC" });
+    const DAY = 86_400_000;
+    pruneCases(Date.now() + 30 * 30 * DAY); // about 30 months: kept (default 36)
+    expect(caseById(id)).toBeDefined();
+    pruneCases(Date.now() + 38 * 31 * DAY); // more than 36 months: gone
+    expect(caseById(id)).toBeUndefined();
   });
 });

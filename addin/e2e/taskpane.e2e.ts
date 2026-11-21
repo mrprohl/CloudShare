@@ -1834,12 +1834,17 @@ test("Verlauf: Kennwort shows the password and sends it again the same ways as t
   await expect(panel.locator(".reveal-password")).toHaveAttribute("aria-pressed", "true");
   await panel.locator(".reveal-password").click();
   await expect(panel.locator("input.mono")).toHaveClass(/\bmasked\b/);
-  // The password went by SMS: SMS to the same number is ticked, its number field right under its box.
-  await expect(panel.locator('input[type=checkbox][value="sms"]')).toBeChecked();
-  await expect(panel.locator("input[type=checkbox]:checked")).toHaveCount(1);
+  // Nothing ticked at first – the password goes again only where the sender ticks it; "Senden" waits for a box.
+  await expect(panel.locator("input[type=checkbox]")).toHaveCount(5);
+  await expect(panel.locator("input[type=checkbox]:checked")).toHaveCount(0);
+  await expect(panel.locator(".send-password")).toBeDisabled();
+  // SMS ticked: its number field right under its box, the number of the first time filled in.
   const smsField = panel.locator("input[type=tel]");
+  await expect(smsField).toBeHidden();
+  await panel.locator('label.checkbox:has(input[value="sms"])').click();
   await expect(smsField).toHaveValue("+491701234567");
   await expect(panel.locator('label.checkbox:has(input[value="sms"]) + .channel-group')).toHaveCount(1);
+  await expect(panel.locator(".send-password")).toBeEnabled();
   await expectAccessible(page);
   await shot(page, "password-panel");
 
@@ -1871,11 +1876,11 @@ test("Verlauf: Kennwort shows the password and sends it again the same ways as t
     { channel: "mail", to: "kollege@example.com" }, { channel: "sms", to: "+491701234567" }]);
   // The list reloads after sending (new state of the password); the panel is closed.
   await expect(panel).toBeHidden();
-  // Nothing ticked: "Senden" is greyed out.
+  // Opened again: nothing ticked, "Senden" greyed out.
   await expect.poll(() => calls.filter((c) => c.path === "/api/shares").length).toBe(2);
   await toggle.click();
-  await expect(panel.locator('input[type=checkbox][value="sms"]')).toBeChecked(); // loaded again
-  await panel.locator('label.checkbox:has(input[value="sms"])').click();
+  await expect(panel.locator("input[type=checkbox]")).toHaveCount(5); // loaded again
+  await expect(panel.locator("input[type=checkbox]:checked")).toHaveCount(0);
   await expect(panel.locator(".send-password")).toBeDisabled();
 });
 

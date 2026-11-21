@@ -95,13 +95,18 @@ umask 077
   echo
   echo "# Defaults of the personal settings – every user can change them for themselves (add-in: account menu → Settings):"
   echo "# ways to send the password the pane offers (recipients, mail, sms) and the one preselected, the notices"
-  echo "# (only where DOWNLOAD_NOTICE / UPLOAD_NOTICE / SMS_NOTICE are on) and the add-in language (auto = as in Outlook)."
+  echo "# (only where DOWNLOAD_NOTICE / UPLOAD_NOTICE / SMS_NOTICE are on), the reminder for proofs of delivery not fetched"
+  echo "# and the add-in language (auto = as in Outlook)."
   echo "DEFAULT_PASSWORD_CHANNELS='recipients,mail,sms'"
   echo "DEFAULT_PASSWORD_CHANNEL='recipients'"
   echo "DEFAULT_DOWNLOAD_NOTICE='true'"
   echo "DEFAULT_UPLOAD_NOTICE='true'"
   echo "DEFAULT_SMS_NOTICE='true'"
+  echo "DEFAULT_PROOF_REMINDER='true'"
   echo "DEFAULT_LANGUAGE='auto'"
+  echo
+  echo "# Optional (SMS via seven.io, download/upload notices, proof of delivery, company name and imprint for the"
+  echo "# recipients' pages, cleanup and retention, …): copy the lines you need from cloudshare.env.example."
 } > env/cloudshare.env
 chmod 700 env; chmod 600 env/*.env
 # Optional files for the container (/config, read-only): templates.json and locales/<language>.json
@@ -116,4 +121,5 @@ echo "CLOUDSHARE_HOST in env/versions.env: $(grep ^CLOUDSHARE_HOST= env/versions
 echo; echo "env/ written:"; ls -l env | sed 's/^/  /'
 echo "Store CREDENTIAL_KEY in your password manager (without it all users have to reconnect):"
 echo "  grep CREDENTIAL_KEY env/cloudshare.env"
+echo "Optional features (SMS, notices, proof of delivery, …): see cloudshare.env.example and add them to env/cloudshare.env."
 echo "Next: DNS for $PUBLIC_HOST → this server, ports 80/443 open, then deploy the stack (README)."

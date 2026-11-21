@@ -571,4 +571,28 @@ describe("mails that were never sent", () => {
     expect(handler.mock.calls.some(([links]) => links.tokens.includes("tok-u8"))).toBe(true);
     expect(getJob(id)).toBeUndefined();
   });
+
+  it("gives up after a week of failed tries – the job does not stay forever", async () => {
+    const id = await createSeparateJob("oid-unsent", "max@example.test", {
+      step: "s1", fileNames: ["u9.pdf"], sendUrl: "https://vault/#/send/u9", sendId: "send-u9", maxAccessCount: 3, shares: [share("tok-u9")],
+    });
+    handler.mockRejectedValue(new Error("Nextcloud gone"));
+    await checkAfter(8); // first failure
+    expect(getJob(id)).toBeDefined();
+    await checkAfter(12); // failing for 4 days: tried again
+    expect(getJob(id)).toBeDefined();
+    await checkAfter(16); // failing for 8 days: given up
+    expect(getJob(id)).toBeUndefined();
+  });
+
+  it("does not drop a job whose mail was just sent when its time runs out – the password mail must not get lost", async () => {
+    const id = await createSeparateJob("oid-unsent", "max@example.test", {
+      step: "s1", fileNames: ["u10.pdf"], sendUrl: "https://vault/#/send/u10", sendId: "send-u10", maxAccessCount: 3, shares: [share("tok-u10")],
+    });
+    getJob(id)!.expiresAt = Date.now() - 1_000; // the last link is a week old
+    await arm(id); // "Send" pressed right now
+    await checkJobs(quietLog());
+    expect(getJob(id)).toBeDefined(); // still looking for the mail in "Sent Items"
+    expect(handler.mock.calls.some(([links]) => links.tokens.includes("tok-u10"))).toBe(false);
+  });
 });

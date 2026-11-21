@@ -2830,13 +2830,14 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
   });
 
   const waysGroup = panel.querySelector<HTMLDivElement>(`#${id}-channel`)!;
-  // Ticked at first: the way the password went the first time – offered even if the settings leave it out now.
+  // The way the password went the first time is offered even if the settings leave it out now. Nothing is ticked:
+  // the password goes again only where the sender ticks it.
   const first: ResendChannel =
     share.password?.channel === "sms" && serverConfig.smsEnabled ? "sms" : sent.otherTo.length > 0 ? "mail" : "recipients";
   const offered = userSettings().channels as string[];
   const ways: Array<{ channel: ResendChannel; box: HTMLInputElement; field?: HTMLInputElement }> = [];
   // The recipients of the message one by one (as with a proof of delivery, without the confirmation): each a box,
-  // "An", "Cc" or "Bcc" below it; all ticked when the password went to them the first time.
+  // "An", "Cc" or "Bcc" below it.
 
   /** Why the ticked way cannot be sent to (missing or wrong address, a number SMS may not go to), or null. */
   const fieldProblem = (way: (typeof ways)[number]): string | null => {
@@ -2854,7 +2855,7 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
     if (!offered.includes(channel) && channel !== first) return;
     const { row, input: box } = checkboxRow(text, hint);
     box.value = value;
-    box.checked = channel === first;
+    box.checked = false;
     waysGroup.append(row);
     const way: (typeof ways)[number] = { channel, box };
     ways.push(way);
