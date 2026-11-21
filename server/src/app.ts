@@ -73,7 +73,7 @@ import { CONNECT_TTL, pendingConnects, UPLOAD_TTL, uploads, type UploadState } f
 import { addLink, caseById, caseFor, caseForLink, caseOfToken, casesOf, caseSummary, gatewayUrl, linkUrlFor, type ProofCase, type ProofLink } from "./proof.js";
 import { caseSubject } from "./proofMail.js";
 import { verifiedAddresses } from "./proofPassword.js";
-import { confirmFromMail, gatewayCsp, openGateway, requestCode, verifyCode, type GatewayResult, type Visitor } from "./proofGateway.js";
+import { confirmFromMail, gatewayCsp, openGateway, passwordAgain, requestCode, verifyCode, type GatewayResult, type Visitor } from "./proofGateway.js";
 import { signedProofPdf } from "./proofPdf.js";
 import { refreshCase } from "./proofWatcher.js";
 import { sign, signedBy } from "./storage.js";
@@ -1462,6 +1462,11 @@ export async function buildApp(options: { logger?: boolean } = {}) {
    */
   app.get<{ Params: { token: string } }>("/r/s/:token", async (req, reply) =>
     sendGateway(reply, openGateway(req.params.token, req.headers.cookie, visitorOf(req))));
+
+  // "Neuen Kennwort-Link anfordern" in the password mail: the address form even for a confirmed browser – a new
+  // confirmation with the code sends a fresh password link (proofPassword.ts).
+  app.get<{ Params: { token: string } }>("/r/s/:token/password", async (req, reply) =>
+    sendGateway(reply, passwordAgain(req.params.token)));
 
   app.get<{ Params: { token: string }; Querystring: { address?: string; code?: string } }>("/r/s/:token/confirm", async (req, reply) =>
     sendGateway(reply, confirmFromMail(req.params.token, req.query.address, req.query.code)));

@@ -406,7 +406,8 @@ In "History" and in the read mode (2.9) such links get **Password** (`passwordAv
   time, or `{ channel: "sms", to }` to any number (a corrected one too – an SMS number is never confirmed, not even the
   first time) – anything else is 409 `PROOF_RESEND`. The pane shows under "Erneut senden an" why there is no
   password and one box per confirmed recipient, for the other address of the first time and "Per SMS" (its number
-  field right under it) – none ticked (`fillProofPasswordPanel`).
+  field right under it) – none ticked (`fillProofPasswordPanel`); before the first confirmation only the heading
+  "Kennwort" and why nothing can be sent yet.
 
 Revoking the last link of a step deletes its Sends at once (`forgetPasswordToken`); otherwise Vaultwarden deletes them
 when the links expire. Steps sent before this version have no entry – their password cannot be shown.
@@ -509,7 +510,7 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   "Anfordern" disabled with a proof; the reason is appended to the hint under the fixed switch, `#proof-hint` – no "i",
   no note box).
 - **Password after the confirmation** (`proofPassword.ts`): the mail to the confirmed address says so ("Sie haben eben Ihre
-  E-Mail-Adresse bestätigt …") and its card has two numbered steps (`MailCard.steps`: 1 "Kennwort anzeigen", 2 "Zum Download", each button with its address as plain text below), the download to the gateway – never to Nextcloud: the confirmed browser goes
+  E-Mail-Adresse bestätigt …") and its card has two numbered steps (`MailCard.steps`: 1 "Kennwort anzeigen", 2 "Zum Download", each button with its address as plain text below; how often and until when the password link works as a grey note under step 1 with the link "Neuen Kennwort-Link anfordern" (`/r/s/:token/password`: confirming again mails a fresh password link), under step 2 until when the link works ("Gültig bis 04.12.2026, 23:59 Uhr" – the end of its expiry day, `linkEnd`) – `note` –, the case number at the bottom), the download to the gateway – never to Nextcloud: the confirmed browser goes
   straight on, another one or a forwarded mail is asked for the code again, so link and password never travel together
   (`afterConfirmation` in `passwordMailHtml`); a step whose links all go through the gateway
   (`isDeferredStep` in `jobs.ts`) sends no password when the mail is sent (`password.deferred`); its `PasswordRef` is
@@ -667,6 +668,7 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `POST /api/proofs/:id/link`, `GET /proof/:id.pdf?until=…&lang=…&sig=…` | "Zustellnachweis" (2.12): a signed PDF address valid 5 minutes (owner only), opened in the default browser; the PDF itself needs no login – the HMAC signature (key from `CREDENTIAL_KEY`) binds case, end and language |
 | `GET /r/s/:token`, `POST /r/s/:token/code`, `POST /r/s/:token/verify` | Gateway of a link with "Zustellnachweis" (no login): the recipient enters their address, gets a six-digit code (only addresses the mail went to; the page reads the same for any address), confirms it and goes on to Nextcloud; a signed cookie per link lets the same browser come back; every step is recorded |
 | `GET /r/s/:token/confirm?address=…&code=…` | The button "Adresse bestätigen" in the code mail: the code form filled in (`confirmFromMail`) – confirms nothing by itself (mail scanners open links), the click posts to `/verify` |
+| `GET /r/s/:token/password` | "Neuen Kennwort-Link anfordern" in the password mail after a confirmation: the address form even for a confirmed browser – confirming again with the code mails a fresh password link to that address (`passwordAgain`, `releasePassword`) |
 | `GET/POST /webhooks/seven?token=…` | seven.io delivery reports (no login, secret `SEVEN_WEBHOOK_SECRET`) |
 
 Rate limit: `RATE_LIMIT_PER_MINUTE` per user (`oid`, otherwise client address); Nextcloud login, upload links and

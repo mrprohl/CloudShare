@@ -1930,10 +1930,10 @@ test("Verlauf: a password held back for the proof of delivery is not sent again 
   const panel = row.locator(".password-panel");
   await expect(panel.locator("input")).toHaveCount(0); // no password, no field, no way to pick
   await expect(panel.locator(".reveal-password, .copy-password")).toHaveCount(0);
-  await expect(panel.locator(".label")).toHaveText("Erneut senden an");
+  await expect(panel.locator(".label")).toHaveText("Kennwort"); // nothing to send yet: no "Erneut senden an"
   await expect(panel.locator(".hint")).toHaveText(
-    "Bei einem Zustellnachweis wird das Kennwort nicht angezeigt. Es geht automatisch an jeden Empfänger, der seine " +
-    "Adresse mit dem Code bestätigt – erneut senden können Sie es erst danach.");
+    "Wird beim Zustellnachweis nicht angezeigt. Jeder Empfänger erhält es automatisch, sobald er seine Adresse " +
+    "bestätigt – erneut senden können Sie es erst danach.");
   await expect(panel.locator(".send-password")).toHaveCount(0);
   await expectAccessible(page);
   expect(calls.some((c) => c.path.endsWith("/password/send"))).toBe(false);

@@ -36,7 +36,13 @@ export interface PasswordMailContent {
    * "Zustellnachweis": sent right after the recipient confirmed their address – the mail says so and lists the next
    * steps back on the page ("Zum Download" / "Zum Hochladen"). Own wording, not the template's intro.
    */
-  afterConfirmation?: { kind: "file" | "request"; /** The gateway of the link – a button "Zum Download" goes there. */ url: string };
+  afterConfirmation?: {
+    kind: "file" | "request";
+    /** The gateway of the link – a button "Zum Download" goes there. */
+    url: string;
+    /** Until when the link works ("04.12.2026, 23:59 Uhr") – a grey note under step 2. */
+    validUntil?: string;
+  };
 }
 
 export function passwordMailHtml(mail: PasswordMailContent): string {
@@ -71,13 +77,16 @@ export function passwordMailHtml(mail: PasswordMailContent): string {
         title: t(upload ? "mail.confirmedTitleUpload" : "mail.confirmedTitleDownload"),
         files: mail.fileNames,
         steps: [
-          { text: t("mail.confirmedStepPassword"), button: { label: t("mail.showPassword"), url: mail.sendUrl } },
+          // How often and how long the password link works – and, when it has run out, a new one through the gateway.
+          { text: t("mail.confirmedStepPassword"), button: { label: t("mail.showPassword"), url: mail.sendUrl }, note: passwordLimits || undefined,
+            noteLink: { label: t("mail.confirmedPasswordAgain"), url: `${mail.afterConfirmation.url}/password` } },
           {
             text: t(upload ? "mail.confirmedStepUpload" : "mail.confirmedStepDownload", { count }),
             button: { label: t(upload ? "mail.proof.gateway.upload" : "mail.proof.gateway.download"), url: mail.afterConfirmation.url },
+            note: mail.afterConfirmation.validUntil ? t("mail.confirmedValidUntil", { date: mail.afterConfirmation.validUntil }) : undefined,
           },
         ],
-        details: [passwordLimits, tracking].filter(Boolean).join(" · "),
+        details: tracking,
       },
       after: signature,
     });

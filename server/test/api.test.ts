@@ -1406,7 +1406,7 @@ describe("delivery proof – password after the confirmation", () => {
     payload: new URLSearchParams(fields).toString(),
   });
 
-  it("mails the held-back password only to the confirmed recipient, once, and shows the next steps", async () => {
+  it("mails the held-back password only to the confirmed recipient – again on a new confirmation – and shows the next steps", async () => {
     nc.createPublicShare.mockResolvedValue("https://cloud.example.test/s/proof-pw");
     const { body } = await startUpload("anna", "Angebot.pdf");
     await putChunk("anna", body.uploadId, 1);
@@ -1446,10 +1446,21 @@ describe("delivery proof – password after the confirmation", () => {
     expect(String(sendMailAsApp.mock.calls[0][4])).toContain('href="https://cloudshare.example.test/r/s/proof-pw"');
     expect(String(sendMailAsApp.mock.calls[0][4])).not.toContain("cloud.example.test/s/proof-pw");
 
-    // Confirming again (another browser): no second password mail.
+    // Under step 1: the way to a new password link – the address form even for this confirmed browser.
+    expect(String(sendMailAsApp.mock.calls[0][4])).toContain('href="https://cloudshare.example.test/r/s/proof-pw/password"');
+    expect(String(sendMailAsApp.mock.calls[0][4])).toContain("Neuen Kennwort-Link anfordern");
+    const cookie = String(page.headers["set-cookie"]).split(";")[0];
+    const askAgain = await app.inject({ method: "GET", url: "/r/s/proof-pw/password", headers: { cookie } });
+    expect(askAgain.statusCode).toBe(200);
+    expect(askAgain.body).toContain('action="/r/s/proof-pw/code"');
+    expect(askAgain.body).toContain("danach erhalten Sie einen neuen Kennwort-Link");
+
+    // Confirming again (the first password link ran out, or another device): a fresh password mail to her.
     const again = await confirm("erika@example.test");
-    expect(again.body).toContain("bereits an erika@example.test gesendet");
-    expect(sendMailAsApp).not.toHaveBeenCalled();
+    expect(again.body).toContain("an erika@example.test gesendet");
+    expect(sendMailAsApp).toHaveBeenCalledOnce();
+    expect(sendMailAsApp.mock.calls[0][2]).toBe("erika@example.test");
+    expect(String(sendMailAsApp.mock.calls[0][4])).toContain("Kennwort anzeigen");
 
     const types = caseById(proofId)!.events.map((e) => e.type);
     expect(types).toEqual(expect.arrayContaining(["recipient.verified", "password.sent"]));

@@ -2662,7 +2662,8 @@ function fillProofPasswordPanel(panel: HTMLElement, share: ShareItem, sent: Sent
   const label = document.createElement("span");
   label.className = "label";
   label.id = `${id}-channel-label`;
-  label.textContent = t("resend.channel");
+  // Before the first confirmation there is nothing to send: the heading names the password, not "Erneut senden an".
+  label.textContent = t(verified.length === 0 ? "resend.password" : "resend.channel");
   const intro = document.createElement("p");
   intro.className = "hint";
   intro.textContent = t(verified.length === 0 ? "resend.held" : "resend.proofIntro");

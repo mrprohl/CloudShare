@@ -162,10 +162,10 @@ function context(c: ProofCase, token: string, link: ProofLink): string {
     `<span>${escapeHtml(t(link.kind === "request" ? "mail.proof.gateway.forUpload" : "mail.proof.gateway.file"))}</span> ${escapeHtml(link.name)}</p>`;
 }
 
-const addressForm = (c: ProofCase, token: string, link: ProofLink, error = "", address = "") =>
+const addressForm = (c: ProofCase, token: string, link: ProofLink, error = "", address = "", intro = "mail.proof.gateway.intro") =>
   page(
     t("mail.proof.gateway.title"),
-    `${context(c, token, link)}<p>${escapeHtml(t("mail.proof.gateway.intro"))}</p>${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}
+    `${context(c, token, link)}<p>${escapeHtml(t(intro))}</p>${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}
 <form method="post" action="${cookiePath(token)}/code"><label for="address">${escapeHtml(t("mail.proof.gateway.address"))}</label>
 <input id="address" name="address" type="email" autocomplete="email" required autofocus${address ? ` value="${escapeHtml(address)}"` : ""}>
 <button type="submit">${escapeHtml(t("mail.proof.gateway.sendCode"))}</button></form>`,
@@ -205,6 +205,21 @@ export function openGateway(token: string, cookieHeader: string | undefined, vis
 }
 
 /**
+ * GET /r/s/:token/password – "Neuen Kennwort-Link anfordern" in the password mail: the address form, also for a
+ * confirmed browser (its cookie would lead straight on to Nextcloud). Confirming again with the code sends a fresh
+ * password link (releasePassword) – the recipient needs no one when the first one has run out.
+ */
+export function passwordAgain(token: string): GatewayResult {
+  const found = linkOf(token);
+  if (!found) return inRecipientLanguage(undefined, unavailable);
+  const { c, link } = found;
+  return inRecipientLanguage(c.language, () =>
+    c.recipients?.length
+      ? { status: 200, html: addressForm(c, token, link, "", "", "mail.proof.gateway.againIntro") }
+      : { status: 409, html: page(t("mail.proof.gateway.notSentTitle"), `<p>${escapeHtml(t("mail.proof.gateway.notSent"))}</p>`) });
+}
+
+/**
  * GET /r/s/:token/confirm – the button in the code mail: the code form filled in with address and code. Confirms
  * nothing by itself (a mail scanner opening the link changes nothing); the click on the button does. A code that has
  * expired (or was entered wrongly too often) leads back to the address form, the address filled in, to ask for a new one.
@@ -231,7 +246,7 @@ export function confirmFromMail(token: string, rawAddress: unknown, rawCode: unk
 function codeMail(c: ProofCase, token: string, link: ProofLink, address: string, code: string): { subject: string; html: string } {
   const ref = passwordRefFor(token, c.owner);
   const sender = ref?.senderName || c.ownerUpn;
-  const steps = [t("mail.proof.codeMail.step1")];
+  const steps = [t("mail.proof.codeMail.step1"), t("mail.proof.codeMail.step1Confirm")];
   if (ref?.deferred) {
     if (ref.toRecipients) steps.push(t("mail.proof.codeMail.step2Mail"));
     else if (ref.sms) steps.push(t("mail.proof.codeMail.step2Sms"));
@@ -361,9 +376,7 @@ function confirmedPage(link: ProofLink, released: ReleasedPassword | null, faile
   const steps: string[] = [];
   if (failed) steps.push(t("mail.proof.gateway.passwordFailed"));
   if (released?.mailTo) {
-    steps.push(released.subject
-      ? t("mail.proof.gateway.stepMail", { address: released.mailTo, subject: released.subject })
-      : t("mail.proof.gateway.stepMailBefore", { address: released.mailTo }));
+    steps.push(t("mail.proof.gateway.stepMail", { address: released.mailTo, subject: released.subject ?? "" }));
     steps.push(t("mail.proof.gateway.stepShow"));
   }
   if (released?.others?.length) steps.push(t("mail.proof.gateway.stepOther", { to: released.others.join(", ") }));
