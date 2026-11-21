@@ -122,7 +122,7 @@ function buttonLink(button: { label: string; url: string }): string {
     `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;">` +
     `<tr><td bgcolor="${BRAND}" style="background:${BRAND};border-radius:4px;mso-padding-alt:6px 14px;">` +
     `<a href="${escapeHtml(button.url)}" style="display:inline-block;color:#ffffff;font-family:${FONT};font-size:13px;` +
-    `font-weight:600;line-height:18px;padding:6px 14px;text-decoration:none;white-space:nowrap;">${escapeHtml(button.label)}</a>` +
+    `font-weight:600;line-height:18px;padding:6px 14px;text-decoration:none;white-space:nowrap;"><span style="color:#ffffff;">${escapeHtml(button.label)}</span></a>` +
     `</td></tr></table>`
   );
 }

@@ -108,7 +108,7 @@ describe("password jobs", () => {
 
     expect(sendMail).toHaveBeenCalledOnce();
     const [, , subject, html] = sendMail.mock.calls[0];
-    expect(subject).toBe("Kennwort für 2 Dateien: Unterlagen");
+    expect(subject).toBe("Kennwort für 2 Freigaben: Unterlagen");
     expect(html).toContain("a.pdf");
     expect(html).toContain("b.png");
     expect(getJob(id)?.fileNames).toEqual(["a.pdf", "b.png"]);

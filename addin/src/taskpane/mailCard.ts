@@ -55,7 +55,7 @@ function button(url: string, text: string): string {
     `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:separate;">` +
     `<tr><td bgcolor="${BRAND}" style="background:${BRAND};border-radius:4px;mso-padding-alt:6px 14px;">` +
     `<a href="${escapeHtml(url)}" style="display:inline-block;color:#ffffff;font-family:${FONT};font-size:13px;` +
-    `font-weight:600;line-height:18px;padding:6px 14px;text-decoration:none;white-space:nowrap;">${escapeHtml(text)}</a>` +
+    `font-weight:600;line-height:18px;padding:6px 14px;text-decoration:none;white-space:nowrap;"><span style="color:#ffffff;">${escapeHtml(text)}</span></a>` +
     `</td></tr></table>`
   );
 }
