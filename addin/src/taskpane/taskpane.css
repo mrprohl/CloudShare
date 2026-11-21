@@ -615,6 +615,9 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 /* "Erneut senden an": the address or number field indented under its ticked box, like the field under the chosen
    way of "Kennwort an". */
 .password-panel .resend-picks .channel-group { margin: 2px 0 4px 24px; }
+/* The hint under a box ("Diese Adresse erhält …") ends with its row – no extra space below, so every box of
+   "Erneut senden an" is as far from the next one (the 8px under .hint is for the sentence under the heading). */
+.password-panel .checkbox-hint { margin-bottom: 0; }
 /* The recipients one line each: the address, "An"/"Cc"/"Bcc" small and grey on the right (recipientPicks). */
 .recipient-row { padding: 4px 0; }
 .recipient-row .checkbox-text { display: flex; align-items: baseline; gap: 8px; overflow-wrap: anywhere; }
