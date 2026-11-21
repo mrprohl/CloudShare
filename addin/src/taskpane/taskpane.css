@@ -190,6 +190,8 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 .account-menu-name { margin: 0; font-weight: 600; color: var(--fg1); overflow-wrap: anywhere; }
 .storage-meter { height: 4px; margin: 8px 0 4px; border-radius: 2px; background: var(--stroke2); overflow: hidden; }
 .storage-meter-fill { height: 100%; border-radius: 2px; background: var(--brand-bg); }
+.storage-meter.used .storage-meter-fill { min-width: 4px; } /* a little blue as soon as anything is used */
+.storage-meter.warn .storage-meter-fill { background: var(--warning-fg); } /* from 75 %, like "Gültig bis" near its end */
 .storage-meter.full .storage-meter-fill { background: var(--danger-fg); }
 .account-storage { margin: 2px 0 0; color: var(--fg2); }
 .storage-meter:not([hidden]) + .account-storage { margin-top: 0; }
