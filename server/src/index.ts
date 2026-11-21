@@ -6,7 +6,7 @@ import { config } from "./config.js";
 import { startCleanup } from "./cleanup.js";
 import { addinLanguages, language, locale, localizePublic } from "./i18n.js";
 import { startNotices } from "./notices.js";
-import { signingFilesProblem } from "./pdfSign.js";
+import { prepareSigningIdentity, signingFilesProblem } from "./pdfSign.js";
 import { startProofRetention } from "./proof.js";
 import { startProofWatcher } from "./proofWatcher.js";
 import { startRetention } from "./db.js";
@@ -26,6 +26,17 @@ await initVault((msg) => app.log.info(msg));
 const signingProblem = config.deliveryProof ? signingFilesProblem() : null;
 if (signingProblem) {
   app.log.error({ problem: signingProblem }, "Proof signing files not usable – signing with CloudShare's own certificate instead");
+}
+// Which certificate signs the proofs – a new own one right away when PROOF_SIGN_NAME / PROOF_SIGN_ORGANIZATION changed.
+if (config.deliveryProof) {
+  const signer = prepareSigningIdentity();
+  const message = {
+    files: "Proof signing: own PEM files (PROOF_SIGN_CERT_FILE)",
+    kept: "Proof signing: CloudShare's own certificate",
+    made: "Proof signing: CloudShare made its own certificate",
+    renewed: "Proof signing: PROOF_SIGN_NAME / PROOF_SIGN_ORGANIZATION changed – CloudShare made a new own certificate (earlier PDFs stay valid)",
+  }[signer.source];
+  app.log.info({ name: signer.name, organization: signer.organization }, message);
 }
 await app.listen({ host: "0.0.0.0", port: config.port });
 // Links of drafts that were never sent are revoked when their job expires (shares.ts).

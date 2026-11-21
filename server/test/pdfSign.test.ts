@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { config } from "../src/config.js";
 import { children, explicit, int, oid, read, seq } from "../src/der.js";
 import { pdfDocument } from "../src/pdf.js";
-import { makeCertificate, resetSigningIdentity, signedParts, signingFilesProblem, signingIdentity, signPdf } from "../src/pdfSign.js";
+import { makeCertificate, prepareSigningIdentity, resetSigningIdentity, signedParts, signingFilesProblem, signingIdentity, signPdf } from "../src/pdfSign.js";
 import { mockFetch } from "./helpers.js";
 
 afterEach(() => {
@@ -43,6 +43,34 @@ describe("signing the proof PDF", () => {
 
   it("keeps its own identity once made", () => {
     expect(signingIdentity().cert.equals(signingIdentity().cert)).toBe(true);
+  });
+
+  it("own certificate: kept across a restart, made anew when PROOF_SIGN_NAME or PROOF_SIGN_ORGANIZATION change", () => {
+    const before = { name: config.proofSignName, organization: config.proofSignOrganization };
+    try {
+      config.proofSignName = "CloudShare";
+      config.proofSignOrganization = "";
+      resetSigningIdentity();
+      const first = signingIdentity().cert;
+      resetSigningIdentity(); // a restart: the same certificate from the database
+      expect(prepareSigningIdentity()).toEqual({ source: "kept", name: "CloudShare", organization: "" });
+      expect(signingIdentity().cert.equals(first)).toBe(true);
+
+      config.proofSignOrganization = "Example GmbH"; // set later
+      resetSigningIdentity();
+      expect(prepareSigningIdentity()).toEqual({ source: "renewed", name: "CloudShare", organization: "Example GmbH" });
+      const second = signingIdentity().cert;
+      expect(second.equals(first)).toBe(false);
+      expect(new X509Certificate(second).subject).toBe("CN=CloudShare\nO=Example GmbH");
+
+      resetSigningIdentity(); // unchanged settings: kept again
+      expect(prepareSigningIdentity().source).toBe("kept");
+      expect(signingIdentity().cert.equals(second)).toBe(true);
+    } finally {
+      config.proofSignName = before.name;
+      config.proofSignOrganization = before.organization;
+      resetSigningIdentity();
+    }
   });
 
   it("own PEM files: used when they work; missing or not matching – named at start, signed with the own certificate", () => {
