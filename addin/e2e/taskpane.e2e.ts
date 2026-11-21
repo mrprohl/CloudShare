@@ -1873,13 +1873,14 @@ test("Verlauf: Kennwort shows the password and sends it again the same ways as t
   expect(sends).toEqual([
     { channel: "recipients", to: ["erika@example.com", "archiv@example.com"] },
     { channel: "mail", to: "kollege@example.com" }, { channel: "sms", to: "+491701234567" }]);
-  // The list reloads after sending (new state of the password); the panel stays open, loaded anew: nothing ticked,
-  // "Senden" greyed out.
+  // The list reloads quietly after sending (new state of the password in the row); the panel stays as it is – not
+  // closed, not loaded again –, only unticked, "Senden" greyed out, the fields under the boxes folded away.
   await expect.poll(() => calls.filter((c) => c.path === "/api/shares").length).toBe(2);
-  await expect.poll(() => calls.filter((c) => c.path === "/api/shares/11/password").length).toBe(2);
   await expect(panel).toBeVisible();
   await expect(toggle).toHaveAttribute("aria-expanded", "true");
-  await expect(panel.locator("input[type=checkbox]")).toHaveCount(5); // loaded again
+  expect(calls.filter((c) => c.path === "/api/shares/11/password").length).toBe(1);
+  await expect(panel.locator("input[type=checkbox]")).toHaveCount(5);
+  await expect(mailField).toBeHidden();
   await expect(panel.locator("input[type=checkbox]:checked")).toHaveCount(0);
   await expect(panel.locator(".send-password")).toBeDisabled();
 });
@@ -1964,10 +1965,11 @@ test("Verlauf: with a proof of delivery the password goes again only to the conf
   const panel = row.locator(".password-panel");
   await expect(panel.locator("input.mono")).toHaveCount(0);
   await expect(panel.locator(".hint").first()).toHaveText(
-    "Bei einem Zustellnachweis wird das Kennwort nicht angezeigt – nur erneut gesendet, an Empfänger, die ihre Adresse " +
+    "Das Kennwort wird nicht angezeigt – nur erneut gesendet, an Empfänger, die ihre Adresse " +
     "bestätigt haben. Jeder erhält eine eigene Nachricht.");
   const boxes = panel.locator("label.checkbox");
-  await expect(boxes).toHaveText(["erika@example.com", "bernd@example.com"]);
+  // "An", "Cc" or "Bcc" on the right as without a proof (bernd is not in the mocked distribution: nothing there).
+  await expect(boxes).toHaveText([/^erika@example\.com\s*An$/, "bernd@example.com"]);
   await expect(panel.locator("input[type=checkbox]:checked")).toHaveCount(0); // nobody gets it unasked
   const send = panel.locator(".send-password");
   await expect(send).toBeDisabled();
@@ -1978,7 +1980,7 @@ test("Verlauf: with a proof of delivery the password goes again only to the conf
   await expect(page.locator("#status")).toContainText("Das Kennwort wurde an");
   const sends = calls.filter((c) => c.path.endsWith("/password/send")).map((c) => JSON.parse(c.body!.toString()));
   expect(sends).toEqual([{ channel: "recipients", to: ["bernd@example.com"] }]);
-  // Still open after sending, loaded anew: nothing ticked.
+  // Still open after sending, as it was – only unticked.
   await expect.poll(() => calls.filter((c) => c.path === "/api/shares").length).toBe(2);
   await expect(panel).toBeVisible();
   await expect(boxes).toHaveCount(2);
@@ -2025,6 +2027,10 @@ test("Verlauf: many recipients fold into one box – ticked all at once or one b
   await expect(page.locator("#status")).toContainText("Das Kennwort wurde an");
   const sends = calls.filter((c) => c.path.endsWith("/password/send")).map((c) => JSON.parse(c.body!.toString()));
   expect(sends).toEqual([{ channel: "recipients", to: [...to, "chef@example.com"] }]);
+  // Afterwards the list stays folded out as it was, everyone unticked again.
+  await expect(all.locator(".checkbox-hint")).toHaveText("Keiner ausgewählt");
+  await expect(list).toBeVisible();
+  await expect(panel.locator(".send-password")).toBeDisabled();
 });
 
 test("Verlauf: an open password panel stays open when the list is built anew", async ({ page }) => {
@@ -2054,8 +2060,8 @@ test("Verlauf: with a proof of delivery the password may go by SMS to a correcte
   await row.locator(".show-password").click();
   const panel = row.locator(".password-panel");
   const number = panel.locator("input[type=tel]");
-  await expect(number).toBeHidden(); // only once "Per SMS" is ticked
-  await panel.locator("label.checkbox", { hasText: "Per SMS" }).click();
+  await expect(number).toBeHidden(); // only once "Rufnummer (SMS)" is ticked
+  await panel.locator("label.checkbox", { hasText: "Rufnummer (SMS)" }).click();
   await expect(number).toBeVisible();
   await expect(number).toHaveValue("+491701234567");
   await number.fill("0171 2345678");

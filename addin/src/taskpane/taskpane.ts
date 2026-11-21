@@ -2739,7 +2739,14 @@ function fillProofPasswordPanel(panel: HTMLElement, share: ShareItem, sent: Sent
   };
   const lower = verified.map((address) => address.toLowerCase());
   // The confirmed addresses one line each, from RECIPIENT_GROUP_FROM on folded into one box (recipientPicks).
-  const confirmed = recipientPicks(id, "resend.confirmedGroup", verified.map((address) => ({ address })));
+  // "An", "Cc" or "Bcc" on the right as in the panel without a proof – the field the address had in the message.
+  const fieldOf = (address: string) => {
+    const lowered = address.toLowerCase();
+    const has = (list: string[]) => list.some((a) => a.toLowerCase() === lowered);
+    const { to, cc, bcc } = sent.recipients;
+    return has(to) ? t("resend.fieldTo") : has(cc) ? t("resend.fieldCc") : has(bcc) ? t("resend.fieldBcc") : undefined;
+  };
+  const confirmed = recipientPicks(id, "resend.confirmedGroup", verified.map((address) => ({ address, field: fieldOf(address) })));
   group.append(confirmed.element);
   for (const input of confirmed.boxes) picks.push({ input, channel: "recipients", value: input.value });
   for (const address of sent.otherTo.filter((a) => !lower.includes(a.toLowerCase()))) {
@@ -2749,7 +2756,7 @@ function fillProofPasswordPanel(panel: HTMLElement, share: ShareItem, sent: Sent
   // sits indented right under its box while it is ticked.
   let number: HTMLInputElement | null = null;
   if (serverConfig.smsEnabled) {
-    add("sms", "", t("resend.proofSms"), t("resend.smsHint") + smsCountriesHint());
+    add("sms", "", t("channel.sms"), t("resend.smsHint") + smsCountriesHint()); // "Rufnummer (SMS)" as without a proof
     const box = picks[picks.length - 1].input;
     const field = document.createElement("div");
     field.className = "input-group channel-group";
@@ -2816,7 +2823,7 @@ function fillProofPasswordPanel(panel: HTMLElement, share: ShareItem, sent: Sent
         reached.push(result.to);
       }
       setStatus(t("resend.sentMail", { to: reached.join(", ") }), "success");
-      reloadKeepingPanel(panel, share);
+      afterResend(picks.map((pick) => pick.input));
     } catch (err) {
       const done = reached.length > 0 ? ` ${t("resend.sentMail", { to: reached.join(", ") })}` : "";
       setStatus(t("resend.failed", { error: errorMessage(err) }) + done, "error");
@@ -3016,7 +3023,7 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
         done.push(t(sentKey[result.channel], { to: result.to }));
       }
       setStatus(done.join(" "), "success");
-      reloadKeepingPanel(panel, share);
+      afterResend(ways.map((way) => way.box));
     } catch (err) {
       setStatus([t("resend.failed", { error: errorMessage(err) }), ...done].join(" "), "error");
       send.disabled = false;
@@ -3289,7 +3296,6 @@ function shareRow(share: ShareItem): HTMLElement {
       panel.hidden = !open;
       if (open) void fillPasswordPanel(panel, share);
     });
-    if (reopenPanelOf === share.id) toggle.click(); // sent from this panel: open again in the new row
   }
 
   const copy = row.querySelector<HTMLButtonElement>(".copy")!;
@@ -3439,7 +3445,8 @@ async function loadShares() {
 }
 
 /**
- * A row whose "Kennwort" panel is open stays as it is when the list is built anew – with what was ticked or typed.
+ * An open "Kennwort" panel survives the list being built anew: the row gets its new lines (download state, "Kennwort
+ * zuletzt an …"), the panel moves over as it is – with what was ticked or typed, no closing, no "Wird geladen".
  * A reload can finish right after the click that opened it: the first click into the pane focuses it, and focus
  * reloads the list (reloadSharesOnReturn) – without this the panel would close again at once.
  */
@@ -3447,27 +3454,30 @@ function keepOpenRows(list: HTMLElement, rows: HTMLElement[]): HTMLElement[] {
   const open = new Map<string, HTMLElement>();
   for (const panel of list.querySelectorAll<HTMLElement>(".password-panel:not([hidden])")) {
     const row = panel.closest<HTMLElement>(".share");
-    if (row?.dataset.id) open.set(row.dataset.id, row);
+    if (row?.dataset.id) open.set(row.dataset.id, panel);
   }
-  return rows.map((row) => open.get(row.dataset.id ?? "") ?? row);
+  for (const row of rows) {
+    const old = open.get(row.dataset.id ?? "");
+    const panel = row.querySelector<HTMLElement>(".password-panel");
+    const toggle = row.querySelector<HTMLButtonElement>(".show-password");
+    if (!old || !panel || !toggle || toggle.hidden) continue; // no password any more: the panel closes
+    panel.replaceChildren(...Array.from(old.childNodes)); // the nodes keep their listeners
+    panel.hidden = false;
+    toggle.setAttribute("aria-expanded", "true");
+  }
+  return rows;
 }
 
-/** The link whose "Kennwort" panel is opened again while the list is built anew after "Senden" in it. */
-let reopenPanelOf: string | null = null;
-
 /**
- * After "Senden" in a "Kennwort" panel: the list loads anew (the new state of the password in the row) and the panel
- * stays open – built anew in the new row, nothing ticked. If the list cannot load, the panel is filled anew in place.
+ * After "Senden" in a "Kennwort" panel: the panel stays as it is, only unticked ("Senden" greyed out again); the list
+ * loads quietly in the background and the row's lines show the new state ("Kennwort zuletzt an … · <time>").
  */
-function reloadKeepingPanel(panel: HTMLElement, share: ShareItem) {
-  reopenPanelOf = share.id;
-  panel.hidden = true; // so keepOpenRows takes the new row
-  loadShares()
-    .catch(() => {
-      panel.hidden = false;
-      void fillPasswordPanel(panel, share);
-    })
-    .finally(() => (reopenPanelOf = null));
+function afterResend(boxes: HTMLInputElement[]) {
+  for (const box of boxes.filter((b) => b.checked)) {
+    box.checked = false;
+    box.dispatchEvent(new Event("change", { bubbles: true })); // "Senden", the count of a group, the field under it
+  }
+  loadShares().catch(() => undefined);
 }
 
 /** "Verlauf" with the search: subject, what went out (file name or kind), recipients and password way, case-insensitive. */
