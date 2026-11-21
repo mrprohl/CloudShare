@@ -542,7 +542,7 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   RSA, the certificate, ESS signing-certificate-v2) over the bytes outside `/Contents`, with an RFC 3161 token from
   `PROOF_TSA_URL` as unsigned attribute (only the hash of the signature leaves the server; without an answer it signs
   without). Identity: `PROOF_SIGN_CERT_FILE` + `PROOF_SIGN_KEY_FILE` (PEM) or a self-made RSA-2048 certificate (ten
-  years, `PROOF_SIGN_NAME`/`_ORGANIZATION`) kept in store `signing-identity`. PEM files that cannot be read or whose
+  years, `PROOF_SIGN_NAME`/`_ORGANIZATION`) kept in store `signing-identity` (with the name and organisation it was made with; when `PROOF_SIGN_NAME` or `PROOF_SIGN_ORGANIZATION` no longer match, `prepareSigningIdentity` at start makes a new one and logs it – earlier PDFs carry their own certificate and stay valid; PEM files set later sign from the next restart). PEM files that cannot be read or whose
   key does not belong to the certificate are named at start (`signingFilesProblem`, log `Proof signing files not
   usable`) and the self-made certificate signs instead. `signedProofPdf` falls back to an unsigned PDF only if signing
   itself fails. The tests check the CMS with OpenSSL (`openssl cms -verify`) and that a changed byte

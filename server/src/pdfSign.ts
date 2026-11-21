@@ -45,7 +45,10 @@ interface Identity {
   cert: Buffer;
 }
 
-const store = new PersistentMap<{ keyPem: string; certDer: string }>("signing-identity", { retention: false });
+/** The own certificate; `name`/`organization`: what it was made with (missing in entries from before – read from the certificate). */
+const store = new PersistentMap<{ keyPem: string; certDer: string; name?: string; organization?: string }>("signing-identity", {
+  retention: false,
+});
 
 /** A self-signed certificate for signing documents: CN (and O), ten years, digital signature + non-repudiation. */
 export function makeCertificate(name: string, organization: string, key: KeyObject, publicDer: Buffer, now = new Date()): Buffer {
@@ -98,32 +101,68 @@ export function signingFilesProblem(): string | null {
   }
 }
 
+/** Name (CN) and organisation (O) in a certificate's subject ("" when missing). */
+function subjectOf(certDer: Buffer): { name: string; organization: string } {
+  const lines = new X509Certificate(certDer).subject.split("\n");
+  const field = (key: string) => lines.find((line) => line.startsWith(`${key}=`))?.slice(key.length + 1) ?? "";
+  return { name: field("CN"), organization: field("O") };
+}
+
+/** Where the identity came from, for the start log: own PEM files, the stored own certificate, a new one, or a new one
+ *  because PROOF_SIGN_NAME / PROOF_SIGN_ORGANIZATION changed. */
+export type IdentitySource = "files" | "kept" | "made" | "renewed";
+let source: IdentitySource | undefined;
+
 /**
- * The signing identity: the configured PEM files, else the one CloudShare made itself (made on first use). PEM files
- * that cannot be used never leave a proof unsigned: it is signed with the own certificate instead (the start log names
- * the problem, `signingFilesProblem`); after fixing them a restart takes them.
+ * The signing identity: the configured PEM files (from the start after they are set – a restart takes them), else the
+ * one CloudShare made itself – made once on first use and kept in the database, so a restart or an update signs with
+ * the same one; made anew when PROOF_SIGN_NAME or PROOF_SIGN_ORGANIZATION no longer match it (the PDFs signed before
+ * stay valid: each carries the certificate it was signed with). PEM files that cannot be used never leave a proof
+ * unsigned: it is signed with the own certificate instead (the start log names the problem, `signingFilesProblem`).
  */
 export function signingIdentity(): Identity {
   if (cached) return cached;
   if (config.proofSignCertFile && config.proofSignKeyFile && signingFilesProblem() === null) {
     cached = configuredIdentity();
+    source = "files";
     return cached;
   }
+  const wanted = { name: config.proofSignName, organization: config.proofSignOrganization };
   const stored = store.get("default");
   if (stored) {
-    cached = { key: createPrivateKey(stored.keyPem), cert: Buffer.from(stored.certDer, "base64") };
-    return cached;
+    const cert = Buffer.from(stored.certDer, "base64");
+    const has = stored.name !== undefined ? { name: stored.name, organization: stored.organization ?? "" } : subjectOf(cert);
+    if (has.name === wanted.name && has.organization === wanted.organization) {
+      cached = { key: createPrivateKey(stored.keyPem), cert };
+      source = "kept";
+      return cached;
+    }
   }
   const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-  const cert = makeCertificate(config.proofSignName, config.proofSignOrganization, privateKey, publicKey.export({ type: "spki", format: "der" }));
-  store.set("default", { keyPem: privateKey.export({ type: "pkcs8", format: "pem" }).toString(), certDer: cert.toString("base64") });
+  const cert = makeCertificate(wanted.name, wanted.organization, privateKey, publicKey.export({ type: "spki", format: "der" }));
+  store.set("default", {
+    keyPem: privateKey.export({ type: "pkcs8", format: "pem" }).toString(),
+    certDer: cert.toString("base64"),
+    ...wanted,
+  });
   cached = { key: privateKey, cert };
+  source = stored ? "renewed" : "made";
   return cached;
+}
+
+/**
+ * At start (with DELIVERY_PROOF): settles the identity now – a new own certificate after PROOF_SIGN_NAME or
+ * PROOF_SIGN_ORGANIZATION changed is made right away and named in the log, not on the next proof.
+ */
+export function prepareSigningIdentity(): { source: IdentitySource; name: string; organization: string } {
+  const { cert } = signingIdentity();
+  return { source: source ?? "kept", ...subjectOf(cert) };
 }
 
 /** Tests only: forget the identity in memory. */
 export const resetSigningIdentity = () => {
   cached = undefined;
+  source = undefined;
 };
 
 /** RFC 3161: a time stamp token for `signature` (the hash only), or null without a time stamp authority. */
