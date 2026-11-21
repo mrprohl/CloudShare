@@ -51,7 +51,7 @@ on to the download. See
 
 ## What the sender gets
 
-<img src="docs/images/sender-notices.png" alt="Two notes to the sender in the same layout as the password mail: Downloaded, with a green card for the file, the time of the first download and the validity; Text message not sent, with a red card for the three files, the masked number and the reason, and how to send the password again" width="420" align="right">
+<img src="docs/images/sender-notices.png" alt="Two notes to the sender in the same layout as the password mail: Downloaded, with a green card for the file, the time of the first download and the validity; Text message not sent, with a red card for the three files, the number and the reason, and how to send the password again" width="420" align="right">
 
 Every mail CloudShare sends on its own has **one layout**: a short text, one card like the link card in the mail
 (title, files with their type, at most one button, a small line of details) and at the bottom the line **"This
@@ -144,7 +144,7 @@ read) and is not shown for the other two.
 
 <br clear="right">
 
-<img src="docs/images/taskpane-shares.png" alt="History, a page of the account menu with a magnifier for the search: like the proofs of delivery - the day and recipients (message and password to ... when they are the same), Password to ..., Valid until ... with a calendar and the download status on its own line, and the icons Copy, Password, Insert, Revoke next to the subject; the first link has a proof of delivery: its case number under the file name with the seal after it and Password is open with the password and Send again to, one box per way" width="300" align="right">
+<img src="docs/images/taskpane-shares.png" alt="History, a page of the account menu with Refresh and a magnifier for the search: like the proofs of delivery - the day and recipients (message and password to ... when they are the same), Password to ..., Valid until ... with a calendar and the download status on its own line, and the icons Copy, Password, Insert, Revoke next to the subject; the first link has a proof of delivery: its case number under the file name with the seal after it and Password is open with the password and Send again to, one line per recipient with To, Cc or Bcc on the right, another address and text message" width="300" align="right">
 
 **"History"** – a page of the account menu at the bottom left, above "Proofs of delivery" – lists everything you sent
 with CloudShare that is still valid – links and confidential messages, newest first; the **magnifier** at the top right
@@ -154,9 +154,10 @@ a click opens that mail in Outlook (only mails
 of your own mailbox) –, below it what went out – the file name, "File request" or "Confidential message" (the symbol on the left shows the
 kind: a document, an upload arrow, an envelope with a lock)
 –, then one short line each for
-the day and recipients – "message and password to …" when the password went to the same addresses –, else the password
-(with / without, or how it went out: "Password by text message to …
-– delivered"), **"Valid until 24.11.2026"** with a calendar (orange in the last two days) and, on its own line, the
+the day and recipients – "message and password to …" when the password went to the same addresses; more than three
+addresses as the first two and "and 51 more", all of them in the tooltip –, else the password
+(with / without, or how it went out: "Password to +49 170 1234567
+– delivered" – the whole number, only you see it; once sent again "Password last sent to … · date, time"), **"Valid until 24.11.2026"** with a calendar (orange in the last two days) and, on its own line, the
 downloads (or received files; Vaultwarden does not report whether a message was opened). A
 confidential message has no "Copy" or "Insert" – CloudShare does not keep its key – but "Password" and "Revoke"
 (deletes it at once). Until the mail is sent the entry shows the subject of the draft – also one typed after inserting the link,
@@ -166,7 +167,7 @@ loads when you open the page and again when you come back to
 the pane, and at any time with "Refresh" at the top right (before the magnifier; the same in "Proofs of delivery" and
 for the links of a mail being read); until the entries are there, grey shimmering placeholders show
 where they will be – as when the pane starts and for "Proofs of delivery" and the links of a mail being read. Expired links are not listed. At the bottom, as in
-"Send": the account, as a menu – at the top the whole account name and its storage (a bar filled with the used share when there is a quota), then "Open Nextcloud" (your Nextcloud in the browser), "History" (every valid link, searchable), "Proofs of delivery" (with `DELIVERY_PROOF`: every proof, searchable), "Settings", "Send feedback" (with `FEEDBACK_MAIL`: a problem or a suggestion by mail to whoever looks after CloudShare), "Help" and "Disconnect" (takes a second click). A link is created when it is inserted;
+"Send": the account, as a menu – at the top the whole account name and its storage (a bar filled with the used share when there is a quota – orange from 75 %, red from 90 %), then "Open Nextcloud" (your Nextcloud in the browser), "History" (every valid link, searchable), "Proofs of delivery" (with `DELIVERY_PROOF`: every proof, searchable), "Settings", "Send feedback" (with `FEEDBACK_MAIL`: a problem or a suggestion by mail to whoever looks after CloudShare), "Help" and "Disconnect" (takes a second click). A link is created when it is inserted;
 until its mail has been sent it says **"Not sent"**. If the mail is never sent (draft discarded), CloudShare revokes
 the link after 7 days – unless it was already downloaded (opened by yourself, or the mail went out from an Outlook
 without CloudShare): then it says **"Password not sent yet."** and stays until you revoke it.
@@ -179,7 +180,7 @@ The icons next to the name (their names show on hover and are explained in the h
   **recipients of the message** (listed one by one with To, Cc or Bcc on the right – the ticked ones get one mail together as the first time, each in their field, so a Bcc stays hidden; with more than three one box stands for them all and folds out a filterable list), to
   **another address** (exactly one, like "Password to" when sending) or by **SMS**; as under "Password to", your Outlook contacts are
   suggested while you type and the **address book** icon next to the field picks one. A mail again only contains a link to the
-  password, never the password itself.
+  password, never the password itself. After "Send" the panel stays open, only unticked; the entry's lines show the new state.
 - **Insert** (chain) – inserts the file again into the mail you are writing, as a *new* link – with the password of that mail (a new one if it has none yet).
 - **Revoke** (crossed-out circle) – ends the link at once (two clicks: the icon turns into "Sure?"). The file then
   counts as expired and is moved to your Nextcloud trash.
@@ -188,13 +189,14 @@ Expired files are cleaned up automatically as well (see `CLEANUP_AFTER_DAYS`).
 
 <br clear="right">
 
-<img src="docs/images/taskpane-read.png" alt="Pane opened from a sent mail: tabs Message and History; under Message the two links of that mail with download and password status" width="300" align="right">
+<img src="docs/images/taskpane-read.png" alt="Pane opened from a sent mail: Links in this message with Refresh on the right, the two links of that mail with download and password status, the account at the bottom" width="300" align="right">
 
 **Status of a sent mail:** the **CloudShare** button is also there while you **read** a mail – e.g. in *Sent Items*.
-The pane then has the tabs **"Message"** (opened first, in place of "Send": the links of that mail – downloads,
-how the password went out, validity) and **"History"** (all valid links, as when writing). **Pin** the pane (pin
-icon in its header) and it follows the mail you select. Copy, Password and Revoke work as usual; nothing is inserted
-there. Confidential messages are not listed (they are not stored in Nextcloud).
+The pane then shows **"Links in this message"** in place of "Send": the links and confidential messages of that
+mail – downloads, how the password went out, validity – with **"Refresh"** on the right; "History" and the rest are in
+the account menu as when writing. **Pin** the pane (pin icon in its header) and it follows the mail you select (a
+pinned pane keeps the add-in version it started with – close and open it again after an update). Copy, Password and
+Revoke work as usual; nothing is inserted there.
 
 <br clear="right">
 
@@ -414,7 +416,7 @@ corrected number) or as a password mail. Two kinds of failure:
 
 ### Proof of delivery (optional)
 
-<img src="docs/images/taskpane-proofs.png" alt="Proofs of delivery, opened from the account menu: a magnifier for the search and three proofs with subject, the files and right under them the case number with the seal after it (which opens the signed PDF), date and recipients, validity and download state" width="300" align="right">
+<img src="docs/images/taskpane-proofs.png" alt="Proofs of delivery, opened from the account menu: Refresh and a magnifier for the search and three proofs with subject, the files and right under them the case number with the seal after it (which opens the signed PDF), date and recipients, validity and download state" width="300" align="right">
 
 For mails where the sender may later have to show **that and when** recipients got something. On with
 `DELIVERY_PROOF=true` (unset it follows `DOWNLOAD_NOTICE`; it needs the same application permission `Mail.Send`).
@@ -434,7 +436,8 @@ default, offered for "Files" only (not for a confidential message or an upload l
   or by SMS (once, after the first confirmation).
   **Sending it again** from "History" does not get round this: before the first confirmation it is not possible (the
   pane says why), afterwards it goes only to the confirmed recipients the sender ticks (none is ticked first), the
-  other address of the first time or by SMS – also to a corrected number. The password itself is never shown or
+  other address of the first time or by SMS – also to a corrected number; each confirmed recipient gets a mail of their
+  own (To, Cc or Bcc on the right of each, from four on folded into one box with a filterable list). The password itself is never shown or
   copied in "History" – not even to the sender. The code
   page then says what to do next ("We have just sent you the password … · click „Show password“ · click „To the
   download“ here") and leads on to the link; the link card says the password comes after the confirmation. The
@@ -457,7 +460,7 @@ default, offered for "Files" only (not for a confidential message or an upload l
   reader only names the signer "unknown". For legal weight: a certificate of a CA trusted by Adobe or a qualified
   seal, and a qualified time stamp authority – no code change needed.
 - **Finding a proof later**: "Proofs of delivery" in the account menu lists the proof of every sent mail – also those whose links expired
-  long ago and no longer show in "History" – searchable via the magnifier at the top right by case number, subject, recipient or
+  long ago and no longer show in "History" – reloaded with "Refresh", searchable via the magnifier at the top right by case number, subject, recipient or
   file name (no other filters). Each entry looks and works like a row of "History": a click on the
   subject opens the sent mail. Under the file name stands the case number alone, the seal after it shows the state by
   its colour (grey sent, blue address confirmed, green fetched – the same in "History") and opens

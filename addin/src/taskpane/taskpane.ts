@@ -322,6 +322,9 @@ function showConnection(status: ConnectionStatus) {
       : null;
   storageMeter.hidden = share === null;
   storageMeterFill.style.width = `${Math.round((share ?? 0) * 100)}%`;
+  // Anything used shows a little blue (112 MB of 100 GB would round to nothing); orange from 75 %, red from 90 %.
+  storageMeter.classList.toggle("used", (share ?? 0) > 0);
+  storageMeter.classList.toggle("warn", (share ?? 0) >= 0.75 && (share ?? 0) < 0.9);
   storageMeter.classList.toggle("full", (share ?? 0) >= 0.9);
   // "Nextcloud öffnen": the address of the Nextcloud CloudShare uses (from /api/config).
   nextcloudOpen.hidden = !serverConfig?.nextcloudUrl;

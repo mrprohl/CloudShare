@@ -1683,6 +1683,8 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   await expect(storage).toBeVisible();
   await expect(page.locator("#storage-meter")).toBeVisible();
   await expect(page.locator("#storage-meter-fill")).toHaveAttribute("style", "width: 75%;");
+  await expect(page.locator("#storage-meter")).toHaveClass(/\bwarn\b/); // orange from 75 %, red from 90 %
+  await expect(page.locator("#storage-meter")).not.toHaveClass(/\bfull\b/);
   expect((await page.locator(".account-menu-head").boundingBox())!.y).toBeLessThan((await page.locator("#nextcloud-open").boundingBox())!.y);
   expect((await menu.boundingBox())!.y + (await menu.boundingBox())!.height).toBeLessThanOrEqual(toggleBox!.y);
   await expectAccessible(page);
