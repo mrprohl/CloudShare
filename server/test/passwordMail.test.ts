@@ -100,9 +100,9 @@ describe("common layout of all automatic mails", () => {
 describe("password mail – limits and the mail after the confirmation", () => {
   it("says in a sentence how often and how long the button works", () => {
     const html = passwordMailHtml({ ...base, fileNames: ["a.pdf"], maxAccessCount: 3, expiresOn: "25.11.2026" });
-    expect(html).toContain("Der Knopf funktioniert 3-mal und bis 25.11.2026 – notieren Sie sich das Kennwort");
+    expect(html).toContain("Der Button funktioniert 3-mal und bis 25.11.2026 – notieren Sie sich das Kennwort, bis Sie alle Freigaben geöffnet haben.");
     expect(passwordMailHtml({ ...base, fileNames: ["a.pdf"], maxAccessCount: 1, expiresOn: "25.11.2026" }))
-      .toContain("Der Knopf funktioniert nur einmal und bis 25.11.2026");
+      .toContain("Der Button funktioniert nur einmal und bis 25.11.2026");
   });
 
   it("right after the confirmation: two numbered steps in the card, each with its button and plain link", () => {
@@ -122,7 +122,7 @@ describe("password mail – limits and the mail after the confirmation", () => {
     expect(html.match(/https:\/\/vault\.example\.test\/#\/send\/abc\/key/g)).toHaveLength(3); // href of button, href and text of the link
     expect(html.match(/https:\/\/cloudshare\.example\.test\/r\/s\/tok/g)).toHaveLength(3);
     expect(html.indexOf("https://cloudshare.example.test/r/s/tok")).toBeGreaterThan(download);
-    expect(html).toContain(">Zum Download</a>");
+    expect(html).toContain(">Zum Download</span></a>");
     expect(html).toContain("Kennwort-Link: 3-mal, bis 25.11.2026 · Vorgang 20261118-1932-DHLB");
     expect(html).not.toContain("Falls der Button nicht funktioniert");
     expect(html).not.toContain("<ol");

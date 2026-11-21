@@ -463,7 +463,7 @@ default, offered for "Files" only (not for a confidential message or an upload l
   within the first 24 hours), the sender gets one mail – the recipients are not written to. On by default, each user
   can switch it off under "Settings".
 - **Code page and code mail**: the page names the sender and the file, so recipients know it belongs to the mail they
-  got. The code mail has a button "Confirm address" that fills in the code – one click confirms; opening the link
+  got. The code mail has a button "Confirm address" that fills in the code – one click on "Confirm and open" confirms; opening the link
   alone confirms nothing, so mail scanners that follow links do no harm. Phones offer the code from the mail; spaces
   and hyphens in the code do not matter.
 - **One mail, one kind**: a mail with a proof of delivery takes only files with a proof – no confidential message, no
