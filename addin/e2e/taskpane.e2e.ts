@@ -1834,40 +1834,48 @@ test("Verlauf: Kennwort shows the password and sends it again the same ways as t
   await expect(panel.locator(".reveal-password")).toHaveAttribute("aria-pressed", "true");
   await panel.locator(".reveal-password").click();
   await expect(panel.locator("input.mono")).toHaveClass(/\bmasked\b/);
-  // The password went by SMS: SMS to the same number is suggested.
-  await expect(panel.locator('input[type=radio][value="sms"]')).toBeChecked();
-  await expect(panel.locator(".channel-input")).toHaveValue("+491701234567");
-  // Radio buttons like "Kennwort an": the number field right below the chosen way.
-  await expect(panel.locator('label.radio:has(input[value="sms"]) + .channel-group')).toHaveCount(1);
+  // The password went by SMS: SMS to the same number is ticked, its number field right under its box.
+  await expect(panel.locator('input[type=checkbox][value="sms"]')).toBeChecked();
+  await expect(panel.locator("input[type=checkbox]:checked")).toHaveCount(1);
+  const smsField = panel.locator("input[type=tel]");
+  await expect(smsField).toHaveValue("+491701234567");
+  await expect(panel.locator('label.checkbox:has(input[value="sms"]) + .channel-group')).toHaveCount(1);
   await expectAccessible(page);
   await shot(page, "password-panel");
 
-  // The same choices as when sending: recipients of the message, another address, SMS.
-  await expect(panel.locator("label.radio")).toHaveText(["Empfänger der Nachricht", "Andere E-Mail-Adresse", "Rufnummer (SMS)"]);
-
-  // Recipients of the message: To, Cc and Bcc as in the message – nothing to type, the hint names them.
-  await panel.locator('label.radio:has(input[value="recipients"])').click();
-  await expect(panel.locator(".channel-input")).toBeHidden();
-  await expect(panel.locator(".hint")).toHaveText("Wie in der Nachricht – An: erika@example.com · Cc: chef@example.com · Bcc: archiv@example.com");
+  // As boxes, so several at once: the recipients of the message one by one (To, Cc, Bcc below each, nothing to
+  // confirm), another address, SMS.
+  await expect(panel.locator("label.checkbox .checkbox-text")).toHaveText([
+    /^erika@example\.com\s*An$/, /^chef@example\.com\s*Cc$/, /^archiv@example\.com\s*Bcc$/, /^Andere E-Mail-Adresse/, /^Rufnummer \(SMS\)/]);
+  // Another address: its field only while ticked (one address, like "Kennwort an" when sending).
+  const mailField = panel.locator("input[type=email]");
+  await expect(mailField).toBeHidden();
+  await panel.locator('label.checkbox:has(input[value="mail"])').click();
+  await expect(mailField).toBeVisible();
+  await expect(mailField).toHaveValue("");
+  await expect(mailField).toHaveAttribute("placeholder", "name@beispiel.de");
+  // Nothing typed: told, nothing sent.
   await panel.locator(".send-password").click();
-  await expect(page.locator("#status")).toHaveText(
-    "Das Kennwort wurde an die Empfänger der Nachricht geschickt (erika@example.com, chef@example.com).");
-  const sends = () => calls.filter((c) => c.path === "/api/shares/11/password/send").map((c) => JSON.parse(c.body!.toString()));
-  expect(sends()[0]).toEqual({ channel: "recipients", to: "" });
+  await expect(page.locator("#status")).toContainText("Bitte die E-Mail-Adresse angeben");
+  await mailField.fill("kollege@example.com");
+  // Two of the three recipients.
+  await panel.locator('label.checkbox:has(input[value="erika@example.com"])').click();
+  await panel.locator('label.checkbox:has(input[value="archiv@example.com"])').click();
 
-  // Another address: one, like "Kennwort an" when sending (several recipients: "Empfänger der Nachricht").
-  // The list reloads after sending (new state of the password) – wait for it, then open the panel again.
-  await expect.poll(() => calls.filter((c) => c.path === "/api/shares").length).toBe(2);
+  // All at once: the ticked recipients in one request (each gets a mail of their own), then the address, then SMS.
+  await panel.locator(".send-password").click();
+  await expect(page.locator("#status")).toContainText("Das Kennwort wurde an kollege@example.com geschickt.");
+  const sends = calls.filter((c) => c.path === "/api/shares/11/password/send").map((c) => JSON.parse(c.body!.toString()));
+  expect(sends).toEqual([
+    { channel: "recipients", to: ["erika@example.com", "archiv@example.com"] },
+    { channel: "mail", to: "kollege@example.com" }, { channel: "sms", to: "+491701234567" }]);
+  // The list reloads after sending (new state of the password); the panel is closed.
   await expect(panel).toBeHidden();
+  // Nothing ticked: "Senden" is greyed out.
+  await expect.poll(() => calls.filter((c) => c.path === "/api/shares").length).toBe(2);
   await toggle.click();
-  await panel.locator('label.radio:has(input[value="mail"])').click();
-  await expect(panel.locator(".channel-input")).toHaveValue("");
-  await expect(panel.locator(".hint")).toHaveText("Nur diese Adresse erhält eine Nachricht mit einem Link zum Kennwort.");
-  await expect(panel.locator(".channel-input")).toHaveAttribute("placeholder", "name@beispiel.de");
-  await panel.locator(".channel-input").fill("kollege@example.com");
-  await panel.locator(".send-password").click();
-  await expect(page.locator("#status")).toHaveText("Das Kennwort wurde an kollege@example.com geschickt.");
-  expect(sends()[1]).toEqual({ channel: "mail", to: "kollege@example.com" });
+  for (const box of await panel.locator("input[type=checkbox]:checked").all()) await box.locator("xpath=..").click();
+  await expect(panel.locator(".send-password")).toBeDisabled();
 });
 
 test("Verlauf: Erneut senden an – contact suggestions and the address book fill in the one address and lead back", async ({ page }) => {
@@ -1883,9 +1891,9 @@ test("Verlauf: Erneut senden an – contact suggestions and the address book fil
   const row = page.locator("#shares .share").nth(0);
   await row.locator(".show-password").click();
   const panel = row.locator(".password-panel");
-  await panel.locator('label.radio:has(input[value="mail"])').click();
-  const field = panel.locator(".channel-input");
-  const book = panel.locator(".book-open");
+  await panel.locator('label.checkbox:has(input[value="mail"])').click();
+  const field = panel.locator("input[type=email]");
+  const book = panel.locator(".channel-group:has(input[type=email]) .book-open");
   await expect(book).toBeVisible();
   await expect(book).toHaveAttribute("aria-label", "Aus dem Adressbuch wählen");
 
@@ -1912,8 +1920,8 @@ test("Verlauf: Erneut senden an – contact suggestions and the address book fil
   await expect(page.locator("#panel-shares")).toBeVisible();
   await expect(field).toHaveValue("bernd@example.org");
 
-  // "Empfänger der Nachricht" needs no field – the address book button goes with it.
-  await panel.locator('label.radio:has(input[value="recipients"])').click();
+  // Unticked, the address field goes – the address book button with it.
+  await panel.locator('label.checkbox:has(input[value="mail"])').click();
   await expect(book).toBeHidden();
   await expectAccessible(page);
 });
@@ -1964,6 +1972,22 @@ test("Verlauf: with a proof of delivery the password goes again only to the conf
   await expect(page.locator("#status")).toContainText("Das Kennwort wurde an");
   const sends = calls.filter((c) => c.path.endsWith("/password/send")).map((c) => JSON.parse(c.body!.toString()));
   expect(sends).toEqual([{ channel: "recipients", to: ["bernd@example.com"] }]);
+});
+
+test("Verlauf: an open password panel stays open when the list is built anew", async ({ page }) => {
+  // The first click into the pane focuses it, and focus reloads the list – that must not close the panel just opened.
+  await openTaskpane(page, {
+    shares: [{ ...SHARES[0], passwordAvailable: true, proofId: "20261117-1146-7Q2F" }],
+    passwordInfo: { deferred: true, verified: ["erika@example.com"], password: undefined, sms: "" },
+  });
+  await openHistory(page);
+  const row = page.locator("#shares .share").nth(0);
+  await row.locator(".show-password").click();
+  await row.locator(".password-panel label.checkbox").first().click();
+  await page.click("#shares-search-toggle");
+  await page.fill("#shares-search", "Präsentation"); // builds the list anew
+  await expect(page.locator("#shares .password-panel")).toBeVisible();
+  await expect(page.locator("#shares .password-panel input[type=checkbox]").first()).toBeChecked();
 });
 
 test("Verlauf: with a proof of delivery the password may go by SMS to a corrected number", async ({ page }) => {

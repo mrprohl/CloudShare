@@ -1245,10 +1245,17 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         if (channel === "mail") others = ref.otherTo ?? []; // kept as it was – "Verlauf" shows the way of the first time
       } else if (channel === "recipients") {
         const original = originalRecipients(ref);
-        if (original.to.length + original.cc.length + original.bcc.length === 0) {
-          throw new HttpError(400, t("server.recipientsInvalid", { max: 20 }));
+        const all = [...original.to, ...original.cc, ...original.bcc];
+        if (all.length === 0) throw new HttpError(400, t("server.recipientsInvalid", { max: 20 }));
+        if (picked.length > 0) {
+          // The recipients the sender ticked – only addresses the message went to, each in a mail of its own (nobody
+          // sees the others, a Bcc stays hidden).
+          const known = all.map((address) => address.toLowerCase());
+          if (!picked.every((address) => known.includes(address))) throw new HttpError(400, t("server.resendNotRecipient"));
+          mails = picked.map((address) => ({ to: [address], cc: [], bcc: [] }));
+        } else {
+          mails = [original]; // the whole distribution as it was (an older add-in sends no list)
         }
-        mails = [original];
       } else {
         // One address only – several recipients get it with "Empfänger der Nachricht" (an older add-in may send a list).
         const address = target.trim();
@@ -1281,7 +1288,9 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       for (const recipients of mails) await sendMail(token, recipients, subject, html, ref.from);
 
       // Shown in "Verlauf" like the first time: To and Cc (Bcc stays hidden), or the other addresses.
-      const shown = (ref.deferred ? picked : channel === "recipients" ? [...mails[0].to, ...mails[0].cc] : others).join(", ");
+      const shown = (ref.deferred || (channel === "recipients" && picked.length > 0)
+        ? picked
+        : channel === "recipients" ? [...mails[0].to, ...mails[0].cc] : others).join(", ");
       await recordDelivery(ref.tokens, { owner: user.oid, channel: "mail", to: shown, at: Date.now() });
       await updatePasswordRef(ref.sendId, { otherTo: channel === "mail" ? others : undefined, resentSend: send.id });
       req.log.info({ user: user.upn, channel, mails: mails.length }, "Password sent again by mail");

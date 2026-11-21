@@ -985,6 +985,19 @@ describe("showing and sending the password again", () => {
     expect(list[0].passwordAvailable).toBe(true);
   });
 
+  it("sends it again to the recipients the sender ticks – each in a mail of their own, only addresses the message went to", async () => {
+    const all = [...DISTRIBUTION.to, ...DISTRIBUTION.cc, ...DISTRIBUTION.bcc];
+    const res = await resend("anna", { channel: "recipients", to: [all[0], all[all.length - 1]] });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ channel: "recipients", to: `${all[0]}, ${all[all.length - 1]}` });
+    expect((await sendMail()).mock.calls.map((call) => call[1])).toEqual([
+      { to: [all[0]], cc: [], bcc: [] }, { to: [all[all.length - 1]], cc: [], bcc: [] }]);
+    (await sendMail()).mockClear();
+    const stranger = await resend("anna", { channel: "recipients", to: ["kollege@example.test"] });
+    expect(stranger.statusCode).toBe(400);
+    expect((await sendMail()).mock.calls).toHaveLength(0);
+  });
+
   it("sends it again to the recipients of the message like the first time – To, Cc and Bcc as they were", async () => {
     createPasswordSend.mockClear();
     const res = await resend("anna", { channel: "recipients" });
