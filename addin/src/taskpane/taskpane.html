@@ -54,7 +54,12 @@
           <div class="content">
             <div class="list-head">
               <h2 class="subtitle" id="mail-heading">%%t:addin.read.heading%%</h2>
-              <!-- No "Aktualisieren": the links reload on focus and when a pinned pane moves to another mail. -->
+              <!-- "Aktualisieren": the links also reload on focus and when a pinned pane moves to another mail. -->
+              <button type="button" id="mail-refresh" class="btn btn-icon btn-subtle refresh" title="%%t:addin.shares.refresh%%" aria-label="%%t:addin.shares.refresh%%">
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
             </div>
             <div id="mail-shares" class="share-list" aria-live="polite"></div>
             <p class="caption" id="mail-none" hidden>%%t:addin.read.none%%</p>
@@ -320,8 +325,13 @@
                 </svg>
               </button>
               <h2 class="subtitle" id="shares-heading">%%t:addin.shares.heading%%</h2>
-              <!-- No "Aktualisieren": the list reloads by itself when opened and when the pane gets focus again. The
-                   magnifier folds out the search like in "Hilfe" (searchToggle.ts). -->
+              <!-- "Aktualisieren" (the list also reloads by itself when opened and when the pane gets focus again), then the
+                   magnifier that folds out the search like in "Hilfe" (searchToggle.ts). -->
+              <button type="button" id="shares-refresh" class="btn btn-icon btn-subtle refresh" title="%%t:addin.shares.refresh%%" aria-label="%%t:addin.shares.refresh%%">
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
               <button type="button" id="shares-search-toggle" class="btn btn-icon btn-subtle page-action" title="%%t:addin.shares.searchLabel%%"
                 aria-label="%%t:addin.shares.searchLabel%%" aria-expanded="false" aria-controls="shares-search-row">
                 <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
@@ -349,7 +359,12 @@
                 </svg>
               </button>
               <h2 class="subtitle" id="proofs-heading">%%t:addin.proofs.heading%%</h2>
-              <!-- The magnifier folds out the search like in "Hilfe" and "Verlauf" (searchToggle.ts). -->
+              <!-- "Aktualisieren", then the magnifier that folds out the search like in "Hilfe" and "Verlauf" (searchToggle.ts). -->
+              <button type="button" id="proofs-refresh" class="btn btn-icon btn-subtle refresh" title="%%t:addin.shares.refresh%%" aria-label="%%t:addin.shares.refresh%%">
+                <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
+                  <path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
               <button type="button" id="proofs-search-toggle" class="btn btn-icon btn-subtle page-action" title="%%t:addin.proofs.searchLabel%%"
                 aria-label="%%t:addin.proofs.searchLabel%%" aria-expanded="false" aria-controls="proofs-search-row">
                 <svg class="icon" viewBox="0 0 20 20" aria-hidden="true">
@@ -599,6 +614,7 @@
               <summary>%%t:addin.help.shares.title%%</summary>
               <p>%%t:addin.help.shares.text%%</p>
               <ul class="help-icons">
+                <li><span class="help-icon" data-icon="refresh"></span>%%t:addin.help.shares.refresh%%</li>
                 <li><span class="help-icon" data-icon="copy"></span>%%t:addin.help.shares.copy%%</li>
                 <li><span class="help-icon" data-icon="password"></span>%%t:addin.help.shares.password%%</li>
                 <li><span class="help-icon" data-icon="insert"></span>%%t:addin.help.shares.insert%%</li>

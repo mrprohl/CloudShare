@@ -238,7 +238,7 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     }
     if (/^POST \/api\/shares\/[^/]+\/password\/send$/.test(route_)) {
       const { channel, to } = JSON.parse(call.body!.toString());
-      return json({ channel, to: channel === "sms" ? "+49 171 •••• 21" : channel === "recipients" ? "erika@example.com, chef@example.com" : to });
+      return json({ channel, to: channel === "sms" ? "+49 171 7654321" : channel === "recipients" ? "erika@example.com, chef@example.com" : to });
     }
     if (/^POST \/api\/shares\/\d+\/link$/.test(route_)) {
       const id = call.path.split("/")[3];
@@ -1625,7 +1625,7 @@ test("revoked Nextcloud app password: returns to the connect view", async ({ pag
 const SHARES = [
   { id: "11", kind: "file", name: "Präsentation.pptx", url: "https://cloud.example.com/s/a", sharedAt: Date.parse("2026-11-10"),
     expiration: "2099-11-24", downloads: { count: 2, last: "2026-11-11T09:30:00Z" }, received: null, protected: true,
-    password: { channel: "sms", to: "+49 170 •••• 67", status: "delivered", at: Date.parse("2026-11-10T10:00:00Z"), deliveredAt: Date.parse("2026-11-10T10:00:09Z") } },
+    password: { channel: "sms", to: "+49 170 1234567", status: "delivered", at: Date.parse("2026-11-10T10:00:00Z"), deliveredAt: Date.parse("2026-11-10T10:00:09Z") } },
   { id: "12", kind: "file", name: "Angebot.pdf", url: "https://cloud.example.com/s/b", sharedAt: Date.parse("2099-11-12"),
     expiration: "2099-11-26", downloads: { count: 0, last: null }, received: null, protected: false },
   { id: "13", kind: "request", name: "Upload-Link", url: "https://cloud.example.com/s/c", sharedAt: Date.parse("2026-11-01"),
@@ -1654,9 +1654,8 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   // All valid links, no expired one ("Alt.zip"), no "last 30 days".
   await expect(rows).toHaveCount(3);
   await expect(page.locator("#shares")).not.toContainText("Alt.zip");
-  // No "Aktualisieren" in the head of the page: the list loads when opened (and again on focus).
-  await expect(page.locator("#panel-shares .help-header button")).toHaveCount(2); // only "←" and the magnifier
-  await expect(page.locator("#refresh-shares")).toHaveCount(0);
+  // The head of the page: "←", "Aktualisieren" and the magnifier (the list also loads when opened and again on focus).
+  await expect(page.locator("#panel-shares .help-header button")).toHaveCount(3);
   expect(calls.filter((c) => c.path === "/api/shares").length).toBeGreaterThan(0);
   // One quiet bottom bar for every tab: only the account, as a menu (like the menus of Outlook and OneDrive).
   const toggle = page.locator("#account-toggle");
@@ -1704,8 +1703,8 @@ test("Verlauf: shows the state of each link and revokes after confirmation", asy
   // The same lines as an entry of "Zustellnachweise": the day (and to whom, once sent), "Kennwort an …", "Gültig bis …"
   // with its calendar and the state alone on the last line.
   await expect(rows.nth(0).locator(".share-sent")).toHaveText("10.11.2026");
-  await expect(rows.nth(0).locator(".share-password")).toHaveText("Kennwort an +49 170 •••• 67 – zugestellt");
-  await expect(rows.nth(0).locator(".share-password")).toHaveAttribute("title", "Kennwort per SMS an +49 170 •••• 67 – zugestellt am 10.11.2026, 11:00 Uhr");
+  await expect(rows.nth(0).locator(".share-password")).toHaveText("Kennwort an +49 170 1234567 – zugestellt");
+  await expect(rows.nth(0).locator(".share-password")).toHaveAttribute("title", "Kennwort per SMS an +49 170 1234567 – zugestellt am 10.11.2026, 11:00 Uhr");
   await expect(rows.nth(0).locator(".share-valid")).toHaveText("Gültig bis 24.11.2099");
   await expect(rows.nth(0).locator(".share-valid")).not.toHaveClass(/soon/);
   await expect(rows.nth(0).locator(".share-state")).not.toContainText("24.11.2099"); // no end date in the state line
@@ -1776,16 +1775,16 @@ test("a success message runs down and goes; the pointer on it stops the ring", a
 });
 
 test("Verlauf: a failed SMS says whether it was sent at all, and how to send the password again", async ({ page }) => {
-  const sms = { channel: "sms", to: "+49 170 •••• 67", status: "failed", at: Date.parse("2026-11-10T10:00:00Z"), deliveredAt: null };
+  const sms = { channel: "sms", to: "+49 170 1234567", status: "failed", at: Date.parse("2026-11-10T10:00:00Z"), deliveredAt: null };
   const share = (id: string, name: string, refused: boolean) => ({ ...SHARES[0], id, name, url: `https://cloud.example.com/s/${id}`,
     password: { ...sms, refused }, passwordAvailable: true });
   await openTaskpane(page, { shares: [share("21", "Refused.pdf", true), share("22", "Lost.pdf", false)] });
   await openHistory(page);
   const rows = page.locator("#shares .share");
   // seven.io refused it right away (key, credit, limit).
-  await expect(rows.nth(0).locator(".share-password")).toHaveText("Kennwort an +49 170 •••• 67 – nicht versendet – bitte erneut senden");
+  await expect(rows.nth(0).locator(".share-password")).toHaveText("Kennwort an +49 170 1234567 – nicht versendet – bitte erneut senden");
   // seven.io accepted it and reported "not delivered" later.
-  await expect(rows.nth(1).locator(".share-password")).toHaveText("Kennwort an +49 170 •••• 67 – nicht zugestellt – bitte erneut senden");
+  await expect(rows.nth(1).locator(".share-password")).toHaveText("Kennwort an +49 170 1234567 – nicht zugestellt – bitte erneut senden");
   await expect(rows.nth(1).locator(".share-password")).toHaveClass(/failed/);
 });
 
@@ -1867,18 +1866,19 @@ test("Verlauf: Kennwort shows the password and sends it again the same ways as t
   await panel.locator('label.checkbox:has(input[value="erika@example.com"])').click();
   await panel.locator('label.checkbox:has(input[value="archiv@example.com"])').click();
 
-  // All at once: the ticked recipients in one request (each gets a mail of their own), then the address, then SMS.
+  // All at once: the ticked recipients in one request (one mail, each in its field), then the address, then SMS.
   await panel.locator(".send-password").click();
   await expect(page.locator("#status")).toContainText("Das Kennwort wurde an kollege@example.com geschickt.");
   const sends = calls.filter((c) => c.path === "/api/shares/11/password/send").map((c) => JSON.parse(c.body!.toString()));
   expect(sends).toEqual([
     { channel: "recipients", to: ["erika@example.com", "archiv@example.com"] },
     { channel: "mail", to: "kollege@example.com" }, { channel: "sms", to: "+491701234567" }]);
-  // The list reloads after sending (new state of the password); the panel is closed.
-  await expect(panel).toBeHidden();
-  // Opened again: nothing ticked, "Senden" greyed out.
+  // The list reloads after sending (new state of the password); the panel stays open, loaded anew: nothing ticked,
+  // "Senden" greyed out.
   await expect.poll(() => calls.filter((c) => c.path === "/api/shares").length).toBe(2);
-  await toggle.click();
+  await expect.poll(() => calls.filter((c) => c.path === "/api/shares/11/password").length).toBe(2);
+  await expect(panel).toBeVisible();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
   await expect(panel.locator("input[type=checkbox]")).toHaveCount(5); // loaded again
   await expect(panel.locator("input[type=checkbox]:checked")).toHaveCount(0);
   await expect(panel.locator(".send-password")).toBeDisabled();
@@ -1978,6 +1978,53 @@ test("Verlauf: with a proof of delivery the password goes again only to the conf
   await expect(page.locator("#status")).toContainText("Das Kennwort wurde an");
   const sends = calls.filter((c) => c.path.endsWith("/password/send")).map((c) => JSON.parse(c.body!.toString()));
   expect(sends).toEqual([{ channel: "recipients", to: ["bernd@example.com"] }]);
+  // Still open after sending, loaded anew: nothing ticked.
+  await expect.poll(() => calls.filter((c) => c.path === "/api/shares").length).toBe(2);
+  await expect(panel).toBeVisible();
+  await expect(boxes).toHaveCount(2);
+  await expect(panel.locator("input[type=checkbox]:checked")).toHaveCount(0);
+});
+
+test("Verlauf: many recipients fold into one box – ticked all at once or one by one from the list with a filter", async ({ page }) => {
+  const to = ["erika@example.com", "max@example.com", "anna@example.com", "bernd@example.com", "maria@example.com"];
+  const calls = await openTaskpane(page, {
+    shares: [{ ...SHARES[0], passwordAvailable: true }],
+    passwordInfo: { recipients: { to, cc: ["chef@example.com"], bcc: [] } },
+  });
+  await openHistory(page);
+  const panel = page.locator("#shares .share").nth(0).locator(".password-panel");
+  await page.locator("#shares .share").nth(0).locator(".show-password").click();
+  const all = panel.locator("label.checkbox:has(.recipient-all)");
+  await expect(all.locator(".checkbox-text")).toHaveText(/^Empfänger der Nachricht \(6\)\s*Keiner ausgewählt$/);
+  const list = panel.locator(".recipient-list");
+  await expect(list).toBeHidden(); // one line until needed
+  await expect(panel.locator(".send-password")).toBeDisabled();
+
+  // The arrow folds out the list, one line per address with "An"/"Cc" on the right; the filter narrows it.
+  await panel.locator(".recipient-toggle").click();
+  await expect(panel.locator(".recipient-toggle")).toHaveAttribute("aria-expanded", "true");
+  await expect(list.locator(".recipient-filter")).toBeFocused();
+  await expect(list.locator("label.recipient-row")).toHaveCount(6);
+  await expect(list.locator('label.recipient-row:has(input[value="chef@example.com"]) .recipient-field')).toHaveText("Cc");
+  await list.locator(".recipient-filter").fill("ma");
+  await expect(list.locator("label.recipient-row:visible")).toHaveCount(2); // max, maria
+  await list.locator('label.recipient-row:has(input[value="maria@example.com"])').click();
+  await expect(all.locator(".checkbox-hint")).toHaveText("1 von 6 ausgewählt");
+  await expect(panel.locator(".recipient-all")).toHaveJSProperty("indeterminate", true);
+  await expect(panel.locator(".send-password")).toBeEnabled();
+  await list.locator(".recipient-filter").fill("xyz");
+  await expect(list.locator(".recipient-none")).toBeVisible();
+  await list.locator(".recipient-filter").fill("");
+  await expectAccessible(page);
+
+  // The box of the group: everyone.
+  await all.click();
+  await expect(all.locator(".checkbox-hint")).toHaveText("Alle ausgewählt");
+  await expect(list.locator("input:checked")).toHaveCount(6);
+  await panel.locator(".send-password").click();
+  await expect(page.locator("#status")).toContainText("Das Kennwort wurde an");
+  const sends = calls.filter((c) => c.path.endsWith("/password/send")).map((c) => JSON.parse(c.body!.toString()));
+  expect(sends).toEqual([{ channel: "recipients", to: [...to, "chef@example.com"] }]);
 });
 
 test("Verlauf: an open password panel stays open when the list is built anew", async ({ page }) => {
@@ -2066,7 +2113,7 @@ test("Verlauf: the subject is the title and opens the mail; confidential message
   await expect(rows.nth(0).locator(".share-title")).toHaveAttribute("aria-label", "Unterlagen Neubau, Nachricht öffnen");
   // Like "Zustellnachweise": the day it went out and to whom (To and Cc) right in the entry.
   await expect(rows.nth(0).locator(".share-sent")).toHaveText("16.11.2026 · Nachricht an erika@example.com, max@example.com, chef@example.com");
-  await expect(rows.nth(0).locator(".share-password")).toHaveText("Kennwort an +49 170 •••• 67 – zugestellt"); // SMS: its own line
+  await expect(rows.nth(0).locator(".share-password")).toHaveText("Kennwort an +49 170 1234567 – zugestellt"); // SMS: its own line
   // Below the subject what went out, in plain text: the file name (the document symbol on the left shows the kind).
   await expect(rows.nth(0).locator(".share-item")).toHaveText("Präsentation.pptx");
   await expect(rows.nth(0).locator(".badge")).toHaveCount(0);
@@ -2104,6 +2151,66 @@ test("Verlauf: the subject is the title and opens the mail; confidential message
   await expect(rows).toHaveCount(3);
 });
 
+test("Verlauf: a password sent again names when it last went out – also to the same addresses", async ({ page }) => {
+  const sentTo = { to: ["erika@example.com"], cc: [] };
+  await openTaskpane(page, {
+    shares: [
+      { ...SHARES[0], sentAt: Date.parse("2026-11-12T09:00:00Z"), sentTo,
+        password: { channel: "mail", to: "erika@example.com", status: null, at: Date.parse("2026-11-14T13:32:00Z"), deliveredAt: null, resent: true } },
+      { ...SHARES[1], protected: true, sentAt: Date.parse("2026-11-12T09:00:00Z"), sentTo,
+        password: { channel: "sms", to: "+49 170 1234567", status: "delivered", at: Date.parse("2026-11-15T08:05:00Z"),
+          deliveredAt: Date.parse("2026-11-15T08:05:09Z"), resent: true } },
+    ],
+  });
+  await openHistory(page);
+  const mail = page.locator("#shares .share", { hasText: "Präsentation.pptx" });
+  const sms = page.locator("#shares .share", { hasText: "Angebot.pdf" });
+  // Not "Nachricht und Kennwort an …": the message line names the message alone, the password its own line with the time.
+  await expect(mail.locator(".share-sent")).toHaveText("12.11.2026 · Nachricht an erika@example.com");
+  await expect(mail.locator(".share-password")).toHaveText("Kennwort zuletzt an erika@example.com · 14.11.2026, 14:32 Uhr");
+  await expect(sms.locator(".share-password")).toHaveText("Kennwort zuletzt an +49 170 1234567 · 15.11.2026, 09:05 Uhr – zugestellt");
+});
+
+test("Verlauf and Zustellnachweise: many recipients – the first two and \"und N weitere\", all of them in the tooltip", async ({ page }) => {
+  const many = ["erika@example.com", "max@example.com", "anna@example.com", "bernd@example.com", "maria@example.com"];
+  await openTaskpane(page, {
+    config: { deliveryProof: true },
+    shares: [{ ...SHARES[0], sentAt: Date.parse("2026-11-12T09:00:00Z"), sentTo: { to: many.slice(0, 4), cc: many.slice(4) },
+      password: { channel: "mail", to: many.join(", "), status: null, at: Date.parse("2026-11-12T09:05:00Z"), deliveredAt: null } }],
+    proofs: [{ id: "20261112-1000-AB12", createdAt: Date.parse("2026-11-12T09:00:00Z"), subject: "Rundschreiben", sentAt: Date.parse("2026-11-12T09:00:00Z"),
+      recipients: many, files: ["Plan.pdf"], downloads: 0, confirmed: 0, done: false, state: "sent", passwordTo: ["kollege@example.com"],
+      endsOn: "2099-12-01", keptUntil: Date.parse("2029-11-12T12:00:00Z"), mailAvailable: false, kind: "file", fetched: 0 }],
+  });
+  await openHistory(page);
+  const sent = page.locator("#shares .share").nth(0).locator(".share-sent");
+  await expect(sent).toHaveText("12.11.2026 · Nachricht und Kennwort an erika@example.com, max@example.com und 3 weitere");
+  await expect(sent).toHaveAttribute("title", new RegExp(many.join(", ").replace(/\./g, "\\.")));
+  // The search still finds a recipient that is not written out.
+  await page.click("#shares-search-toggle");
+  await page.fill("#shares-search", "maria@");
+  await expect(page.locator("#shares .share")).toHaveCount(1);
+
+  await page.click("#shares-close");
+  await page.click("#account-toggle");
+  await page.click("#proofs-open");
+  const proofSent = page.locator("#proofs-list .proof-sent").first();
+  await expect(proofSent).toHaveText("12.11.2026 · Nachricht an erika@example.com, max@example.com und 3 weitere");
+  await expect(proofSent).toHaveAttribute("title", many.join(", "));
+});
+
+test("reading a mail: many recipients shortened in its links too – \"und N weitere\", all of them in the tooltip", async ({ page }) => {
+  const many = ["erika@example.com", "max@example.com", "anna@example.com", "bernd@example.com", "maria@example.com"];
+  await openTaskpane(page, {
+    readBody: SENT_MAIL,
+    shares: [{ ...SHARES[0], sentAt: Date.parse("2026-11-12T09:00:00Z"), sentTo: { to: many, cc: [] },
+      password: { channel: "mail", to: many.slice(1).join(", "), status: null, at: Date.parse("2026-11-12T09:05:00Z"), deliveredAt: null } }],
+  });
+  const row = page.locator("#mail-shares .share").first();
+  await expect(row.locator(".share-sent")).toHaveText("12.11.2026 · Nachricht an erika@example.com, max@example.com und 3 weitere");
+  await expect(row.locator(".share-sent")).toHaveAttribute("title", new RegExp(many.join(", ").replace(/\./g, "\\.")));
+  await expect(row.locator(".share-password")).toHaveText("Kennwort an max@example.com, anna@example.com und 2 weitere");
+});
+
 test("reading a mail: a confidential message of that mail shows under 'Nachricht'", async ({ page }) => {
   const message = { id: "msg-r1", kind: "message", name: "Vertrauliche Nachricht", url: null, accessId: "accR1", sharedAt: Date.parse("2026-11-12"),
     expiration: "2099-11-17", downloads: null, received: null, protected: true, subject: "Zugangsdaten", mailId: "AAMk-r" };
@@ -2126,7 +2233,7 @@ test("reading a mail: the links of that mail, \"Verlauf\" in the menu, nothing t
   const inMail = page.locator("#mail-shares .share");
   await expect(inMail).toHaveCount(2);
   await expect(inMail.nth(0).locator(".share-name")).toHaveText("Präsentation.pptx");
-  await expect(inMail.nth(0).locator(".share-password")).toHaveText("Kennwort an +49 170 •••• 67 – zugestellt");
+  await expect(inMail.nth(0).locator(".share-password")).toHaveText("Kennwort an +49 170 1234567 – zugestellt");
   await expect(inMail.nth(0).locator(".share-password")).toHaveAttribute("title", /zugestellt am 10.11.2026, 11:00 Uhr/);
   await expect(inMail.nth(1).locator(".share-item")).toHaveText("Dateianforderung");
   await expect(page.locator("#mail-none")).toBeHidden();
@@ -2243,14 +2350,13 @@ test("Hilfe: \"Hilfe\" in the account menu opens the guide in place of the tab, 
   await settings.locator("summary").click();
   await expect(settings).toContainText("auf Ihr Konto und dann auf „Einstellungen“");
   await expect(settings).toContainText("Zurücksetzen");
-  // "Verlauf" explains every icon with the icon itself (no "Aktualisieren" – the list reloads by itself).
+  // "Verlauf" explains every icon with the icon itself – "Aktualisieren" too.
   const shares = sections.filter({ has: page.locator("summary", { hasText: "Verlauf" }) });
   await shares.locator("summary").click();
-  for (const icon of ["copy", "password", "insert", "revoke"]) {
+  for (const icon of ["refresh", "copy", "password", "insert", "revoke"]) {
     await expect(shares.locator(`[data-icon="${icon}"] svg`)).toHaveCount(1);
   }
-  await expect(shares).toContainText("Die Liste ist immer aktuell");
-  await expect(shares.locator('[data-icon="refresh"]')).toHaveCount(0);
+  await expect(shares).toContainText("jederzeit mit „Aktualisieren“ oben rechts");
   await expect(shares).toContainText("„Verbindung trennen“ – Trennen braucht zur Sicherheit einen zweiten Klick");
   await expect(help).toContainText("Personenbezogene oder vertrauliche Daten versenden Sie bitte immer mit Kennwort.");
   await expectAccessible(page);
@@ -2358,6 +2464,42 @@ test("loading: placeholders while the pane starts and while lists and settings l
   await expect(page.locator("#settings-form")).toBeVisible();
   await expect(page.locator("#settings-loading")).toBeHidden();
 });
+test("Aktualisieren: right before the magnifier in Verlauf and Zustellnachweise – turns while it loads, the list stays", async ({ page }) => {
+  const calls = await openTaskpane(page, { shares: SHARES, proofs: [], config: { deliveryProof: true } });
+  const loads = (path: string) => calls.filter((c) => c.method === "GET" && c.path === path).length;
+  await openHistory(page);
+  await expect(page.locator("#shares .share")).toHaveCount(3);
+  const refresh = page.locator("#shares-refresh");
+  await expect(page.locator("#panel-shares .help-header .refresh + #shares-search-toggle")).toHaveCount(1);
+  await expect(refresh).toHaveAttribute("aria-label", "Aktualisieren");
+  const before = loads("/api/shares");
+  await refresh.click();
+  await expect.poll(() => loads("/api/shares")).toBe(before + 1);
+  await expect(refresh).not.toHaveAttribute("aria-busy", "true");
+  await expect(page.locator("#shares .share")).toHaveCount(3);
+  await expect(page.locator("#shares .skeleton")).toHaveCount(0); // no placeholders on a reload
+  await expectAccessible(page);
+
+  await page.click("#shares-close");
+  await page.click("#account-toggle");
+  await page.click("#proofs-open");
+  await expect(page.locator("#proofs-empty")).toBeVisible();
+  const proofsBefore = loads("/api/proofs");
+  await expect(page.locator("#panel-proofs .help-header .refresh + #proofs-search-toggle")).toHaveCount(1);
+  await page.click("#proofs-refresh");
+  await expect.poll(() => loads("/api/proofs")).toBe(proofsBefore + 1);
+});
+
+test("Aktualisieren: reading a mail, the links of that mail load anew", async ({ page }) => {
+  const calls = await openTaskpane(page, { shares: SHARES, readBody: SENT_MAIL });
+  await expect(page.locator("#mail-shares .share").first()).toBeVisible();
+  const loads = () => calls.filter((c) => c.method === "GET" && c.path === "/api/shares").length;
+  const before = loads();
+  await page.click("#mail-refresh");
+  await expect.poll(loads).toBe(before + 1);
+  await expect(page.locator("#mail-shares .share").first()).toBeVisible();
+});
+
 test("loading: reading a mail, its links show placeholders until they are loaded", async ({ page }) => {
   await openTaskpane(page, { shares: SHARES, readBody: SENT_MAIL, slowLoads: 1500 });
   await expect(page.locator("#mail-shares .skeleton")).toBeVisible({ timeout: 10_000 });

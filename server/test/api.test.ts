@@ -590,8 +590,18 @@ describe("my shares", () => {
     nc.publicDownloads.mockResolvedValue({ count: 0, last: null });
     nc.countFiles.mockResolvedValue(0);
     const list = (await app.inject({ method: "GET", url: "/api/shares", headers: as("anna") })).json() as Array<{ id: string; password: unknown }>;
-    expect(list.find((s) => s.id === "1")?.password).toMatchObject({ channel: "sms", status: "failed", refused: true });
+    expect(list.find((s) => s.id === "1")?.password).toMatchObject({ channel: "sms", status: "failed", refused: true, resent: false });
     expect(list.find((s) => s.id === "5")?.password).toMatchObject({ channel: "sms", status: "failed", refused: false });
+  });
+
+  it("marks a password sent again from \"Verlauf\" – the row names the time", async () => {
+    const { recordDelivery: record } = await import("../src/deliveries.js");
+    await record(["u1"], { owner: "oid-anna", channel: "mail", to: "erika@example.test", at: Date.now(), resent: true });
+    nc.listPublicShares.mockResolvedValue(shares);
+    nc.publicDownloads.mockResolvedValue({ count: 0, last: null });
+    nc.countFiles.mockResolvedValue(0);
+    const list = (await app.inject({ method: "GET", url: "/api/shares", headers: as("anna") })).json() as Array<{ id: string; password: unknown }>;
+    expect(list.find((s) => s.id === "1")?.password).toMatchObject({ channel: "mail", to: "erika@example.test", resent: true });
   });
 
   it("only revokes CloudShare links", async () => {
@@ -985,7 +995,7 @@ describe("showing and sending the password again", () => {
     expect(list[0].passwordAvailable).toBe(true);
   });
 
-  it("sends it again to the recipients the sender ticks – each in a mail of their own, only addresses the message went to", async () => {
+  it("sends it again to the recipients the sender ticks – one mail like the first time, each in its field, only addresses the message went to", async () => {
     const all = [...DISTRIBUTION.to, ...DISTRIBUTION.cc, ...DISTRIBUTION.bcc];
     // A sender and a client address of its own: the password routes are rate limited (per user, or per address when
     // the token is no JWT, as here) – the other tests need their requests.
@@ -1002,8 +1012,9 @@ describe("showing and sending the password again", () => {
     const res = await ownResend({ channel: "recipients", to: [all[0], all[all.length - 1]] });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ channel: "recipients", to: `${all[0]}, ${all[all.length - 1]}` });
+    // One mail: Erika in To as before, the archive in Bcc as before (hidden from Erika).
     expect((await sendMail()).mock.calls.map((call) => call[1])).toEqual([
-      { to: [all[0]], cc: [], bcc: [] }, { to: [all[all.length - 1]], cc: [], bcc: [] }]);
+      { to: [all[0]], cc: [], bcc: [all[all.length - 1]] }]);
     (await sendMail()).mockClear();
     const stranger = await ownResend({ channel: "recipients", to: ["kollege@example.test"] });
     expect(stranger.statusCode).toBe(400);
@@ -1030,7 +1041,8 @@ describe("showing and sending the password again", () => {
     expect(html).toContain("https://vault.example.test/#/send/abc");
     expect(html).not.toContain("KateGeteFi45"); // never the password itself
     const { deliveryFor } = await import("../src/deliveries.js");
-    expect(deliveryFor("tokvertrag", "oid-anna")).toMatchObject({ channel: "mail", to: "erika@example.test, chef@example.test" });
+    // Marked as sent again – "Verlauf" shows "Kennwort zuletzt an … · <time>".
+    expect(deliveryFor("tokvertrag", "oid-anna")).toMatchObject({ channel: "mail", to: "erika@example.test, chef@example.test", resent: true });
   });
 
   it("sends it again to one other address – like \"Kennwort an\" when sending; a list is refused", async () => {
@@ -1055,13 +1067,13 @@ describe("showing and sending the password again", () => {
   it("sends it again by SMS to a number of the sender's choice", async () => {
     const res = await resend("anna", { channel: "sms", to: "0171 7654321" });
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ channel: "sms", to: "+49 171 •••• 21" });
+    expect(res.json()).toEqual({ channel: "sms", to: "+49 171 7654321" }); // the whole number for the sender
     const [number, text] = (await sendSms()).mock.calls[0];
     expect(number).toBe("+491717654321");
     expect(text).toContain("KateGeteFi45");
     expect(text).toContain("\"vertrag.pdf\""); // names the file
     const { deliveryFor } = await import("../src/deliveries.js");
-    expect(deliveryFor("tokvertrag", "oid-anna")).toMatchObject({ channel: "sms", messageId: "99000001", status: "submitted" });
+    expect(deliveryFor("tokvertrag", "oid-anna")).toMatchObject({ channel: "sms", messageId: "99000001", status: "submitted", resent: true });
   });
 
   it("refuses invalid targets and other people's links", async () => {

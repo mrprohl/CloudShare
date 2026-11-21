@@ -3,6 +3,7 @@ import { callingCode, countryName, parseCountries, resolveCountry } from "../src
 import { config, envFlag, envRegex } from "../src/config.js";
 import {
   mapReportStatus,
+  formatPhone,
   maskPhone,
   normalizePhone,
   parseDeliveryReport,
@@ -115,7 +116,9 @@ describe("SMS (seven.io)", () => {
     expect(envFlag("UPLOAD_NOTICE", undefined, { DOWNLOAD_NOTICE: "true" })).toBe(false); // no fallback
   });
 
-  it("masks numbers for logs and the status line", () => {
+  it("masks numbers for logs and recipients' pages, shows the whole number to the sender", () => {
+    expect(formatPhone("+491701234567")).toBe("+49 170 1234567");
+    expect(formatPhone("+12025550123")).toBe("+1 202 5550123");
     expect(maskPhone("+491701234567")).toBe("+49 170 •••• 67");
     expect(maskPhone("+12025550123")).toBe("+1 202 •••• 23");
   });

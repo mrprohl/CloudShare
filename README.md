@@ -163,7 +163,8 @@ confidential message has no "Copy" or "Insert" – CloudShare does not keep its 
 while the pane is open ("(No subject yet)" until then); entries from before subjects were kept say "(Subject
 unknown)". It
 loads when you open the page and again when you come back to
-the pane, so it is always current (no refresh button); until the entries are there, grey shimmering placeholders show
+the pane, and at any time with "Refresh" at the top right (before the magnifier; the same in "Proofs of delivery" and
+for the links of a mail being read); until the entries are there, grey shimmering placeholders show
 where they will be – as when the pane starts and for "Proofs of delivery" and the links of a mail being read. Expired links are not listed. At the bottom, as in
 "Send": the account, as a menu – at the top the whole account name and its storage (a bar filled with the used share when there is a quota), then "Open Nextcloud" (your Nextcloud in the browser), "History" (every valid link, searchable), "Proofs of delivery" (with `DELIVERY_PROOF`: every proof, searchable), "Settings", "Send feedback" (with `FEEDBACK_MAIL`: a problem or a suggestion by mail to whoever looks after CloudShare), "Help" and "Disconnect" (takes a second click). A link is created when it is inserted;
 until its mail has been sent it says **"Not sent"**. If the mail is never sent (draft discarded), CloudShare revokes
@@ -175,7 +176,7 @@ The icons next to the name (their names show on hover and are explained in the h
 - **Copy** – copies the link.
 - **Password** (key) – for links with password, until they expire: shows the password (hidden until you click the eye; "Copy" works without showing it) and sends it **again**, the same
   ways as the first time – one box each, **several at once** possible, nothing ticked at first: to single
-  **recipients of the message** (listed one by one with To, Cc or Bcc below – each gets a mail of their own), to
+  **recipients of the message** (listed one by one with To, Cc or Bcc on the right – the ticked ones get one mail together as the first time, each in their field, so a Bcc stays hidden; with more than three one box stands for them all and folds out a filterable list), to
   **another address** (exactly one, like "Password to" when sending) or by **SMS**; as under "Password to", your Outlook contacts are
   suggested while you type and the **address book** icon next to the field picks one. A mail again only contains a link to the
   password, never the password itself.

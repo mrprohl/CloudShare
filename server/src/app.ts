@@ -49,6 +49,7 @@ import {
 import { passwordMailHtml, smsProblemMailHtml } from "./passwordMail.js";
 import {
   mapReportStatus,
+  formatPhone,
   maskPhone,
   normalizePhone,
   parseDeliveryReport,
@@ -132,9 +133,9 @@ interface ShareRequest {
   client?: unknown;
 }
 
-/** The way a password goes, as the case records it: "recipients", "mail:<address>", "sms:<masked number>". */
+/** The way a password goes, as the case records it: "recipients", "mail:<address>", "sms:<number>". */
 const wayOf = (d: Delivery | undefined) =>
-  !d ? [] : d.channel === "recipients" ? ["recipients"] : [`${d.channel}:${d.channel === "sms" ? maskPhone(d.to) : d.to}`];
+  !d ? [] : d.channel === "recipients" ? ["recipients"] : [`${d.channel}:${d.channel === "sms" ? formatPhone(d.to) : d.to}`];
 
 /** The Send with the password of the step a link joined (its access count is watched for the case). */
 function stepSendId(jobId: string | null, token: string): string | undefined {
@@ -355,6 +356,7 @@ function passwordDelivery(token: string, owner: string) {
         at: d.at,
         deliveredAt: d.deliveredAt ?? null,
         refused: d.channel === "sms" && d.status === "failed" && !d.messageId,
+        resent: d.resent === true,
       }
     : null;
 }
@@ -372,7 +374,7 @@ async function noteUndeliveredSms(refs: PasswordRef[], log: Pick<FastifyBaseLogg
       if (!settingsFor(ref.owner).smsNotice) continue; // the user switched it off (settings)
       // In the language of the sender's add-in when the mail was sent.
       const { html, subject } = inSenderLanguage(ref.senderLanguage, () => ({
-        html: smsProblemMailHtml({ fileNames: ref.fileNames, subject: ref.subject, to: ref.sms ? maskPhone(ref.sms) : "" }),
+        html: smsProblemMailHtml({ fileNames: ref.fileNames, subject: ref.subject, to: ref.sms ? formatPhone(ref.sms) : "" }),
         subject: t("mail.smsUndeliveredSubject", {
           subject: ref.subject || t("mail.files", { count: ref.fileNames.length, name: ref.fileNames[0] }),
         }),
@@ -478,7 +480,7 @@ function proofListEntry(c: ProofCase) {
     // Like an entry of "Verlauf": the kind symbol, and whether a click on the subject can open the sent mail.
     kind: Object.values(c.links ?? {})[0]?.kind ?? "file",
     mailAvailable: c.tokens.some((tok) => Boolean(sentMailFor(tok, c.owner)?.mailId)),
-    // "Kennwort an …": where the password went (addresses, masked numbers); null for links without password.
+    // "Kennwort an …": where the password went (addresses, whole numbers); null for links without password.
     passwordTo: Object.values(c.events).some((e) => e.type === "link.created" && e.data.protection !== "none")
       ? [...new Set(c.events.filter((e) => e.type === "password.sent" && typeof e.data.to === "string").map((e) => String(e.data.to)))]
       : null,
@@ -1041,7 +1043,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
           sharedAt: s.sharedAt,
           expiration: s.expiration,
           protected: s.hasPassword,
-          // How the password went out (after sending): channel, masked recipient, SMS delivery status.
+          // How the password went out (after sending): channel, recipient (the whole number for an SMS), SMS delivery status.
           password: passwordDelivery(token, user.oid),
           // Its password can still be shown and sent again ("Kennwort" in the list).
           passwordAvailable: passwordRefFor(token, user.oid) !== null,
@@ -1230,10 +1232,10 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         const text = inRecipientLanguage(ref.language, () =>
           render(templates.sms_template, { password, sender_name: ref.senderName ?? "", files: smsFiles(ref.fileNames ?? []) }));
         const messageId = await sendSms(number, text);
-        await recordDelivery(ref.tokens, { owner: user.oid, channel: "sms", to: maskPhone(number), at: Date.now(), messageId, status: "submitted" });
+        await recordDelivery(ref.tokens, { owner: user.oid, channel: "sms", to: formatPhone(number), at: Date.now(), messageId, status: "submitted", resent: true });
         await updatePasswordRef(ref.sendId, { sms: number });
         req.log.info({ user: user.upn, to: maskPhone(number), messageId }, "Password sent again by SMS");
-        return { channel: "sms", to: maskPhone(number) };
+        return { channel: "sms", to: formatPhone(number) };
       }
 
       if (channel !== "mail" && channel !== "recipients") throw new HttpError(400, t("server.channelInvalid"));
@@ -1248,11 +1250,12 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         const all = [...original.to, ...original.cc, ...original.bcc];
         if (all.length === 0) throw new HttpError(400, t("server.recipientsInvalid", { max: 20 }));
         if (picked.length > 0) {
-          // The recipients the sender ticked – only addresses the message went to, each in a mail of its own (nobody
-          // sees the others, a Bcc stays hidden).
+          // The recipients the sender ticked – only addresses the message went to – in one mail like the first time,
+          // each in the field it had (To, Cc, Bcc: a Bcc stays hidden).
           const known = all.map((address) => address.toLowerCase());
           if (!picked.every((address) => known.includes(address))) throw new HttpError(400, t("server.resendNotRecipient"));
-          mails = picked.map((address) => ({ to: [address], cc: [], bcc: [] }));
+          const ticked = (list: string[]) => list.filter((address) => picked.includes(address.toLowerCase()));
+          mails = [{ to: ticked(original.to), cc: ticked(original.cc), bcc: ticked(original.bcc) }];
         } else {
           mails = [original]; // the whole distribution as it was (an older add-in sends no list)
         }
@@ -1291,7 +1294,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const shown = (ref.deferred || (channel === "recipients" && picked.length > 0)
         ? picked
         : channel === "recipients" ? [...mails[0].to, ...mails[0].cc] : others).join(", ");
-      await recordDelivery(ref.tokens, { owner: user.oid, channel: "mail", to: shown, at: Date.now() });
+      await recordDelivery(ref.tokens, { owner: user.oid, channel: "mail", to: shown, at: Date.now(), resent: true });
       await updatePasswordRef(ref.sendId, { otherTo: channel === "mail" ? others : undefined, resentSend: send.id });
       req.log.info({ user: user.upn, channel, mails: mails.length }, "Password sent again by mail");
       return { channel, to: shown };

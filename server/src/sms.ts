@@ -77,12 +77,26 @@ export function smsNumber(input: unknown): string {
   return number;
 }
 
-/** "+4917012345678" → "+49 170 •••• 78" for status lines and logs. */
-export function maskPhone(e164: string): string {
+/** Calling code and the rest of an E.164 number ("+4917012345678" → ["49", "17012345678"]). */
+function phoneParts(e164: string): [string, string] {
   const digits = e164.slice(1);
   const country = digits.startsWith("1") || digits.startsWith("7") ? digits.slice(0, 1) : digits.slice(0, 2);
-  const rest = digits.slice(country.length);
+  return [country, digits.slice(country.length)];
+}
+
+/** "+4917012345678" → "+49 170 •••• 78" for logs and pages a recipient sees (who may not own that phone). */
+export function maskPhone(e164: string): string {
+  const [country, rest] = phoneParts(e164);
   return `+${country} ${rest.slice(0, 3)} •••• ${rest.slice(-2)}`;
+}
+
+/**
+ * "+4917012345678" → "+49 170 12345678": the whole number, readable, for the sender – "Verlauf", the delivery proof
+ * and the notes to the sender (the sender typed it in; a proof must name where the password went).
+ */
+export function formatPhone(e164: string): string {
+  const [country, rest] = phoneParts(e164);
+  return `+${country} ${rest.slice(0, 3)} ${rest.slice(3)}`;
 }
 
 /** Sends one SMS; returns seven.io's message ID. Throws HttpError if seven.io does not accept it. */

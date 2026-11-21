@@ -7,7 +7,7 @@
  *   case.opened       who, from which client (Outlook host, platform, version)
  *   link.created      what went out (file name, size, SHA-256 of the content), protection, expiry, password ways
  *   message.sent         subject, Message-ID, sender, To/Cc (number of Bcc), time – from "Sent Items"
- *   password.sent     way and recipient (SMS masked), also when sent again
+ *   password.sent     way and recipient (SMS: the whole number), also when sent again
  *   sms.status        delivery report of seven.io
  *   password.fetched  the password link was opened (Vaultwarden's access count went up)
  *   download          a download through the link (Nextcloud activity, every one)

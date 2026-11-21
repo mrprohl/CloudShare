@@ -21,7 +21,7 @@ import { takeSmsQuota } from "./jobs.js";
 import { passwordMailHtml } from "./passwordMail.js";
 import { passwordRefFor, updatePasswordRef, type PasswordRef } from "./passwordRefs.js";
 import { gatewayUrl, saveCase, type ProofCase } from "./proof.js";
-import { maskPhone, sendSms, smsEnabled } from "./sms.js";
+import { formatPhone, maskPhone, sendSms, smsEnabled } from "./sms.js";
 import { defaultTemplates, render, smsFiles, templatesFor } from "./templates.js";
 import { createPasswordSend, readSendPassword } from "./vaultwarden.js";
 
@@ -133,7 +133,7 @@ export async function releasePassword(c: ProofCase, token: string, address: stri
           password: pw, sender_name: ref.senderName ?? "", files: smsFiles(ref.fileNames),
         }));
       const messageId = await sendSms(ref.sms, text);
-      await recordDelivery(ref.tokens, { owner: c.owner, channel: "sms", to: maskPhone(ref.sms), at: Date.now(), messageId, status: "submitted" });
+      await recordDelivery(ref.tokens, { owner: c.owner, channel: "sms", to: formatPhone(ref.sms), at: Date.now(), messageId, status: "submitted" });
       done.sms = true;
       saveCase(c.id);
     }

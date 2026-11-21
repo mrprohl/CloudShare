@@ -26,7 +26,7 @@ import { caseOfToken, eventForTokens, recordMailSent } from "./proof.js";
 /** All links of a step go through the gateway of a delivery proof (file and upload links of a case). */
 const isDeferredStep = (shares: StepShare[]) =>
   shares.length > 0 && shares.every((s) => Boolean(caseOfToken(s.token)?.links?.[s.token]?.url));
-import { maskPhone, sendSms, smsEnabled, smsNumberProblem } from "./sms.js";
+import { formatPhone, maskPhone, sendSms, smsEnabled, smsNumberProblem } from "./sms.js";
 import { PersistentMap } from "./db.js";
 import { defaultTemplates, render, smsFiles, templatesFor, type Templates } from "./templates.js";
 import { readSendPassword } from "./vaultwarden.js";
@@ -385,14 +385,14 @@ async function sendStepBySms(
     const text = inRecipientLanguage(part.language, () =>
       render(t.sms_template, { password, sender_name: job.senderName ?? "", files: smsFiles(partFiles(part)) }));
     const messageId = await sendSms(to, text);
-    await recordDelivery(tokens, { owner: job.owner, channel: "sms", to: maskPhone(to), at: Date.now(), messageId, status: "submitted" });
+    await recordDelivery(tokens, { owner: job.owner, channel: "sms", to: formatPhone(to), at: Date.now(), messageId, status: "submitted" });
     log.info({ user: job.ownerUpn, to: maskPhone(to), messageId }, "Password SMS sent");
   } catch (err) {
     log.warn({ err, user: job.ownerUpn, to: maskPhone(to) }, "Password SMS failed – note to the sender, no password sent");
-    await recordDelivery(tokens, { owner: job.owner, channel: "sms", to: maskPhone(to), at: Date.now(), status: "failed" });
+    await recordDelivery(tokens, { owner: job.owner, channel: "sms", to: formatPhone(to), at: Date.now(), status: "failed" });
     // The note to the sender in the language of their add-in.
     const { html, noteSubject } = inSenderLanguage(senderLanguage, () => ({
-      html: smsProblemMailHtml({ fileNames: partFiles(part), subject, to: maskPhone(to), reason: (err as Error).message }),
+      html: smsProblemMailHtml({ fileNames: partFiles(part), subject, to: formatPhone(to), reason: (err as Error).message }),
       noteSubject: translate("mail.smsFailedSubject", {
         subject: subject || translate("mail.files", { count: partFiles(part).length, name: partFiles(part)[0] }),
       }),
