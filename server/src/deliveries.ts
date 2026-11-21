@@ -1,5 +1,5 @@
 /**
- * How the password of each link went out – shown in "Verlauf" ("Kennwort per SMS an +49 170 •••• 78 –
+ * How the password of each link went out – shown in "Verlauf" ("Kennwort per SMS an +49 170 1234567 –
  * zugestellt") and updated by seven.io's delivery reports. Keyed by the share token (last segment of the link URL).
  * Stored in the database (db.ts, store "deliveries"); entries are dropped after DELIVERY_TTL.
  */
@@ -10,13 +10,15 @@ import type { SmsStatus } from "./sms.js";
 export interface Delivery {
   owner: string;
   channel: "mail" | "sms";
-  /** Recipient for display: mail addresses or the masked phone number. Never the full number. */
+  /** Recipient for display: mail addresses or the phone number ("+49 170 1234567", formatPhone – shown to the sender only). */
   to: string;
   at: number;
   /** SMS only. */
   messageId?: string;
   status?: SmsStatus;
   deliveredAt?: number;
+  /** Sent again by the sender ("Erneut senden an" in "Verlauf") – the row shows "Kennwort zuletzt an … · <time>". */
+  resent?: boolean;
 }
 
 const DELIVERY_TTL = 120 * 86_400_000;
@@ -32,7 +34,7 @@ function prune() {
 export async function recordDelivery(tokens: string[], delivery: Delivery): Promise<void> {
   prune();
   for (const token of tokens) deliveries.set(token, { ...delivery });
-  // "Zustellnachweis": how and to whom the password went (SMS: the masked number), in the case of the links.
+  // "Zustellnachweis": how and to whom the password went (SMS: the whole number), in the case of the links.
   eventForTokens(tokens, "password.sent", { channel: delivery.channel, to: delivery.to, status: delivery.status ?? null }, delivery.at);
 }
 

@@ -24,7 +24,7 @@ const size = (bytes: unknown) => {
   return `${value.toLocaleString(locale(), { maximumFractionDigits: unit ? 1 : 0 })} ${units[unit]} (${bytes.toLocaleString(locale())} B)`;
 };
 
-/** A way the password went: "recipients", "mail:<address>", "sms:<masked number>". */
+/** A way the password went: "recipients", "mail:<address>", "sms:<number>". */
 const way = (value: unknown) => {
   const [channel, ...rest] = String(value).split(":");
   const to = rest.join(":");

@@ -613,6 +613,26 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 /* "Erneut senden an": the address or number field indented under its ticked box, like the field under the chosen
    way of "Kennwort an". */
 .password-panel .resend-picks .channel-group { margin: 2px 0 4px 24px; }
+/* The recipients one line each: the address, "An"/"Cc"/"Bcc" small and grey on the right (recipientPicks). */
+.recipient-row { padding: 4px 0; }
+.recipient-row .checkbox-text { display: flex; align-items: baseline; gap: 8px; overflow-wrap: anywhere; }
+.recipient-field { flex: none; margin-left: auto; font-size: 12px; line-height: 16px; color: var(--fg2); }
+/* Many recipients: one box for all ("Empfänger der Nachricht (53)", how many are ticked below it), the arrow folds out
+   the list with a filter, indented under the box like the field of "Andere E-Mail-Adresse". */
+.recipient-group-head { display: flex; align-items: flex-start; gap: 4px; }
+.recipient-group-head .checkbox { flex: 1; min-width: 0; }
+.recipient-toggle { flex: none; margin: 2px -6px 0 0; }
+.recipient-toggle .chevron { transition: transform 0.15s ease; }
+.recipient-toggle[aria-expanded="true"] .chevron { transform: rotate(180deg); }
+.recipient-list { margin: 2px 0 4px 24px; }
+.recipient-filter { width: 100%; margin: 0 0 4px; }
+.recipient-none { margin: 4px 0; }
+/* Some, not all ticked: a dash in the box of the group. */
+.checkbox input:indeterminate + .box { background: var(--brand-bg); border-color: var(--brand-bg); position: relative; }
+.checkbox input:indeterminate + .box::after {
+  content: ""; position: absolute; left: 3px; top: 6.5px; width: 8px; height: 1.5px; background: var(--fg-on-brand);
+}
+@media (prefers-reduced-motion: reduce) { .recipient-toggle .chevron { transition: none; } }
 .share-actions .show-password[aria-expanded="true"] { background: var(--bg1-pressed); color: var(--fg1); }
 
 /* --- Help ("Hilfe"): short sections to open as needed ------------------------------------------- */
@@ -625,7 +645,13 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 .help-header .subtitle { font-size: 18px; line-height: 24px; }
 .help-header .page-back { margin: 0 0 0 -8px; }
 .help-header .page-action { margin: 0 -6px 0 auto; }
-/* Reading a mail: the title of its links (no refresh button – the list reloads by itself). */
+/* "Aktualisieren" right before the magnifier ("Verlauf", "Zustellnachweise"); it turns while the list loads. */
+.help-header .refresh { margin: 0 0 0 auto; }
+.help-header .refresh + .page-action { margin-left: 0; }
+.refresh[aria-busy="true"] .icon { animation: refresh-spin 0.9s linear infinite; }
+@keyframes refresh-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .refresh[aria-busy="true"] .icon { animation: none; } }
+/* Reading a mail: the title of its links, "Aktualisieren" on the right. */
 .list-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 8px; }
 .list-head .btn-icon { margin: 0 -6px 0 0; }
 .help { color: var(--fg1); }

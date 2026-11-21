@@ -246,7 +246,7 @@ The ways:
     (application permission `Mail.Send`; unset it follows `DOWNLOAD_NOTICE`, `envFlag`), otherwise "History"
     shows it only.
 
-How the password of each link went out (channel, masked recipient, SMS status) is shown in "History".
+How the password of each link went out (channel, recipient – the whole number for an SMS –, SMS status) is shown in "History".
 
 ### 2.6 Text templates
 
@@ -366,7 +366,7 @@ test checks the German texts in the running stack.
 
 The manifest also adds the CloudShare button to the ribbon of a mail being **read** (`MessageReadCommandSurface`,
 pinnable via `SupportsPinning`; legacy `ItemRead` form for older clients). It opens `taskpane.html?view=read`: in place
-of "Senden" the links of that mail (`#panel-mail`, "Links in dieser Nachricht", reloaded on focus and on `ItemChanged` – no refresh button;
+of "Senden" the links of that mail (`#panel-mail`, "Links in dieser Nachricht", reloaded on focus, on `ItemChanged` and by "Aktualisieren" `#mail-refresh` in its head;
 shown again when a pinned pane moves to another mail); "Verlauf" and the rest are in the account menu as while
 writing. A link revoked in one list disappears from both.
 
@@ -392,7 +392,7 @@ In "History" and in the read mode (2.9) such links get **Password** (`passwordAv
   (`readSendPassword`; also after the recipients' access ended) and returns it with the suggested targets.
 - `POST /api/shares/:id/password/send` – the same ways as the first time, one request per way (the pane offers one box per way, several at once, nothing ticked at first):
   `{ channel: "recipients", to: [...] }` sends it to the **recipients the sender ticked** (only addresses of the sent
-  mail, else 400 – each in a mail of its own; the pane lists To, Cc and Bcc one by one); without a list (older
+  mail, else 400 – in one mail like the first time, each in the field it had, so a Bcc stays hidden; the pane lists To, Cc and Bcc one by one, from four on folded into one box with a filterable list – `recipientPicks`); without a list (older
   add-in) `{ channel: "recipients" }` sends the password mail with the **distribution of the sent mail** – To, Cc and Bcc as
   they were (`PasswordRef.recipients`, taken from "Sent Items"; older entries fall back to `mailTo`);
   `{ channel: "mail", to }` sends it to **one** other address (like "Kennwort an" when sending; a list – from an older
@@ -622,7 +622,7 @@ the manifest it serves. No mail content, no recipients, no logs.
 | `/data/cloudshare.db`, store `credentials` | Nextcloud app password per `oid` | Until disconnect / 401 |
 | … store `password-jobs` | Password jobs: owner, sender name and department, file names, Sends and links per step (`separate`), `passwordTo` / `passwordSms`, armed Graph token | 7 days after the last link |
 | … store `cleanup` | Upload folders with expiry date per owner | Until deleted |
-| … store `deliveries` | Per link: channel, masked recipient, SMS message ID and status | 120 days |
+| … store `deliveries` | Per link: channel, recipient (address or number), SMS message ID and status | 120 days |
 | … store `password-refs` | Per sent step: Send ID (never the password), link tokens, file names, subject, distribution of the sent mail (To, Cc, Bcc), other address / SMS number, sender | Until the links expire |
 | … store `sent-mails` | Per link: subject of the mail it went out with and the Graph ID (immutable) of that mail in the sender's own "Sent Items" – the title in "History", a click opens the mail | Until the link expires |
 | … store `messages` | Confidential messages: owner, Send ID, access ID (the link without its key), created, expiry – never key or text | Until the message expires |
@@ -750,8 +750,9 @@ Alert trace". Off by default.
   the password in plain text (it is the second channel) and, with `{files}` (the built-in text), the first file name –
   shortened to 32 characters, GSM characters only, "+ N more" – so a recipient of several SMS can tell which password
   belongs to which link; never the link itself. The password is read from the Send only for sending. A
-  failed SMS never falls back to another channel on its own. Numbers are stored masked in the status (the full
-  number only in the encrypted entry for sending again); `SMS_MAX_PER_DAY` limits costs and abuse, also for SMS sent
+  failed SMS never falls back to another channel on its own. The sender sees the whole number ("Verlauf", the
+  delivery proof, the notes to the sender – `formatPhone`); logs and the page a recipient sees after confirming the
+  code show it masked (`maskPhone`); every entry is sealed in the database (`storage.ts`); `SMS_MAX_PER_DAY` limits costs and abuse, also for SMS sent
   again. Conclude a data processing agreement with seven.io.
 - **Language files** are data, not markup: every text is escaped where it is inserted (HTML, XML, JavaScript string),
   so a language file cannot add script or markup to the pane, the manifest or a mail. `LANGUAGE` must be a language
@@ -819,7 +820,8 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   browser's own Nextcloud session or a sign-in there; the app password of the connection never leaves the server.
 - **History** ("Verlauf", `#shares-open`, right above "Zustellnachweise"): a page like the settings (`#panel-shares`,
   `showOverlay("shares")`) – every valid link with its actions, reloaded when opened and on return to the pane
-  (no refresh button); the magnifier `#shares-search-toggle` folds out the search `#shares-search` (`searchToggle.ts`, like "Hilfe" and "Zustellnachweise"), which filters by subject, name, recipients, password address and
+  and by "Aktualisieren" `#shares-refresh` right before the magnifier (`onRefresh`: the symbol turns while loading, the
+  list stays in sight; `#proofs-refresh` the same in "Zustellnachweise"); the magnifier `#shares-search-toggle` folds out the search `#shares-search` (`searchToggle.ts`, like "Hilfe" and "Zustellnachweise"), which filters by subject, name, recipients, password address and
   tracking ID (`renderShareList`). The pane has no tabs any more: the view is "Senden" (or, reading, the links of that
   mail – `currentView`), every other thing is a page of the account menu.
 - **Proofs of delivery** ("Zustellnachweise", `#proofs-open`, only with `DELIVERY_PROOF`): a page like the settings
@@ -831,7 +833,8 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
   filters it while typing over tracking ID, subject, recipients and file names (no other filters); the seal of an entry (`proofSeal`, after the tracking ID
   under the file – the same line `.proof-case` in "Verlauf", via `proofId`/`proofState` of `/api/shares`) is coloured by `caseSummary(c).state` – grey sent, blue confirmed, green
   fetched – and opens its signed PDF; the sent line says "Nachricht und Kennwort an …" when the password went to exactly
-  the recipients (`sameAddresses`, the password line hidden), else "Nachricht an …" and "Kennwort an …"; each entry has the
+  the recipients (`sameAddresses`, the password line hidden), else "Nachricht an …" and "Kennwort an …" – more than three addresses as the first two and "und N weitere", all in the tooltip (`addressList`) (in "Verlauf" a
+  password sent again – `Delivery.resent` – always gets its own line "Kennwort zuletzt an … · <date>, <time> Uhr"); each entry has the
   line "Gültig bis …" (`endsOn`, `fillValidLine` – a calendar,
   orange from two days before the end; the same line in "Verlauf") or "Aufbewahrt bis …" (`keptUntil`), and the state
   alone on the line below.

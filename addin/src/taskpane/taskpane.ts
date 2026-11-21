@@ -128,6 +128,10 @@ const settingsOpen = $<HTMLButtonElement>("settings-open");
 const panelProofs = $<HTMLElement>("panel-proofs");
 const proofsOpen = $<HTMLButtonElement>("proofs-open");
 const proofsClose = $<HTMLButtonElement>("proofs-close");
+/** "Aktualisieren" in the heads of "Verlauf", "Zustellnachweise" and the links of a mail being read. */
+const sharesRefresh = $<HTMLButtonElement>("shares-refresh");
+const proofsRefresh = $<HTMLButtonElement>("proofs-refresh");
+const mailRefresh = $<HTMLButtonElement>("mail-refresh");
 /** "Feedback senden" in the account menu (FEEDBACK_MAIL). */
 const panelFeedback = $<HTMLElement>("panel-feedback");
 const feedbackOpen = $<HTMLButtonElement>("feedback-open");
@@ -2219,7 +2223,7 @@ interface ProofItem {
   kind: "file" | "request" | "message";
   /** Whether the sent mail is known – then the subject opens it. */
   mailAvailable: boolean;
-  /** Where the password went (addresses, masked numbers); empty: not sent yet. null: links without password. */
+  /** Where the password went (addresses, numbers); empty: not sent yet. null: links without password. */
   passwordTo: string[] | null;
 }
 
@@ -2253,6 +2257,22 @@ function sameAddresses(a: string[], b: string[]): boolean {
   const norm = (list: string[]) => [...new Set(list.map((s) => s.trim().toLowerCase()).filter(Boolean))].sort().join(",");
   return a.length > 0 && norm(a) === norm(b);
 }
+
+/** Up to this many addresses are written out in an entry; more: the first two and "und 51 weitere". */
+const ADDRESSES_SHOWN = 3;
+
+/**
+ * Addresses for the lines of "Verlauf" and "Zustellnachweise": all of them up to ADDRESSES_SHOWN, else
+ * "erika@…, max@… und 51 weitere" – a mail to 50 people stays two lines; the whole list is in the tooltip
+ * (`addressesTitle`) and the search.
+ */
+function addressList(addresses: string[]): string {
+  if (addresses.length <= ADDRESSES_SHOWN) return addresses.join(", ");
+  return t("shares.andMore", { list: addresses.slice(0, 2).join(", "), count: addresses.length - 2 });
+}
+
+/** The whole list for the tooltip when `addressList` shortened it, else "". */
+const addressesTitle = (addresses: string[]) => (addresses.length > ADDRESSES_SHOWN ? addresses.join(", ") : "");
 
 /** The line "Gültig bis 03.12.2026" of an entry in "Verlauf" and "Zustellnachweise" – above its state. */
 const VALID_LINE =
@@ -2318,13 +2338,16 @@ function proofRow(p: ProofItem): HTMLElement {
   // "Nachricht und Kennwort an …" when both went to the same addresses, else "Nachricht an …" and "Kennwort an …" –
   // like the lines of "Verlauf".
   const together = p.passwordTo !== null && sameAddresses(p.passwordTo, p.recipients);
-  row.querySelector<HTMLElement>(".proof-sent")!.textContent =
-    t(together ? "proofs.sentWithPasswordTo" : "proofs.sentTo", { date: formatDate(p.sentAt), to: p.recipients.join(", ") || "–" });
+  const sent = row.querySelector<HTMLElement>(".proof-sent")!;
+  sent.textContent =
+    t(together ? "proofs.sentWithPasswordTo" : "proofs.sentTo", { date: formatDate(p.sentAt), to: addressList(p.recipients) || "–" });
+  sent.title = addressesTitle(p.recipients);
   const password = row.querySelector<HTMLElement>(".proof-password")!;
   password.hidden = together;
   password.textContent = p.passwordTo === null
     ? t("proofs.withoutPassword")
-    : p.passwordTo.length ? t("proofs.passwordTo", { to: p.passwordTo.join(", ") }) : t("proofs.passwordPending");
+    : p.passwordTo.length ? t("proofs.passwordTo", { to: addressList(p.passwordTo) }) : t("proofs.passwordPending");
+  password.title = p.passwordTo ? addressesTitle(p.passwordTo) : "";
   // "Gültig bis …" above the state (or how long a finished proof is kept); the state alone on its line.
   fillValidLine(row, p.endsOn, p.endsOn ? undefined : p.keptUntil);
   const stateText = row.querySelector<HTMLElement>(".state-text")!;
@@ -2375,6 +2398,11 @@ async function openProofs() {
   // Placeholders until the proofs are there.
   proofsList.replaceChildren(skeletonRows());
   proofsEmpty.hidden = true;
+  await loadProofs();
+}
+
+/** Loads the proofs; a reload ("Aktualisieren") keeps the list in sight until the new one is there. */
+async function loadProofs() {
   try {
     proofItems = await api<ProofItem[]>("/api/proofs", {}, await getToken());
     renderProofs();
@@ -2384,6 +2412,23 @@ async function openProofs() {
     proofsEmpty.textContent = t("proofs.failed", { error: errorMessage(err) });
   }
 }
+
+/**
+ * "Aktualisieren": loads the list anew – the symbol turns meanwhile (aria-busy), a second click waits. Open password
+ * panels stay as they are (keepOpenRows).
+ */
+function onRefresh(button: HTMLButtonElement, load: () => Promise<void>) {
+  button.addEventListener("click", () => {
+    if (button.getAttribute("aria-busy") === "true") return;
+    button.setAttribute("aria-busy", "true");
+    load()
+      .catch((err) => setStatus(errorMessage(err), "error"))
+      .then(() => button.removeAttribute("aria-busy"));
+  });
+}
+onRefresh(sharesRefresh, loadShares);
+onRefresh(mailRefresh, loadShares);
+onRefresh(proofsRefresh, loadProofs);
 
 proofsOpen.addEventListener("click", () => void openProofs());
 // "Feedback senden": a page like the settings; after sending back to the view.
@@ -2447,6 +2492,8 @@ interface ShareItem {
     deliveredAt: number | null;
     /** Failed SMS: seven.io did not take it at all (false: it reported "not delivered" later). */
     refused?: boolean;
+    /** Sent again from "Verlauf": the line says "Kennwort zuletzt an … · <time>". */
+    resent?: boolean;
   } | null;
   /** The password can still be shown and sent again ("Kennwort"). */
   passwordAvailable?: boolean;
@@ -2456,15 +2503,22 @@ interface ShareItem {
   revokeAt?: number | null;
 }
 
-/** "Kennwort per SMS an +49 170 •••• 78 – zugestellt am 16.11.2026, 14:05" for the "Verlauf" list. */
-/** The way in a few words for the line ("Kennwort per Mail", "Kennwort per SMS – zugestellt"); the rest in the tooltip. */
+/** "Kennwort per SMS an +49 170 1234567 – zugestellt am 16.11.2026, 14:05" for the "Verlauf" list. */
+/**
+ * The way in a few words for the line ("Kennwort an …", "Kennwort an … – zugestellt"); the rest in the tooltip. Sent
+ * again from "Verlauf": "Kennwort zuletzt an … · 21.11.2026, 14:32 Uhr".
+ */
 function passwordShort(p: NonNullable<ShareItem["password"]>): string {
-  if (p.channel === "mail") return t("shares.passwordMailShort", { to: p.to });
+  const time = formatDateTime(p.at);
+  if (p.channel === "mail") {
+    const to = addressList(p.to.split(/,\s*/)); // many: "erika@…, max@… und 51 weitere" – all of them in the tooltip
+    return p.resent ? t("shares.passwordMailLast", { to, time }) : t("shares.passwordMailShort", { to });
+  }
   const status =
     p.status === "delivered" ? t("shares.smsDelivered")
     : p.status === "failed" ? t(p.refused ? "shares.smsFailed" : "shares.smsUndelivered")
     : t("shares.smsSubmitted");
-  return t("shares.passwordSmsShort", { to: p.to, status });
+  return p.resent ? t("shares.passwordSmsLast", { to: p.to, time, status }) : t("shares.passwordSmsShort", { to: p.to, status });
 }
 
 function passwordText(p: NonNullable<ShareItem["password"]>): string {
@@ -2622,6 +2676,8 @@ const ICONS = {
       '<path d="M11.5 8.5a3 3 0 0 0-4.2 0l-2.6 2.6a3 3 0 0 0 4.2 4.2l1-1"/>',
   ),
   revoke: icon('<circle cx="10" cy="10" r="6.5"/><path d="M5.4 5.4l9.2 9.2"/>'),
+  /** "Aktualisieren" – the same drawing as the buttons in the heads (taskpane.html). */
+  refresh: icon('<path d="M15.5 10a5.5 5.5 0 1 1-1.6-3.9M14.5 3v3.5H11"/>'),
   /** "Nachweis": a document with a seal (the PDF of the delivery proof). */
   proof: icon('<path d="M11.5 3H6a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h3"/><path d="M11.5 3L15 6.5V9"/><path d="M8 7h3M8 10h2"/><circle cx="14" cy="13" r="2.5"/><path d="M12.8 15.2L12.5 18l1.5-.8 1.5.8-.3-2.8"/>'),
 } as const;
@@ -2682,7 +2738,10 @@ function fillProofPasswordPanel(panel: HTMLElement, share: ShareItem, sent: Sent
     group.append(row);
   };
   const lower = verified.map((address) => address.toLowerCase());
-  for (const address of verified) add("recipients", address, address);
+  // The confirmed addresses one line each, from RECIPIENT_GROUP_FROM on folded into one box (recipientPicks).
+  const confirmed = recipientPicks(id, "resend.confirmedGroup", verified.map((address) => ({ address })));
+  group.append(confirmed.element);
+  for (const input of confirmed.boxes) picks.push({ input, channel: "recipients", value: input.value });
   for (const address of sent.otherTo.filter((a) => !lower.includes(a.toLowerCase()))) {
     add("mail", address, address, t("resend.proofOther"));
   }
@@ -2757,9 +2816,7 @@ function fillProofPasswordPanel(panel: HTMLElement, share: ShareItem, sent: Sent
         reached.push(result.to);
       }
       setStatus(t("resend.sentMail", { to: reached.join(", ") }), "success");
-      for (const pick of picks) pick.input.checked = false;
-      panel.hidden = true; // closed, so the row is built anew (keepOpenRows keeps open ones)
-      loadShares().catch(() => undefined); // shows the new state of the password
+      reloadKeepingPanel(panel, share);
     } catch (err) {
       const done = reached.length > 0 ? ` ${t("resend.sentMail", { to: reached.join(", ") })}` : "";
       setStatus(t("resend.failed", { error: errorMessage(err) }) + done, "error");
@@ -2837,7 +2894,7 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
   const offered = userSettings().channels as string[];
   const ways: Array<{ channel: ResendChannel; box: HTMLInputElement; field?: HTMLInputElement }> = [];
   // The recipients of the message one by one (as with a proof of delivery, without the confirmation): each a box,
-  // "An", "Cc" or "Bcc" below it.
+  // "An", "Cc" or "Bcc" on the right.
 
   /** Why the ticked way cannot be sent to (missing or wrong address, a number SMS may not go to), or null. */
   const fieldProblem = (way: (typeof ways)[number]): string | null => {
@@ -2903,10 +2960,16 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
     });
     way.field = field;
   };
-  const fields: Array<[string, string[]]> = [
-    [t("resend.fieldTo"), sent.recipients.to], [t("resend.fieldCc"), sent.recipients.cc], [t("resend.fieldBcc"), sent.recipients.bcc]];
-  for (const [field, addresses] of fields) {
-    for (const address of addresses) addWay("recipients", address, field, address);
+  // The recipients one line each, from RECIPIENT_GROUP_FROM on folded into one box (recipientPicks).
+  if (offered.includes("recipients") || first === "recipients") {
+    const fields: Array<[string, string[]]> = [
+      [t("resend.fieldTo"), sent.recipients.to], [t("resend.fieldCc"), sent.recipients.cc], [t("resend.fieldBcc"), sent.recipients.bcc]];
+    const entries = fields.flatMap(([field, addresses]) => addresses.map((address) => ({ address, field })));
+    if (entries.length > 0) {
+      const { element, boxes } = recipientPicks(id, "resend.recipientsGroup", entries);
+      waysGroup.append(element);
+      for (const box of boxes) ways.push({ channel: "recipients", box });
+    }
   }
   addWay("mail", t("channel.mail"), t("resend.mailHint"));
   if (serverConfig.smsEnabled) addWay("sms", t("channel.sms"), t("resend.smsHint") + smsCountriesHint());
@@ -2937,7 +3000,7 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
     const sentKey = { recipients: "resend.sentRecipients", mail: "resend.sentMail", sms: "resend.sentSms" } as const;
     try {
       const token = await getToken();
-      // One request per way, in the order shown: the ticked recipients together (each gets a mail of their own), then
+      // One request per way, in the order shown: the ticked recipients together (one mail, each in its field), then
       // the other address, then the SMS.
       const recipients = chosen.filter((way) => way.channel === "recipients").map((way) => way.box.value);
       const bodies: Array<Record<string, unknown>> = [
@@ -2953,13 +3016,109 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
         done.push(t(sentKey[result.channel], { to: result.to }));
       }
       setStatus(done.join(" "), "success");
-      panel.hidden = true; // closed, so the row is built anew (keepOpenRows keeps open ones)
-      loadShares().catch(() => undefined); // shows the new state of the password
+      reloadKeepingPanel(panel, share);
     } catch (err) {
       setStatus([t("resend.failed", { error: errorMessage(err) }), ...done].join(" "), "error");
       send.disabled = false;
     }
   });
+}
+
+/** From this many recipients on, "Erneut senden an" folds them into one box ("Empfänger der Nachricht (53)"). */
+const RECIPIENT_GROUP_FROM = 4;
+
+/**
+ * The recipients of "Erneut senden an", one line each: the address, "An"/"Cc"/"Bcc" small on the right. A few are boxes
+ * of their own; from RECIPIENT_GROUP_FROM on one box stands for all of them (half ticked when some are, how many below
+ * it) and the arrow next to it folds out the list with a filter – a mail to 50 people stays one line until needed.
+ * `boxes`: one per address (value = the address), in the order given.
+ */
+function recipientPicks(
+  id: string,
+  titleKey: "resend.recipientsGroup" | "resend.confirmedGroup",
+  entries: Array<{ address: string; field?: string }>,
+): { element: HTMLElement; boxes: HTMLInputElement[] } {
+  const rows = entries.map(({ address, field }) => {
+    const { row, input } = checkboxRow(address);
+    row.classList.add("recipient-row");
+    input.value = address;
+    if (field) {
+      const tag = document.createElement("span");
+      tag.className = "recipient-field";
+      tag.textContent = field;
+      row.querySelector(".checkbox-text")!.append(tag);
+    }
+    return { row, address: address.toLowerCase() };
+  });
+  const boxes = rows.map(({ row }) => row.querySelector("input")!);
+  const element = document.createElement("div");
+  if (entries.length < RECIPIENT_GROUP_FROM) {
+    element.className = "recipient-rows";
+    element.append(...rows.map(({ row }) => row));
+    return { element, boxes };
+  }
+
+  element.className = "recipient-group";
+  const head = document.createElement("div");
+  head.className = "recipient-group-head";
+  const { row: allRow, input: all } = checkboxRow(t(titleKey, { count: entries.length }), t("resend.pickedNone"));
+  all.className = "recipient-all";
+  const summary = allRow.querySelector<HTMLElement>(".checkbox-hint")!;
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "btn btn-icon btn-subtle recipient-toggle";
+  toggle.setAttribute("aria-expanded", "false");
+  toggle.setAttribute("aria-controls", `${id}-recipients`);
+  toggle.title = t("resend.showRecipients");
+  toggle.setAttribute("aria-label", t("resend.showRecipients"));
+  toggle.innerHTML =
+    '<svg class="icon chevron" viewBox="0 0 20 20" aria-hidden="true"><path d="m5 7.5 5 5 5-5" fill="none" ' +
+    'stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  head.append(allRow, toggle);
+
+  const list = document.createElement("div");
+  list.className = "recipient-list";
+  list.id = `${id}-recipients`;
+  list.hidden = true;
+  const filter = document.createElement("input");
+  filter.type = "search";
+  filter.className = "input recipient-filter";
+  filter.placeholder = t("resend.filter");
+  filter.setAttribute("aria-label", t("resend.filter"));
+  const none = document.createElement("p");
+  none.className = "caption recipient-none";
+  none.textContent = t("resend.filterNone");
+  none.hidden = true;
+  list.append(filter, ...rows.map(({ row }) => row), none);
+  element.append(head, list);
+
+  const update = () => {
+    const picked = boxes.filter((box) => box.checked).length;
+    all.checked = picked === boxes.length;
+    all.indeterminate = picked > 0 && picked < boxes.length;
+    summary.textContent =
+      picked === 0 ? t("resend.pickedNone")
+      : picked === boxes.length ? t("resend.pickedAll")
+      : t("resend.pickedSome", { count: picked, total: boxes.length });
+  };
+  list.addEventListener("change", update);
+  // The box of the group ticks or unticks every recipient (the change bubbles on to "Senden").
+  all.addEventListener("change", () => {
+    for (const box of boxes) box.checked = all.checked;
+    update();
+  });
+  toggle.addEventListener("click", () => {
+    const open = list.hidden;
+    list.hidden = !open;
+    toggle.setAttribute("aria-expanded", String(open));
+    if (open) filter.focus();
+  });
+  filter.addEventListener("input", () => {
+    const query = filter.value.trim().toLowerCase();
+    for (const { row, address } of rows) row.hidden = query !== "" && !address.includes(query);
+    none.hidden = rows.some(({ row }) => !row.hidden);
+  });
+  return { element, boxes };
 }
 
 /** A box with its text and a hint right under the text (as in the settings) – the ways of "Erneut senden an". */
@@ -3075,12 +3234,14 @@ function shareRow(share: ShareItem): HTMLElement {
   // SMS) – then "Gültig bis …" and the state.
   const sentLine = row.querySelector<HTMLElement>(".share-sent")!;
   const sentTo = share.sentTo ? [...share.sentTo.to, ...share.sentTo.cc] : [];
-  const together = share.password?.channel === "mail" && sentTo.length > 0 && sameAddresses(share.password.to.split(/,\s*/), sentTo);
+  // Sent again: always its own line with the time, even to the same addresses.
+  const together = share.password?.channel === "mail" && !share.password.resent && sentTo.length > 0 &&
+    sameAddresses(share.password.to.split(/,\s*/), sentTo);
   sentLine.textContent = sentTo.length
-    ? t(together ? "proofs.sentWithPasswordTo" : "proofs.sentTo", { date: formatDate(share.sentAt ?? share.sharedAt), to: sentTo.join(", ") })
+    ? t(together ? "proofs.sentWithPasswordTo" : "proofs.sentTo", { date: formatDate(share.sentAt ?? share.sharedAt), to: addressList(sentTo) })
     : formatDate(share.sharedAt);
-  sentLine.title = [t("shares.sharedOn", { date: formatDate(share.sharedAt) }), together && share.password ? passwordText(share.password) : ""]
-    .filter(Boolean).join("\n");
+  sentLine.title = [t("shares.sharedOn", { date: formatDate(share.sharedAt) }), addressesTitle(sentTo),
+    together && share.password ? passwordText(share.password) : ""].filter(Boolean).join("\n");
   const passwordLine = row.querySelector<HTMLElement>(".share-password")!;
   passwordLine.textContent = share.password
     ? passwordShort(share.password)
@@ -3128,6 +3289,7 @@ function shareRow(share: ShareItem): HTMLElement {
       panel.hidden = !open;
       if (open) void fillPasswordPanel(panel, share);
     });
+    if (reopenPanelOf === share.id) toggle.click(); // sent from this panel: open again in the new row
   }
 
   const copy = row.querySelector<HTMLButtonElement>(".copy")!;
@@ -3288,6 +3450,24 @@ function keepOpenRows(list: HTMLElement, rows: HTMLElement[]): HTMLElement[] {
     if (row?.dataset.id) open.set(row.dataset.id, row);
   }
   return rows.map((row) => open.get(row.dataset.id ?? "") ?? row);
+}
+
+/** The link whose "Kennwort" panel is opened again while the list is built anew after "Senden" in it. */
+let reopenPanelOf: string | null = null;
+
+/**
+ * After "Senden" in a "Kennwort" panel: the list loads anew (the new state of the password in the row) and the panel
+ * stays open – built anew in the new row, nothing ticked. If the list cannot load, the panel is filled anew in place.
+ */
+function reloadKeepingPanel(panel: HTMLElement, share: ShareItem) {
+  reopenPanelOf = share.id;
+  panel.hidden = true; // so keepOpenRows takes the new row
+  loadShares()
+    .catch(() => {
+      panel.hidden = false;
+      void fillPasswordPanel(panel, share);
+    })
+    .finally(() => (reopenPanelOf = null));
 }
 
 /** "Verlauf" with the search: subject, what went out (file name or kind), recipients and password way, case-insensitive. */

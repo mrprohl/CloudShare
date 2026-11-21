@@ -113,7 +113,7 @@ describe("delivery proof – PDF", () => {
 
   it("lists the case with its events, the mail and whether the record is intact", () => {
     const id = openCase("oid-anna", "anna@example.test", { host: "Outlook", platform: "PC", version: "16.0" });
-    addLink(id, "pdf-1", link("Angebot (final).pdf"), "send-9", { size: 2_621_440, sha256: "ef".repeat(32), protection: "password", passwordWays: ["recipients", "sms:+49 170 •••• 67"] });
+    addLink(id, "pdf-1", link("Angebot (final).pdf"), "send-9", { size: 2_621_440, sha256: "ef".repeat(32), protection: "password", passwordWays: ["recipients", "sms:+49 170 1234567"] });
     recordMailSent(["pdf-1"], { subject: "Unterlagen", messageId: "<abc@example.test>", from: "anna@example.test", to: ["erika@example.test"], cc: [], bcc: [], sentAt: "2026-11-17T10:47:00Z" });
     const pdf = proofPdf(caseById(id)!, "de").toString("latin1");
     expect(pdf).toContain(`(Vorgang ${id})`);
@@ -122,7 +122,7 @@ describe("delivery proof – PDF", () => {
     expect(pdf).toContain("ef".repeat(16)); // the fingerprint (wrapped lines keep it in pieces)
     expect(pdf).toContain("Angebot \\(final\\).pdf SHA-256:"); // it names its file
     expect(pdf).toContain("<abc@example.test>");
-    expect(pdf).toContain("SMS an +49 170 \x95\x95\x95\x95 67");
+    expect(pdf).toContain("SMS an +49 170 1234567"); // the whole number: the proof names where the password went
     expect(proofPdf(caseById(id)!, "en").toString("latin1")).toContain(`(Case ${id})`);
   });
 });
