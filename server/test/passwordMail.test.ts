@@ -10,7 +10,7 @@ describe("password mail", () => {
     expect(html).toContain("Kennwort für Ihre Freigabe");
     expect(html).toContain("die folgende Freigabe aus der Nachricht „Unterlagen“");
     expect(html).toMatch(/background:#c4314b[^>]*>PDF</);
-    expect(html).toMatch(/<a href="https:\/\/vault\.example\.test\/#\/send\/abc\/key"[^>]*>Kennwort anzeigen<\/a>/);
+    expect(html).toMatch(/<a href="https:\/\/vault\.example\.test\/#\/send\/abc\/key"[^>]*><span[^>]*>Kennwort anzeigen<\/span><\/a>/);
     expect(html).toContain("bis zu 3 Abrufe · läuft nach 7 Tagen ab");
     expect(html).toContain("Falls der Button nicht funktioniert"); // plain link for clients without buttons
     // Fits files, upload links and messages alike – no "Download-Link".
