@@ -1874,7 +1874,8 @@ test("Verlauf: Kennwort shows the password and sends it again the same ways as t
   // Nothing ticked: "Senden" is greyed out.
   await expect.poll(() => calls.filter((c) => c.path === "/api/shares").length).toBe(2);
   await toggle.click();
-  for (const box of await panel.locator("input[type=checkbox]:checked").all()) await box.locator("xpath=..").click();
+  await expect(panel.locator('input[type=checkbox][value="sms"]')).toBeChecked(); // loaded again
+  await panel.locator('label.checkbox:has(input[value="sms"])').click();
   await expect(panel.locator(".send-password")).toBeDisabled();
 });
 
