@@ -1223,6 +1223,18 @@ describe("delivery proof (Zustellnachweis)", () => {
     const strangerTry = await app.inject({ method: "POST", url: "/r/s/proof-gw/verify", ...form({ address: "mallory@example.test", code: "123456" }) });
     expect(strangerTry.statusCode).toBe(400);
     expect(strangerTry.body.replaceAll("mallory@example.test", "X")).toBe(wrong.body.replaceAll("erika@example.test", "X"));
+    expect(wrong.body).toContain("Der Code stimmt nicht.");
+    expect(wrong.body).toContain('action="/r/s/proof-gw/verify"');
+    // No code (any more) – expired, entered wrongly too often or never asked for: back to the address, filled in, for a
+    // new code; from the button in the mail as from the form.
+    for (const res of [
+      await app.inject({ method: "GET", url: "/r/s/proof-gw/confirm?address=bernd%40example.test&code=123456" }),
+      await app.inject({ method: "POST", url: "/r/s/proof-gw/verify", ...form({ address: "bernd@example.test", code: "123456" }) }),
+    ]) {
+      expect(res.body).toContain('action="/r/s/proof-gw/code"');
+      expect(res.body).toContain('value="bernd@example.test"');
+      expect(res.body).toContain("Der Code ist abgelaufen oder nicht mehr gültig.");
+    }
     const right = await app.inject({
       method: "POST", url: "/r/s/proof-gw/verify", ...form({ address: "erika@example.test", code }),
       headers: { "content-type": "application/x-www-form-urlencoded", "user-agent": "TestBrowser/1.0" },
@@ -1467,6 +1479,7 @@ describe("delivery proof – password after the confirmation", () => {
     // Nobody confirmed yet: the pane is told, and no way sends it – not to the recipients, not elsewhere, not by SMS.
     const shown = (await app.inject({ method: "GET", url: "/api/shares/77/password", headers: as("anna"), remoteAddress: "192.0.2.50" })).json();
     expect(shown).toMatchObject({ deferred: true, verified: [] });
+    expect(shown).not.toHaveProperty("password"); // never shown with a proof of delivery, not even to the sender
     sendMail.mockClear();
     for (const payload of [{ channel: "recipients" }, { channel: "mail", to: "kollege@example.test" }, { channel: "sms", to: "+491701234567" }]) {
       const refused = await resend(payload);
@@ -1483,7 +1496,15 @@ describe("delivery proof – password after the confirmation", () => {
     await app.inject({ method: "POST", url: "/r/s/proof-again/verify", remoteAddress: "192.0.2.11", ...form({ address: "erika@example.test", code }) });
     expect((await app.inject({ method: "GET", url: "/api/shares/77/password", headers: as("anna"), remoteAddress: "192.0.2.50" })).json().verified).toEqual(["erika@example.test"]);
     sendMail.mockClear();
-    const again = await resend({ channel: "recipients" });
+    // Only confirmed recipients the sender ticks: none ticked, Bernd (not confirmed) or a new address are refused (SMS may go to a corrected number).
+    for (const payload of [{ channel: "recipients" }, { channel: "recipients", to: ["bernd@example.test"] },
+      { channel: "mail", to: ["kollege@example.test"] }]) {
+      const refused = await resend(payload);
+      expect(refused.statusCode).toBe(409);
+      expect(refused.json().code).toBe("PROOF_RESEND");
+    }
+    expect(sendMail).not.toHaveBeenCalled();
+    const again = await resend({ channel: "recipients", to: ["Erika@example.test"] });
     expect(again.statusCode).toBe(200);
     expect(again.json()).toEqual({ channel: "recipients", to: "erika@example.test" });
     expect(sendMail).toHaveBeenCalledOnce();

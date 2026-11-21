@@ -1177,11 +1177,16 @@ export async function buildApp(options: { logger?: boolean } = {}) {
   app.get<{ Params: { id: string } }>("/api/shares/:id/password", { config: { rateLimit: strictLimit } }, async (req) => {
     const user = await authenticate(req);
     const ref = await ownPasswordRef(user, req.params.id);
+    // "Zustellnachweis": the password is never shown, not even to its sender – the proof says it reached only
+    // confirmed addresses (proofPassword.ts). Only where it may go again: the confirmed recipients and the way chosen
+    // the first time (the same other address) and the SMS number.
+    if (ref.deferred) {
+      const verified = verifiedAddresses(caseOfToken(ref.tokens[0] ?? ""), ref.tokens);
+      return { deferred: true, verified, recipients: originalRecipients(ref), otherTo: ref.otherTo ?? [], sms: ref.sms ?? "" };
+    }
     const password = await readSendPassword(ref.sendId);
     req.log.info({ user: user.upn, shareId: req.params.id }, "Password shown to its sender");
-    // Held back for the delivery proof: sent again only after (and, to the recipients, only to) confirmed addresses.
-    const held = ref.deferred ? { deferred: true, verified: verifiedAddresses(caseOfToken(ref.tokens[0] ?? ""), ref.tokens) } : {};
-    return { password, recipients: originalRecipients(ref), otherTo: ref.otherTo ?? [], sms: ref.sms ?? "", ...held };
+    return { password, recipients: originalRecipients(ref), otherTo: ref.otherTo ?? [], sms: ref.sms ?? "" };
   });
 
   /**
@@ -1202,10 +1207,19 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       const templates = inRecipientLanguage(ref.language, () => templatesFor({ upn: ref.ownerUpn, department: ref.department }));
       const channel = req.body?.channel;
       // "Zustellnachweis": the password of this step is held back until a recipient confirmed their address with the
-      // code (proofPassword.ts). Sending it again must not get round that: nothing before the first confirmation, and
-      // "Empfänger der Nachricht" means the confirmed addresses only – each in a mail of its own.
+      // code (proofPassword.ts). Sending it again must not get round that: nothing before the first confirmation, then
+      // only to the confirmed recipients the sender picks (`to`: a list, each in a mail of its own) or the way chosen
+      // the first time – the same other address – or by SMS to any number (a corrected one too: SMS numbers are never confirmed).
       const verified = ref.deferred ? verifiedAddresses(caseOfToken(ref.tokens[0] ?? ""), ref.tokens) : [];
       if (ref.deferred && verified.length === 0) throw new HttpError(409, t("server.passwordHeld"), "PASSWORD_HELD");
+      const picked = Array.isArray(req.body?.to)
+        ? req.body.to.filter((a): a is string => typeof a === "string").map((a) => a.trim().toLowerCase())
+        : [];
+      if (ref.deferred) {
+        const allowed = (channel === "recipients" ? verified : channel === "mail" ? (ref.otherTo ?? []) : []).map((a) => a.toLowerCase());
+        const ok = channel === "sms" || (picked.length > 0 && picked.every((a) => allowed.includes(a)));
+        if (!ok) throw new HttpError(409, t("server.proofResendConfirmed"), "PROOF_RESEND");
+      }
 
       if (channel === "sms") {
         if (!smsEnabled()) throw new HttpError(409, t("server.smsNotConfigured"));
@@ -1226,8 +1240,9 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       // Who gets a mail: the original distribution in one mail, or the one other address (like "Kennwort an" when sending).
       let mails: MailRecipients[];
       let others: string[] = [];
-      if (channel === "recipients" && ref.deferred) {
-        mails = verified.map((address) => ({ to: [address], cc: [], bcc: [] }));
+      if (ref.deferred) {
+        mails = picked.map((address) => ({ to: [address], cc: [], bcc: [] }));
+        if (channel === "mail") others = ref.otherTo ?? []; // kept as it was – "Verlauf" shows the way of the first time
       } else if (channel === "recipients") {
         const original = originalRecipients(ref);
         if (original.to.length + original.cc.length + original.bcc.length === 0) {
@@ -1266,7 +1281,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       for (const recipients of mails) await sendMail(token, recipients, subject, html, ref.from);
 
       // Shown in "Verlauf" like the first time: To and Cc (Bcc stays hidden), or the other addresses.
-      const shown = (channel === "recipients" ? (ref.deferred ? verified : [...mails[0].to, ...mails[0].cc]) : others).join(", ");
+      const shown = (ref.deferred ? picked : channel === "recipients" ? [...mails[0].to, ...mails[0].cc] : others).join(", ");
       await recordDelivery(ref.tokens, { owner: user.oid, channel: "mail", to: shown, at: Date.now() });
       await updatePasswordRef(ref.sendId, { otherTo: channel === "mail" ? others : undefined, resentSend: send.id });
       req.log.info({ user: user.upn, channel, mails: mails.length }, "Password sent again by mail");

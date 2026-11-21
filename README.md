@@ -430,7 +430,9 @@ default, offered for "Files" only (not for a confidential message or an upload l
   recipient confirmed their address with the code does the password go out – a password mail to exactly that address
   (every recipient confirms for themselves), to another address or by SMS (once, after the first confirmation).
   **Sending it again** from "History" does not get round this: before the first confirmation it is not possible (the
-  pane says why), afterwards "Confirmed recipients" reaches only the addresses that confirmed. The
+  pane says why), afterwards it goes only to the confirmed recipients the sender ticks (none is ticked first), the
+  other address of the first time or by SMS – also to a corrected number. The password itself is never shown or
+  copied in "History" – not even to the sender. The code
   page then says what to do next ("We have just sent you the password … · click „Show password“ · click „To the
   download“ here") and leads on to the link; the link card says the password comes after the confirmation. The
   password mail shows two numbered steps in its card – 1 "Show password", 2 "To the download", each with its address
@@ -465,7 +467,8 @@ default, offered for "Files" only (not for a confidential message or an upload l
 - **Code page and code mail**: the page names the sender and the file, so recipients know it belongs to the mail they
   got. The code mail has a button "Confirm address" that fills in the code – one click on "Confirm and open" confirms; opening the link
   alone confirms nothing, so mail scanners that follow links do no harm. Phones offer the code from the mail; spaces
-  and hyphens in the code do not matter.
+  and hyphens in the code do not matter. An expired code (ten minutes) leads back to the address, filled in, for a new
+  one.
 - **One mail, one kind**: a mail with a proof of delivery takes only files with a proof – no confidential message, no
   upload link, no file without a proof (they have no confirmation page, and their password would reach the recipients
   before the confirmation). A mail with links without a proof takes no proof. The pane offers only what fits (the switch

@@ -607,6 +607,11 @@ button.share-title:focus-visible { outline: 2px solid var(--focus); outline-offs
 .password-panel .label { margin: 10px 0 4px; }
 .password-panel .label:first-child { margin-top: 0; }
 .password-panel .hint { margin-bottom: 8px; }
+/* "Zustellnachweis": the sentence right under "Erneut senden an" as close as under the headings of "Senden". */
+.password-panel .label + .hint { margin-top: -5px; }
+.password-panel .resend-picks + .send-password { margin-top: 8px; }
+/* "Per SMS" ticked: the number indented under its box, like the field under the chosen way of "Kennwort an". */
+.password-panel .resend-picks .channel-group { margin: 2px 0 4px 24px; }
 /* "Erneut senden an": the hint under the chosen way as in "Senden" – not 8px more before the next way. */
 .password-panel .channel-options > .hint { margin-bottom: 4px; }
 .password-panel .channel-options > .channel-group:not([hidden]) ~ .hint { margin-bottom: 2px; }

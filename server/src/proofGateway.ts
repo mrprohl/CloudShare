@@ -15,7 +15,7 @@
  *
  * Plain HTML forms, no script; the page comes in the language chosen for the recipients.
  */
-import { createHash, randomInt } from "node:crypto";
+import { createHash, randomBytes, randomInt } from "node:crypto";
 import { appGraphToken } from "./auth.js";
 import { config } from "./config.js";
 import { sendMailAsApp } from "./graph.js";
@@ -56,6 +56,14 @@ const lockedUntil = new Map<string, number>();
 const hashCode = (code: string) => createHash("sha256").update(code).digest("hex");
 const normalize = (address: unknown) => (typeof address === "string" ? address.trim().toLowerCase() : "");
 const validAddress = (address: string) => /^[^\s@]{1,64}@[^\s@]{1,255}$/.test(address);
+
+/** A code that can still be entered (not expired, tries left) – else the recipient starts again with the address. */
+const usable = (entry: PendingCode | undefined, now: number): entry is PendingCode =>
+  !!entry && entry.expiresAt >= now && entry.tries < MAX_TRIES;
+
+function pruneCodes(now: number) {
+  for (const [key, entry] of pending) if (!usable(entry, now)) pending.delete(key);
+}
 
 function recent(key: string, window: number, now: number): number[] {
   const times = (sentTimes.get(key) ?? []).filter((at) => now - at < window);
@@ -154,12 +162,12 @@ function context(c: ProofCase, token: string, link: ProofLink): string {
     `<span>${escapeHtml(t(link.kind === "request" ? "mail.proof.gateway.forUpload" : "mail.proof.gateway.file"))}</span> ${escapeHtml(link.name)}</p>`;
 }
 
-const addressForm = (c: ProofCase, token: string, link: ProofLink, error = "") =>
+const addressForm = (c: ProofCase, token: string, link: ProofLink, error = "", address = "") =>
   page(
     t("mail.proof.gateway.title"),
     `${context(c, token, link)}<p>${escapeHtml(t("mail.proof.gateway.intro"))}</p>${error ? `<p class="error" role="alert">${escapeHtml(error)}</p>` : ""}
 <form method="post" action="${cookiePath(token)}/code"><label for="address">${escapeHtml(t("mail.proof.gateway.address"))}</label>
-<input id="address" name="address" type="email" autocomplete="email" required autofocus>
+<input id="address" name="address" type="email" autocomplete="email" required autofocus${address ? ` value="${escapeHtml(address)}"` : ""}>
 <button type="submit">${escapeHtml(t("mail.proof.gateway.sendCode"))}</button></form>`,
   );
 
@@ -198,18 +206,22 @@ export function openGateway(token: string, cookieHeader: string | undefined, vis
 
 /**
  * GET /r/s/:token/confirm – the button in the code mail: the code form filled in with address and code. Confirms
- * nothing by itself (a mail scanner opening the link changes nothing); the click on the button does.
+ * nothing by itself (a mail scanner opening the link changes nothing); the click on the button does. A code that has
+ * expired (or was entered wrongly too often) leads back to the address form, the address filled in, to ask for a new one.
  */
-export function confirmFromMail(token: string, rawAddress: unknown, rawCode: unknown): GatewayResult {
+export function confirmFromMail(token: string, rawAddress: unknown, rawCode: unknown, now = Date.now()): GatewayResult {
   const found = linkOf(token);
   if (!found) return inRecipientLanguage(undefined, unavailable);
   const { c, link } = found;
   const address = normalize(rawAddress);
   const code = typeof rawCode === "string" ? rawCode.replace(/\D/g, "").slice(0, 6) : "";
-  return inRecipientLanguage(c.language, () =>
-    validAddress(address) && code.length === 6
-      ? { status: 200, html: codeForm(token, address, "", code) }
-      : { status: 200, html: addressForm(c, token, link) });
+  return inRecipientLanguage(c.language, () => {
+    if (!validAddress(address) || code.length !== 6) return { status: 200, html: addressForm(c, token, link) };
+    if (!usable(pending.get(`${token}|${address}`), now)) {
+      return { status: 200, html: addressForm(c, token, link, t("mail.proof.gateway.codeExpired"), address) };
+    }
+    return { status: 200, html: codeForm(token, address, "", code) };
+  });
 }
 
 /**
@@ -272,6 +284,10 @@ export async function requestCode(token: string, rawAddress: unknown, visitor: V
   sentTimes.get(token)!.push(now);
   if (!c.recipients?.includes(address)) {
     addEvent(c.id, "recipient.unknownAddress", { links: [token], address, ip: visitor.ip });
+    // A code nobody can enter, with the same lifetime: an expired or wrong code then leads to the same page as for a
+    // recipient, so the answers tell nothing about the address.
+    pruneCodes(now);
+    pending.set(key, { hash: randomBytes(32).toString("hex"), expiresAt: now + CODE_TTL, tries: 0 });
     const tries = (unknownTries.get(token) ?? []).filter((x) => now - x.at < 60 * MINUTE);
     tries.push({ at: now, address, ip: visitor.ip });
     unknownTries.set(token, tries);
@@ -286,6 +302,7 @@ export async function requestCode(token: string, rawAddress: unknown, visitor: V
   }
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
   const { subject, html } = inRecipientLanguage(c.language, () => codeMail(c, token, link, address, code));
+  pruneCodes(now);
   pending.set(key, { hash: hashCode(code), expiresAt: now + CODE_TTL, tries: 0 });
   // Not awaited: the answer must not take longer for a recipient than for anyone else (the mail goes out meanwhile).
   void appGraphToken()
@@ -309,13 +326,16 @@ export async function verifyCode(token: string, rawAddress: unknown, rawCode: un
   const key = `${token}|${address}`;
   const entry = pending.get(key);
   const checked = inRecipientLanguage(c.language, (): GatewayResult | null => {
-    // One answer for every failure – wrong code, expired, too many tries, or an address that never got a code – so the
-    // page does not tell whether the address is a recipient.
-    const valid = entry && entry.expiresAt >= now && entry.tries < MAX_TRIES;
-    if (!entry || !valid || hashCode(code) !== entry.hash) {
-      if (entry) entry.tries++;
-      if (entry && entry.tries >= MAX_TRIES) pending.delete(key);
+    // The same answers for a recipient and any other address (which gets a code nobody can enter, requestCode), so the
+    // page does not tell whether the address is a recipient: a wrong code – enter it again; expired, entered wrongly
+    // too often or never asked for – back to the address form (filled in) for a new code.
+    if (!usable(entry, now) || hashCode(code) !== entry.hash) {
       addEvent(c.id, "recipient.codeFailed", { links: [token], address, ip: visitor.ip });
+      if (usable(entry, now)) entry.tries++;
+      if (!usable(entry, now)) {
+        pending.delete(key);
+        return { status: 400, html: addressForm(c, token, link, t("mail.proof.gateway.codeExpired"), address) };
+      }
       return { status: 400, html: codeForm(token, address, t("mail.proof.gateway.codeInvalid")) };
     }
     pending.delete(key);

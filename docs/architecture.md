@@ -397,11 +397,16 @@ In "History" and in the read mode (2.9) such links get **Password** (`passwordAv
   the links) and goes out as the user via Graph (delegated, like the first one, also from a shared mailbox); it never
   contains the password itself. "History" shows the new delivery – To and Cc, never Bcc.
 - A step whose password is **held back for the delivery proof** (`PasswordRef.deferred`, 2.12) is never sent again
-  around it: before any recipient confirmed their address with the code every way answers 409 `PASSWORD_HELD`;
-  afterwards `channel: "recipients"` reaches the **confirmed addresses only** (`verifiedAddresses` in
-  `proofPassword.ts`: the `recipient.verified` events of the step's links), each in a mail of its own. `GET …/password`
-  says `deferred` and `verified`, so the pane shows a note instead of "Senden" before a confirmation and names the
-  confirmed recipients afterwards ("Bestätigte Empfänger").
+  around it, and its password is **never shown** – not even to the sender, so the proof can say it reached only
+  confirmed addresses (an own password the sender typed is of course known to them). `GET …/password` returns no
+  password, only `deferred`, `verified` (`verifiedAddresses` in `proofPassword.ts`: the `recipient.verified` events
+  of the step's links), `otherTo` and the SMS number of the first time. Before any recipient confirmed their address every way
+  answers 409 `PASSWORD_HELD`; afterwards only `{ channel: "recipients", to: [...] }` with confirmed addresses the
+  sender ticked (each in a mail of its own), `{ channel: "mail", to: [...] }` with the other address of the first
+  time, or `{ channel: "sms", to }` to any number (a corrected one too – an SMS number is never confirmed, not even the
+  first time) – anything else is 409 `PROOF_RESEND`. The pane shows under "Erneut senden an" why there is no
+  password and one box per confirmed recipient, for the other address of the first time and "Per SMS" (its number
+  field right under it) – none ticked (`fillProofPasswordPanel`).
 
 Revoking the last link of a step deletes its Sends at once (`forgetPasswordToken`); otherwise Vaultwarden deletes them
 when the links expire. Steps sent before this version have no entry – their password cannot be shown.
@@ -486,7 +491,9 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   that it can be ignored if nobody asked for it, and the sender's signature below – `PasswordRef.signature`, fixed when the
   mail was sent, else the current one); the page
   answers every address alike – the same text, the same limits (counted for every request), the same timing (the code
-  mail is not awaited) and one error text for a wrong, expired or never sent code – so trying does not reveal the
+  mail is not awaited; an address that is not one gets a code nobody can enter, with the same lifetime) – a wrong
+  code asks for it again, an expired one, one entered wrongly five times or one never sent leads back to the address
+  form (filled in, also from the button in the code mail) for a new code – so trying does not reveal the
   recipients; an address that is not one is recorded (`recipient.unknownAddress`). Ten minutes, five tries, three codes per
   address in 15 minutes, ten per link an hour. A right code records address, IP address (via Caddy, `trustProxy`) and
   browser, sets a signed cookie for this link until it expires and redirects (303) to Nextcloud – the Nextcloud
@@ -651,7 +658,7 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `POST /api/requests` | Upload link ("Receive files from recipients") |
 | `POST /api/messages` | Confidential message: text → password-protected Vaultwarden Send, joins the mail's password job; returns `expiresAt` (exact end, shown with the time in the card) |
 | `GET /api/shares`, `DELETE /api/shares/:id`, `POST /api/shares/:id/link` | "History": list (all valid links and confidential messages – `msg-<Send ID>`, `kind: "message"`, deleted in Vaultwarden on revoke –, each with `subject` and `mailId` of its sent mail, newest first, max. 100; loaded with the tab, when the pane regains focus and by the refresh button in the tab bar), revoke, insert again; also the read mode (2.9) |
-| `GET /api/shares/:id/password`, `POST /api/shares/:id/password/send` | The password of a sent link (owner only, until the link expires) and sending it again by SMS or password mail (2.10); held back for a delivery proof: 409 `PASSWORD_HELD` before the first confirmation, then to confirmed recipients only |
+| `GET /api/shares/:id/password`, `POST /api/shares/:id/password/send` | The password of a sent link (owner only, until the link expires) and sending it again by SMS or password mail (2.10); delivery proof: the password never shown, 409 `PASSWORD_HELD` before the first confirmation, then only to ticked confirmed recipients, the other address of the first time or by SMS (409 `PROOF_RESEND`) |
 | `GET /api/shares/:id/mail` | "History": the sent mail of an entry as the EWS ID Outlook opens (`displayMessageFormAsync`) – the immutable Graph ID kept at sending, translated now with `translateExchangeIds` (User.Read), so it follows a moved mail; 404 if none is known or it is gone – also when it lies in Deleted Items or, after emptying them, in Recoverable Items (`sentMailState`, Mail.Read), where Outlook would still open it |
 | `PATCH /api/jobs/:id` | Change `maxAccess` (updates the Send), `passwordTo` or `passwordSms` until the password went out; `subject`: the draft's subject changed (the pane checks it every 4 s while open) – "History" shows it for the mail's links until the sent mail is found (`updateDraftSubject`) |
 | `POST /api/jobs/:id/arm` | Arm the password mail (send handler); also reads the sender's name and department for the templates |
