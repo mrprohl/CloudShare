@@ -987,7 +987,8 @@ describe("showing and sending the password again", () => {
 
   it("sends it again to the recipients the sender ticks – each in a mail of their own, only addresses the message went to", async () => {
     const all = [...DISTRIBUTION.to, ...DISTRIBUTION.cc, ...DISTRIBUTION.bcc];
-    // A sender of its own: the password routes are rate limited per user, and the other tests need Anna's requests.
+    // A sender and a client address of its own: the password routes are rate limited (per user, or per address when
+    // the token is no JWT, as here) – the other tests need their requests.
     const { registerPasswordRef, forgetPasswordToken } = await import("../src/passwordRefs.js");
     const { removeCredentials } = await import("../src/credentials.js");
     await saveCredentials("oid-paula", { loginName: "paula", appPassword: "pw-paula" });
@@ -996,7 +997,7 @@ describe("showing and sending the password again", () => {
       keepUntil: Date.now() + 10 * DAY, subject: "Vertrag", recipients: DISTRIBUTION, maxAccessCount: 3,
     });
     const ownResend = (payload: Record<string, unknown>) =>
-      app.inject({ method: "POST", url: "/api/shares/41/password/send", headers: as("paula"), payload });
+      app.inject({ method: "POST", url: "/api/shares/41/password/send", headers: as("paula"), remoteAddress: "192.0.2.77", payload });
     try {
     const res = await ownResend({ channel: "recipients", to: [all[0], all[all.length - 1]] });
     expect(res.statusCode).toBe(200);
