@@ -120,8 +120,10 @@ describe("password mail – limits and the mail after the confirmation", () => {
     expect(download).toBeGreaterThan(password);
     // Each step: its button and its address as plain text (the download to the gateway, never to Nextcloud).
     expect(html.match(/https:\/\/vault\.example\.test\/#\/send\/abc\/key/g)).toHaveLength(3); // href of button, href and text of the link
-    expect(html.match(/https:\/\/cloudshare\.example\.test\/r\/s\/tok/g)).toHaveLength(3);
-    expect(html.indexOf("https://cloudshare.example.test/r/s/tok")).toBeGreaterThan(download);
+    expect(html.match(/https:\/\/cloudshare\.example\.test\/r\/s\/tok(?!\/)/g)).toHaveLength(3);
+    // Under step 1 the way to a new password link (the gateway's address form, also for a confirmed browser).
+    expect(html).toContain('href="https://cloudshare.example.test/r/s/tok/password"');
+    expect(html.indexOf('href="https://cloudshare.example.test/r/s/tok"')).toBeGreaterThan(download);
     expect(html).toContain(">Zum Download</span></a>");
     // How often and how long the password link works: right under step 1; the case number at the bottom of the card.
     const limits = html.indexOf("Kennwort-Link: 3-mal, bis 25.11.2026");
