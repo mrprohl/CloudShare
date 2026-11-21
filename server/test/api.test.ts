@@ -990,11 +990,12 @@ describe("showing and sending the password again", () => {
     // A sender of its own: the password routes are rate limited per user, and the other tests need Anna's requests.
     const { registerPasswordRef, forgetPasswordToken } = await import("../src/passwordRefs.js");
     await registerPasswordRef({
-      owner: "oid-tom", ownerUpn: "tom@example.test", sendId: "send-t1", tokens: ["tokvertrag"], fileNames: ["vertrag.pdf"],
+      owner: "oid-bernd", ownerUpn: "bernd@example.test", sendId: "send-b1", tokens: ["tokvertrag"], fileNames: ["vertrag.pdf"],
       keepUntil: Date.now() + 10 * DAY, subject: "Vertrag", recipients: DISTRIBUTION, maxAccessCount: 3,
     });
     const ownResend = (payload: Record<string, unknown>) =>
-      app.inject({ method: "POST", url: "/api/shares/41/password/send", headers: as("tom"), payload });
+      app.inject({ method: "POST", url: "/api/shares/41/password/send", headers: as("bernd"), payload });
+    try {
     const res = await ownResend({ channel: "recipients", to: [all[0], all[all.length - 1]] });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toEqual({ channel: "recipients", to: `${all[0]}, ${all[all.length - 1]}` });
@@ -1004,7 +1005,9 @@ describe("showing and sending the password again", () => {
     const stranger = await ownResend({ channel: "recipients", to: ["kollege@example.test"] });
     expect(stranger.statusCode).toBe(400);
     expect((await sendMail()).mock.calls).toHaveLength(0);
-    await forgetPasswordToken("tokvertrag", "oid-tom");
+    } finally {
+      await forgetPasswordToken("tokvertrag", "oid-bernd"); // Bernd has no password for this link in the other tests
+    }
   });
 
   it("sends it again to the recipients of the message like the first time – To, Cc and Bcc as they were", async () => {
