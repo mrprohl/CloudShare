@@ -3,7 +3,8 @@
  * (jobs.ts holds it back, PasswordRef.deferred). It goes out only after a recipient confirmed their address with the
  * code (proofGateway.ts), so recipients do not get a link mail and a password mail at the same time:
  *
- *   recipients of the mail – the password mail to the confirmed address only (every recipient confirms for themselves);
+ *   recipients of the mail – the password mail to the confirmed address only (every recipient confirms for themselves;
+ *                            each new confirmation – "Neuen Kennwort-Link anfordern" – sends a fresh one);
  *   another address        – the password mail there, once, after the first confirmation;
  *   SMS                    – the SMS once, after the first confirmation.
  *
@@ -40,6 +41,15 @@ interface Released {
   sms?: boolean;
 }
 
+/**
+ * "04.12.2026, 23:59 Uhr": the last moment of the link's expiry day (YYYY-MM-DD) – the link works through that day,
+ * as the proof watcher counts it (endOfDay in proofWatcher.ts).
+ */
+function linkEnd(expireDate: string | undefined): string | undefined {
+  if (!expireDate || !/^\d{4}-\d{2}-\d{2}$/.test(expireDate)) return undefined;
+  return t("mail.dateTime", { date: formatDate(Date.parse(`${expireDate}T12:00:00Z`)), time: "23:59" });
+}
+
 /** One password mail to one address: a new Send with the step's password, in the recipients' language. */
 async function mailPassword(c: ProofCase, ref: PasswordRef, password: string, to: string, kind?: "file" | "request", token = ""): Promise<string> {
   const send = await createPasswordSend(`CloudShare: ${ref.fileNames[0]}`, password, ref.maxAccessCount, config.sendExpireDays, ref.keepUntil);
@@ -58,7 +68,7 @@ async function mailPassword(c: ProofCase, ref: PasswordRef, password: string, to
         expireDays: config.sendExpireDays, introTemplate: customIntro, senderName: ref.senderName || ref.ownerUpn,
         expiresOn: formatDate(send.expiresAt), signature: ref.signature, trackingId: c.id,
         // Right after the confirmation: the mail says so and how to go on.
-        afterConfirmation: kind ? { kind, url: gatewayUrl(token) } : undefined,
+        afterConfirmation: kind ? { kind, url: gatewayUrl(token), validUntil: linkEnd(c.links?.[token]?.expireDate) } : undefined,
       }),
     };
   });
@@ -97,12 +107,13 @@ export async function releasePassword(c: ProofCase, token: string, address: stri
   const readPassword = async () => (password ??= await readSendPassword(ref.sendId));
 
   if (ref.toRecipients) {
+    // Every confirmation sends a fresh password link to the address that confirmed – also a second one ("Neuen
+    // Kennwort-Link anfordern", another device): the first link may have run out or been used up. The code limits of
+    // the gateway keep this from flooding anyone.
     result.mailTo = address;
-    if (!done.mailed.includes(address)) {
-      result.subject = await mailPassword(c, ref, await readPassword(), address, kind, token);
-      done.mailed.push(address);
-      saveCase(c.id);
-    }
+    result.subject = await mailPassword(c, ref, await readPassword(), address, kind, token);
+    if (!done.mailed.includes(address)) done.mailed.push(address);
+    saveCase(c.id);
   }
   if (ref.otherTo?.length) {
     result.others = ref.otherTo;

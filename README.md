@@ -428,7 +428,9 @@ default, offered for "Files" only (not for a confidential message or an upload l
   received, revoked or expired links. Each entry carries the hash of the one before, so a change afterwards shows.
 - **No password mail with the link mail**: for links with proof of delivery the password is held back. Only after a
   recipient confirmed their address with the code does the password go out – a password mail to exactly that address
-  (every recipient confirms for themselves), to another address or by SMS (once, after the first confirmation).
+  (every recipient confirms for themselves; each new confirmation sends a fresh password link – "Request a new
+  password link" under step 1 of that mail leads there, also from a browser that already confirmed), to another address
+  or by SMS (once, after the first confirmation).
   **Sending it again** from "History" does not get round this: before the first confirmation it is not possible (the
   pane says why), afterwards it goes only to the confirmed recipients the sender ticks (none is ticked first), the
   other address of the first time or by SMS – also to a corrected number. The password itself is never shown or
@@ -436,8 +438,9 @@ default, offered for "Files" only (not for a confidential message or an upload l
   page then says what to do next ("We have just sent you the password … · click „Show password“ · click „To the
   download“ here") and leads on to the link; the link card says the password comes after the confirmation. The
   password mail shows two numbered steps in its card – 1 "Show password", 2 "To the download", each with its address
-  as plain text below the button; the download leads back to that page, never straight to Nextcloud: the
-  confirmed browser goes right on, a forwarded mail or another device is asked for the code again.
+  as plain text below the button, under step 1 how often and until when the password link works, under step 2 until
+  when the link works; the download leads back to that page, never straight to Nextcloud: the confirmed browser goes
+  right on, a forwarded mail or another device is asked for the code again.
 - **Recipients confirm their address**: the link in the mail leads to a CloudShare page first; the recipient enters
   the address the mail went to and gets a six-digit code from the sender's mailbox (the mail explains who sent
   what, shows the code large, the next steps, and that it can be ignored if nobody asked for it); with it the browser goes on to

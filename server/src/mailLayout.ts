@@ -61,7 +61,8 @@ export interface MailCard {
    * Numbered steps instead of the one button (the password mail after the delivery proof's confirmation): each with
    * its text, its button and, right below, the same address as plain text for clients that hide buttons.
    */
-  steps?: { text: string; button: { label: string; url: string } }[];
+  /** Numbered steps, each with its button, its address as plain text and an optional small grey note below. */
+  steps?: { text: string; button: { label: string; url: string }; note?: string; noteLink?: { label: string; url: string } }[];
   /** Small grey line at the bottom of the card (validity, accesses, number …). */
   details?: string;
 }
@@ -88,6 +89,11 @@ export function mailCard(card: MailCard): string {
         buttonLink(step.button) +
         `<div style="font-size:12px;line-height:16px;margin:6px 0 0;word-break:break-all;">` +
         `<a href="${escapeHtml(step.button.url)}" style="color:${BRAND};">${escapeHtml(step.button.url)}</a></div>` +
+        (step.note || step.noteLink
+          ? `<div style="font-size:12px;line-height:16px;color:#616161;margin:6px 0 0;">` +
+            [step.note ? escapeHtml(step.note) : "", step.noteLink ? `<a href="${escapeHtml(step.noteLink.url)}" style="color:${BRAND};">${escapeHtml(step.noteLink.label)}</a>` : ""]
+              .filter(Boolean).join(" · ") + `</div>`
+          : "") +
         `</td></tr></table>`,
     )
     .join("");

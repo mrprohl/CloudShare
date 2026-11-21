@@ -109,7 +109,7 @@ describe("password mail – limits and the mail after the confirmation", () => {
     const html = passwordMailHtml({
       ...base, fileNames: ["Angebot.zip"], subject: "Unterlagen", senderName: "Anna Muster", maxAccessCount: 3,
       expiresOn: "25.11.2026", trackingId: "20261118-1932-DHLB", sendUrl: "https://vault.example.test/#/send/abc/key",
-      afterConfirmation: { kind: "file", url: "https://cloudshare.example.test/r/s/tok" },
+      afterConfirmation: { kind: "file", url: "https://cloudshare.example.test/r/s/tok", validUntil: "04.12.2026, 23:59 Uhr" },
     });
     expect(html).toContain("Sie haben eben Ihre E-Mail-Adresse bestätigt. Hier ist das Kennwort für „Angebot.zip“ aus der Nachricht „Unterlagen“ von Anna Muster.");
     expect(html).toContain("Kennwort und Download");
@@ -123,7 +123,14 @@ describe("password mail – limits and the mail after the confirmation", () => {
     expect(html.match(/https:\/\/cloudshare\.example\.test\/r\/s\/tok/g)).toHaveLength(3);
     expect(html.indexOf("https://cloudshare.example.test/r/s/tok")).toBeGreaterThan(download);
     expect(html).toContain(">Zum Download</span></a>");
-    expect(html).toContain("Kennwort-Link: 3-mal, bis 25.11.2026 · Vorgang 20261118-1932-DHLB");
+    // How often and how long the password link works: right under step 1; the case number at the bottom of the card.
+    const limits = html.indexOf("Kennwort-Link: 3-mal, bis 25.11.2026");
+    expect(limits).toBeGreaterThan(password);
+    expect(limits).toBeLessThan(download);
+    // Under step 2 until when the link works; then the case number at the bottom.
+    const valid = html.indexOf("Gültig bis 04.12.2026, 23:59 Uhr");
+    expect(valid).toBeGreaterThan(download);
+    expect(html.indexOf("Vorgang 20261118-1932-DHLB")).toBeGreaterThan(valid);
     expect(html).not.toContain("Falls der Button nicht funktioniert");
     expect(html).not.toContain("<ol");
   });
