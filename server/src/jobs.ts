@@ -136,6 +136,8 @@ export interface PasswordJob {
   dispatched: boolean;
   /** Seven days after the last link was added; then the job is dropped (see checkJobs). */
   expiresAt: number;
+  /** Revoking the links of this never-sent mail has been failing since (ms) – given up after UNSENT_GIVE_UP. */
+  unsentFailingSince?: number;
   armed?: ArmedSend;
   /**
    * "Send" was pressed at least once. false: never – if the job expires that way, the mail was never sent (draft
@@ -156,6 +158,8 @@ const MINUTE = 60_000;
 const JOB_TTL = 7 * 24 * 60 * MINUTE;
 /** Revoking the links of a mail never sent failed (Nextcloud unreachable): next try after this time. */
 const UNSENT_RETRY = 60 * MINUTE;
+/** …and how long that is tried before the job is dropped (the Sends go anyway on their deletion date). */
+const UNSENT_GIVE_UP = 7 * 24 * 60 * MINUTE;
 /** How long after "Send" the watcher looks for the mail in "Sent Items". */
 const ARM_WINDOW = 15 * MINUTE;
 const POLL_INTERVAL = 20_000;
@@ -403,7 +407,9 @@ async function sendStepBySms(
 export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
   const now = Date.now();
   for (const [id, job] of jobs) {
-    if (job.expiresAt < now) {
+    // "Send" pressed and the mail not found yet: not dropped meanwhile – the password mail must not get lost (the arm
+    // window below disarms it after 15 minutes if the mail never shows up).
+    if (job.expiresAt < now && !(job.armed && !job.dispatched)) {
       // A draft with links that was never sent (discarded): its links never left the mailbox – revoke them.
       if (unsentHandler && neverSent(job)) {
         const sendIds = [job.sendId, ...(job.separate ?? []).map((part) => part.sendId)].filter((s): s is string => Boolean(s));
@@ -413,10 +419,15 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
             await unsentHandler({ owner: job.owner, ownerUpn: job.ownerUpn, tokens, sendIds: [...new Set(sendIds)] }, log);
           }
         } catch (err) {
-          log.warn({ err, user: job.ownerUpn, jobId: id }, "Links of a mail never sent not revoked, retrying later");
-          job.expiresAt = now + UNSENT_RETRY;
-          jobs.save(id);
-          continue;
+          job.unsentFailingSince ??= now;
+          if (now - job.unsentFailingSince < UNSENT_GIVE_UP) {
+            log.warn({ err, user: job.ownerUpn, jobId: id }, "Links of a mail never sent not revoked, retrying later");
+            job.expiresAt = now + UNSENT_RETRY;
+            jobs.save(id);
+            continue;
+          }
+          // Tried for a week: given up (the links expire on their own date, the Sends on their deletion date).
+          log.warn({ err, user: job.ownerUpn, jobId: id }, "Links of a mail never sent could not be revoked for 7 days – given up");
         }
       }
       jobs.delete(id);

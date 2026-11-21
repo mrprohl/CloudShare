@@ -19,6 +19,7 @@
  * (default 3 years), independent of DATA_RETENTION_DAYS. Store "proofs" in the database (sealed like everything).
  */
 import { createHash, randomInt } from "node:crypto";
+import type { FastifyBaseLogger } from "fastify";
 import { config } from "./config.js";
 import { PersistentMap } from "./db.js";
 
@@ -127,12 +128,38 @@ function canonical(value: unknown): string {
 const eventHash = (prev: string, e: Pick<ProofEvent, "at" | "type" | "data">) =>
   createHash("sha256").update(prev).update(canonical({ at: e.at, type: e.type, data: e.data })).digest("hex");
 
-function prune() {
-  const now = Date.now();
+/** Deletes the cases kept PROOF_RETENTION_MONTHS after their last event; returns how many went. */
+function prune(now = Date.now()): number {
+  let removed = 0;
   for (const [id, c] of cases) {
     const last = c.events.at(-1)?.at ?? c.createdAt;
-    if (keptUntil(last) < now) cases.delete(id);
+    if (keptUntil(last) < now) {
+      cases.delete(id);
+      removed++;
+    }
   }
+  return removed;
+}
+
+/** Tests only: one pass of the daily deletion. */
+export const pruneCases = (now?: number) => prune(now);
+
+/**
+ * Daily, whatever DELIVERY_PROOF says: cases are personal data and must go after PROOF_RETENTION_MONTHS also when the
+ * proof of delivery has been switched off (then nothing else touches the store – it is kept apart from
+ * DATA_RETENTION_DAYS, `retention: false`).
+ */
+export function startProofRetention(log: Pick<FastifyBaseLogger, "info" | "warn">) {
+  const pass = () => {
+    try {
+      const removed = prune();
+      if (removed > 0) log.info({ removed, months: config.proofRetentionMonths }, "Old proofs of delivery deleted");
+    } catch (err) {
+      log.warn({ err }, "Deleting old proofs of delivery failed, retrying tomorrow");
+    }
+  };
+  setTimeout(pass, 6 * 60_000).unref();
+  setInterval(pass, 24 * 60 * 60_000).unref();
 }
 
 /** Adds an event to a case (the chain goes on from its last one). */

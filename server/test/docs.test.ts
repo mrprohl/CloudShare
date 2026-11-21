@@ -186,6 +186,16 @@ describe("documentation", () => {
     expect(pictures.filter((file) => !existsSync(path.join(repo, "docs/images", file)))).toEqual([]);
   });
 
+  it("writes every <img> of the docs so GitHub shows it – no double quote inside an attribute", () => {
+    // A quote inside alt="…" ends the attribute early: GitHub then prints the tag as text instead of the picture.
+    const broken = ["README.md", "docs/architecture.md", "docs/microsoft-365.md"].flatMap((file) =>
+      [...read(file).matchAll(/<img\b[^\n]*>/g)]
+        .map((m) => m[0])
+        .filter((tag) => !/^<img(\s+[\w-]+="[^"]*")+\s*\/?>$/.test(tag))
+        .map((tag) => `${file}: ${tag.slice(0, 80)}`));
+    expect(broken).toEqual([]);
+  });
+
   it("names every README picture of the UI tests in the README and the other way round", () => {
     const tests = read("addin/e2e/taskpane.e2e.ts");
     const shots = [...tests.matchAll(/readmeShot\(page, "([\w-]+)"\)/g)].map((m) => `taskpane-${m[1]}.png`).sort();

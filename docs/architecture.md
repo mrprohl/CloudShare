@@ -194,7 +194,9 @@ wins) – Nextcloud's housekeeping deletes expired shares, so the date could not
 
 - due = day after the expiry date + `CLEANUP_AFTER_DAYS` (default `0`; `off` disables the cleanup);
 - **"Revoke"** counts as expiry today – with `0` the folder goes to the trash at once;
-- folders that still have a valid link are postponed; users who disconnected are skipped;
+- folders that still have a valid link are postponed; a folder that cannot be deleted now (the user is not connected –
+  "Verbindung trennen", a refused app password –, Nextcloud refuses or is down) is tried again every hour, each folder
+  on its own, and given up (logged) after 90 days; with `off` the list is emptied at start;
 - only folders matching `NEXTCLOUD_FOLDER/YYYY-MM-DD_xxxxxxxx` are touched – received files
   (`NEXTCLOUD_REQUEST_FOLDER`) are never deleted. Uploads from before the feature existed are not registered.
 
@@ -388,7 +390,7 @@ In "History" and in the read mode (2.9) such links get **Password** (`passwordAv
 
 - `GET /api/shares/:id/password` – the server reads the password from the Send with the service account
   (`readSendPassword`; also after the recipients' access ended) and returns it with the suggested targets.
-- `POST /api/shares/:id/password/send` – the same ways as the first time, one request per way (the pane offers one box per way, several at once, the way it went then ticked):
+- `POST /api/shares/:id/password/send` – the same ways as the first time, one request per way (the pane offers one box per way, several at once, nothing ticked at first):
   `{ channel: "recipients", to: [...] }` sends it to the **recipients the sender ticked** (only addresses of the sent
   mail, else 400 – each in a mail of its own; the pane lists To, Cc and Bcc one by one); without a list (older
   add-in) `{ channel: "recipients" }` sends the password mail with the **distribution of the sent mail** – To, Cc and Bcc as
@@ -486,7 +488,8 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   the chain and the PDF says whether it is intact or from which entry on it was changed.
 - **Watcher** (`proofWatcher.ts`, every 10 minutes): downloads, received files, Send access counts, links gone or
   expired; a case is done when all its links ended (or two days after the last expiry) and is then only kept –
-  `PROOF_RETENTION_MONTHS` after its last event (calendar months, default 36 = three years, the regular limitation period).
+  `PROOF_RETENTION_MONTHS` after its last event (calendar months, default 36 = three years, the regular limitation period;
+  a daily pass, `startProofRetention`, deletes older cases – also when `DELIVERY_PROOF` has been switched off).
 - **Recipient confirms their address** (`proofGateway.ts`): file and upload links of a case go into the mail as
   `https://<host>/r/s/<token>` instead of the Nextcloud link (the path still ends in `/s/<token>`, so the read mode
   and `releaseDraftIfLinksGone` find it). The page asks for the address; only one the mail went to (To, Cc, Bcc – a
@@ -636,9 +639,12 @@ mode 600): one table `entries (store, key, data, updated)`, one row per entry; e
 entries in memory (`PersistentMap`) and write only the row that changed; a row that cannot be decrypted (e.g. the key
 changed) is skipped with a warning. **Retention:** entries leave on their own (jobs 7 days after
 their last link, password entries and notices when the links expire, delivery states after 120 days, cleanup entries
-when the folder was deleted, connections on disconnect); as a safety net a daily pass deletes every row not written
+when the folder was deleted or after 90 days of failed tries, a never-sent mail whose links cannot be revoked after a
+week of tries, connections on disconnect, proofs of delivery after `PROOF_RETENTION_MONTHS` in a daily pass of their own
+– also with `DELIVERY_PROOF` off); as a safety net a daily pass deletes every row not written
 for `DATA_RETENTION_DAYS` (default 365, `off` = never, at least `SHARE_MAX_EXPIRE_DAYS`) and then runs `VACUUM` –
-except the connections and the cleanup list (`retention: false`). The upgrade test in CI checks that data written by the published image stays
+except what is kept on purpose (`retention: false`): the connections, the cleanup list, the personal settings, the
+proofs of delivery and the signing identity. The upgrade test in CI checks that data written by the published image stays
 readable by a new one; the switch from the former JSON files to SQLite took no data over (that one run is skipped).
 
 ## 4. HTTP API
@@ -671,7 +677,7 @@ Errors are `{ error, code? }` with a message in the configured language, shown i
 | `POST /api/proofs/:id/link`, `GET /proof/:id.pdf?until=…&lang=…&sig=…` | "Zustellnachweis" (2.12): a signed PDF address valid 5 minutes (owner only), opened in the default browser; the PDF itself needs no login – the HMAC signature (key from `CREDENTIAL_KEY`) binds case, end and language |
 | `GET /r/s/:token`, `POST /r/s/:token/code`, `POST /r/s/:token/verify` | Gateway of a link with "Zustellnachweis" (no login): the recipient enters their address, gets a six-digit code (only addresses the mail went to; the page reads the same for any address), confirms it and goes on to Nextcloud; a signed cookie per link lets the same browser come back; every step is recorded |
 | `GET /r/s/:token/confirm?address=…&code=…` | The button "Adresse bestätigen" in the code mail: the code form filled in (`confirmFromMail`) – confirms nothing by itself (mail scanners open links), the click posts to `/verify` |
-| `GET /r/s/:token/password` | "Neuen Kennwort-Link anfordern" in the password mail after a confirmation: the address form even for a confirmed browser – confirming again with the code mails a fresh password link to that address (`passwordAgain`, `releasePassword`) |
+| `GET /r/s/:token/password` | "Neuen Kennwort-Link anfordern" in the password mail after a confirmation: the address form even for a confirmed browser – confirming again with the code mails a fresh password link to that address (`renewLinkForm`, `releasePassword`) |
 | `GET/POST /webhooks/seven?token=…` | seven.io delivery reports (no login, secret `SEVEN_WEBHOOK_SECRET`) |
 
 Rate limit: `RATE_LIMIT_PER_MINUTE` per user (`oid`, otherwise client address); Nextcloud login, upload links and

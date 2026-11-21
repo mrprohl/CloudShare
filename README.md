@@ -74,7 +74,7 @@ password (to the recipients), **green** – downloaded, **red** – a problem.
 
 ## Using CloudShare
 
-<img src="docs/images/taskpane-send.png" alt="CloudShare pane, tab Send: the switch Files / Message / Request, both attachments ticked, each with its "×", the password options, the block Recipients with Password to, Language and the switch Proof of delivery, the collapsed Validity with its summary and the button Insert file as link" width="300" align="right">
+<img src="docs/images/taskpane-send.png" alt="CloudShare pane, tab Send: the switch Files / Message / Request, both attachments ticked, each with its × to remove it, the password options, Password to with its ways, the switch Proof of delivery, the collapsed Validity with its summary and the button Insert file as link" width="300" align="right">
 
 **Once:** open the pane with the **CloudShare** button in the ribbon and click **"Connect"** – the Nextcloud login
 opens in the browser (usually without typing anything, thanks to single sign-on). CloudShare remembers the
@@ -174,7 +174,7 @@ The icons next to the name (their names show on hover and are explained in the h
 
 - **Copy** – copies the link.
 - **Password** (key) – for links with password, until they expire: shows the password (hidden until you click the eye; "Copy" works without showing it) and sends it **again**, the same
-  ways as the first time – one box each, **several at once** possible, ticked first: the way it went then: to single
+  ways as the first time – one box each, **several at once** possible, nothing ticked at first: to single
   **recipients of the message** (listed one by one with To, Cc or Bcc below – each gets a mail of their own), to
   **another address** (exactly one, like "Password to" when sending) or by **SMS**; as under "Password to", your Outlook contacts are
   suggested while you type and the **address book** icon next to the field picks one. A mail again only contains a link to the
@@ -332,14 +332,14 @@ deployed again.
 | `SMS_NOTICE` | like `DOWNLOAD_NOTICE` | `true`: note to the sender when seven.io reports a password SMS as not delivered later (same application permission `Mail.Send`; unset it follows `DOWNLOAD_NOTICE`, which switched it before). A note about an SMS seven.io refuses right away needs no switch |
 | `DELIVERY_PROOF` | like `DOWNLOAD_NOTICE` | `true`: offers "Zustellnachweis" (proof of delivery) in the pane – per mail, never ticked by default; see [Proof of delivery](#proof-of-delivery-optional). The code mail to the recipients needs the application permission `Mail.Send` |
 | `DEFAULT_PROOF_REMINDER` | `true` | Personal settings, starting value of the reminder for proofs of delivery not fetched (sent once half of the validity has passed) |
-| `PROOF_RETENTION_MONTHS` | `36` | Months a proof of delivery is kept after its last event (three years, the regular limitation period) – independent of `DATA_RETENTION_DAYS` |
+| `PROOF_RETENTION_MONTHS` | `36` | Months a proof of delivery is kept after its last event (three years, the regular limitation period) – independent of `DATA_RETENTION_DAYS`; a daily pass deletes older ones, also when `DELIVERY_PROOF` is off |
 | `COMPANY_NAME` | empty | Your organisation's name, shown after the CloudShare logo at the top of the recipients' pages (delivery proof) |
 | `COMPANY_WEBSITE_URL` / `IMPRINT_URL` / `PRIVACY_URL` | empty | Links at the bottom of the recipients' pages: your website (shown by its host name), imprint and privacy notice; each optional, http(s) only |
 | `PROOF_SIGN_CERT_FILE` / `PROOF_SIGN_KEY_FILE` | empty | PEM files of a certificate and its key that sign the proof PDF (e.g. one of a CA trusted by Adobe, under `/config`). Empty: CloudShare makes its own certificate once (kept sealed in the database) – a change of the PDF still shows, but the reader names the signer "unknown". Set but not readable or not matching: the start log says so (`Proof signing files not usable`) and the PDFs are signed with the own certificate until the files are fixed and the container restarted |
 | `PROOF_SIGN_NAME` / `PROOF_SIGN_ORGANIZATION` | `CloudShare` / empty | Name (CN) and organisation (O) of the certificate CloudShare makes itself |
 | `PROOF_TSA_URL` | `http://timestamp.digicert.com` | RFC 3161 time stamp authority for the signature – proves the PDF existed unchanged at that time (only a hash is sent); `off` = none, a qualified one for legal weight |
-| `CLEANUP_AFTER_DAYS` | `0` | Uploaded files go to the Nextcloud trash this many days after their link expired or was revoked; `off` = never. Received files are never deleted |
-| `DATA_RETENTION_DAYS` | `365` | Entries in `/data/cloudshare.db` not changed for this many days are deleted (daily, then the file is shrunk); `off` = never. A safety net – entries normally leave on their own (jobs after 7 days, links' data when they expire, SMS states after 120 days). Nextcloud connections and the cleanup list are never affected. At least `SHARE_MAX_EXPIRE_DAYS` |
+| `CLEANUP_AFTER_DAYS` | `0` | Uploaded files go to the Nextcloud trash this many days after their link expired or was revoked; `off` = never. A folder that cannot be deleted (user not connected, Nextcloud refuses) is tried again hourly and given up after 90 days. Received files are never deleted |
+| `DATA_RETENTION_DAYS` | `365` | Entries in `/data/cloudshare.db` not changed for this many days are deleted (daily, then the file is shrunk); `off` = never. A safety net – entries normally leave on their own (jobs after 7 days, links' data when they expire, SMS states after 120 days). Kept on purpose, never affected: Nextcloud connections, the cleanup list, personal settings, proofs of delivery (`PROOF_RETENTION_MONTHS`) and the signing identity. At least `SHARE_MAX_EXPIRE_DAYS` |
 | `FEEDBACK_MAIL` | empty | Address for "Send feedback" in the account menu of the add-in (e.g. whoever looks after CloudShare): problem reports and suggestions go there by mail from the user's own mailbox, with technical details if the user leaves them ticked – never anywhere public. Empty: the entry is not offered |
 | `MAIL_FOOTER` | empty | Signature of the mails to the recipients (password mail, code mail of a proof of delivery) for users without an own one (settings), filled from the sender's Microsoft 365 profile, e.g. `'{displayName} · {department}\n{company} · Tel. {phone} · {email}'` – recipients see who the password comes from; placeholders and rules in `cloudshare.env.example`. Empty = no signature (`setup.sh`: Enter). The link card in the message carries none |
 | `VAULTWARDEN_URL`, `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD` | – | Vaultwarden service account |

@@ -79,6 +79,12 @@ export const cleanupEntries = () => [...entries.values()];
 /** Due: the link expired at the end of expireDate, plus the configured grace period. */
 const dueAt = (entry: CleanupEntry, afterDays: number) => Date.parse(`${entry.expireDate}T00:00:00Z`) + (1 + afterDays) * DAY;
 
+/**
+ * How long a due folder is tried again when it cannot be deleted (owner not connected, Nextcloud refuses it) before
+ * its entry is given up – logged, the folder then stays in the owner's Nextcloud.
+ */
+const GIVE_UP_AFTER = 90 * DAY;
+
 /** One pass (exported for tests; normally driven by startCleanup). */
 export async function runCleanup(log: Pick<FastifyBaseLogger, "info" | "warn">, now = Date.now()) {
   const afterDays = config.cleanupAfterDays;
@@ -87,39 +93,58 @@ export async function runCleanup(log: Pick<FastifyBaseLogger, "info" | "warn">, 
   const byOwner = new Map<string, Array<[string, CleanupEntry]>>();
   for (const item of due) byOwner.set(item[1].owner, [...(byOwner.get(item[1].owner) ?? []), item]);
 
+  /** Not deleted this time: kept for the next pass, until it has been due for GIVE_UP_AFTER. */
+  const notNow = ([key, entry]: [string, CleanupEntry], reason: string) => {
+    if (now - dueAt(entry, afterDays) < GIVE_UP_AFTER) return;
+    entries.delete(key);
+    log.warn({ owner: entry.owner, folder: entry.folder.join("/"), expired: entry.expireDate, reason },
+      "Expired upload could not be deleted for 90 days – given up, it stays in Nextcloud");
+  };
+
   for (const [owner, items] of byOwner) {
     const creds = getCredentials(owner);
     if (!creds) {
-      // Not connected any more – nothing can be deleted for this user; forget the entries.
-      for (const [key] of items) entries.delete(key);
+      // Not connected (disconnected, or Nextcloud refused the app password): kept until the user connects again.
+      for (const item of items) notNow(item, "not connected");
       continue;
     }
     const nc = new NextcloudClient(creds, () => removeCredentials(owner));
+    let uid: string;
+    let shares: Awaited<ReturnType<NextcloudClient["listPublicShares"]>>;
     try {
-      const { id: uid } = await nc.userInfo();
-      const today = new Date(now).toISOString().slice(0, 10);
-      const shares = await nc.listPublicShares();
-      for (const [key, entry] of items) {
-        const prefix = `/${entry.folder.join("/")}`;
-        const active = shares.filter(
-          (s) => (s.path === prefix || s.path.startsWith(`${prefix}/`)) && (s.expiration === null || s.expiration >= today),
-        );
-        if (active.length > 0) {
-          // Still shared: postpone to the latest link, or keep for good if a link never expires.
-          const dates = active.map((s) => s.expiration);
-          if (dates.includes(null)) entries.delete(key);
-          else entries.set(key, { ...entry, expireDate: (dates as string[]).sort().at(-1)! });
-          continue;
-        }
+      uid = (await nc.userInfo()).id;
+      shares = await nc.listPublicShares();
+    } catch (err) {
+      const reason = err instanceof HttpError && err.code === NOT_CONNECTED ? "not connected" : "Nextcloud unavailable";
+      if (reason !== "not connected") log.warn({ err, owner }, "Cleanup of expired uploads failed, retrying later");
+      for (const item of items) notNow(item, reason);
+      continue;
+    }
+    const today = new Date(now).toISOString().slice(0, 10);
+    // Each folder on its own: one that cannot be deleted (locked, refused) does not hold up the others.
+    for (const [key, entry] of items) {
+      const prefix = `/${entry.folder.join("/")}`;
+      const active = shares.filter(
+        (s) => (s.path === prefix || s.path.startsWith(`${prefix}/`)) && (s.expiration === null || s.expiration >= today),
+      );
+      if (active.length > 0) {
+        // Still shared: postpone to the latest link, or keep for good if a link never expires.
+        const dates = active.map((s) => s.expiration);
+        if (dates.includes(null)) entries.delete(key);
+        else entries.set(key, { ...entry, expireDate: (dates as string[]).sort().at(-1)! });
+        continue;
+      }
+      try {
         await nc.deletePath(uid, entry.folder);
         entries.delete(key);
         log.info({ owner, folder: entry.folder.join("/"), expired: entry.expireDate }, "Expired upload deleted");
-      }
-    } catch (err) {
-      if (err instanceof HttpError && err.code === NOT_CONNECTED) {
-        for (const [key] of items) entries.delete(key);
-      } else {
-        log.warn({ err, owner }, "Cleanup of expired uploads failed, retrying later");
+      } catch (err) {
+        if (err instanceof HttpError && err.code === NOT_CONNECTED) {
+          for (const item of items) if (entries.has(item[0])) notNow(item, "not connected");
+          break;
+        }
+        log.warn({ err, owner, folder: entry.folder.join("/") }, "Expired upload not deleted, retrying later");
+        notNow([key, entry], "deletion refused");
       }
     }
   }
@@ -128,6 +153,8 @@ export async function runCleanup(log: Pick<FastifyBaseLogger, "info" | "warn">, 
 /** Hourly pass; the first one a few minutes after start. */
 export function startCleanup(log: FastifyBaseLogger) {
   if (config.cleanupAfterDays === null) {
+    // Nothing is deleted any more, so nothing needs to be remembered (entries from before it was switched off).
+    for (const key of [...entries.keys()]) entries.delete(key);
     log.info("Cleanup of expired uploads is off (CLEANUP_AFTER_DAYS=off)");
     return;
   }

@@ -61,8 +61,16 @@ const validAddress = (address: string) => /^[^\s@]{1,64}@[^\s@]{1,255}$/.test(ad
 const usable = (entry: PendingCode | undefined, now: number): entry is PendingCode =>
   !!entry && entry.expiresAt >= now && entry.tries < MAX_TRIES;
 
+/**
+ * Forgets what no longer counts: codes that cannot be entered any more, request times older than the longest limit
+ * window (an hour), attempts with unknown addresses older than an hour and locks that have run out – so the maps do not
+ * grow with every link ever opened.
+ */
 function pruneCodes(now: number) {
   for (const [key, entry] of pending) if (!usable(entry, now)) pending.delete(key);
+  for (const [key, times] of sentTimes) if (!times.some((at) => now - at < 60 * MINUTE)) sentTimes.delete(key);
+  for (const [key, tries] of unknownTries) if (!tries.some((x) => now - x.at < 60 * MINUTE)) unknownTries.delete(key);
+  for (const [key, until] of lockedUntil) if (until <= now) lockedUntil.delete(key);
 }
 
 function recent(key: string, window: number, now: number): number[] {
@@ -209,7 +217,7 @@ export function openGateway(token: string, cookieHeader: string | undefined, vis
  * confirmed browser (its cookie would lead straight on to Nextcloud). Confirming again with the code sends a fresh
  * password link (releasePassword) – the recipient needs no one when the first one has run out.
  */
-export function passwordAgain(token: string): GatewayResult {
+export function renewLinkForm(token: string): GatewayResult {
   const found = linkOf(token);
   if (!found) return inRecipientLanguage(undefined, unavailable);
   const { c, link } = found;
