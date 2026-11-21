@@ -388,14 +388,17 @@ In "History" and in the read mode (2.9) such links get **Password** (`passwordAv
 
 - `GET /api/shares/:id/password` – the server reads the password from the Send with the service account
   (`readSendPassword`; also after the recipients' access ended) and returns it with the suggested targets.
-- `POST /api/shares/:id/password/send` – the same ways as the first time (the pane preselects the way it went then):
-  `{ channel: "recipients" }` sends the password mail with the **distribution of the sent mail** – To, Cc and Bcc as
+- `POST /api/shares/:id/password/send` – the same ways as the first time, one request per way (the pane offers one box per way, several at once, the way it went then ticked):
+  `{ channel: "recipients", to: [...] }` sends it to the **recipients the sender ticked** (only addresses of the sent
+  mail, else 400 – each in a mail of its own; the pane lists To, Cc and Bcc one by one); without a list (older
+  add-in) `{ channel: "recipients" }` sends the password mail with the **distribution of the sent mail** – To, Cc and Bcc as
   they were (`PasswordRef.recipients`, taken from "Sent Items"; older entries fall back to `mailTo`);
   `{ channel: "mail", to }` sends it to **one** other address (like "Kennwort an" when sending; a list – from an older
   add-in – is refused with 400 before anything goes out, several recipients use `recipients`; remembered in `otherTo`); `{ channel: "sms", to }` sends an SMS to that number (same template and daily
   limit as the first one). A mail gets a **new** Send with the same password (default access and days, deleted with
   the links) and goes out as the user via Graph (delegated, like the first one, also from a shared mailbox); it never
-  contains the password itself. "History" shows the new delivery – To and Cc, never Bcc.
+  contains the password itself. "History" shows the new delivery – the ticked addresses, or for the whole
+  distribution To and Cc, never Bcc.
 - A step whose password is **held back for the delivery proof** (`PasswordRef.deferred`, 2.12) is never sent again
   around it, and its password is **never shown** – not even to the sender, so the proof can say it reached only
   confirmed addresses (an own password the sender typed is of course known to them). `GET …/password` returns no

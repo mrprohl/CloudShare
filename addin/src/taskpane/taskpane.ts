@@ -2676,19 +2676,8 @@ function fillProofPasswordPanel(panel: HTMLElement, share: ShareItem, sent: Sent
   group.setAttribute("aria-labelledby", label.id);
   const picks: Array<{ input: HTMLInputElement; channel: ResendChannel; value: string }> = [];
   const add = (channel: ResendChannel, value: string, text: string, hint?: string) => {
-    const row = document.createElement("label");
-    row.className = "checkbox";
-    row.innerHTML = `<input type="checkbox" /><span class="box" aria-hidden="true"></span><span class="checkbox-text"></span>`;
-    const input = row.querySelector("input")!;
+    const { row, input } = checkboxRow(text, hint);
     input.value = value;
-    const caption = row.querySelector<HTMLSpanElement>(".checkbox-text")!;
-    caption.textContent = text;
-    if (hint) {
-      const small = document.createElement("span");
-      small.className = "hint checkbox-hint";
-      small.textContent = hint;
-      caption.append(small);
-    }
     picks.push({ input, channel, value });
     group.append(row);
   };
@@ -2769,6 +2758,7 @@ function fillProofPasswordPanel(panel: HTMLElement, share: ShareItem, sent: Sent
       }
       setStatus(t("resend.sentMail", { to: reached.join(", ") }), "success");
       for (const pick of picks) pick.input.checked = false;
+      panel.hidden = true; // closed, so the row is built anew (keepOpenRows keeps open ones)
       loadShares().catch(() => undefined); // shows the new state of the password
     } catch (err) {
       const done = reached.length > 0 ? ` ${t("resend.sentMail", { to: reached.join(", ") })}` : "";
@@ -2776,19 +2766,6 @@ function fillProofPasswordPanel(panel: HTMLElement, share: ShareItem, sent: Sent
       send.disabled = false;
     }
   });
-}
-
-/** "An: a, b · Cc: c · Bcc: d" – who gets the password again with "Empfänger der Nachricht". */
-function distributionText(r: SentPassword["recipients"]): string {
-  const fields: Array<[string, string[]]> = [
-    [t("resend.fieldTo"), r.to],
-    [t("resend.fieldCc"), r.cc],
-    [t("resend.fieldBcc"), r.bcc],
-  ];
-  return fields
-    .filter(([, list]) => list.length > 0)
-    .map(([label, list]) => `${label}: ${list.join(", ")}`)
-    .join(" · ");
 }
 
 /**
@@ -2821,15 +2798,10 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
     `<div class="input-group"><input type="text" id="${id}-value" class="input mono masked" readonly spellcheck="false" />` +
     `<button type="button" class="btn btn-icon reveal-password" aria-pressed="false">${EYE_ICON}</button>` +
     `<button type="button" class="btn btn-icon copy-password">${COPY_ICON}</button></div>` +
-    // "Erneut senden an": radio buttons like "Kennwort an" in "Senden"; the address or number field and the hint sit
-    // indented right below the chosen way (showChannel moves them there).
+    // "Erneut senden an": one box per way – several at once, as with a proof of delivery; the address or number field
+    // indented right under its box while it is ticked (addWay).
     `<span class="label" id="${id}-channel-label"></span>` +
-    `<div class="channel-options" id="${id}-channel" role="radiogroup" aria-labelledby="${id}-channel-label">` +
-    // One address, like "Kennwort an" when sending; suggestions while typing and the address book as there.
-    `<div class="input-group channel-group"><input id="${id}-to" class="input channel-input" spellcheck="false" ` +
-    `aria-describedby="${id}-hint" />` +
-    `<button type="button" class="btn btn-icon book-open" aria-controls="panel-contacts" data-target="${id}-to">${BOOK_ICON}</button></div>` +
-    `<p class="hint" id="${id}-hint"></p></div>` +
+    `<div class="resend-picks" id="${id}-channel" role="group" aria-labelledby="${id}-channel-label"></div>` +
     `<button type="button" class="btn send-password"></button>`;
   const passwordLabel = panel.querySelector<HTMLLabelElement>("label")!;
   const channelLabel = panel.querySelector<HTMLElement>(`#${id}-channel-label`)!;
@@ -2858,114 +2830,151 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
   });
 
   const waysGroup = panel.querySelector<HTMLDivElement>(`#${id}-channel`)!;
-  const channelValue = (): ResendChannel =>
-    (waysGroup.querySelector<HTMLInputElement>("input[type=radio]:checked")?.value ?? "recipients") as ResendChannel;
-  // Preselected: the way the password went the first time – offered even if the settings leave it out now.
+  // Ticked at first: the way the password went the first time – offered even if the settings leave it out now.
   const first: ResendChannel =
     share.password?.channel === "sms" && serverConfig.smsEnabled ? "sms" : sent.otherTo.length > 0 ? "mail" : "recipients";
   const offered = userSettings().channels as string[];
-  const options: Array<[ResendChannel, string]> = [
-    ["recipients", t("channel.recipients")],
-    ["mail", t("channel.mail")],
-  ];
-  if (serverConfig.smsEnabled) options.push(["sms", t("channel.sms")]);
-  for (const [value, text] of options) {
-    if (!offered.includes(value) && value !== first) continue;
-    const label = document.createElement("label");
-    label.className = "radio";
-    const radio = document.createElement("input");
-    radio.type = "radio";
-    radio.name = `${id}-channel`;
-    radio.value = value;
-    radio.checked = value === first;
-    const dot = document.createElement("span");
-    dot.className = "dot";
-    dot.setAttribute("aria-hidden", "true");
-    const caption = document.createElement("span");
-    caption.textContent = text;
-    label.append(radio, dot, caption);
-    waysGroup.insertBefore(label, waysGroup.querySelector(".channel-group"));
-  }
+  const ways: Array<{ channel: ResendChannel; box: HTMLInputElement; field?: HTMLInputElement }> = [];
+  // The recipients of the message one by one (as with a proof of delivery, without the confirmation): each a box,
+  // "An", "Cc" or "Bcc" below it; all ticked when the password went to them the first time.
 
-  const target = panel.querySelector<HTMLInputElement>(`#${id}-to`)!;
-  const targetGroup = target.closest<HTMLElement>(".channel-group")!;
-  const hint = panel.querySelector<HTMLParagraphElement>(`#${id}-hint`)!;
-  const book = targetGroup.querySelector<HTMLButtonElement>(".book-open")!;
-  book.title = t("contacts.bookOpen");
-  book.setAttribute("aria-label", t("contacts.bookOpen"));
-  addressBook.register(book);
-  const targetKind = () => (channelValue() === "sms" ? "sms" : "mail") as "mail" | "sms";
-  attachContactSuggestions(target, targetKind, (value, kind) => contactUsable(kind, value));
-  const showChannel = () => {
-    const value = channelValue();
-    const sms = value === "sms";
-    // The recipients of the message need no input – the hint names them.
-    target.hidden = value === "recipients";
-    targetGroup.hidden = target.hidden;
-    target.type = sms ? "tel" : "email";
-    target.autocomplete = sms ? "tel" : "email";
-    target.value = sms ? sent.sms : value === "mail" ? (sent.otherTo[0] ?? "") : "";
-    target.placeholder = t(sms ? "channel.smsPlaceholder" : "resend.mailPlaceholder");
-    target.setAttribute("aria-label", t(sms ? "resend.smsLabel" : "resend.mailLabel"));
-    hint.textContent =
-      value === "recipients"
-        ? t("resend.recipientsHint", { list: distributionText(sent.recipients) })
-        : sms
-          ? t("resend.smsHint") + smsCountriesHint()
-          : t("resend.mailHint");
-    // Field and hint right below the chosen way (the suggestion list stays directly under the field).
-    const chosen = waysGroup.querySelector<HTMLInputElement>("input[type=radio]:checked")!.closest("label")!;
-    const list = targetGroup.nextElementSibling?.classList.contains("suggestions") ? targetGroup.nextElementSibling : null;
-    chosen.after(targetGroup, ...(list ? [list] : []), hint);
-    target.removeAttribute("aria-invalid");
-  };
-  waysGroup.addEventListener("change", (event) => {
-    if ((event.target as HTMLInputElement).type === "radio") showChannel();
-  });
-  showChannel();
-
-  /** A number from a country SMS may not go to: told when it is entered and instead of sending. */
-  const smsTargetProblem = (): string | null => {
-    if (channelValue() !== "sms") return null;
-    const number = normalizePhone(target.value);
-    return number ? smsNumberProblem(number, "resend") : null;
-  };
-  target.addEventListener("change", () => {
-    const problem = smsTargetProblem();
-    if (problem) {
-      target.setAttribute("aria-invalid", "true");
-      setStatus(problem, "error");
-    } else {
-      target.removeAttribute("aria-invalid");
+  /** Why the ticked way cannot be sent to (missing or wrong address, a number SMS may not go to), or null. */
+  const fieldProblem = (way: (typeof ways)[number]): string | null => {
+    if (!way.box.checked || !way.field) return null;
+    const value = way.field.value.trim();
+    if (way.channel === "sms") {
+      const number = normalizePhone(value);
+      if (number) return smsNumberProblem(number, "resend");
+      return t(value ? "channel.smsInvalidShort" : "channel.smsMissing");
     }
-  });
+    return looksLikeEmail(value) ? null : t(value ? "channel.mailInvalidShort" : "channel.mailMissing");
+  };
+
+  const addWay = (channel: ResendChannel, text: string, hint: string, value: string = channel) => {
+    if (!offered.includes(channel) && channel !== first) return;
+    const { row, input: box } = checkboxRow(text, hint);
+    box.value = value;
+    box.checked = channel === first;
+    waysGroup.append(row);
+    const way: (typeof ways)[number] = { channel, box };
+    ways.push(way);
+    if (channel === "recipients") return; // the hint names them – nothing to type
+    // One address or number, like "Kennwort an" when sending; suggestions while typing and the address book as there.
+    const sms = channel === "sms";
+    const group = document.createElement("div");
+    group.className = "input-group channel-group";
+    const field = document.createElement("input");
+    field.id = `${id}-${channel}`;
+    field.className = "input channel-input";
+    field.spellcheck = false;
+    field.type = sms ? "tel" : "email";
+    field.autocomplete = sms ? "tel" : "email";
+    field.value = sms ? sent.sms : (sent.otherTo[0] ?? "");
+    field.placeholder = t(sms ? "channel.smsPlaceholder" : "resend.mailPlaceholder");
+    field.setAttribute("aria-label", t(sms ? "resend.smsLabel" : "resend.mailLabel"));
+    const book = document.createElement("button");
+    book.type = "button";
+    book.className = "btn btn-icon book-open";
+    book.setAttribute("aria-controls", "panel-contacts");
+    book.dataset.target = field.id;
+    book.innerHTML = BOOK_ICON;
+    book.title = t("contacts.bookOpen");
+    book.setAttribute("aria-label", t("contacts.bookOpen"));
+    group.append(field, book);
+    group.hidden = !box.checked;
+    waysGroup.append(group);
+    addressBook.register(book);
+    attachContactSuggestions(field, () => (sms ? "sms" : "mail"), (value, kind) => contactUsable(kind, value));
+    box.addEventListener("change", () => {
+      group.hidden = !box.checked;
+      field.removeAttribute("aria-invalid");
+      if (box.checked) field.focus();
+    });
+    // A number from a country SMS may not go to: told as soon as it is entered.
+    field.addEventListener("change", () => {
+      const problem = sms && field.value.trim() ? fieldProblem(way) : null;
+      if (problem) {
+        field.setAttribute("aria-invalid", "true");
+        setStatus(problem, "error");
+      } else {
+        field.removeAttribute("aria-invalid");
+      }
+    });
+    way.field = field;
+  };
+  const fields: Array<[string, string[]]> = [
+    [t("resend.fieldTo"), sent.recipients.to], [t("resend.fieldCc"), sent.recipients.cc], [t("resend.fieldBcc"), sent.recipients.bcc]];
+  for (const [field, addresses] of fields) {
+    for (const address of addresses) addWay("recipients", address, field, address);
+  }
+  addWay("mail", t("channel.mail"), t("resend.mailHint"));
+  if (serverConfig.smsEnabled) addWay("sms", t("channel.sms"), t("resend.smsHint") + smsCountriesHint());
 
   const send = panel.querySelector<HTMLButtonElement>(".send-password")!;
   send.textContent = t("resend.send");
+  const updateSend = () => {
+    send.disabled = !ways.some((way) => way.box.checked);
+  };
+  waysGroup.addEventListener("change", updateSend);
+  updateSend();
   send.addEventListener("click", async () => {
-    const problem = smsTargetProblem();
-    if (problem) {
-      target.setAttribute("aria-invalid", "true");
-      target.focus();
-      setStatus(problem, "error");
-      return;
+    const chosen = ways.filter((way) => way.box.checked);
+    if (chosen.length === 0) return;
+    for (const way of chosen) {
+      const problem = fieldProblem(way);
+      if (problem) {
+        way.field!.setAttribute("aria-invalid", "true");
+        way.field!.focus();
+        setStatus(problem, "error");
+        return;
+      }
+      way.field?.removeAttribute("aria-invalid");
     }
     send.disabled = true;
     setStatus(t("resend.sending"), "progress");
+    const done: string[] = [];
+    const sentKey = { recipients: "resend.sentRecipients", mail: "resend.sentMail", sms: "resend.sentSms" } as const;
     try {
-      const result = await api<{ channel: ResendChannel; to: string }>(
-        `/api/shares/${encodeURIComponent(share.id)}/password/send`,
-        { method: "POST", body: JSON.stringify({ channel: channelValue(), to: target.value }) },
-        await getToken(),
-      );
-      const sentKey = { recipients: "resend.sentRecipients", mail: "resend.sentMail", sms: "resend.sentSms" }[result.channel];
-      setStatus(t(sentKey, { to: result.to }), "success");
+      const token = await getToken();
+      // One request per way, in the order shown: the ticked recipients together (each gets a mail of their own), then
+      // the other address, then the SMS.
+      const recipients = chosen.filter((way) => way.channel === "recipients").map((way) => way.box.value);
+      const bodies: Array<Record<string, unknown>> = [
+        ...(recipients.length > 0 ? [{ channel: "recipients", to: recipients }] : []),
+        ...chosen.filter((way) => way.field).map((way) => ({ channel: way.channel, to: way.field!.value })),
+      ];
+      for (const body of bodies) {
+        const result = await api<{ channel: ResendChannel; to: string }>(
+          `/api/shares/${encodeURIComponent(share.id)}/password/send`,
+          { method: "POST", body: JSON.stringify(body) },
+          token,
+        );
+        done.push(t(sentKey[result.channel], { to: result.to }));
+      }
+      setStatus(done.join(" "), "success");
+      panel.hidden = true; // closed, so the row is built anew (keepOpenRows keeps open ones)
       loadShares().catch(() => undefined); // shows the new state of the password
     } catch (err) {
-      setStatus(t("resend.failed", { error: errorMessage(err) }), "error");
+      setStatus([t("resend.failed", { error: errorMessage(err) }), ...done].join(" "), "error");
       send.disabled = false;
     }
   });
+}
+
+/** A box with its text and a hint right under the text (as in the settings) – the ways of "Erneut senden an". */
+function checkboxRow(text: string, hint?: string): { row: HTMLLabelElement; input: HTMLInputElement } {
+  const row = document.createElement("label");
+  row.className = "checkbox";
+  row.innerHTML = `<input type="checkbox" /><span class="box" aria-hidden="true"></span><span class="checkbox-text"></span>`;
+  const caption = row.querySelector<HTMLSpanElement>(".checkbox-text")!;
+  caption.textContent = text;
+  if (hint) {
+    const small = document.createElement("span");
+    small.className = "hint checkbox-hint";
+    small.textContent = hint;
+    caption.append(small);
+  }
+  return { row, input: row.querySelector("input")! };
 }
 
 function shareRow(share: ShareItem): HTMLElement {
@@ -3261,9 +3270,23 @@ async function loadShares() {
     // The links of the mail being read.
     const tokens = await mailTokens();
     const inMail = (share: ShareItem) => tokens.has(share.url ? shareToken(share.url) : (share.accessId ?? ""));
-    mailShares.replaceChildren(...shares.filter(inMail).map(shareRow));
+    mailShares.replaceChildren(...keepOpenRows(mailShares, shares.filter(inMail).map(shareRow)));
   }
   renderShareList();
+}
+
+/**
+ * A row whose "Kennwort" panel is open stays as it is when the list is built anew – with what was ticked or typed.
+ * A reload can finish right after the click that opened it: the first click into the pane focuses it, and focus
+ * reloads the list (reloadSharesOnReturn) – without this the panel would close again at once.
+ */
+function keepOpenRows(list: HTMLElement, rows: HTMLElement[]): HTMLElement[] {
+  const open = new Map<string, HTMLElement>();
+  for (const panel of list.querySelectorAll<HTMLElement>(".password-panel:not([hidden])")) {
+    const row = panel.closest<HTMLElement>(".share");
+    if (row?.dataset.id) open.set(row.dataset.id, row);
+  }
+  return rows.map((row) => open.get(row.dataset.id ?? "") ?? row);
 }
 
 /** "Verlauf" with the search: subject, what went out (file name or kind), recipients and password way, case-insensitive. */
@@ -3271,7 +3294,7 @@ function renderShareList() {
   const query = sharesSearch.value.trim().toLowerCase();
   const text = (s: ShareItem) =>
     [s.subject ?? "", s.name, ...(s.sentTo ? [...s.sentTo.to, ...s.sentTo.cc] : []), s.password?.to ?? "", s.proofId ?? ""].join(" ").toLowerCase();
-  sharesList.replaceChildren(...loadedShares.filter((s) => !query || text(s).includes(query)).map(shareRow));
+  sharesList.replaceChildren(...keepOpenRows(sharesList, loadedShares.filter((s) => !query || text(s).includes(query)).map(shareRow)));
   renderEmptyLists(query !== "");
 }
 

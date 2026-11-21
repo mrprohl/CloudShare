@@ -985,6 +985,35 @@ describe("showing and sending the password again", () => {
     expect(list[0].passwordAvailable).toBe(true);
   });
 
+  it("sends it again to the recipients the sender ticks – each in a mail of their own, only addresses the message went to", async () => {
+    const all = [...DISTRIBUTION.to, ...DISTRIBUTION.cc, ...DISTRIBUTION.bcc];
+    // A sender and a client address of its own: the password routes are rate limited (per user, or per address when
+    // the token is no JWT, as here) – the other tests need their requests.
+    const { registerPasswordRef, forgetPasswordToken } = await import("../src/passwordRefs.js");
+    const { removeCredentials } = await import("../src/credentials.js");
+    await saveCredentials("oid-paula", { loginName: "paula", appPassword: "pw-paula" });
+    await registerPasswordRef({
+      owner: "oid-paula", ownerUpn: "paula@example.test", sendId: "send-p1", tokens: ["tokvertrag"], fileNames: ["vertrag.pdf"],
+      keepUntil: Date.now() + 10 * DAY, subject: "Vertrag", recipients: DISTRIBUTION, maxAccessCount: 3,
+    });
+    const ownResend = (payload: Record<string, unknown>) =>
+      app.inject({ method: "POST", url: "/api/shares/41/password/send", headers: as("paula"), remoteAddress: "192.0.2.77", payload });
+    try {
+    const res = await ownResend({ channel: "recipients", to: [all[0], all[all.length - 1]] });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ channel: "recipients", to: `${all[0]}, ${all[all.length - 1]}` });
+    expect((await sendMail()).mock.calls.map((call) => call[1])).toEqual([
+      { to: [all[0]], cc: [], bcc: [] }, { to: [all[all.length - 1]], cc: [], bcc: [] }]);
+    (await sendMail()).mockClear();
+    const stranger = await ownResend({ channel: "recipients", to: ["kollege@example.test"] });
+    expect(stranger.statusCode).toBe(400);
+    expect((await sendMail()).mock.calls).toHaveLength(0);
+    } finally {
+      await forgetPasswordToken("tokvertrag", "oid-paula");
+      await removeCredentials("oid-paula");
+    }
+  });
+
   it("sends it again to the recipients of the message like the first time – To, Cc and Bcc as they were", async () => {
     createPasswordSend.mockClear();
     const res = await resend("anna", { channel: "recipients" });

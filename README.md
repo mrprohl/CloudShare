@@ -144,7 +144,7 @@ read) and is not shown for the other two.
 
 <br clear="right">
 
-<img src="docs/images/taskpane-shares.png" alt="History, a page of the account menu with a magnifier for the search: like the proofs of delivery - the day and recipients (message and password to ... when they are the same), Password to ..., Valid until ... with a calendar and the download status on its own line, and the icons Copy, Password, Insert, Revoke next to the subject; the first link has a proof of delivery: its case number under the file name with the seal after it and Password is open with the password and Send again to" width="300" align="right">
+<img src="docs/images/taskpane-shares.png" alt="History, a page of the account menu with a magnifier for the search: like the proofs of delivery - the day and recipients (message and password to ... when they are the same), Password to ..., Valid until ... with a calendar and the download status on its own line, and the icons Copy, Password, Insert, Revoke next to the subject; the first link has a proof of delivery: its case number under the file name with the seal after it and Password is open with the password and Send again to, one box per way" width="300" align="right">
 
 **"History"** – a page of the account menu at the bottom left, above "Proofs of delivery" – lists everything you sent
 with CloudShare that is still valid – links and confidential messages, newest first; the **magnifier** at the top right
@@ -174,9 +174,9 @@ The icons next to the name (their names show on hover and are explained in the h
 
 - **Copy** – copies the link.
 - **Password** (key) – for links with password, until they expire: shows the password (hidden until you click the eye; "Copy" works without showing it) and sends it **again**, the same
-  ways as the first time (radio buttons, preselected: the way it went then): to the **recipients of the message** – To, Cc and Bcc
-  exactly as in the sent mail –, to **another address** (exactly one, like "Password to" when sending – several
-  recipients get it with "recipients of the message") or by **SMS**; as under "Password to", your Outlook contacts are
+  ways as the first time – one box each, **several at once** possible, ticked first: the way it went then: to single
+  **recipients of the message** (listed one by one with To, Cc or Bcc below – each gets a mail of their own), to
+  **another address** (exactly one, like "Password to" when sending) or by **SMS**; as under "Password to", your Outlook contacts are
   suggested while you type and the **address book** icon next to the field picks one. A mail again only contains a link to the
   password, never the password itself.
 - **Insert** (chain) – inserts the file again into the mail you are writing, as a *new* link – with the password of that mail (a new one if it has none yet).
