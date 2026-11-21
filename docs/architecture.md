@@ -410,7 +410,7 @@ In "History" and in the read mode (2.9) such links get **Password** (`passwordAv
   sender ticked (each in a mail of its own), `{ channel: "mail", to: [...] }` with the other address of the first
   time, or `{ channel: "sms", to }` to any number (a corrected one too – an SMS number is never confirmed, not even the
   first time) – anything else is 409 `PROOF_RESEND`. The pane shows under "Erneut senden an" why there is no
-  password and one box per confirmed recipient, for the other address of the first time and "Per SMS" (its number
+  password and one box per confirmed recipient (To/Cc/Bcc on the right as without a proof), for the other address of the first time and "Rufnummer (SMS)" (its number
   field right under it) – none ticked (`fillProofPasswordPanel`); before the first confirmation only the heading
   "Kennwort" and why nothing can be sent yet.
 
