@@ -2719,7 +2719,9 @@ type ResendChannel = "recipients" | "mail" | "sms";
  * The address or number field of "Erneut senden an" – with and without a proof of delivery: one value, like
  * "Kennwort an" when sending, with suggestions while typing and the address book button as there.
  */
-function resendField(id: string, channel: "mail" | "sms", value: string): { group: HTMLDivElement; field: HTMLInputElement } {
+function resendField(
+  parent: HTMLElement, id: string, channel: "mail" | "sms", value: string,
+): { group: HTMLDivElement; field: HTMLInputElement } {
   const sms = channel === "sms";
   const group = document.createElement("div");
   group.className = "input-group channel-group";
@@ -2741,6 +2743,7 @@ function resendField(id: string, channel: "mail" | "sms", value: string): { grou
   book.title = t("contacts.bookOpen");
   book.setAttribute("aria-label", t("contacts.bookOpen"));
   group.append(field, book);
+  parent.append(group); // first: the suggestion list goes in right after the group
   addressBook.register(book);
   attachContactSuggestions(field, () => channel, (text, kind) => contactUsable(kind, text));
   return { group, field };
@@ -2792,10 +2795,9 @@ function fillProofPasswordPanel(panel: HTMLElement, share: ShareItem, sent: Sent
   if (serverConfig.smsEnabled) {
     add("sms", "", t("channel.sms"), t("resend.smsHint") + smsCountriesHint()); // "Rufnummer (SMS)" as without a proof
     const box = picks[picks.length - 1].input;
-    const way = resendField(id, "sms", sent.sms);
+    const way = resendField(group, id, "sms", sent.sms);
     number = way.field;
     way.group.hidden = true;
-    group.append(way.group);
     box.addEventListener("change", () => {
       way.group.hidden = !box.checked;
       if (box.checked) number!.focus();
@@ -2949,9 +2951,8 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
     ways.push(way);
     if (channel === "recipients") return; // the hint names them – nothing to type
     const sms = channel === "sms";
-    const { group, field } = resendField(id, channel, sms ? sent.sms : (sent.otherTo[0] ?? ""));
+    const { group, field } = resendField(waysGroup, id, channel, sms ? sent.sms : (sent.otherTo[0] ?? ""));
     group.hidden = !box.checked;
-    waysGroup.append(group);
     box.addEventListener("change", () => {
       group.hidden = !box.checked;
       field.removeAttribute("aria-invalid");
