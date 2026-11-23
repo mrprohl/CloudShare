@@ -2864,18 +2864,19 @@ function fillProofPasswordPanel(panel: HTMLElement, share: ShareItem, sent: Sent
  * other addresses (each gets its own mail) or SMS; a mail only ever contains a link to the password.
  * Loaded on every opening, so it always shows the current state.
  */
-async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
+async function fillPasswordPanel(opened: HTMLElement, share: ShareItem) {
   const note = document.createElement("p");
   note.className = "caption";
   note.textContent = t("resend.loading");
-  panel.replaceChildren(note);
+  opened.replaceChildren(note);
   let sent: SentPassword;
   try {
     sent = await api<SentPassword>(`/api/shares/${encodeURIComponent(share.id)}/password`, {}, await getToken());
   } catch (err) {
-    note.textContent = t("resend.loadFailed", { error: errorMessage(err) });
+    note.textContent = t("resend.loadFailed", { error: errorMessage(err) }); // the note moves with the panel
     return;
   }
+  const panel = livePanel(opened);
   if (sent.deferred) {
     fillProofPasswordPanel(panel, share, sent);
     return;
@@ -3453,6 +3454,16 @@ async function loadShares() {
  * A reload can finish right after the click that opened it: the first click into the pane focuses it, and focus
  * reloads the list (reloadSharesOnReturn) – without this the panel would close again at once.
  */
+/** Where keepOpenRows moved an open panel – a password that was still loading goes there (`livePanel`). */
+const movedPanels = new WeakMap<HTMLElement, HTMLElement>();
+
+/** The panel in sight now: the list may have been reloaded while the password was loading. */
+function livePanel(panel: HTMLElement): HTMLElement {
+  let live = panel;
+  for (let next = movedPanels.get(live); next; next = movedPanels.get(live)) live = next;
+  return live;
+}
+
 function keepOpenRows(list: HTMLElement, rows: HTMLElement[]): HTMLElement[] {
   const open = new Map<string, HTMLElement>();
   for (const panel of list.querySelectorAll<HTMLElement>(".password-panel:not([hidden])")) {
@@ -3465,6 +3476,7 @@ function keepOpenRows(list: HTMLElement, rows: HTMLElement[]): HTMLElement[] {
     const toggle = row.querySelector<HTMLButtonElement>(".show-password");
     if (!old || !panel || !toggle || toggle.hidden) continue; // no password any more: the panel closes
     panel.replaceChildren(...Array.from(old.childNodes)); // the nodes keep their listeners
+    movedPanels.set(old, panel);
     panel.hidden = false;
     toggle.setAttribute("aria-expanded", "true");
   }
