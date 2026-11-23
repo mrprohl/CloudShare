@@ -391,7 +391,7 @@ In "History" and in the read mode (2.9) such links get **Password** (`passwordAv
 
 - `GET /api/shares/:id/password` – the server reads the password from the Send with the service account
   (`readSendPassword`; also after the recipients' access ended) and returns it with the suggested targets.
-- `POST /api/shares/:id/password/send` – the same ways as the first time, one request per way (the pane offers one box per way, several at once, nothing ticked at first; after "Send" the panel stays open and is only unticked – `afterResend` –, the list reloads quietly and `keepOpenRows` moves an open panel as it is into the rebuilt row; the delivery is stored with `resent: true`, so the row says "Kennwort zuletzt an … · <date>, <time> Uhr"):
+- `POST /api/shares/:id/password/send` – the same ways as the first time, one request per way (the pane offers one box per way, several at once, nothing ticked at first; after "Send" the panel stays open and is only unticked – `afterResend` –, the list reloads quietly and `keepOpenRows` moves an open panel as it is into the rebuilt row (a password still loading follows it, `livePanel`); the delivery is stored with `resent: true`, so the row says "Kennwort zuletzt an … · <date>, <time> Uhr"):
   `{ channel: "recipients", to: [...] }` sends it to the **recipients the sender ticked** (only addresses of the sent
   mail, else 400 – in one mail like the first time, each in the field it had, so a Bcc stays hidden; the pane lists To, Cc and Bcc one by one, from four on folded into one box with a filterable list – `recipientPicks`); without a list (older
   add-in) `{ channel: "recipients" }` sends the password mail with the **distribution of the sent mail** – To, Cc and Bcc as

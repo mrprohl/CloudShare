@@ -56,6 +56,8 @@ interface Scenario {
   contacts?: Array<{ name: string; value: string; type?: "mobile" | "business" | "home" }>;
   /** More of GET /api/shares/:id/password – e.g. `{ deferred: true, verified: [] }` for a password held back for the proof. */
   passwordInfo?: Record<string, unknown>;
+  /** GET /api/shares/:id/password answers only once this is settled – the list reloaded meanwhile. */
+  passwordWait?: Promise<unknown>;
   /** GET /api/proofs: the user's delivery proofs. */
   proofs?: unknown[];
   /** Lists and settings answer only after this many ms – to see the loading placeholders. */
@@ -233,6 +235,7 @@ async function openTaskpane(page: Page, scenario: Scenario = {}): Promise<ApiCal
     if (/^GET \/api\/shares\/[^/]+\/mail$/.test(route_)) return json({ ewsId: `ews-${route_.split("/")[3]}` });
     if (/^PATCH \/api\/jobs\/[^/]+$/.test(route_)) return json({ maxAccess: JSON.parse(call.body!.toString()).maxAccess });
     if (/^GET \/api\/shares\/[^/]+\/password$/.test(route_)) {
+      await scenario.passwordWait;
       return json({ password: "KateGeteFi45", sms: "+491701234567", otherTo: [],
         recipients: { to: ["erika@example.com"], cc: ["chef@example.com"], bcc: ["archiv@example.com"] }, ...scenario.passwordInfo });
     }
@@ -2049,6 +2052,27 @@ test("Verlauf: an open password panel stays open when the list is built anew", a
   await page.fill("#shares-search", "Präsentation"); // builds the list anew
   await expect(page.locator("#shares .password-panel")).toBeVisible();
   await expect(page.locator("#shares .password-panel input[type=checkbox]").first()).toBeChecked();
+});
+
+test("Verlauf: the list reloaded while the password is loading – the password still arrives in the panel in sight", async ({ page }) => {
+  // The click into the pane focuses it and focus reloads the list: the password answer came after the new rows.
+  let answer!: () => void;
+  const calls = await openTaskpane(page, {
+    shares: [{ ...SHARES[0], passwordAvailable: true }],
+    passwordWait: new Promise<void>((resolve) => (answer = resolve)),
+  });
+  await openHistory(page);
+  const row = page.locator("#shares .share").nth(0);
+  await row.locator(".show-password").click();
+  await expect(row.locator(".password-panel")).toContainText("Kennwort wird geladen");
+  const before = calls.filter((c) => c.path === "/api/shares").length;
+  await page.click("#shares-refresh");
+  await expect.poll(() => calls.filter((c) => c.path === "/api/shares").length).toBeGreaterThan(before);
+  await expect(page.locator("#shares-refresh")).not.toHaveAttribute("aria-busy", "true");
+  answer();
+  const panel = page.locator("#shares .password-panel");
+  await expect(panel.locator("input.mono")).toHaveValue("KateGeteFi45");
+  await expect(panel).not.toContainText("Kennwort wird geladen");
 });
 
 test("Verlauf: with a proof of delivery the password may go by SMS to a corrected number", async ({ page }) => {
