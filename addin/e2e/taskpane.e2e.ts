@@ -2066,6 +2066,8 @@ test("Verlauf: with a proof of delivery the password may go by SMS to a correcte
   await panel.locator("label.checkbox", { hasText: "Rufnummer (SMS)" }).click();
   await expect(number).toBeVisible();
   await expect(number).toHaveValue("+491701234567");
+  // The address book next to the number as without a proof.
+  await expect(panel.locator(".channel-group:has(input[type=tel]) .book-open")).toBeVisible();
   await number.fill("0171 2345678");
   await expectAccessible(page);
   await panel.locator(".send-password").click();

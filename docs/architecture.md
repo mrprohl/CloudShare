@@ -214,7 +214,8 @@ accepts); a picked entry is filled in and saved like a typed one. The address bo
 (`.book-open`, `addressBook.ts`) opens the page "Adressbuch" (`#panel-contacts`, `showOverlay("contacts")`): every
 entry of that kind A to Z under its first letter (`GET /api/contacts?all=1`), filtered while typing; a click takes it
 the same way and leads back to where it was opened (`contactsReturn`). "Erneut senden an" in "Verlauf" has the same
-field with both (`addressBook.register`, `attachContactSuggestions` with the kind following the chosen way – radio buttons like "Kennwort an", preselected with the way it went first, field and hint indented under the chosen one); like "Kennwort an" it takes
+fields with both – the other address and the SMS number, with and without a proof of delivery (`resendField`:
+`addressBook.register`, `attachContactSuggestions`; one box per way, nothing ticked at first, the field indented under its ticked box); like "Kennwort an" each takes
 one address – a picked entry replaces the field. Without the permission the buttons disappear (`onContactsUnavailable`). Without the optional delegated `Contacts.Read` the
 server answers `contacts: null` and the pane stops asking for the session.
 The ways:

@@ -2715,6 +2715,37 @@ type ResendChannel = "recipients" | "mail" | "sms";
  * number). Nothing is ticked: the password goes only to whom the sender picks. Before the first confirmation only why
  * nothing can be sent yet.
  */
+/**
+ * The address or number field of "Erneut senden an" – with and without a proof of delivery: one value, like
+ * "Kennwort an" when sending, with suggestions while typing and the address book button as there.
+ */
+function resendField(id: string, channel: "mail" | "sms", value: string): { group: HTMLDivElement; field: HTMLInputElement } {
+  const sms = channel === "sms";
+  const group = document.createElement("div");
+  group.className = "input-group channel-group";
+  const field = document.createElement("input");
+  field.id = `${id}-${channel}`;
+  field.className = "input channel-input";
+  field.spellcheck = false;
+  field.type = sms ? "tel" : "email";
+  field.autocomplete = sms ? "tel" : "email";
+  field.value = value;
+  field.placeholder = t(sms ? "channel.smsPlaceholder" : "resend.mailPlaceholder");
+  field.setAttribute("aria-label", t(sms ? "resend.smsLabel" : "resend.mailLabel"));
+  const book = document.createElement("button");
+  book.type = "button";
+  book.className = "btn btn-icon book-open";
+  book.setAttribute("aria-controls", "panel-contacts");
+  book.dataset.target = field.id;
+  book.innerHTML = BOOK_ICON;
+  book.title = t("contacts.bookOpen");
+  book.setAttribute("aria-label", t("contacts.bookOpen"));
+  group.append(field, book);
+  addressBook.register(book);
+  attachContactSuggestions(field, () => channel, (text, kind) => contactUsable(kind, text));
+  return { group, field };
+}
+
 function fillProofPasswordPanel(panel: HTMLElement, share: ShareItem, sent: SentPassword) {
   const id = panel.id;
   const verified = sent.verified ?? [];
@@ -2761,22 +2792,12 @@ function fillProofPasswordPanel(panel: HTMLElement, share: ShareItem, sent: Sent
   if (serverConfig.smsEnabled) {
     add("sms", "", t("channel.sms"), t("resend.smsHint") + smsCountriesHint()); // "Rufnummer (SMS)" as without a proof
     const box = picks[picks.length - 1].input;
-    const field = document.createElement("div");
-    field.className = "input-group channel-group";
-    field.hidden = true;
-    number = document.createElement("input");
-    number.id = `${id}-sms`;
-    number.className = "input channel-input";
-    number.type = "tel";
-    number.autocomplete = "tel";
-    number.spellcheck = false;
-    number.value = sent.sms;
-    number.placeholder = t("channel.smsPlaceholder");
-    number.setAttribute("aria-label", t("resend.smsLabel"));
-    field.append(number);
-    group.append(field);
+    const way = resendField(id, "sms", sent.sms);
+    number = way.field;
+    way.group.hidden = true;
+    group.append(way.group);
     box.addEventListener("change", () => {
-      field.hidden = !box.checked;
+      way.group.hidden = !box.checked;
       if (box.checked) number!.focus();
     });
   }
@@ -2927,32 +2948,10 @@ async function fillPasswordPanel(panel: HTMLElement, share: ShareItem) {
     const way: (typeof ways)[number] = { channel, box };
     ways.push(way);
     if (channel === "recipients") return; // the hint names them – nothing to type
-    // One address or number, like "Kennwort an" when sending; suggestions while typing and the address book as there.
     const sms = channel === "sms";
-    const group = document.createElement("div");
-    group.className = "input-group channel-group";
-    const field = document.createElement("input");
-    field.id = `${id}-${channel}`;
-    field.className = "input channel-input";
-    field.spellcheck = false;
-    field.type = sms ? "tel" : "email";
-    field.autocomplete = sms ? "tel" : "email";
-    field.value = sms ? sent.sms : (sent.otherTo[0] ?? "");
-    field.placeholder = t(sms ? "channel.smsPlaceholder" : "resend.mailPlaceholder");
-    field.setAttribute("aria-label", t(sms ? "resend.smsLabel" : "resend.mailLabel"));
-    const book = document.createElement("button");
-    book.type = "button";
-    book.className = "btn btn-icon book-open";
-    book.setAttribute("aria-controls", "panel-contacts");
-    book.dataset.target = field.id;
-    book.innerHTML = BOOK_ICON;
-    book.title = t("contacts.bookOpen");
-    book.setAttribute("aria-label", t("contacts.bookOpen"));
-    group.append(field, book);
+    const { group, field } = resendField(id, channel, sms ? sent.sms : (sent.otherTo[0] ?? ""));
     group.hidden = !box.checked;
     waysGroup.append(group);
-    addressBook.register(book);
-    attachContactSuggestions(field, () => (sms ? "sms" : "mail"), (value, kind) => contactUsable(kind, value));
     box.addEventListener("change", () => {
       group.hidden = !box.checked;
       field.removeAttribute("aria-invalid");
