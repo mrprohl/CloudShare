@@ -6,7 +6,7 @@
   },
   "manifest": {
     "description": "Sendet große Dateien als kennwortgeschützten Link aus Ihrer Nextcloud.",
-    "group": "Nextcloud",
+    "group": "CloudShare",
     "tooltip": "Große Dateien als kennwortgeschützten Link aus Ihrer Nextcloud senden.",
     "readTooltip": "Zeigt, ob Ihre CloudShare-Links heruntergeladen wurden und wie das Kennwort verschickt wurde – für diese Nachricht und im Verlauf für alle Links und vertraulichen Nachrichten, die noch gültig sind."
   },
