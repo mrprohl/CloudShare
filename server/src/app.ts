@@ -46,7 +46,7 @@ import {
   updatePasswordRef,
   type PasswordRef,
 } from "./passwordRefs.js";
-import { passwordMailHtml, smsProblemMailHtml } from "./passwordMail.js";
+import { itemsKey, passwordMailHtml, smsProblemMailHtml } from "./passwordMail.js";
 import {
   mapReportStatus,
   formatPhone,
@@ -376,7 +376,7 @@ async function noteUndeliveredSms(refs: PasswordRef[], log: Pick<FastifyBaseLogg
       const { html, subject } = inSenderLanguage(ref.senderLanguage, () => ({
         html: smsProblemMailHtml({ fileNames: ref.fileNames, subject: ref.subject, to: ref.sms ? formatPhone(ref.sms) : "" }),
         subject: t("mail.smsUndeliveredSubject", {
-          subject: ref.subject || t("mail.files", { count: ref.fileNames.length, name: ref.fileNames[0] }),
+          subject: ref.subject || t(itemsKey("mail.files", ref.fileNames), { count: ref.fileNames.length, name: ref.fileNames[0] }),
         }),
       }));
       await sendMailAsApp(token, ref.owner, ref.from ?? ref.ownerUpn, subject, html);
@@ -1272,7 +1272,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       // The password mail in the language the recipients got it in the first time.
       const { subject, customIntro } = inRecipientLanguage(ref.language, () => ({
         subject: render(templates.mail_password_subject, {
-          files: t("mail.files", { count: ref.fileNames.length, name: ref.fileNames[0] }),
+          files: t(itemsKey("mail.files", ref.fileNames), { count: ref.fileNames.length, name: ref.fileNames[0] }),
           subject: ref.subject || ref.fileNames[0],
           sender_name: ref.senderName ?? "",
         }),

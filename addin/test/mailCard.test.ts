@@ -114,3 +114,29 @@ describe("spacing in classic Outlook", () => {
     expect(html).not.toMatch(/<div style="[^"]*margin:12px/);
   });
 });
+
+describe("delivery proof", () => {
+  const proof = { id: "20261124-1034-WRB4", gateway: true };
+  it("facts in one line, then one sentence in the order things happen – the address confirmed only once", () => {
+    const html = filesCard(files, "08.12.2026", formatSize, true, proof);
+    expect(html).toContain("Gültig bis 08.12.2026 · Vorgang 20261124-1034-WRB4<br>" +
+      "Vor dem Öffnen bestätigen Sie Ihre E-Mail-Adresse mit einem Code, den Sie per E-Mail erhalten – danach erhalten Sie " +
+      "das Kennwort. Abrufe werden protokolliert.");
+    expect(html.match(/bestätigen Sie/g)).toHaveLength(1);
+    expect(html).not.toContain("separaten Nachricht");
+  });
+
+  it("without a password: no word about it; the plain text has the same lines", () => {
+    expect(filesCard(files, "08.12.2026", formatSize, false, proof)).toContain(
+      "Gültig bis 08.12.2026 · Vorgang 20261124-1034-WRB4<br>Vor dem Öffnen bestätigen Sie Ihre E-Mail-Adresse mit einem " +
+      "Code, den Sie per E-Mail erhalten. Abrufe werden protokolliert.");
+    const text = filesText(files, "08.12.2026", formatSize, true, proof);
+    expect(text).toContain("Vorgang 20261124-1034-WRB4\nVor dem Öffnen bestätigen Sie");
+  });
+
+  it("a confidential message (no confirmation page): the separate password message, then that opening is recorded", () => {
+    expect(messageCard("https://vault.example.com/#/send/x", "08.12.2026", { id: "20261124-1034-WRB4", gateway: false })).toContain(
+      "Gültig bis 08.12.2026 · Vorgang 20261124-1034-WRB4<br>Das Kennwort erhalten Sie in einer separaten Nachricht. " +
+      "Das Öffnen wird protokolliert.");
+  });
+});

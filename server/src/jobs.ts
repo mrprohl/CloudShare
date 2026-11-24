@@ -19,7 +19,7 @@ import { recordSentMail } from "./history.js";
 import { formatDate, inRecipientLanguage, inSenderLanguage, t as translate } from "./i18n.js";
 import { recordDelivery } from "./deliveries.js";
 import { registerNotices, type Notice } from "./notices.js";
-import { passwordMailHtml, smsProblemMailHtml } from "./passwordMail.js";
+import { itemsKey, passwordMailHtml, smsProblemMailHtml } from "./passwordMail.js";
 import { registerPasswordRef } from "./passwordRefs.js";
 import { caseOfToken, eventForTokens, recordMailSent } from "./proof.js";
 
@@ -394,7 +394,7 @@ async function sendStepBySms(
     const { html, noteSubject } = inSenderLanguage(senderLanguage, () => ({
       html: smsProblemMailHtml({ fileNames: partFiles(part), subject, to: formatPhone(to), reason: (err as Error).message }),
       noteSubject: translate("mail.smsFailedSubject", {
-        subject: subject || translate("mail.files", { count: partFiles(part).length, name: partFiles(part)[0] }),
+        subject: subject || translate(itemsKey("mail.files", partFiles(part)), { count: partFiles(part).length, name: partFiles(part)[0] }),
       }),
     }));
     // A failed note must not fail the step – that would retry the SMS on every pass of the watcher.
@@ -530,7 +530,7 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
           const mailFor = () =>
             inRecipientLanguage(part.language, () => {
               const customIntro = t.mail_password_intro !== defaultTemplates().mail_password_intro ? t.mail_password_intro : undefined;
-              const label = translate("mail.files", { count: files.length, name: files[0] });
+              const label = translate(itemsKey("mail.files", files), { count: files.length, name: files[0] });
               return {
                 subject: render(t.mail_password_subject, { files: label, subject: message.subject || files[0], sender_name: job.senderName ?? "" }),
                 html: passwordMailHtml({ fileNames: files, sendUrl: part.sendUrl, maxAccessCount: part.maxAccessCount,

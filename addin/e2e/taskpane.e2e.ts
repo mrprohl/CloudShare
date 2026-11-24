@@ -1476,7 +1476,7 @@ test("Zustellnachweis: only for files; ticked, it goes with the upload and the c
   expect(card).toContain("https://cloudshare.example.com/r/s/u"); // the gateway, not the Nextcloud link
   expect(card).toContain("Vorgang 20261117-1146-7Q2F");
   // The password comes after the confirmation – no "separate message" with the link mail.
-  expect(card).toContain("Das Kennwort erhalten Sie, nachdem Sie Ihre E-Mail-Adresse bestätigt haben.");
+  expect(card).toContain("mit einem Code, den Sie per E-Mail erhalten – danach erhalten Sie das Kennwort.");
   expect(card).not.toContain("separaten Nachricht");
 
   // From now on this mail takes only files with a proof: no confidential message, no upload link, the switch fixed on.
@@ -2831,42 +2831,75 @@ test("Labels: never lowers the mail's label", async ({ page }) => {
   expect((await officeLog(page)).mailLabel).toBeUndefined();
 });
 
-test("Labels: a protected file shows a note below the list and needs a confirmation", async ({ page }) => {
-  const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pfile", 2 * MiB)] });
-  const row = page.locator("#attachments .list-item").first();
+test("Labels: a protected file shows a note right under its row and needs its own confirmation", async ({ page }) => {
+  const calls = await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pfile", 2 * MiB), attachment("a2", "Plan.pdf", 2 * MiB)] });
+  const row = page.locator("#attachments > label.list-item").first();
   await expect(row.locator(".file-label")).toHaveText("Geschützt");
   await expect(row.locator(".label-lock")).toHaveCount(1);
-  // A note right below the list; inserting only after "Trotzdem als Link senden".
+  // The note right under the row of that file (not under the other one); inserting only after its box.
+  const note = page.locator("#attachments > .file-encrypted");
+  await expect(note).toHaveCount(1);
+  await expect(page.locator("#attachments > label.list-item:first-child + .file-encrypted")).toHaveCount(1);
+  await expect(note.locator(".file-encrypted-text")).toHaveText("Externe Empfänger können sie meist nicht öffnen.");
+  await expect(note.locator("input")).toHaveAttribute("aria-label", "Trotzdem als Link senden: Vertrag.pfile");
   await expect(page.locator("#validity-section")).toBeHidden(); // "Gültigkeit" stays as it was
-  await expect(page.locator("#encrypted-text")).toHaveText(
-    "„Vertrag.pfile“ ist verschlüsselt. Empfänger außerhalb Ihrer Organisation können sie meist nicht öffnen.");
   await expect(page.locator("#submit")).toBeDisabled();
+  await expect(page.locator("#submit")).toHaveText("2 Dateien als Link einfügen"); // the box of the note is not a file
   await expectAccessible(page);
-  // Unticking the file takes the note away.
+  // Unticking the file takes the note away, ticking it again brings it back.
   await row.locator(".file-name").click(); // the row is a label: a click on the name toggles the box
-  await expect(page.locator("#encrypted-field")).toBeHidden();
+  await expect(note).toHaveCount(0);
   await row.locator(".file-name").click();
-  await expect(page.locator("#encrypted-field")).toBeVisible();
+  await expect(note).toHaveCount(1);
   expect(calls.some((c) => c.path === "/api/uploads")).toBe(false);
 
-
-  await page.locator("#encrypted-confirm-row .checkbox-text").click();
-  await expect(page.locator("#encrypted-confirm")).toBeChecked();
+  await note.locator(".checkbox-text").click();
+  await expect(note.locator("input")).toBeChecked();
   await expect(page.locator("#submit")).toBeEnabled();
   await page.click("#submit");
-  await expect(page.locator("#status")).toContainText("Der Link wurde eingefügt.");
+  await expect(page.locator("#status")).toContainText("2 Links wurden eingefügt.");
   expect(calls.some((c) => c.path === "/api/uploads")).toBe(true);
 });
 
-test("Labels: the \"×\" on the note removes the encrypted file from the mail – and the note goes with it", async ({ page }) => {
+test("Labels: LABEL_ENCRYPTED=block – the note at the file says it cannot go as a link, nothing to tick", async ({ page }) => {
+  await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pfile", 2 * MiB)], config: { labelEncrypted: "block" } });
+  const note = page.locator("#attachments > .file-encrypted.blocked");
+  await expect(note).toContainText("Verschlüsselt – kann nicht als Link verschickt werden.");
+  await expect(note.locator("input")).toHaveCount(0);
+  await expect(page.locator("#submit")).toBeDisabled();
+  await expectAccessible(page);
+});
+
+test("Labels: only internal recipients – no note on a protected file; it comes back with an external one", async ({ page }) => {
+  await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pfile", 2 * MiB)] });
+  const note = page.locator("#attachments > .file-encrypted");
+  // No recipients yet: where the file goes is open – the note shows.
+  await expect(note).toHaveCount(1);
+  const recipients = async (to: string[], cc: string[] = []) => {
+    await page.evaluate(([to, cc]) => {
+      const w = window as unknown as { __officeConfig: Record<string, unknown>; __itemHandlers: Record<string, () => void> };
+      Object.assign(w.__officeConfig, { to, cc });
+      w.__itemHandlers.olkRecipientsChanged();
+    }, [to, cc]);
+  };
+  // Colleagues of the own domain (INTERNAL_DOMAINS empty), a subdomain too: no note, inserting right away.
+  await recipients(["erika@example.com"], ["chef@team.example.com"]);
+  await expect(note).toHaveCount(0);
+  await expect(page.locator("#submit")).toBeEnabled();
+  // An external one in Cc: the note and its confirmation again.
+  await recipients(["erika@example.com"], ["kunde@example.org"]);
+  await expect(note).toHaveCount(1);
+  await expect(page.locator("#submit")).toBeDisabled();
+});
+
+test("Labels: the \"×\" of the row removes the encrypted file from the mail – and its note goes with it", async ({ page }) => {
   await openTaskpane(page, { attachments: [attachment("a1", "Vertrag.pfile", 2 * MiB), attachment("a2", "Plan.pdf", 2 * MiB)] });
-  await expect(page.locator("#encrypted-field")).toBeVisible();
-  await expect(page.locator("#encrypted-dismiss")).toHaveAttribute("aria-label", "Datei entfernen – nicht als Link senden");
-  await page.click("#encrypted-dismiss");
-  expect((await officeLog(page)).removed).toEqual(["a1"]); // only the encrypted one
-  await expect(page.locator("#attachments .list-item")).toHaveCount(1);
+  await expect(page.locator("#attachments > .file-encrypted")).toHaveCount(1);
+  await page.locator("#attachments > label.list-item").first().locator(".remove-file").click();
+  expect((await officeLog(page)).removed).toEqual(["a1"]);
+  await expect(page.locator("#attachments > label.list-item")).toHaveCount(1);
   await expect(page.locator("#attachments .file-name")).toHaveText("Plan.pdf");
-  await expect(page.locator("#encrypted-field")).toBeHidden();
+  await expect(page.locator("#attachments > .file-encrypted")).toHaveCount(0);
   await expect(page.locator("#submit")).toBeEnabled();
 });
 

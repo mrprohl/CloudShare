@@ -327,9 +327,25 @@ export async function attachmentRule(config: ServerConfig): Promise<AttachmentRu
   if (internal.mb === external.mb && internal.policy === external.policy) return external;
   const recipients = await draftRecipients();
   if (recipients === null) return external;
-  const own = (Office.context.mailbox.userProfile?.emailAddress ?? "").toLowerCase().split("@").pop() ?? "";
-  const domains = config.internalDomains?.length ? config.internalDomains : own ? [own] : [];
+  const domains = internalDomains(config);
   return recipients.some((address) => !isInternalAddress(address, domains)) ? external : internal;
+}
+
+/** INTERNAL_DOMAINS, or the domain of the user's own address when it is empty. */
+function internalDomains(config: ServerConfig): string[] {
+  const own = (Office.context.mailbox.userProfile?.emailAddress ?? "").toLowerCase().split("@").pop() ?? "";
+  return config.internalDomains?.length ? config.internalDomains : own ? [own] : [];
+}
+
+/**
+ * Whether the draft has recipients and every one is internal (INTERNAL_DOMAINS) – the note on encrypted files is then
+ * left out. No recipients yet, or Outlook cannot tell: false (where the files go is still open).
+ */
+export async function onlyInternalRecipients(config: ServerConfig): Promise<boolean> {
+  const recipients = await draftRecipients();
+  if (!recipients?.length) return false;
+  const domains = internalDomains(config);
+  return recipients.every((address) => isInternalAddress(address, domains));
 }
 
 /** Only the size of attachmentRule (the taskpane preselects by it). */

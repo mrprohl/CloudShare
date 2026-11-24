@@ -18,7 +18,7 @@ import { recordDelivery } from "./deliveries.js";
 import { sendMailAsApp } from "./graph.js";
 import { formatDate, inRecipientLanguage, t } from "./i18n.js";
 import { takeSmsQuota } from "./jobs.js";
-import { passwordMailHtml } from "./passwordMail.js";
+import { itemsKey, passwordMailHtml } from "./passwordMail.js";
 import { passwordRefFor, updatePasswordRef, type PasswordRef } from "./passwordRefs.js";
 import { gatewayUrl, saveCase, type ProofCase } from "./proof.js";
 import { formatPhone, maskPhone, sendSms, smsEnabled } from "./sms.js";
@@ -59,7 +59,7 @@ async function mailPassword(c: ProofCase, ref: PasswordRef, password: string, to
     const customIntro = templates.mail_password_intro !== defaultTemplates().mail_password_intro ? templates.mail_password_intro : undefined;
     return {
       subject: render(templates.mail_password_subject, {
-        files: t("mail.files", { count: ref.fileNames.length, name: ref.fileNames[0] }),
+        files: t(itemsKey("mail.files", ref.fileNames), { count: ref.fileNames.length, name: ref.fileNames[0] }),
         subject: ref.subject || ref.fileNames[0],
         sender_name: ref.senderName ?? "",
       }),

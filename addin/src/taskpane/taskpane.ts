@@ -11,6 +11,7 @@ import {
   MB,
   NOT_CONNECTED,
   officeAsync,
+  onlyInternalRecipients,
   readDraftState,
   releaseDraftIfLinksGone,
   rememberLink,
@@ -77,13 +78,12 @@ const passwordToField = $<HTMLDivElement>("password-to-field");
 const proofField = $<HTMLDivElement>("proof-field");
 const proofInput = $<HTMLInputElement>("proof");
 const proofHint = $<HTMLParagraphElement>("proof-hint");
-const encryptedField = $<HTMLDivElement>("encrypted-field");
-const encryptedText = $<HTMLParagraphElement>("encrypted-text");
-const encryptedConfirm = $<HTMLInputElement>("encrypted-confirm");
-const encryptedConfirmRow = $<HTMLLabelElement>("encrypted-confirm-row");
-const encryptedDismiss = $<HTMLButtonElement>("encrypted-dismiss");
-/** Names of the encrypted files the note was shown for ("" = none). */
-let encryptedShown = "";
+/** An encrypted file among the ticked ones that is not confirmed yet (or may not go, LABEL_ENCRYPTED=block). */
+let encryptedPending = false;
+/** Encrypted files confirmed with "Trotzdem als Link senden" at their row (attachment ID or picked file). */
+const encryptedConfirmed = new Set<string | File>();
+/** The checkbox of a file row – not the one of the note under it (renderEncrypted). */
+const FILE_BOX = "label.list-item > input";
 /** "Kennwort an": radio buttons (recipients / another address / SMS) in the group #password-channel. */
 const channelGroup = $<HTMLDivElement>("password-channel");
 const channelRadios = Array.from(channelGroup.querySelectorAll<HTMLInputElement>('input[name="password-channel"]'))
@@ -587,7 +587,7 @@ async function showLabel(row: HTMLElement, label: Promise<FileLabel | null>) {
 
 /** Ticked files (attachments and files from the computer) – the button says how many get a link. */
 const selectedFileCount = () =>
-  attachmentList.querySelectorAll("input:checked").length + pickedList.querySelectorAll("input:checked").length;
+  attachmentList.querySelectorAll(`${FILE_BOX}:checked`).length + pickedList.querySelectorAll(`${FILE_BOX}:checked`).length;
 
 
 
@@ -596,7 +596,7 @@ async function renderAttachments() {
   // Whoever opens CloudShare wants to send through it: every attachment is ticked (the size threshold only decides
   // when Outlook points to CloudShare). One the user unticked stays unticked when the list is drawn again; its "×"
   // removes it from the mail, as in Outlook.
-  const unticked = new Set(Array.from(attachmentList.querySelectorAll<HTMLInputElement>("input:not(:checked)")).map((box) => box.value));
+  const unticked = new Set(Array.from(attachmentList.querySelectorAll<HTMLInputElement>(`${FILE_BOX}:not(:checked)`)).map((box) => box.value));
   const rows = attachments.map((a) =>
     fileRow(a.name, a.id, !unticked.has(a.id), () => {
       officeAsync<void>((cb) => composeItem().removeAttachmentAsync(a.id, cb))
@@ -619,7 +619,7 @@ async function renderAttachments() {
 function renderPicked() {
   // Re-rendering renumbers the rows – keep the files the user unticked unticked.
   const unticked = new Set(
-    Array.from(pickedList.querySelectorAll<HTMLInputElement>("input:not(:checked)")).map((box) => pickedRendered[Number(box.value)]),
+    Array.from(pickedList.querySelectorAll<HTMLInputElement>(`${FILE_BOX}:not(:checked)`)).map((box) => pickedRendered[Number(box.value)]),
   );
   pickedRendered = pickedFiles;
   pickedList.replaceChildren(
@@ -1697,8 +1697,8 @@ function insertReady(): boolean {
   if (!serverConfig) return false;
   const kind = selectedKind();
   if (kind === "files" && selectedFileCount() === 0) return false;
-  // An encrypted file among them: only after "Trotzdem als Link senden" below the list (never with LABEL_ENCRYPTED=block).
-  if (kind === "files" && !encryptedField.hidden && (encryptedConfirmRow.hidden || !encryptedConfirm.checked)) return false;
+  // An encrypted file among them: only after its "Trotzdem als Link senden" (never with LABEL_ENCRYPTED=block).
+  if (kind === "files" && encryptedPending) return false;
   if (kind === "message") {
     const text = messageInput.value.trim();
     if (!text || text.length > messageMax()) return false;
@@ -1799,72 +1799,85 @@ async function labelsOfSelection(attachments: HTMLInputElement[], files: File[])
   ]);
 }
 
+/** The file a row of the list stands for: the attachment ID, or the file picked from the computer. */
+function rowFile(row: HTMLElement): string | File | undefined {
+  const box = row.querySelector<HTMLInputElement>(":scope > input")!;
+  return row.parentElement === pickedList ? pickedRendered[Number(box.value)] : box.value;
+}
+
+/** The note under the row of an encrypted file: the reason and, with "warn", its own "Trotzdem als Link senden". */
+function encryptedNote(row: HTMLElement, file: string | File, block: boolean): HTMLElement {
+  const note = document.createElement("div");
+  note.className = `file-encrypted${block ? " blocked" : ""}`;
+  const text = document.createElement("p");
+  text.className = "file-encrypted-text";
+  text.id = `${row.id}-encrypted`;
+  text.innerHTML = WARNING_ICON;
+  text.append(t(block ? "labels.blockedRowNote" : "labels.encryptedRowNote"));
+  note.append(text);
+  const fileBox = row.querySelector<HTMLInputElement>(":scope > input")!;
+  fileBox.setAttribute("aria-describedby", text.id);
+  if (!block) {
+    const { row: confirmRow, input } = checkboxRow(t("labels.sendAnyway"));
+    confirmRow.classList.add("encrypted-confirm");
+    input.checked = encryptedConfirmed.has(file);
+    input.setAttribute("aria-label", `${t("labels.sendAnyway")}: ${fileBox.dataset.name ?? ""}`);
+    input.setAttribute("aria-describedby", text.id);
+    input.addEventListener("change", (event) => {
+      event.stopPropagation(); // not a change of the file list
+      if (input.checked) encryptedConfirmed.add(file);
+      else encryptedConfirmed.delete(file);
+      void renderEncrypted();
+    });
+    note.append(confirmRow);
+  }
+  return note;
+}
+
+const WARNING_ICON =
+  '<svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 14.6 13.5H1.4Z" fill="none" stroke="currentColor" ' +
+  'stroke-linejoin="round"/><path d="M8 6.2v3.6M8 11.6v.3" stroke="currentColor" stroke-linecap="round"/></svg>';
+
 /**
  * A protected (encrypted) file among the ticked ones: recipients outside the organisation can usually not open it,
- * whichever way it travels. A note right below the file list (#encrypted-field); LABEL_ENCRYPTED=warn needs
- * "Trotzdem als Link senden" ticked before inserting, block refuses, allow says nothing. `labels`: the ones just read
- * for inserting – otherwise those the list knows already (large attachments are only read when inserted).
- * Returns whether inserting may go on.
+ * whichever way it travels. A note right under the file's row, indented under its name; LABEL_ENCRYPTED=warn needs
+ * its "Trotzdem als Link senden" ticked before inserting, block refuses, allow says nothing; the row's "×" removes the
+ * file. Not while every recipient is internal (INTERNAL_DOMAINS). Labels come from labelCache – large attachments are
+ * read only when inserted (labelsOfSelection fills it first). Returns whether inserting may go on.
  */
-async function renderEncrypted(labels?: Array<{ name: string; label: FileLabel | null }>): Promise<boolean> {
-  let encrypted: string[] = [];
-  if (labelPolicy() !== "off" && encryptedPolicy() !== "allow" && selectedKind() === "files") {
-    const known = labels ?? (await knownSelectionLabels());
-    encrypted = known.filter((l) => l.label?.encrypted).map((l) => l.name);
-  }
-  const key = encrypted.join("|");
-  if (key !== encryptedShown) {
-    // Other files: the confirmation was for those – ask again.
-    encryptedConfirm.checked = false;
-    encryptedShown = key;
-  }
-  encryptedField.hidden = encrypted.length === 0;
-  const names = encrypted.map((name) => `„${name}“`).join(", ");
+async function renderEncrypted(): Promise<boolean> {
+  const active = labelPolicy() !== "off" && encryptedPolicy() !== "allow" && selectedKind() === "files";
   const block = encryptedPolicy() === "block";
-  encryptedText.textContent = encrypted.length
-    ? t(block ? "labels.blockedNote" : "labels.encryptedNote", { names, count: encrypted.length })
-    : "";
-  encryptedConfirmRow.hidden = block;
-  renderSubmit();
-  return encrypted.length === 0 || (!block && encryptedConfirm.checked);
-}
-
-/** The labels of the ticked files that are known already (read for the list) – without reading anything new. */
-async function knownSelectionLabels() {
-  const boxes = [
-    ...Array.from(attachmentList.querySelectorAll<HTMLInputElement>("input:checked")).map((box) => ({ key: box.value as string | File, name: box.dataset.name ?? "" })),
-    ...Array.from(pickedList.querySelectorAll<HTMLInputElement>("input:checked")).map((box) => {
-      const file = pickedFiles[Number(box.value)];
-      return { key: file as string | File, name: file?.name ?? "" };
-    }),
-  ];
-  return Promise.all(boxes.filter((b) => labelCache.has(b.key)).map(async (b) => ({ name: b.name, label: await labelCache.get(b.key)! })));
-}
-
-encryptedConfirm.addEventListener("change", () => renderSubmit());
-
-/**
- * "×" on the note – "Nein": the encrypted files are removed – a file chosen in the pane from the list, an attachment
- * from the mail – and the note goes with them.
- */
-encryptedDismiss.addEventListener("click", async () => {
-  const isEncrypted = async (key: string | File | undefined) => Boolean(key && labelCache.has(key) && (await labelCache.get(key)!)?.encrypted);
-  const attachments = Array.from(attachmentList.querySelectorAll<HTMLInputElement>("input:checked")).map((box) => box.value);
-  const picked = Array.from(pickedList.querySelectorAll<HTMLInputElement>("input:checked")).map((box) => pickedFiles[Number(box.value)]);
-  try {
-    for (const id of attachments) {
-      if (await isEncrypted(id)) await officeAsync<void>((cb) => composeItem().removeAttachmentAsync(id, cb));
+  let internal: boolean | undefined;
+  let pending = false;
+  for (const row of Array.from(document.querySelectorAll<HTMLElement>("#attachments > label.list-item, #picked > label.list-item"))) {
+    const file = rowFile(row);
+    const box = row.querySelector<HTMLInputElement>(":scope > input")!;
+    let encrypted = active && box.checked && file !== undefined && labelCache.has(file) && Boolean((await labelCache.get(file)!)?.encrypted);
+    // Only colleagues (INTERNAL_DOMAINS) as recipients: they can open it – no note, nothing to confirm.
+    if (encrypted) encrypted = !(internal ??= await onlyInternalRecipients(serverConfig));
+    // Looked up after the awaits: another run may have added the note meanwhile.
+    const next = row.nextElementSibling as HTMLElement | null;
+    let note = next?.classList.contains("file-encrypted") ? next : null;
+    if (note && note.classList.contains("blocked") !== block) {
+      note.remove();
+      note = null;
     }
-  } catch (err) {
-    setStatus(t("labels.removeFailed", { error: errorMessage(err) }), "error");
+    if (!encrypted || !row.isConnected) {
+      note?.remove();
+      if (!encrypted) box.removeAttribute("aria-describedby");
+      continue;
+    }
+    if (!note) {
+      if (!row.id) row.id = `file-${Math.random().toString(36).slice(2, 10)}`;
+      row.after(encryptedNote(row, file!, block));
+    }
+    if (block || !encryptedConfirmed.has(file!)) pending = true;
   }
-  const encryptedPicked = new Set<File>();
-  for (const file of picked) if (await isEncrypted(file)) encryptedPicked.add(file);
-  pickedFiles = pickedFiles.filter((file) => !encryptedPicked.has(file));
-  renderPicked();
-  await renderAttachments().catch(() => undefined);
-  submitButton.focus();
-});
+  encryptedPending = pending;
+  renderSubmit();
+  return !pending;
+}
 
 /**
  * After inserting: the mail gets the highest label of its files if its own is lower (never lowered) – LABEL_POLICY
@@ -1898,8 +1911,8 @@ async function labelForMail(labels: Array<{ name: string; label: FileLabel | nul
 }
 
 async function insertFiles() {
-  const selectedAttachments = Array.from(attachmentList.querySelectorAll<HTMLInputElement>("input:checked"));
-  const selectedFiles = Array.from(pickedList.querySelectorAll<HTMLInputElement>("input:checked")).map(
+  const selectedAttachments = Array.from(attachmentList.querySelectorAll<HTMLInputElement>(`${FILE_BOX}:checked`));
+  const selectedFiles = Array.from(pickedList.querySelectorAll<HTMLInputElement>(`${FILE_BOX}:checked`)).map(
     (box) => pickedFiles[Number(box.value)],
   );
   if (selectedAttachments.length + selectedFiles.length === 0) {
@@ -1912,8 +1925,10 @@ async function insertFiles() {
   // Sensitivity labels of the files: a protected one needs a confirmation first.
   if (labelPolicy() !== "off") setStatus(t("labels.checking"), "progress");
   const labels = await labelsOfSelection(selectedAttachments, selectedFiles);
-  if (!(await renderEncrypted(labels))) {
-    encryptedConfirm.focus();
+  if (!(await renderEncrypted())) {
+    const box = document.querySelector<HTMLInputElement>(".file-encrypted input:not(:checked)")
+      ?? document.querySelector(".file-encrypted.blocked")?.previousElementSibling?.querySelector<HTMLInputElement>("input");
+    box?.focus();
     return setStatus(t(encryptedPolicy() === "block" ? "labels.blockedFirst" : "labels.confirmFirst"), "error");
   }
 
@@ -3680,6 +3695,10 @@ Office.onReady(async () => {
   await renderAttachments().catch(() => undefined);
   composeItem().addHandlerAsync(Office.EventType.AttachmentsChanged, () => {
     renderAttachments().catch(() => undefined);
+  });
+  // The note on encrypted files depends on the recipients (all internal: none).
+  composeItem().addHandlerAsync(Office.EventType.RecipientsChanged, () => {
+    void renderEncrypted();
   });
 
   try {

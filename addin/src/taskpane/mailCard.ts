@@ -68,7 +68,8 @@ const lead = (text: string) =>
  * Outer frame: white card, thin border, brand accent on the left. `title` and `note` are plain text. No signature:
  * the sender's own Outlook signature is in the message, and the password mail carries it for CloudShare.
  */
-function frame(title: string, rows: string, note: string): string {
+/** `note`: the grey lines under the buttons, one line each. */
+function frame(title: string, rows: string, note: string[]): string {
   return (
     `<table role="presentation" width="560" cellpadding="0" cellspacing="0" border="0" ` +
     `style="width:100%;max-width:560px;border-collapse:separate;margin:12px 0;">` +
@@ -76,7 +77,7 @@ function frame(title: string, rows: string, note: string): string {
     `padding:14px 16px;font-family:${FONT};color:#242424;">` +
     `<div style="font-size:15px;line-height:20px;font-weight:600;color:#242424;margin:0 0 8px;">${escapeHtml(title)}</div>` +
     rows +
-    `<div style="font-size:12px;line-height:16px;color:#616161;margin:10px 0 0;">${escapeHtml(note)}</div>` +
+    `<div style="font-size:12px;line-height:16px;color:#616161;margin:10px 0 0;">${note.map(escapeHtml).join("<br>")}</div>` +
     `</td></tr></table>`
   );
 }
@@ -90,16 +91,25 @@ export interface CardProof {
   gateway: boolean;
 }
 
-/** What the recipients learn about the delivery proof: the tracking ID and that they confirm their address. */
-const proofNote = (proof: CardProof | undefined) =>
-  proof ? t(proof.gateway ? "card.proof" : "card.proofMessage", { id: proof.id }) : "";
+/**
+ * What the recipients learn besides the link, as lines. Without a delivery proof one line: "Gültig bis … · Das
+ * Kennwort erhalten Sie in einer separaten Nachricht." With one the facts first ("Gültig bis … · Vorgang …"), then one
+ * sentence in the order things happen – confirm the address (gateway: files, upload links), then the password.
+ */
+function noteLines(expireDate: string | null, withPassword: boolean, proof?: CardProof): string[] {
+  const valid = expireDate === null ? "" : t("card.validUntil", { date: expireDate });
+  if (!proof) return [[valid, withPassword ? t("card.passwordNote") : ""].filter(Boolean).join(" · ")].filter(Boolean);
+  const steps = proof.gateway
+    ? t(withPassword ? "card.proofPassword" : "card.proof")
+    : [withPassword ? t("card.passwordNote") : "", t("card.proofMessage")].filter(Boolean).join(" ");
+  return [[valid, t("card.trackingId", { id: proof.id })].filter(Boolean).join(" · "), steps];
+}
 
-/** "Gültig bis 28.11.2026 · Das Kennwort erhalten Sie in einer separaten Nachricht." */
-/** With a delivery proof the password comes only after the recipient confirmed their address (the gateway). */
-const passwordNote = (proof?: CardProof) => t(proof?.gateway ? "card.proofPassword" : "card.passwordNote");
+const cardNote = (expireDate: string, withPassword: boolean, proof?: CardProof) => noteLines(expireDate, withPassword, proof);
 
-const cardNote = (expireDate: string, withPassword: boolean, proof?: CardProof) =>
-  [t("card.validUntil", { date: expireDate }), withPassword ? passwordNote(proof) : "", proofNote(proof)].filter(Boolean).join(" · ");
+/** The same for the plain-text versions (the date is in their first line already). */
+const plainNote = (withPassword: boolean, proof?: CardProof) =>
+  noteLines(null, withPassword, proof).map((line) => `${line}\n`).join("");
 
 /** Card for shared files: per file a block – the download button, below it type, name and size in grey. */
 export function filesCard(
@@ -151,14 +161,13 @@ export function filesText(
   proof?: CardProof,
 ): string {
   const lines = files.map((f) => `- ${f.name}${f.size === null ? "" : ` (${formatSize(f.size)})`}: ${f.url}`);
-  return `\n${t("card.filesPlain", { date: expireDate })}\n${lines.join("\n")}\n` + (withPassword ? `${passwordNote(proof)}\n` : "") +
-    (proof ? `${proofNote(proof)}\n` : "");
+  return `\n${t("card.filesPlain", { date: expireDate })}\n${lines.join("\n")}\n${plainNote(withPassword, proof)}`;
 }
 
 export function messageText(url: string, expireDate: string, proof?: CardProof): string {
-  return `\n${t("card.messagePlain", { date: expireDate })}\n${url}\n${t("card.passwordNote")}\n` + (proof ? `${proofNote(proof)}\n` : "");
+  return `\n${t("card.messagePlain", { date: expireDate })}\n${url}\n${plainNote(true, proof)}`;
 }
 
 export function requestText(url: string, expireDate: string, proof?: CardProof): string {
-  return `\n${t("card.requestPlain", { date: expireDate })}\n${url}\n${passwordNote(proof)}\n` + (proof ? `${proofNote(proof)}\n` : "");
+  return `\n${t("card.requestPlain", { date: expireDate })}\n${url}\n${plainNote(true, proof)}`;
 }

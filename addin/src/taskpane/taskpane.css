@@ -385,11 +385,13 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* Sensitivity label of a file ("Vertraulich"), with a lock when the label encrypts it. */
 .file-label { white-space: nowrap; }
 .file-label .label-lock { width: 12px; height: 12px; vertical-align: -2px; margin-right: 2px; }
-/* "Verschlüsselte Datei" below the file list: a framed note in the colours of an error message, the box inside. */
-.encrypted-field { margin-top: 8px; padding: 8px 12px; border: 1px solid var(--danger-stroke); border-radius: 4px; background: var(--danger-bg); }
-.encrypted-title { display: flex; align-items: center; gap: 6px; font-weight: 600; color: var(--danger-fg); margin: 0 0 2px; }
-.encrypted-title .icon { width: 16px; height: 16px; flex: none; }
-.encrypted-field .hint { margin: 0 0 4px; color: var(--fg1); }
+/* An encrypted file: the note right under its row, indented under the file name (box 16 + 8 + icon 20 + 8), orange
+   like a warning (red with LABEL_ENCRYPTED=block), no frame; its own "Trotzdem als Link senden" below the text. */
+.file-encrypted { padding: 0 0 4px 52px; margin-top: -4px; }
+.file-encrypted-text { display: flex; align-items: flex-start; gap: 4px; margin: 0; font-size: 12px; line-height: 16px; color: var(--warning-fg); }
+.file-encrypted.blocked .file-encrypted-text { color: var(--danger-fg); }
+.file-encrypted-text .icon { width: 14px; height: 14px; flex: none; margin-top: 1px; }
+.file-encrypted .encrypted-confirm { padding: 4px 0 2px; }
 
 /* --- Message bar --------------------------------------------------------------- */
 /* Stays in sight at the top while the pane is scrolled (e.g. after a click on the button at its bottom). */
@@ -427,11 +429,6 @@ a:hover { color: var(--brand-fg-hover); text-decoration: underline; }
 /* Not ".progress": that is the class of a message of kind "progress" (setStatus), which would get cut to 2px. */
 .progress-track { height: 2px; margin-bottom: 12px; background: var(--stroke2); border-radius: 1px; overflow: hidden; }
 .progress-bar { height: 100%; width: 0; background: var(--brand-bg); transition: width 0.2s ease; }
-
-/* The note about an encrypted file: its "×" on the right of the title leaves the file out. */
-.encrypted-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-.encrypted-head .encrypted-title { margin: 0; }
-.encrypted-head .btn-icon { margin: -4px -6px 0 0; }
 
 /* --- Radio buttons (Fluent 2) --------------------------------------------------- */
 .radio { position: relative; display: flex; align-items: center; gap: 8px; padding: 4px 0; cursor: pointer; }
