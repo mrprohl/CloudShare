@@ -55,29 +55,53 @@ echo; echo "-- Nextcloud --"
 ask NEXTCLOUD_URL    "Nextcloud address"        "https://cloud.example.com"
 ask NEXTCLOUD_FOLDER "Folder for attachments"   "CloudShare"
 ask NEXTCLOUD_REQUEST_FOLDER "Folder for upload links" "CloudShare-File-Requests"
-echo; echo "-- Vaultwarden service account (own user, e.g. cloudshare@<your domain>) --"
-ask VAULTWARDEN_URL       "Vaultwarden address"        "https://vault.example.com"
-ask BW_CLIENTID           "API key client_id"          ""
-ask_secret BW_CLIENTSECRET       "API key client_secret"
-ask_secret BW_PASSWORD           "Master password"
-ask SEND_MAX_ACCESS_COUNT "Password link: accesses (default)" "3"
-ask SEND_MAX_ACCESS_LIMIT "Password link: accesses (maximum)" "20"
-ask SEND_EXPIRE_DAYS      "Password link / confidential message: valid, default (days, max. 30)" "5"
+echo; echo "-- Password delivery --"
+echo "With Vaultwarden the password mail holds a link to the password (it runs out, opens only a few times) and the"
+echo "add-in offers confidential messages. Without it the password mail holds the password itself; CloudShare keeps it"
+echo "sealed in its own database until the links expire."
+ask USE_VAULTWARDEN "Use Vaultwarden (yes/no)" "yes"
+case "$USE_VAULTWARDEN" in yes|no) ;; *) echo "Answer yes or no." >&2; exit 1;; esac
+vault_vars=()
+if [ "$USE_VAULTWARDEN" = yes ]; then
+  # shellcheck disable=SC2034  # written to env/cloudshare.env indirectly via ${!var} below
+  VAULTWARDEN_ENABLED=true
+  echo; echo "-- Vaultwarden service account (own user, e.g. cloudshare@<your domain>) --"
+  ask VAULTWARDEN_URL       "Vaultwarden address"        "https://vault.example.com"
+  ask BW_CLIENTID           "API key client_id"          ""
+  ask_secret BW_CLIENTSECRET       "API key client_secret"
+  ask_secret BW_PASSWORD           "Master password"
+  ask SEND_MAX_ACCESS_COUNT "Password link: accesses (default)" "3"
+  ask SEND_MAX_ACCESS_LIMIT "Password link: accesses (maximum)" "20"
+  ask SEND_EXPIRE_DAYS      "Password link / confidential message: valid, default (days, max. 30)" "5"
+  vault_vars=(VAULTWARDEN_URL BW_CLIENTID BW_CLIENTSECRET BW_PASSWORD SEND_MAX_ACCESS_COUNT SEND_MAX_ACCESS_LIMIT SEND_EXPIRE_DAYS)
+else
+  # shellcheck disable=SC2034  # written to env/cloudshare.env indirectly via ${!var} below
+  VAULTWARDEN_ENABLED=false
+fi
 
-for var in PUBLIC_BASE_URL ENTRA_TENANT_ID ENTRA_CLIENT_ID NEXTCLOUD_URL VAULTWARDEN_URL BW_CLIENTID; do
+for var in PUBLIC_BASE_URL ENTRA_TENANT_ID ENTRA_CLIENT_ID NEXTCLOUD_URL; do
   [ -n "${!var}" ] || { echo "$var must not be empty." >&2; exit 1; }
 done
 case "$ATTACHMENT_POLICY" in enforce|suggest) ;; *) echo "ATTACHMENT_POLICY must be enforce or suggest." >&2; exit 1;; esac
 [[ "$LANGUAGE" =~ ^[a-z]{2,3}(-[a-z0-9]{2,8})?$ ]] || { echo "LANGUAGE must be a language code like de or en." >&2; exit 1; }
-for var in PUBLIC_BASE_URL NEXTCLOUD_URL VAULTWARDEN_URL; do
+for var in PUBLIC_BASE_URL NEXTCLOUD_URL; do
   case "${!var}" in https://*) ;; *) echo "$var must start with https://." >&2; exit 1;; esac
 done
-case "$BW_CLIENTID" in user.*) ;; *) echo "BW_CLIENTID starts with user." >&2; exit 1;; esac
-for var in ATTACHMENT_THRESHOLD_MB SHARE_EXPIRE_DAYS SHARE_MAX_EXPIRE_DAYS SEND_MAX_ACCESS_COUNT SEND_MAX_ACCESS_LIMIT SEND_EXPIRE_DAYS; do
+for var in ATTACHMENT_THRESHOLD_MB SHARE_EXPIRE_DAYS SHARE_MAX_EXPIRE_DAYS; do
   [[ "${!var}" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "$var must be a number." >&2; exit 1; }
 done
-if ! [[ "$SEND_EXPIRE_DAYS" =~ ^[0-9]+$ ]] || (( SEND_EXPIRE_DAYS < 1 || SEND_EXPIRE_DAYS > 30 )); then
-  echo "SEND_EXPIRE_DAYS must be a whole number from 1 to 30 (Vaultwarden keeps Sends at most 31 days)." >&2; exit 1
+if [ "$USE_VAULTWARDEN" = yes ]; then
+  for var in VAULTWARDEN_URL BW_CLIENTID; do
+    [ -n "${!var}" ] || { echo "$var must not be empty." >&2; exit 1; }
+  done
+  case "$VAULTWARDEN_URL" in https://*) ;; *) echo "VAULTWARDEN_URL must start with https://." >&2; exit 1;; esac
+  case "$BW_CLIENTID" in user.*) ;; *) echo "BW_CLIENTID starts with user." >&2; exit 1;; esac
+  for var in SEND_MAX_ACCESS_COUNT SEND_MAX_ACCESS_LIMIT SEND_EXPIRE_DAYS; do
+    [[ "${!var}" =~ ^[0-9]+(\.[0-9]+)?$ ]] || { echo "$var must be a number." >&2; exit 1; }
+  done
+  if ! [[ "$SEND_EXPIRE_DAYS" =~ ^[0-9]+$ ]] || (( SEND_EXPIRE_DAYS < 1 || SEND_EXPIRE_DAYS > 30 )); then
+    echo "SEND_EXPIRE_DAYS must be a whole number from 1 to 30 (Vaultwarden keeps Sends at most 31 days)." >&2; exit 1
+  fi
 fi
 # shellcheck disable=SC2034  # written to env/cloudshare.env indirectly via ${!var} below
 CREDENTIAL_KEY=$(openssl rand -base64 32)
@@ -88,8 +112,7 @@ umask 077
   for var in PUBLIC_BASE_URL LANGUAGE ATTACHMENT_THRESHOLD_MB ATTACHMENT_POLICY SHARE_EXPIRE_DAYS SHARE_MAX_EXPIRE_DAYS \
            MAIL_FOOTER FEEDBACK_MAIL ENTRA_TENANT_ID ENTRA_CLIENT_ID ENTRA_CLIENT_SECRET \
            NEXTCLOUD_URL NEXTCLOUD_FOLDER NEXTCLOUD_REQUEST_FOLDER \
-           CREDENTIAL_KEY VAULTWARDEN_URL BW_CLIENTID BW_CLIENTSECRET BW_PASSWORD \
-           SEND_MAX_ACCESS_COUNT SEND_MAX_ACCESS_LIMIT SEND_EXPIRE_DAYS; do
+           CREDENTIAL_KEY VAULTWARDEN_ENABLED ${vault_vars[@]+"${vault_vars[@]}"}; do
     echo "$var=$(env_value "${!var}")"
   done
   echo

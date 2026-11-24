@@ -141,3 +141,33 @@ describe("password mail – limits and the mail after the confirmation", () => {
   });
 
 });
+
+describe("password mail without Vaultwarden (VAULTWARDEN_ENABLED=false)", () => {
+  it("shows the password itself in the card – no button, no fallback link, no limits", () => {
+    const html = passwordMailHtml({ ...base, sendUrl: "", password: "Kate<Gete>Fi45", fileNames: ["Angebot.pdf"], trackingId: "20261124-1034-WRB4" });
+    expect(html).toContain("die folgende Datei aus der Nachricht „Unterlagen“ benötigen Sie ein Kennwort. Hier ist es:");
+    expect(html).toContain("Kate&lt;Gete&gt;Fi45"); // escaped
+    expect(html).toMatch(/monospace[^>]*>Kate&lt;Gete&gt;Fi45</);
+    expect(html).not.toContain("Kennwort anzeigen");
+    expect(html).not.toContain("Falls der Button nicht funktioniert");
+    expect(html).not.toContain("Abrufe");
+    expect(html).toContain("Geben Sie das Kennwort ein, wenn Sie den Link öffnen. · Vorgang 20261124-1034-WRB4");
+  });
+
+  it("with a link: the button sentence after the intro", () => {
+    expect(passwordMailHtml({ ...base, fileNames: ["Angebot.pdf"] }))
+      .toContain("benötigen Sie ein Kennwort. Sie können es über den Button abrufen:");
+  });
+
+  it("after the confirmation of a delivery proof: the password and the one button on to the download", () => {
+    const html = passwordMailHtml({
+      ...base, sendUrl: "", password: "KateGeteFi45", fileNames: ["Angebot.pdf"],
+      afterConfirmation: { kind: "file", url: "https://cloudshare.example.test/r/s/tok", validUntil: "08.12.2026, 23:59 Uhr" },
+    });
+    expect(html).toContain("KateGeteFi45");
+    expect(html).toMatch(/<a href="https:\/\/cloudshare\.example\.test\/r\/s\/tok"[^>]*><span[^>]*>Zum Download<\/span><\/a>/);
+    expect(html).not.toContain("Neuen Kennwort-Link anfordern");
+    expect(html).not.toContain("Kennwort anzeigen");
+    expect(html).toContain("Gültig bis 08.12.2026, 23:59 Uhr");
+  });
+});

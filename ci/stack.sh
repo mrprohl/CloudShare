@@ -52,6 +52,7 @@ ci-dummy-secret
 https://cloud.example.com
 CloudShare
 CloudShare-File-Requests
+
 https://vault.example.com
 user.ci-dummy
 ci-dummy-client-secret
@@ -68,6 +69,8 @@ EOF
     || fail "CLOUDSHARE_HOST not set in env/versions.env"
   grep -q '^CREDENTIAL_KEY=.\{44,\}' "$base/env/cloudshare.env" && ok "CREDENTIAL_KEY generated" \
     || fail "CREDENTIAL_KEY missing"
+  grep -q "^VAULTWARDEN_ENABLED='true'$" "$base/env/cloudshare.env" && ok "Vaultwarden on by default" \
+    || fail "VAULTWARDEN_ENABLED not written as true"
 }
 
 compose() {

@@ -12,7 +12,7 @@ import { startProofWatcher } from "./proofWatcher.js";
 import { startRetention } from "./db.js";
 import { onUnsentExpired, startJobWatcher } from "./jobs.js";
 import { revokeUnsentLinks } from "./shares.js";
-import { initVault } from "./vaultwarden.js";
+import { initVault, startLocalPasswordPurge } from "./vaultwarden.js";
 
 // Texts of all languages into the add-in files (copied from the image by docker/entrypoint.sh) – before the server
 // answers the first request for them. The add-in picks the client's language, mails and SMS use LANGUAGE.
@@ -47,3 +47,5 @@ startNotices(app.log);
 startProofWatcher(app.log);
 startRetention(app.log);
 startProofRetention(app.log);
+// Passwords kept without Vaultwarden go when their links expire (also after switching Vaultwarden on again).
+startLocalPasswordPurge(app.log);

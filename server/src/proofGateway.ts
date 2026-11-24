@@ -387,7 +387,7 @@ function confirmedPage(link: ProofLink, released: ReleasedPassword | null, faile
   if (failed) steps.push(t("mail.proof.gateway.passwordFailed"));
   if (released?.mailTo) {
     steps.push(t("mail.proof.gateway.stepMail", { address: released.mailTo, subject: released.subject ?? "" }));
-    steps.push(t("mail.proof.gateway.stepShow"));
+    steps.push(t(released.inMail ? "mail.proof.gateway.stepInMail" : "mail.proof.gateway.stepShow"));
   }
   if (released?.others?.length) steps.push(t("mail.proof.gateway.stepOther", { to: released.others.join(", ") }));
   if (released?.sms) steps.push(t("mail.proof.gateway.stepSms", { to: released.sms }));

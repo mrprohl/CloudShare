@@ -68,6 +68,7 @@ vi.mock("../src/vaultwarden.js", () => ({
   setSendExpiry: vi.fn(async () => undefined),
   sendAccessCount: vi.fn(async () => null),
   initVault: vi.fn(),
+  isLocalPassword: (id?: string) => Boolean(id?.startsWith("local:")),
 }));
 vi.mock("../src/nextcloud.js", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/nextcloud.js")>();

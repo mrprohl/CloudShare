@@ -9,6 +9,7 @@ vi.mock("../src/graph.js", () => ({
 vi.mock("../src/vaultwarden.js", () => ({
   readSendPassword: vi.fn(async () => "KateGeteFi45"),
   deleteSend: vi.fn(async () => undefined),
+  isLocalPassword: (id?: string) => Boolean(id?.startsWith("local:")),
 }));
 vi.mock("../src/sms.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../src/sms.js")>()),
@@ -112,6 +113,24 @@ describe("password jobs", () => {
     expect(html).toContain("a.pdf");
     expect(html).toContain("b.png");
     expect(getJob(id)?.fileNames).toEqual(["a.pdf", "b.png"]);
+  });
+
+  it("without Vaultwarden: the password mail carries the password itself – no button, no link", async () => {
+    const id = await createSeparateJob("oid", "max@example.test", {
+      step: "s1", fileNames: ["a.pdf"], sendUrl: "", sendId: "local:a", maxAccessCount: 3,
+    });
+    await arm(id);
+    sentOnlyFor(id);
+
+    await checkJobs(quietLog());
+
+    expect(sendMail).toHaveBeenCalledOnce();
+    const [, , , html] = sendMail.mock.calls[0];
+    expect(html).toContain("KateGeteFi45");
+    expect(html).toContain("benötigen Sie ein Kennwort. Hier ist es:");
+    expect(html).not.toContain("Kennwort anzeigen");
+    expect(html).not.toContain("Falls der Button nicht funktioniert");
+    expect(html).not.toContain("Abrufe");
   });
 
   it("sends one password mail per step, each with its own password link", async () => {

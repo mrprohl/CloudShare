@@ -182,7 +182,9 @@ export function proofPdf(c: ProofCase, language: string | undefined, now = new D
       for (const [name, value] of mono ?? []) lines.push({ text: `${name}: ${value}`, size: 8, font: "mono", indent: 14 });
       lines.push({ text: `${t("mail.proof.field.hash")}: ${e.hash}`, size: 7, font: "mono", grey: 0.45, indent: 14 });
     });
-    lines.push({ text: t("mail.proof.explanation", { zone: config.timeZone }), size: 8, grey: 0.35, gapBefore: 18, rule: true });
+    // Without Vaultwarden nobody counts reading the password (it was in the mail itself).
+    lines.push({ text: t(config.vaultwardenEnabled ? "mail.proof.explanation" : "mail.proof.explanationNoVault", { zone: config.timeZone }),
+      size: 8, grey: 0.35, gapBefore: 18, rule: true });
     lines.push({ text: t("mail.proof.generated", { date: time(now.getTime()) }), size: 8, grey: 0.35, gapBefore: 4 });
     return pdfDocument(lines, {
       title: t("mail.proof.documentTitle", { id: c.id }),

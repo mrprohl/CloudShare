@@ -78,6 +78,9 @@ export type AttachmentPolicy = (typeof ATTACHMENT_POLICIES)[number];
 export const LABEL_POLICIES = ["inherit", "suggest", "off"] as const;
 export const LABEL_ENCRYPTED = ["warn", "block", "allow"] as const;
 
+/** VAULTWARDEN_ENABLED – only "false" switches Vaultwarden off (see config.vaultwardenEnabled). */
+const vaultwardenEnabled = (process.env.VAULTWARDEN_ENABLED ?? "true").trim() !== "false";
+
 export const config = {
   port: number("PORT", 3000),
   publicBaseUrl: required("PUBLIC_BASE_URL").replace(/\/$/, ""),
@@ -140,8 +143,15 @@ export const config = {
   defaultExpireDays: number("SHARE_EXPIRE_DAYS", 14),
   maxExpireDays: number("SHARE_MAX_EXPIRE_DAYS", 90),
 
+  /**
+   * VAULTWARDEN_ENABLED=false: no Vaultwarden – the password mail carries the password itself (no password link),
+   * CloudShare keeps each password sealed in its own database until the links expire (vaultwarden.ts, local store) so
+   * the sender can see it and send it again; no confidential messages ("Nachricht"), no limit of 30 days for links with
+   * password. Default true.
+   */
+  vaultwardenEnabled: vaultwardenEnabled,
   bwServeUrl: process.env.BW_SERVE_URL ?? "http://127.0.0.1:8087",
-  bwPassword: required("BW_PASSWORD"),
+  bwPassword: vaultwardenEnabled ? required("BW_PASSWORD") : "",
   /** Default number of times the password link (Vaultwarden Send) can be opened; the user may change it per mail. */
   sendMaxAccessCount: number("SEND_MAX_ACCESS_COUNT", 3),
   /** Upper limit for the number of accesses a user may choose. */
