@@ -23,12 +23,14 @@ import { passwordRefFor, updatePasswordRef, type PasswordRef } from "./passwordR
 import { gatewayUrl, saveCase, type ProofCase } from "./proof.js";
 import { formatPhone, maskPhone, sendSms, smsEnabled } from "./sms.js";
 import { defaultTemplates, render, smsFiles, templatesFor } from "./templates.js";
-import { createPasswordSend, readSendPassword } from "./vaultwarden.js";
+import { createPasswordSend, isLocalPassword, readSendPassword } from "./vaultwarden.js";
 
 /** What went out (now or before) for the page after the confirmation. */
 export interface ReleasedPassword {
   /** The password mail to the confirmed address, with its subject. */
   mailTo?: string;
+  /** Without Vaultwarden the password is in that mail itself (no "Kennwort anzeigen" to click). */
+  inMail?: boolean;
   subject?: string;
   /** Other addresses that got (or get) it, and the masked SMS number. */
   others?: string[];
@@ -52,8 +54,12 @@ function linkEnd(expireDate: string | undefined): string | undefined {
 
 /** One password mail to one address: a new Send with the step's password, in the recipients' language. */
 async function mailPassword(c: ProofCase, ref: PasswordRef, password: string, to: string, kind?: "file" | "request", token = ""): Promise<string> {
-  const send = await createPasswordSend(`CloudShare: ${ref.fileNames[0]}`, password, ref.maxAccessCount, config.sendExpireDays, ref.keepUntil);
-  await updatePasswordRef(ref.sendId, { resentSend: send.id }); // deleted with the links
+  // Without Vaultwarden no new Send: the password goes in the mail itself.
+  const inMail = isLocalPassword(ref.sendId);
+  const send = inMail
+    ? { url: "", id: undefined, expiresAt: ref.keepUntil }
+    : await createPasswordSend(`CloudShare: ${ref.fileNames[0]}`, password, ref.maxAccessCount, config.sendExpireDays, ref.keepUntil);
+  if (send.id) await updatePasswordRef(ref.sendId, { resentSend: send.id }); // deleted with the links
   const mail = inRecipientLanguage(ref.language, () => {
     const templates = templatesFor({ upn: ref.ownerUpn, department: ref.department });
     const customIntro = templates.mail_password_intro !== defaultTemplates().mail_password_intro ? templates.mail_password_intro : undefined;
@@ -64,7 +70,7 @@ async function mailPassword(c: ProofCase, ref: PasswordRef, password: string, to
         sender_name: ref.senderName ?? "",
       }),
       html: passwordMailHtml({
-        fileNames: ref.fileNames, sendUrl: send.url, maxAccessCount: ref.maxAccessCount, subject: ref.subject,
+        fileNames: ref.fileNames, sendUrl: send.url, password: inMail ? password : undefined, maxAccessCount: ref.maxAccessCount, subject: ref.subject,
         expireDays: config.sendExpireDays, introTemplate: customIntro, senderName: ref.senderName || ref.ownerUpn,
         expiresOn: formatDate(send.expiresAt), signature: ref.signature, trackingId: c.id,
         // Right after the confirmation: the mail says so and how to go on.
@@ -111,6 +117,7 @@ export async function releasePassword(c: ProofCase, token: string, address: stri
     // Kennwort-Link anfordern", another device): the first link may have run out or been used up. The code limits of
     // the gateway keep this from flooding anyone.
     result.mailTo = address;
+    result.inMail = isLocalPassword(ref.sendId);
     result.subject = await mailPassword(c, ref, await readPassword(), address, kind, token);
     if (!done.mailed.includes(address)) done.mailed.push(address);
     saveCase(c.id);

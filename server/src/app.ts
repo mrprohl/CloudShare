@@ -81,6 +81,7 @@ import { sign, signedBy } from "./storage.js";
 import {
   createMessageSend,
   createPasswordSend,
+  isLocalPassword,
   MESSAGE_MAX_LENGTH,
   readSendPassword,
   setSendExpiry,
@@ -165,7 +166,8 @@ function recordProofLink(
     sha256: stored.sha256,
     protection,
     passwordWays: wayOf(delivery),
-    maxAccess,
+    // How often the password link opens – none without Vaultwarden (the password is in the mail itself).
+    maxAccess: config.vaultwardenEnabled ? maxAccess : undefined,
     language: knownLanguage(body?.language) ?? null,
   });
   return { proofId: id, gateway: stored.url ? gatewayUrl(token) : undefined };
@@ -232,9 +234,10 @@ interface PasswordLink {
 
 /**
  * Longest validity of a link with password: it lasts only as long as its password in Vaultwarden, and Vaultwarden
- * keeps a Send at most 31 days. Links "Ohne Kennwort" may last up to SHARE_MAX_EXPIRE_DAYS.
+ * keeps a Send at most 31 days. Links "Ohne Kennwort" may last up to SHARE_MAX_EXPIRE_DAYS – and so may every link
+ * without Vaultwarden (VAULTWARDEN_ENABLED=false: CloudShare keeps the password itself until then).
  */
-const passwordLinkMaxDays = () => Math.min(config.maxExpireDays, SEND_DAYS_LIMIT);
+const passwordLinkMaxDays = () => (config.vaultwardenEnabled ? Math.min(config.maxExpireDays, SEND_DAYS_LIMIT) : config.maxExpireDays);
 
 /**
  * Validated password, expiry date (YYYY-MM-DD) and password link (accesses, days, lifetime of the Send) for a new
@@ -563,6 +566,8 @@ export async function buildApp(options: { logger?: boolean } = {}) {
     maxExpireDays: config.maxExpireDays,
     // Links with password last at most as long as their password in Vaultwarden.
     passwordLinkMaxDays: passwordLinkMaxDays(),
+    // VAULTWARDEN_ENABLED: false – the password goes in the mail itself; no "Nachricht", no settings of the password link.
+    vaultwarden: config.vaultwardenEnabled,
     chunkSize: config.chunkSizeBytes,
     sendMaxAccessCount: config.sendMaxAccessCount,
     sendMaxAccessLimit: config.sendMaxAccessLimit,
@@ -1268,7 +1273,11 @@ export async function buildApp(options: { logger?: boolean } = {}) {
       }
 
       const password = await readSendPassword(ref.sendId);
-      const send = await createPasswordSend(`CloudShare: ${ref.fileNames[0]}`, password, ref.maxAccessCount, config.sendExpireDays, ref.keepUntil);
+      // Without Vaultwarden no new Send: the password goes in the mail itself.
+      const inMail = isLocalPassword(ref.sendId);
+      const send = inMail
+        ? { url: "", id: undefined, expiresAt: ref.keepUntil }
+        : await createPasswordSend(`CloudShare: ${ref.fileNames[0]}`, password, ref.maxAccessCount, config.sendExpireDays, ref.keepUntil);
       // The password mail in the language the recipients got it in the first time.
       const { subject, customIntro } = inRecipientLanguage(ref.language, () => ({
         subject: render(templates.mail_password_subject, {
@@ -1283,7 +1292,7 @@ export async function buildApp(options: { logger?: boolean } = {}) {
         .then(({ token }) => fetchProfile(token))
         .catch(() => ({ email: user.upn, displayName: ref.senderName ?? "" }));
       const html = inRecipientLanguage(ref.language, () =>
-        passwordMailHtml({ fileNames: ref.fileNames, sendUrl: send.url, maxAccessCount: ref.maxAccessCount, subject: ref.subject,
+        passwordMailHtml({ fileNames: ref.fileNames, sendUrl: send.url, password: inMail ? password : undefined, maxAccessCount: ref.maxAccessCount, subject: ref.subject,
           expireDays: config.sendExpireDays, introTemplate: customIntro, senderName: ref.senderName, expiresOn: formatDate(send.expiresAt),
           signature: signatureHtml(settingsFor(user.oid).signature, profile),
           trackingId: caseOfToken(ref.tokens[0] ?? "")?.id }));

@@ -29,7 +29,7 @@ const isDeferredStep = (shares: StepShare[]) =>
 import { formatPhone, maskPhone, sendSms, smsEnabled, smsNumberProblem } from "./sms.js";
 import { PersistentMap } from "./db.js";
 import { defaultTemplates, render, smsFiles, templatesFor, type Templates } from "./templates.js";
-import { readSendPassword } from "./vaultwarden.js";
+import { isLocalPassword, readSendPassword } from "./vaultwarden.js";
 
 export interface ArmedSend {
   /** Delegated Graph token (Mail.Read(.Shared) + Mail.Send(.Shared)) obtained when the user pressed "Send". */
@@ -527,18 +527,21 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
           // What the recipients read comes in the step's language ("Sprache für die Empfänger"); notes to the sender
           // (a failed SMS) stay in LANGUAGE.
           const t = inRecipientLanguage(part.language, () => templatesFor({ upn: job.ownerUpn, department: job.department }));
-          const mailFor = () =>
-            inRecipientLanguage(part.language, () => {
+          // Without Vaultwarden the password goes in the mail itself (read from where CloudShare keeps it).
+          const mailFor = async () => {
+            const password = isLocalPassword(part.sendId) ? await readSendPassword(part.sendId!) : undefined;
+            return inRecipientLanguage(part.language, () => {
               const customIntro = t.mail_password_intro !== defaultTemplates().mail_password_intro ? t.mail_password_intro : undefined;
               const label = translate(itemsKey("mail.files", files), { count: files.length, name: files[0] });
               return {
                 subject: render(t.mail_password_subject, { files: label, subject: message.subject || files[0], sender_name: job.senderName ?? "" }),
-                html: passwordMailHtml({ fileNames: files, sendUrl: part.sendUrl, maxAccessCount: part.maxAccessCount,
+                html: passwordMailHtml({ fileNames: files, sendUrl: part.sendUrl, password, maxAccessCount: part.maxAccessCount,
                   subject: message.subject, expireDays: config.sendExpireDays, introTemplate: customIntro, senderName: job.senderName,
                   expiresOn: part.sendExpiresAt ? formatDate(part.sendExpiresAt) : undefined, signature: job.signature,
                   trackingId: caseOfToken(part.shares?.[0]?.token ?? "")?.id }),
               };
             });
+          };
           const tokens = (part.shares ?? []).map((s) => s.token);
           const ways = partDeliveries(job, part);
           // "Zustellnachweis": every link of the step leads through the gateway – the password goes out only after a
@@ -557,7 +560,7 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
               if (part.sendId) await sendStepBySms(job, part, way.to, t, tokens, armed.graphToken, sender, message.subject, log, armed.language);
             } else {
               const to = way.channel === "mail" ? { to: [way.to], cc: [], bcc: [] } : message.recipients;
-              const mail = mailFor();
+              const mail = await mailFor();
               await sendMail(armed.graphToken, to, mail.subject, mail.html, sender);
               await recordDelivery(tokens, { owner: job.owner, channel: "mail", to: to.to.concat(to.cc).join(", "), at: Date.now() });
             }
@@ -599,6 +602,7 @@ export async function checkJobs(log: Pick<FastifyBaseLogger, "info" | "warn">) {
       } else {
         await sendMail(armed.graphToken, recipients, translate("mail.subjectLegacy", { subject: sent.subject || job.fileNames[0] }),
           passwordMailHtml({ fileNames: job.fileNames, sendUrl: job.sendUrl, maxAccessCount: job.maxAccessCount,
+            password: isLocalPassword(job.sendId) ? await readSendPassword(job.sendId!) : undefined,
             subject: sent.subject, expireDays: config.sendExpireDays, signature: job.signature }), sender);
       }
       job.dispatched = true;

@@ -74,7 +74,7 @@
               <input type="radio" name="kind" id="kind-files" value="files" checked />
               <span>%%t:addin.kind.files%%</span>
             </label>
-            <label class="segment">
+            <label class="segment" id="kind-message-segment">
               <input type="radio" name="kind" id="kind-message" value="message" />
               <span>%%t:addin.kind.message%%</span>
             </label>
@@ -568,10 +568,11 @@
               </ul>
               <p class="help-important">%%t:addin.help.password.privacy%%</p>
               <p>%%t:addin.help.password.channel%%</p>
-              <p>%%t:addin.help.password.validity%%</p>
+              <p id="help-password-validity">%%t:addin.help.password.validity%%</p>
+              <p id="help-password-validity-mail" hidden>%%t:addin.help.password.validityInMail%%</p>
             </details>
 
-            <details class="help-section">
+            <details class="help-section" id="help-message">
               <summary>%%t:addin.help.message.title%%</summary>
               <p>%%t:addin.help.message.text%%</p>
             </details>

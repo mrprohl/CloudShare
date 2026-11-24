@@ -19,6 +19,8 @@ export interface ServerConfig {
   maxExpireDays: number;
   /** Longest validity of a link with password (as long as its password in Vaultwarden, at most 30); older servers: none. */
   passwordLinkMaxDays?: number;
+  /** VAULTWARDEN_ENABLED: false – the password goes in the password mail itself (no "Nachricht", no password link). */
+  vaultwarden?: boolean;
   chunkSize: number;
   /** Default and upper limit for how often the password link (Vaultwarden Send) can be opened. */
   sendMaxAccessCount: number;

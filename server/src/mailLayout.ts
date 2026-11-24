@@ -56,6 +56,8 @@ export interface MailCard {
   files: string[];
   /** A short value shown large under the title (the six-digit code of the delivery proof). */
   highlight?: string;
+  /** The password itself (VAULTWARDEN_ENABLED=false), in a grey box under the files, easy to select and copy. */
+  password?: string;
   button?: { label: string; url: string };
   /**
    * Numbered steps instead of the one button (the password mail after the delivery proof's confirmation): each with
@@ -112,6 +114,11 @@ export function mailCard(card: MailCard): string {
         `letter-spacing:6px;color:#242424;margin:0 0 4px;">${escapeHtml(card.highlight)}</div>`
       : "") +
     (rows ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">${rows}</table>` : "") +
+    (card.password !== undefined
+      ? `<div style="margin:12px 0 0;padding:8px 12px;background:#f5f5f5;border:1px solid #e0e0e0;border-radius:4px;` +
+        `font-family:Consolas,'Courier New',monospace;font-size:18px;line-height:24px;letter-spacing:1px;color:#242424;` +
+        `word-break:break-all;">${escapeHtml(card.password)}</div>`
+      : "") +
     button +
     steps +
     details +

@@ -25,7 +25,10 @@ export const accessText = (count?: number) => (count === undefined ? t("mail.acc
 
 export interface PasswordMailContent {
   fileNames: string[];
+  /** The password link (Vaultwarden Send); "" without Vaultwarden – then `password` is in the mail itself. */
   sendUrl: string;
+  /** VAULTWARDEN_ENABLED=false: the password itself, shown in the card in place of the button (no link, no limits). */
+  password?: string;
   maxAccessCount?: number;
   /** Subject of the mail with the links ("" if unknown). */
   subject: string;
@@ -58,13 +61,17 @@ export interface PasswordMailContent {
 
 export function passwordMailHtml(mail: PasswordMailContent): string {
   const count = mail.fileNames.length;
+  // Without Vaultwarden the password is in the mail itself – no button, no link, nothing that runs out.
+  const inMail = mail.password !== undefined;
+  // "Sie können es über den Button abrufen:" – or, with the password in the card, "Hier ist es:".
+  const lead = (text: string) => `${text} ${t(inMail ? "mail.introPassword" : "mail.introButton")}`;
   const opening = mail.afterConfirmation
     ? paragraph(t("mail.greeting")) +
       paragraph(t(itemsKey("mail.confirmedIntro", mail.fileNames), { count, name: mail.fileNames[0], subject: mail.subject || mail.fileNames[0], sender: mail.senderName || "" }))
     : mail.introTemplate
     ? renderHtml(mail.introTemplate, { subject: mail.subject, sender_name: mail.senderName ?? "", count: String(count) }, TEXT_STYLE)
     : paragraph(t("mail.greeting")) +
-      paragraph(mail.subject ? t(itemsKey("mail.introSubject", mail.fileNames), { count, subject: mail.subject }) : t(itemsKey("mail.intro", mail.fileNames), { count }));
+      paragraph(lead(mail.subject ? t(itemsKey("mail.introSubject", mail.fileNames), { count, subject: mail.subject }) : t(itemsKey("mail.intro", mail.fileNames), { count })));
   const expiry = mail.expiresOn ? t("mail.expiresOn", { date: mail.expiresOn }) : t("mail.expires", { count: mail.expireDays });
   // How often and how long the button works, in a sentence – the link stops working after that, and recipients should
   // keep the password until they are done. Older jobs without the date or the number: the short form.
@@ -74,10 +81,27 @@ export function passwordMailHtml(mail: PasswordMailContent): string {
   const signature = mail.signature ? `<div style="margin:20px 0 0;">${mail.signature}</div>` : "";
   const tracking = mail.trackingId ? t("mail.trackingId", { id: mail.trackingId }) : "";
   if (mail.afterConfirmation) {
+    const upload = mail.afterConfirmation.kind === "request";
+    const onward = { label: t(upload ? "mail.proof.gateway.upload" : "mail.proof.gateway.download"), url: mail.afterConfirmation.url };
+    const validUntil = mail.afterConfirmation.validUntil ? t("mail.confirmedValidUntil", { date: mail.afterConfirmation.validUntil }) : "";
+    if (inMail) {
+      // The password in the card, then the one button on to the download (or upload) – nothing else to open.
+      return mailDocument({
+        opening,
+        card: {
+          accent: "brand",
+          title: t(upload ? "mail.confirmedTitleUpload" : "mail.confirmedTitleDownload"),
+          files: mail.fileNames,
+          password: mail.password,
+          button: onward,
+          details: [validUntil, tracking].filter(Boolean).join(" · "),
+        },
+        after: signature,
+      });
+    }
     // Right after the confirmation: two numbered steps in the card – first the password, then the download. Each has
     // its button and its address as plain text. The download goes to the gateway, not to Nextcloud: the confirmed
     // browser goes straight on, another one or a forwarded mail is asked for the code again – every opening is recorded.
-    const upload = mail.afterConfirmation.kind === "request";
     const passwordLimits = mail.expiresOn && mail.maxAccessCount
       ? t("mail.confirmedLimit", { count: mail.maxAccessCount, date: mail.expiresOn })
       : [accessText(mail.maxAccessCount), expiry].filter(Boolean).join(" · ");
@@ -93,11 +117,24 @@ export function passwordMailHtml(mail: PasswordMailContent): string {
             noteLink: { label: t("mail.confirmedPasswordAgain"), url: `${mail.afterConfirmation.url}/password` } },
           {
             text: t(upload ? "mail.confirmedStepUpload" : "mail.confirmedStepDownload", { count }),
-            button: { label: t(upload ? "mail.proof.gateway.upload" : "mail.proof.gateway.download"), url: mail.afterConfirmation.url },
-            note: mail.afterConfirmation.validUntil ? t("mail.confirmedValidUntil", { date: mail.afterConfirmation.validUntil }) : undefined,
+            button: onward,
+            note: validUntil || undefined,
           },
         ],
         details: tracking,
+      },
+      after: signature,
+    });
+  }
+  if (inMail) {
+    return mailDocument({
+      opening,
+      card: {
+        accent: "brand",
+        title: t(itemsKey("mail.cardTitle", mail.fileNames), { count }),
+        files: mail.fileNames,
+        password: mail.password,
+        details: [t("mail.enterPassword", { count }), tracking].filter(Boolean).join(" · "),
       },
       after: signature,
     });

@@ -158,6 +158,8 @@ const statusBar = $<HTMLDivElement>("status");
 const readMode = new URLSearchParams(location.search).get("view") === "read";
 
 let serverConfig: ServerConfig;
+/** Whether passwords go through Vaultwarden (a password link); false: the password mail carries the password itself. */
+const vaultwarden = () => serverConfig?.vaultwarden !== false;
 /** Files picked from the computer, not yet uploaded. */
 let pickedFiles: File[] = [];
 /** Uploads or insertions in progress – the check for deleted links waits meanwhile. */
@@ -1722,7 +1724,8 @@ function renderValidity() {
   const kind = selectedKind();
   // "Kennwort abrufbar" / "Kennwort-Link gültig für" only for a password link: not without password, not by SMS (the
   // password is in the SMS itself and works as long as the link does).
-  const passwordLink = !withoutPassword() && selectedChannel() !== "sms";
+  // Without Vaultwarden there is no password link at all: the password is in the password mail itself.
+  const passwordLink = vaultwarden() && !withoutPassword() && selectedChannel() !== "sms";
   // "Zustellnachweis" only for files (offered with DELIVERY_PROOF) – not shown at all for a message or an upload link.
   proofField.hidden = !serverConfig.deliveryProof || kind !== "files";
   expireField.hidden = kind === "message";
@@ -2997,7 +3000,7 @@ async function fillPasswordPanel(opened: HTMLElement, share: ShareItem) {
       for (const box of boxes) ways.push({ channel: "recipients", box });
     }
   }
-  addWay("mail", t("channel.mail"), t("resend.mailHint"));
+  addWay("mail", t("channel.mail"), t(vaultwarden() ? "resend.mailHint" : "resend.mailHintInMail"));
   if (serverConfig.smsEnabled) addWay("sms", t("channel.sms"), t("resend.smsHint") + smsCountriesHint());
 
   const send = panel.querySelector<HTMLButtonElement>(".send-password")!;
@@ -3641,6 +3644,13 @@ Office.onReady(async () => {
   // The guide explains it only where it exists.
   for (const id of ["help-proof", "help-shares-proof"]) $<HTMLElement>(id).hidden = !serverConfig.deliveryProof;
   $<HTMLElement>("help-files-labels").hidden = serverConfig.labelPolicy === "off";
+  // Without Vaultwarden (VAULTWARDEN_ENABLED=false): no "Nachricht" (a Vaultwarden Send) – and the guide says the
+  // password is in the mail itself.
+  $<HTMLElement>("kind-message-segment").hidden = !vaultwarden();
+  $<HTMLElement>("help-message").hidden = !vaultwarden();
+  $<HTMLElement>("help-password-validity").hidden = !vaultwarden();
+  $<HTMLElement>("help-password-validity-mail").hidden = vaultwarden();
+  if (!vaultwarden() && selectedKind() === "message") selectKind("files");
   proofInput.checked = state.proof === true;
   applyProofLock(state.proofMail);
   applyLinkMax();

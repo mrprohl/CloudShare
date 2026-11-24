@@ -858,6 +858,20 @@ test("Kennwort an eine andere E-Mail-Adresse: stored on the job once it exists",
   expect(calls.filter((c) => c.method === "PATCH")).toEqual([]);
 });
 
+test("without Vaultwarden: no \"Nachricht\", no settings of the password link, the guide says the password is in the mail", async ({ page }) => {
+  await openTaskpane(page, { config: { vaultwarden: false, passwordLinkMaxDays: 90 } });
+  await expect(page.locator("#kind-message-segment")).toBeHidden();
+  await expect(page.locator("#kind-files")).toBeChecked();
+  await expect(page.locator("#max-access-field")).toBeHidden();
+  await expect(page.locator("#password-days-field")).toBeHidden();
+  await expect(page.locator("#validity-summary")).not.toContainText("Kennwort-Link");
+  await expectAccessible(page);
+  await openHelp(page);
+  await expect(page.locator("#help-message")).toBeHidden();
+  await expect(page.locator("#help-password-validity")).toBeHidden();
+  await expect(page.locator("#help-password-validity-mail")).toContainText("Das Kennwort steht direkt in der E-Mail");
+});
+
 test("Kennwort per SMS: not offered without seven.io on the server", async ({ page }) => {
   await openTaskpane(page);
   await expect(page.locator("#password-channel label.radio:not(#channel-same-row)")).toHaveText(["Empfänger der Nachricht", "Andere E-Mail-Adresse"]);

@@ -249,7 +249,8 @@ Outlook add-in ──HTTPS──► Caddy (Let's Encrypt) ──► CloudShare c
 
 - Microsoft 365 / Exchange Online and permission to register an app in Entra ID and deploy add-ins
 - Nextcloud with public links enabled (any login method – users connect once via Login Flow v2)
-- Vaultwarden with Sends enabled and a service account for CloudShare
+- Vaultwarden with Sends enabled and a service account for CloudShare – optional, see
+  [Without Vaultwarden](#without-vaultwarden)
 - A Docker host with Docker Compose ≥ 2.20, a public DNS name and ports 80/443 reachable from the internet
 
 The examples use `cloudshare.example.com` (CloudShare), `cloud.example.com` (Nextcloud) and `vault.example.com`
@@ -345,12 +346,34 @@ deployed again.
 | `DATA_RETENTION_DAYS` | `365` | Entries in `/data/cloudshare.db` not changed for this many days are deleted (daily, then the file is shrunk); `off` = never. A safety net – entries normally leave on their own (jobs after 7 days, links' data when they expire, SMS states after 120 days). Kept on purpose, never affected: Nextcloud connections, the cleanup list, personal settings, proofs of delivery (`PROOF_RETENTION_MONTHS`) and the signing identity. At least `SHARE_MAX_EXPIRE_DAYS` |
 | `FEEDBACK_MAIL` | empty | Address for "Send feedback" in the account menu of the add-in (e.g. whoever looks after CloudShare): problem reports and suggestions go there by mail from the user's own mailbox, with technical details if the user leaves them ticked – never anywhere public. Empty: the entry is not offered |
 | `MAIL_FOOTER` | empty | Signature of the mails to the recipients (password mail, code mail of a proof of delivery) for users without an own one (settings), filled from the sender's Microsoft 365 profile, e.g. `'{displayName} · {department}\n{company} · Tel. {phone} · {email}'` – recipients see who the password comes from; placeholders and rules in `cloudshare.env.example`. Empty = no signature (`setup.sh`: Enter). The link card in the message carries none |
-| `VAULTWARDEN_URL`, `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD` | – | Vaultwarden service account |
+| `VAULTWARDEN_ENABLED` | `true` | `false`: no Vaultwarden – the password mail holds the password itself instead of a link to it, see [Without Vaultwarden](#without-vaultwarden). `setup.sh` asks for it |
+| `VAULTWARDEN_URL`, `BW_CLIENTID`, `BW_CLIENTSECRET`, `BW_PASSWORD` | – | Vaultwarden service account (not needed with `VAULTWARDEN_ENABLED=false`) |
 | `RATE_LIMIT_PER_MINUTE` | `600` | Requests per minute and user |
 | `SUCCESS_MESSAGE_SECONDS` | `5` | Messages in the pane ("The link has been inserted", "The sent message has been deleted", "The connection … has been removed") disappear after this many seconds – a ring around the tick, "!" or "i" runs down and stops while the pointer is on the message. `0` = they stay. Progress ("Uploading …") and a failed start (with "Try again") always stay |
 | `CLIENT_TRACE` | off | Diagnostics, see [Troubleshooting](#troubleshooting) |
 
 `env/versions.env` holds `CLOUDSHARE_HOST`, `CLOUDSHARE_VERSION` (`latest`) and `CADDY_VERSION`.
+
+### Without Vaultwarden
+
+With `VAULTWARDEN_ENABLED=false` (`setup.sh`: "Use Vaultwarden" → `no`) CloudShare runs without Vaultwarden:
+
+- **The password mail holds the password itself** in a grey box under the file names – no "Show password" button,
+  no link that runs out or opens only a few times. With a proof of delivery the mail after the confirmation holds the
+  password and the button on to the download. SMS stay as they are (the password is in the SMS anyway).
+- **CloudShare keeps each password itself** – sealed in its database with `CREDENTIAL_KEY` like every row, deleted
+  hourly once its links expired – so "Password" in "History" still shows it and sends it again.
+- **No confidential messages:** "Message" is not offered in the pane, its help section is hidden.
+- **No settings of the password link:** "Password retrievable" and "Password link valid for" disappear; links with a
+  password may last up to `SHARE_MAX_EXPIRE_DAYS` (no 30-day limit). `VAULTWARDEN_URL`, `BW_*` and `SEND_*` are not
+  needed; the container does not start the Bitwarden CLI.
+- The proof of delivery cannot record when the password was read (it was in the mail).
+
+Weigh it up before switching off (non-binding note, check with your data protection officer): link and password then
+arrive in the same mailbox – whoever can read it later has both, while a password link would have run out by then.
+Switching off later: links made with Vaultwarden keep working (their password links stay in Vaultwarden), but
+"Password" in "History" cannot show or resend their passwords while Vaultwarden is off. Switching it on again: new
+links get password links; older ones keep their password in the database until they expire.
 
 ### Password by SMS (optional)
 

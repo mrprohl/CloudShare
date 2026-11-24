@@ -620,6 +620,29 @@ the highest Mailbox requirement set, the languages of Outlook and CloudShare, th
 and the last five error messages of the pane (`noteError` in `setStatus`); the server adds the add-in version from
 the manifest it serves. No mail content, no recipients, no logs.
 
+### 2.16 Without Vaultwarden
+
+`VAULTWARDEN_ENABLED=false` (default `true`; `setup.sh` asks "Use Vaultwarden") – everything that touches a Send goes
+through `vaultwarden.ts`, which then keeps the password itself:
+
+- `createPasswordSend` returns `url: ""` and an ID `local:<uuid>`; the password is stored in `local-passwords`
+  (sealed like every row, `retention: false`) until `keepUntil` – the expiry of the links –, deleted hourly after that
+  (`startLocalPasswordPurge`). `readSendPassword`, `deleteSend` take such IDs (also after Vaultwarden was switched on
+  again – the prefix decides, not the switch); `sendAccessCount` is null, `setSendExpiry`/`setSendMaxAccess` do
+  nothing, `createMessageSend` refuses (409 `NO_VAULTWARDEN`), `initVault` does nothing and `docker/entrypoint.sh`
+  starts no Bitwarden CLI.
+- The password mail gets `password` instead of a link (`passwordMailHtml`: the password in a grey box under the file
+  names – `MailCard.password` –, intro "… benötigen Sie ein Kennwort. Hier ist es:", no button, no fallback link, no
+  limits); the job watcher reads it right before sending (`mailFor`), "send again" (`/api/shares/:id/password/send`)
+  and the delivery proof (`mailPassword` in `proofPassword.ts`) create no new Send. After a proof's confirmation the
+  mail holds the password and the one button on to the link; the gateway page says the password is in that mail
+  (`ReleasedPassword.inMail`, `proof.gateway.stepInMail`); the PDF explains that reading it is not recorded
+  (`proof.explanationNoVault`) and the links have no "Kennwort abrufbar".
+- `/api/config` → `vaultwarden: false`, `passwordLinkMaxDays` = `SHARE_MAX_EXPIRE_DAYS` (no 30-day limit). The pane
+  hides "Nachricht" (`#kind-message-segment`), "Kennwort abrufbar" and "Kennwort-Link gültig für" (`renderValidity`),
+  the help section on messages and swaps the help on validity (`#help-password-validity-mail`); "Erneut senden an"
+  says the other address gets the password itself (`resend.mailHintInMail`).
+
 ## 3. State and data
 
 | Where | What | Lifetime |
@@ -631,6 +654,7 @@ the manifest it serves. No mail content, no recipients, no logs.
 | … store `cleanup` | Upload folders with expiry date per owner | Until deleted |
 | … store `deliveries` | Per link: channel, recipient (address or number), SMS message ID and status | 120 days |
 | … store `password-refs` | Per sent step: Send ID (never the password), link tokens, file names, subject, distribution of the sent mail (To, Cc, Bcc), other address / SMS number, sender | Until the links expire |
+| … store `local-passwords` | Only with `VAULTWARDEN_ENABLED=false`: the password of a step (ID `local:<uuid>`) – there is no Send to keep it (2.16) | Until the links expire (hourly pass) |
 | … store `sent-mails` | Per link: subject of the mail it went out with and the Graph ID (immutable) of that mail in the sender's own "Sent Items" – the title in "History", a click opens the mail | Until the link expires |
 | … store `messages` | Confidential messages: owner, Send ID, access ID (the link without its key), created, expiry – never key or text | Until the message expires |
 | … store `notices` | Links waiting for their first download or for uploads (sender, subject, recipients, expiry, files already reported) | Until downloaded / expired |
@@ -746,6 +770,10 @@ Alert trace". Off by default.
   times for a few days (5 by default); the Send itself lives until the links expire (at most 30 days), so its
   sender can see and resend the password in "History" (2.10) – the server reads it with the service account and
   returns it only to the link's owner. CloudShare stores only the Send ID.
+  **Without Vaultwarden** (`VAULTWARDEN_ENABLED=false`) the password is in the password mail itself and CloudShare
+  keeps it in its database instead (store `local-passwords`, sealed AES-GCM with `CREDENTIAL_KEY` like every row,
+  Send ID `local:<uuid>`, deleted hourly once its links expired – `purgeLocalPasswords`). Whoever reads the recipient's
+  mailbox later has link and password; with a Send the password link would have run out.
 - **Graph:** delegated permissions for everything the user triggers; the armed token is stored encrypted for at most
   15 minutes of use, and the `.Shared` permissions reach only mailboxes the user already has rights to. Only the
   optional download confirmation uses an **application** permission (`Mail.Send`) – restrict it to the CloudShare
@@ -804,6 +832,9 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
 - Recommended: allow the CloudShare server's address in the brute-force settings, since all requests come from it.
 
 ### Vaultwarden
+
+Optional: with `VAULTWARDEN_ENABLED=false` (setup.sh asks) nothing of this is needed – see "Without Vaultwarden" in
+section 2 and the README.
 
 - `SENDS_ALLOWED=true`.
 - Service account (with SSO: an IdP user with a verified email, invited in Vaultwarden, master password set at first
