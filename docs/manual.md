@@ -698,7 +698,8 @@ the server `t("section.key")` (`server/src/i18n.ts`), `taskpane.html` and `manif
 text goes into every file in `locales/` with the same placeholders – the tests fail otherwise. Details:
 [architecture → Languages](architecture.md#28-languages).
 
-Every push and pull request runs the pipeline in `.github/workflows/image.yml`:
+Every push and pull request runs the pipeline in `.github/workflows/image.yml` – pushes to `main` when code, texts or
+the stack changed, pull requests also when only the documentation changed (a docs-only push to `main` builds no image):
 
 | Stage | What is checked |
 |---|---|
