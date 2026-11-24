@@ -913,10 +913,11 @@ section 2 and [the manual](manual.md#without-vaultwarden).
   The colours are duplicated in `mailCard.ts` and `mailLayout.ts`; keep them in sync. Plain-text mails get a text
   version of the link card. The password mail ends with the sender's signature (2.11; `MAIL_FOOTER` filled from the
   profile unless the user set an own one); the link card carries none.
-- Icons (`addin/assets/icon-*.png`): the rings of the Nextcloud logo, taken unchanged from
-  its SVG path, with an upload arrow in the hole of the middle ring. Rendered by `addin/scripts/render-icons.ps1`
-  (Windows PowerShell, System.Drawing; drawn at 8x and scaled down). Icon URLs in the
-  manifest carry a version parameter because Outlook caches icons by URL – change it together with the icons.
+- Icons (`addin/assets/icon-*.png`): an own design – a white cloud with a padlock on a blue tile – drawn in
+  `addin/assets/icon.svg` (no third-party logo). Rendered by `addin/scripts/render-icons.ps1` (Windows PowerShell:
+  Microsoft Edge draws the SVG at 1024 px on a transparent background, System.Drawing scales it down in steps). Icon
+  URLs in the manifest carry a version parameter because Outlook caches icons by URL – change it together with the
+  icons (and the manifest `<Version>`). The pages of the delivery proof show `icon-64.png` as the logo.
 
 ## 9. Limits and risks
 
@@ -929,8 +930,8 @@ section 2 and [the manual](manual.md#without-vaultwarden).
 4. **Requirement sets:** Smart Alerts need Mailbox 1.12, custom buttons and "Send anyway" 1.14. Under `enforce`, a
    CloudShare outage means large attachments cannot be sent until it is back.
 5. **Bitwarden CLI and Vaultwarden versions must match** (`BW_CLI_VERSION` in the `Dockerfile`).
-6. **Trademark:** the icon uses the Nextcloud mark – fine for internal use; check Nextcloud's trademark guidelines
-   before distributing CloudShare to third parties.
+6. **Trademarks:** CloudShare uses no third-party logo (own icon since manifest 1.7). The names Nextcloud,
+   Vaultwarden, Bitwarden and Microsoft only describe what it works with.
 7. **Languages:** the add-in follows each user's Outlook language, what the recipients get the language chosen per
    mail, the notes to the sender the language of their add-in (2.8). Only mails sent before this version fall back
    to `LANGUAGE`, and a regional variant not listed in `_meta.regions` is left to Outlook (the pane maps it to its
