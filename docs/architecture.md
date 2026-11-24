@@ -930,7 +930,7 @@ section 2 and [the manual](manual.md#without-vaultwarden).
 4. **Requirement sets:** Smart Alerts need Mailbox 1.12, custom buttons and "Send anyway" 1.14. Under `enforce`, a
    CloudShare outage means large attachments cannot be sent until it is back.
 5. **Bitwarden CLI and Vaultwarden versions must match** (`BW_CLI_VERSION` in the `Dockerfile`).
-6. **Trademarks:** CloudShare uses no third-party logo (own icon since manifest 1.7). The names Nextcloud,
+6. **Trademarks:** CloudShare uses no third-party logo (own icon since manifest 1.7; ribbon group "CloudShare" since 1.8). The names Nextcloud,
    Vaultwarden, Bitwarden and Microsoft only describe what it works with.
 7. **Languages:** the add-in follows each user's Outlook language, what the recipients get the language chosen per
    mail, the notes to the sender the language of their add-in (2.8). Only mails sent before this version fall back

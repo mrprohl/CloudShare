@@ -5,7 +5,7 @@
   },
   "manifest": {
     "description": "Sends large files as a password-protected link from your Nextcloud.",
-    "group": "Nextcloud",
+    "group": "CloudShare",
     "tooltip": "Send large files as a password-protected link from your Nextcloud.",
     "readTooltip": "Shows whether your CloudShare links were downloaded and how the password went out – for this message and, in History, for all links and confidential messages that are still valid."
   },
