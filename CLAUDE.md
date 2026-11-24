@@ -31,6 +31,10 @@ One container serves everything behind Caddy:
 - Placeholders `%%PUBLIC_BASE_URL%%`, `%%PUBLIC_HOST%%`, `%%ENTRA_CLIENT_ID%%` in add-in files and manifest are replaced by `docker/entrypoint.sh` at container start (copied from `/app/public.tpl` to `/app/public`), so one image works for any environment. Then `server/src/index.ts` runs `localizePublic` (`i18n.ts`): the string marker `"%%CLOUDSHARE_I18N%%"` in the JS bundles becomes the `addin` texts of every language as JSON (`{ fallback, languages }`), `%%t:…%%`/`%%LANG%%`/`%%LOCALE%%` in HTML the texts of `LANGUAGE` plus a copy `taskpane.<language>.html` per language (the taskpane entry `main.ts` swaps in the client's page via `language.ts` before it imports `taskpane.ts`), in the manifest English `DefaultValue`s with one `Override` per other language (English as fallback for missing texts, own files/overrides from `/config/locales`, mounted from `env/config/` together with `templates.json`). Comments in these files must not contain `%%` (the smoke test fails on leftovers). UI tests and manifest validation localize via `addin/scripts/localize.mjs`; add-in unit tests load `locales/de.json` in `addin/test/setup.ts`. The backend also serves `/manifest.xml` for the M365 admin center.
 - Keep `docker/entrypoint.sh` LF-only (enforced by `.gitattributes`).
 
+## License
+
+MIT (`LICENSE`, `"license": "MIT"` in both package.json). Third-party software in the image with its licenses: `THIRD-PARTY-NOTICES.md` – keep it in step when a runtime dependency, the base image or the Bitwarden CLI changes (devDependencies are not in the image).
+
 ## Git layout
 
 - Public repository: `https://github.com/mrprohl/CloudShare.git`, default branch `main`. Deployment-specific files (real host names, site block, forwarding packages) do not belong here.
