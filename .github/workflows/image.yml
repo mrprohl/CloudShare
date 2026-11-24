@@ -41,6 +41,13 @@ on:
       - "ci/**"
       - ".github/workflows/image.yml"
       - ".github/dependabot.yml"
+      # Documentation too (docs.test.ts checks settings table, pictures, links of images, UTF-8) – only for pull
+      # requests: a docs-only push to main builds no new image.
+      - "**/*.md"
+      - "docs/**"
+      - "cloudshare.env.example"
+      - "templates.example.json"
+      - ".claude/**"
   workflow_dispatch: {}
 
 # Actions are pinned to commit SHAs (tags can be moved); Dependabot updates SHA and version comment together.
