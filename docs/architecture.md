@@ -2,9 +2,10 @@
 
 CloudShare is an Outlook add-in plus a small backend. Large files are uploaded to the **sender's own Nextcloud** and
 inserted into the mail as a password-protected link; the password reaches the recipients in a **second mail** as a
-Vaultwarden Send, and only after the first mail has really been sent. This document describes how the parts fit
+Vaultwarden Send (or, with `VAULTWARDEN_ENABLED=false`, the password itself – 2.16), and only after the first mail has
+really been sent. This document describes how the parts fit
 together, where state lives, and the Outlook peculiarities the code has to work around. Operation and installation:
-[README](../README.md); Microsoft 365 (Entra ID, deployment, Exchange): [microsoft-365.md](microsoft-365.md).
+[manual](manual.md); Microsoft 365 (Entra ID, deployment, Exchange): [microsoft-365.md](microsoft-365.md).
 
 Everything visible to users and recipients (taskpane, Outlook hints, cards, password mail, SMS, download
 confirmation) comes from the language files in `locales/` – the add-in in the Outlook client's language, the mails and
@@ -44,8 +45,8 @@ Container "cloudshare" (Node 24, read-only)
   │     ├─ Graph         On-Behalf-Of token → read "Sent Items", send password mail as the user;
   │     │                app token (optional) → download confirmation
   │     ├─ seven.io      password by SMS (optional)
-  │     └─ bw serve      HTTP on 127.0.0.1:8087 → Vaultwarden Sends (service account)
-  ├─ Bitwarden CLI "bw serve"
+  │     └─ bw serve      HTTP on 127.0.0.1:8087 → Vaultwarden Sends (service account; not with VAULTWARDEN_ENABLED=false)
+  ├─ Bitwarden CLI "bw serve" (only with Vaultwarden)
   ├─ /app/locales        built-in language files (locales/ in the repository)
   └─ /config (ro)        optional: templates.json, locales/<language>.json (host: env/config/)
 ```
@@ -149,7 +150,7 @@ from inserting, not from sending; the date is stored with the step (`sendExpires
 – those who opened it in time keep it. The Send itself lives until the links expire (its *deletion date*,
 `sendKeepUntil`), so the sender can still see and resend the password (2.10). Vaultwarden accepts deletion dates at
 most 31 days ahead, hence **a link with password lasts at most 30 days** (`passwordLinkMaxDays`, also in
-`/api/config`); links "Ohne Kennwort" up to `SHARE_MAX_EXPIRE_DAYS`. A confidential message's password Send lives as
+`/api/config`); links "Ohne Kennwort" – and every link without Vaultwarden (2.16) – up to `SHARE_MAX_EXPIRE_DAYS`. A confidential message's password Send lives as
 long as the message. Messages are listed in "History" (`history.ts`, 2.10) – with password and revoke, never their
 key – but get no download confirmation.
 
@@ -819,7 +820,7 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
 - Account with prepaid credit; API key → `SEVEN_API_KEY`, sender (number or up to 11 characters) → `SEVEN_SENDER`.
 - Delivery reports: callback URL `https://cloudshare.example.com/webhooks/seven?token=<SEVEN_WEBHOOK_SECRET>` in the
   dashboard (webhook event "dlr").
-- Step by step with checks: README → *Password by SMS*.
+- Step by step with checks: [manual](manual.md#password-by-sms-optional) → *Password by SMS*.
 - Conclude a data processing agreement and document it in the record of processing activities.
 
 ### Nextcloud
@@ -834,7 +835,7 @@ Step by step, with checks, maintenance and error table: **[docs/microsoft-365.md
 ### Vaultwarden
 
 Optional: with `VAULTWARDEN_ENABLED=false` (setup.sh asks) nothing of this is needed – see "Without Vaultwarden" in
-section 2 and the README.
+section 2 and [the manual](manual.md#without-vaultwarden).
 
 - `SENDS_ALLOWED=true`.
 - Service account (with SSO: an IdP user with a verified email, invited in Vaultwarden, master password set at first

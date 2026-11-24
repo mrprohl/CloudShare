@@ -11,7 +11,7 @@ export default defineConfig({
   reporter: [["list"], ["html", { outputFolder: "../playwright-report", open: "never" }]],
   outputDir: "../test-results",
   // The README pictures of the pane (readmeShot) are compared with docs/images: a visible change of the pane fails the
-  // UI tests until the pictures are updated (README → "Pictures").
+  // UI tests until the pictures are updated (docs/manual.md → "Pictures").
   snapshotPathTemplate: "{testDir}/../../docs/images/{arg}{ext}",
   updateSnapshots: process.env.CI ? "none" : "missing",
   use: {

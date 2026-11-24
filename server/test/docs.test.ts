@@ -1,6 +1,6 @@
 /**
- * The documentation keeps up with the code: every environment variable the server reads is described in the README
- * table and in cloudshare.env.example, every HTTP route is in the API table of docs/architecture.md, every README
+ * The documentation keeps up with the code: every environment variable the server reads is described in the manual
+ * (docs/manual.md) table and in cloudshare.env.example, every HTTP route is in the API table of docs/architecture.md, every README
  * picture exists, and the help in the taskpane has its texts. A failure names what to document – fix the docs, not
  * this test (only truly internal variables belong in INTERNAL, with the reason).
  */
@@ -48,8 +48,8 @@ const stackSources = ["docker/entrypoint.sh", "compose.yml", "docker-compose.yml
 /** Settings the docs name: the first column of the README settings table and every line VAR= / #VAR= of the example. */
 function documentedSettings(): Map<string, string> {
   const found = new Map<string, string>();
-  for (const m of read("README.md").matchAll(/^\| ((?:`[A-Z][A-Z0-9_]+`(?: \/ )?)+) \|/gm)) {
-    for (const name of m[1].matchAll(/`([A-Z][A-Z0-9_]+)`/g)) found.set(name[1], "README.md");
+  for (const m of read("docs/manual.md").matchAll(/^\| ((?:`[A-Z][A-Z0-9_]+`(?: \/ )?)+) \|/gm)) {
+    for (const name of m[1].matchAll(/`([A-Z][A-Z0-9_]+)`/g)) found.set(name[1], "docs/manual.md");
   }
   for (const m of read("cloudshare.env.example").matchAll(/^#?([A-Z][A-Z0-9_]+)=/gm)) found.set(m[1], "cloudshare.env.example");
   return found;
@@ -102,12 +102,12 @@ function documented(table: string, route: string): boolean {
 
 describe("documentation", () => {
   it("describes every environment variable in the README table and in cloudshare.env.example", () => {
-    const readme = read("README.md");
+    const readme = read("docs/manual.md");
     const example = read("cloudshare.env.example");
     const missing: string[] = [];
     for (const name of environmentVariables()) {
       if (INTERNAL[name]) continue;
-      if (!readme.includes(`\`${name}\``)) missing.push(`${name}: README.md (table "Settings")`);
+      if (!readme.includes(`\`${name}\``)) missing.push(`${name}: docs/manual.md (table "Settings")`);
       if (!new RegExp(`\\b${name}\\b`).test(example)) missing.push(`${name}: cloudshare.env.example`);
     }
     expect(missing, "document these settings").toEqual([]);
@@ -128,13 +128,13 @@ describe("documentation", () => {
     expect(defaults.size).toBeGreaterThan(8);
     const wrong: string[] = [];
     // README: "| `A` / `B` | `14` / `90` |" – the values in the order of the names.
-    for (const m of read("README.md").matchAll(/^\| ((?:`[A-Z][A-Z0-9_]+`(?: \/ )?)+) \| ((?:`[^`|]*`(?: \/ )?)+) \|/gm)) {
+    for (const m of read("docs/manual.md").matchAll(/^\| ((?:`[A-Z][A-Z0-9_]+`(?: \/ )?)+) \| ((?:`[^`|]*`(?: \/ )?)+) \|/gm)) {
       const names = [...m[1].matchAll(/`([A-Z][A-Z0-9_]+)`/g)].map((x) => x[1]);
       const values = [...m[2].matchAll(/`([^`]*)`/g)].map((x) => x[1]);
       if (names.length !== values.length) continue;
       names.forEach((name, i) => {
         if (defaults.has(name) && defaults.get(name) !== values[i]) {
-          wrong.push(`README.md: ${name} says ${values[i]}, the server uses ${defaults.get(name)}`);
+          wrong.push(`docs/manual.md: ${name} says ${values[i]}, the server uses ${defaults.get(name)}`);
         }
       });
     }
@@ -179,16 +179,17 @@ describe("documentation", () => {
     expect(routes().filter((route) => !documented(table, route)), "add these routes to the table").toEqual([]);
   });
 
-  it("has every picture the README shows", () => {
-    const readme = read("README.md");
-    const pictures = [...readme.matchAll(/docs\/images\/([\w.-]+\.png)/g)].map((m) => m[1]);
+  it("has every picture the README and the manual show", () => {
+    // README.md links docs/images/…, docs/manual.md images/… (relative to docs/).
+    const readme = `${read("README.md")}\n${read("docs/manual.md")}`;
+    const pictures = [...readme.matchAll(/\bimages\/([\w.-]+\.png)/g)].map((m) => m[1]);
     expect(pictures.length).toBeGreaterThan(5);
     expect(pictures.filter((file) => !existsSync(path.join(repo, "docs/images", file)))).toEqual([]);
   });
 
   it("writes every <img> of the docs so GitHub shows it – no double quote inside an attribute", () => {
     // A quote inside alt="…" ends the attribute early: GitHub then prints the tag as text instead of the picture.
-    const broken = ["README.md", "docs/architecture.md", "docs/microsoft-365.md"].flatMap((file) =>
+    const broken = ["README.md", "docs/manual.md", "docs/architecture.md", "docs/microsoft-365.md"].flatMap((file) =>
       [...read(file).matchAll(/<img\b[^\n]*>/g)]
         .map((m) => m[0])
         .filter((tag) => !/^<img(\s+[\w-]+="[^"]*")+\s*\/?>$/.test(tag))
@@ -199,8 +200,8 @@ describe("documentation", () => {
   it("names every README picture of the UI tests in the README and the other way round", () => {
     const tests = read("addin/e2e/taskpane.e2e.ts");
     const shots = [...tests.matchAll(/readmeShot\(page, "([\w-]+)"\)/g)].map((m) => `taskpane-${m[1]}.png`).sort();
-    const readme = read("README.md");
-    const shown = [...new Set([...readme.matchAll(/docs\/images\/(taskpane-[\w-]+\.png)/g)].map((m) => m[1]))].sort();
+    const readme = read("docs/manual.md");
+    const shown = [...new Set([...readme.matchAll(/\bimages\/(taskpane-[\w-]+\.png)/g)].map((m) => m[1]))].sort();
     expect(shown).toEqual(shots);
   });
 

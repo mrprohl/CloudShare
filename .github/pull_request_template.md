@@ -8,7 +8,7 @@ Tick what applies, or say why it is not needed. The CI checks part of it (server
 the UI tests); the rest is up to us.
 
 - [ ] **Help in the pane** (`help.*` in `locales/*.json`, sections in `taskpane.html`) describes the changed behaviour – in plain words, every language
-- [ ] **README.md** – features, settings table (`env`), Personal settings, Languages, troubleshooting
+- [ ] **docs/manual.md** – features, settings table (`env`), Personal settings, Languages, troubleshooting
 - [ ] **docs/architecture.md** – flows, state and data, HTTP API table, security
 - [ ] **docs/microsoft-365.md** – permissions, deployment, manifest version
 - [ ] **CLAUDE.md** – conventions and the module map

@@ -178,7 +178,7 @@ Notes:
 - **New manifest version** (e.g. 1.1 added the button for mails being read): Microsoft 365 picks up the changed
   manifest from the URL on its own, which can take a few days. Check *Integrated apps → CloudShare* for the version;
   if the new button does not show up, remove the app there and deploy it again with the same manifest URL. Classic
-  Outlook additionally keeps its cache (README → *Operation*).
+  Outlook additionally keeps its cache ([manual](manual.md#operation) → *Operation*).
 
 ## 4. Exchange Online
 

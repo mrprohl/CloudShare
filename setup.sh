@@ -145,4 +145,4 @@ echo; echo "env/ written:"; ls -l env | sed 's/^/  /'
 echo "Store CREDENTIAL_KEY in your password manager (without it all users have to reconnect):"
 echo "  grep CREDENTIAL_KEY env/cloudshare.env"
 echo "Optional features (SMS, notices, proof of delivery, …): see cloudshare.env.example and add them to env/cloudshare.env."
-echo "Next: DNS for $PUBLIC_HOST → this server, ports 80/443 open, then deploy the stack (README)."
+echo "Next: DNS for $PUBLIC_HOST → this server, ports 80/443 open, then deploy the stack (docs/manual.md)."
