@@ -4,7 +4,18 @@
  *     templates.json): a card with the files and the button to the password link (never the password itself);
  *   - the note to the sender that a password SMS failed: a card with the files and the number, no password, no link.
  */
-import { t } from "./i18n.js";
+import { addinLanguages, t, tIn } from "./i18n.js";
+
+/**
+ * The wording for the items of a password mail: "Datei"/"Dateien" (`key`) when all are files, "Link"/"Links"
+ * (`<key>Links`) as soon as an upload link or a confidential message is among them – those carry their label as name
+ * (server.requestItem, server.messageItem; in any language, the sender's may differ from the recipients').
+ */
+export function itemsKey(key: string, names: string[]): string {
+  const labels = new Set(addinLanguages().flatMap((lang) =>
+    ["server.requestItem", "server.requestLabel", "server.messageItem"].map((label) => tIn(lang, label))));
+  return names.some((name) => labels.has(name)) ? `${key}Links` : key;
+}
 import { escapeHtml, mailDocument, paragraph, smallPrint, TEXT_STYLE } from "./mailLayout.js";
 import { renderHtml } from "./templates.js";
 
@@ -49,16 +60,16 @@ export function passwordMailHtml(mail: PasswordMailContent): string {
   const count = mail.fileNames.length;
   const opening = mail.afterConfirmation
     ? paragraph(t("mail.greeting")) +
-      paragraph(t("mail.confirmedIntro", { count, name: mail.fileNames[0], subject: mail.subject || mail.fileNames[0], sender: mail.senderName || "" }))
+      paragraph(t(itemsKey("mail.confirmedIntro", mail.fileNames), { count, name: mail.fileNames[0], subject: mail.subject || mail.fileNames[0], sender: mail.senderName || "" }))
     : mail.introTemplate
     ? renderHtml(mail.introTemplate, { subject: mail.subject, sender_name: mail.senderName ?? "", count: String(count) }, TEXT_STYLE)
     : paragraph(t("mail.greeting")) +
-      paragraph(mail.subject ? t("mail.introSubject", { count, subject: mail.subject }) : t("mail.intro", { count }));
+      paragraph(mail.subject ? t(itemsKey("mail.introSubject", mail.fileNames), { count, subject: mail.subject }) : t(itemsKey("mail.intro", mail.fileNames), { count }));
   const expiry = mail.expiresOn ? t("mail.expiresOn", { date: mail.expiresOn }) : t("mail.expires", { count: mail.expireDays });
   // How often and how long the button works, in a sentence – the link stops working after that, and recipients should
   // keep the password until they are done. Older jobs without the date or the number: the short form.
   const limits = mail.expiresOn && mail.maxAccessCount
-    ? t("mail.limitNote", { count: mail.maxAccessCount, date: mail.expiresOn })
+    ? t(itemsKey("mail.limitNote", mail.fileNames), { count: mail.maxAccessCount, date: mail.expiresOn })
     : [accessText(mail.maxAccessCount), expiry].filter(Boolean).join(" · ");
   const signature = mail.signature ? `<div style="margin:20px 0 0;">${mail.signature}</div>` : "";
   const tracking = mail.trackingId ? t("mail.trackingId", { id: mail.trackingId }) : "";
@@ -95,7 +106,7 @@ export function passwordMailHtml(mail: PasswordMailContent): string {
     opening,
     card: {
       accent: "brand",
-      title: t("mail.cardTitle", { count }),
+      title: t(itemsKey("mail.cardTitle", mail.fileNames), { count }),
       files: mail.fileNames,
       button: { label: t("mail.showPassword"), url: mail.sendUrl },
       details: [limits, t("mail.enterPassword", { count }), tracking].filter(Boolean).join(" · "),

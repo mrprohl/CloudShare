@@ -7,8 +7,8 @@ describe("password mail", () => {
   it("looks like the link card: one card with badges, button and note", () => {
     const html = passwordMailHtml({ ...base, fileNames: ["Angebot.pdf"] });
     expect(html).toContain("border-left:4px solid #0f6cbd"); // brand accent as in the link card
-    expect(html).toContain("Kennwort für Ihre Freigabe");
-    expect(html).toContain("die folgende Freigabe aus der Nachricht „Unterlagen“");
+    expect(html).toContain("Kennwort für Ihre Datei");
+    expect(html).toContain("die folgende Datei aus der Nachricht „Unterlagen“");
     expect(html).toMatch(/background:#c4314b[^>]*>PDF</);
     expect(html).toMatch(/<a href="https:\/\/vault\.example\.test\/#\/send\/abc\/key"[^>]*><span[^>]*>Kennwort anzeigen<\/span><\/a>/);
     expect(html).toContain("bis zu 3 Abrufe · läuft nach 7 Tagen ab");
@@ -24,8 +24,8 @@ describe("password mail", () => {
 
   it("names every file of the step and uses the plural", () => {
     const html = passwordMailHtml({ ...base, fileNames: ["a.pdf", "b.zip", "Upload-Link für Ihre Dateien"] });
-    expect(html).toContain("Kennwort für 3 Freigaben");
-    expect(html).toContain("die folgenden Freigaben");
+    expect(html).toContain("Kennwort für 3 Links"); // an upload link among them: "Links", not "Dateien"
+    expect(html).toContain("die folgenden Links");
     expect(html).toContain(">ZIP<");
     expect(html).toContain("&#8593;"); // upload link: arrow badge instead of a file type
     expect(html).toContain("Geben Sie das Kennwort ein, wenn Sie einen der Links öffnen.");
@@ -100,9 +100,12 @@ describe("common layout of all automatic mails", () => {
 describe("password mail – limits and the mail after the confirmation", () => {
   it("says in a sentence how often and how long the button works", () => {
     const html = passwordMailHtml({ ...base, fileNames: ["a.pdf"], maxAccessCount: 3, expiresOn: "25.11.2026" });
-    expect(html).toContain("Der Button funktioniert 3-mal und bis 25.11.2026 – notieren Sie sich das Kennwort, bis Sie alle Freigaben geöffnet haben.");
+    expect(html).toContain("Der Button funktioniert 3-mal und bis 25.11.2026 – notieren Sie sich das Kennwort, bis Sie alle Dateien heruntergeladen haben.");
     expect(passwordMailHtml({ ...base, fileNames: ["a.pdf"], maxAccessCount: 1, expiresOn: "25.11.2026" }))
       .toContain("Der Button funktioniert nur einmal und bis 25.11.2026");
+    // A confidential message among them – named by its label in any language: "Links".
+    expect(passwordMailHtml({ ...base, fileNames: ["a.pdf", "Confidential message"], maxAccessCount: 3, expiresOn: "25.11.2026" }))
+      .toContain("bis Sie alle Links geöffnet haben.");
   });
 
   it("right after the confirmation: two numbered steps in the card, each with its button and plain link", () => {

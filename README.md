@@ -317,7 +317,7 @@ deployed again.
 | `ATTACHMENT_POLICY` | `suggest` | `suggest`: ask once, "Send Anyway" possible · `enforce`: large attachments only via CloudShare |
 | `ATTACHMENT_POLICY_INTERNAL` | like `ATTACHMENT_POLICY` | The same for mails whose recipients are **all internal** (`INTERNAL_DOMAINS`), e.g. `enforce` outside and `suggest` inside |
 | `LABEL_POLICY` | `inherit` | Sensitivity labels (Microsoft Purview) of shared files: `inherit` – the message gets the highest label of its files (never lowered) and the pane says so · `suggest` – the pane only offers it ("Apply") · `off` – labels are ignored. The label shows under the file name; see [Sensitivity labels](#sensitivity-labels) |
-| `LABEL_ENCRYPTED` | `warn` | Files encrypted by their label (recipients outside the organisation can usually not open them): `warn` – a note right below the file list, inserting only after "Send as a link anyway" is ticked (its "×" removes the file from the message instead) · `block` – not shared as a link · `allow` – no question |
+| `LABEL_ENCRYPTED` | `warn` | Files encrypted by their label (recipients outside the organisation can usually not open them; no note while every recipient is internal – `INTERNAL_DOMAINS` –, shown while none is entered yet): `warn` – a note right under the file, inserting only after its "Send as a link anyway" is ticked (the "×" of its row removes the file instead) · `block` – not shared as a link · `allow` – no question |
 | `SHARE_EXPIRE_DAYS` / `SHARE_MAX_EXPIRE_DAYS` | `14` / `90` | Link validity: default / maximum. A link with password lasts at most 30 days: only as long as its password in Vaultwarden, which keeps it until then so it can be sent again |
 | `SEND_MAX_ACCESS_COUNT` / `SEND_MAX_ACCESS_LIMIT` | `3` / `20` | How often the password link opens: default / maximum |
 | `SEND_EXPIRE_DAYS` / `SEND_MAX_EXPIRE_DAYS` | `5` / `30` | Days the password link and confidential messages stay available: default / maximum the sender may choose (at most 30 – Vaultwarden keeps Sends at most 31 days) |
@@ -507,8 +507,11 @@ attachment out, the message would go without it. So CloudShare reads the label f
   An **encrypting** label (e.g. "Highly confidential") encrypts the message itself once it is set – recipients without
   rights then cannot read the message either, not only the file.
 - **Encrypted files** (a label with protection): recipients outside the organisation can usually not open them, link
-  or not. `LABEL_ENCRYPTED=warn`: a note appears right below the file list, and the files can be inserted only after "Send as
-  a link anyway" is ticked; `block`: the note says they cannot be sent as links (insert stays off); `allow`: nothing.
+  or not. `LABEL_ENCRYPTED=warn`: a short orange note appears right under the file, and it can be inserted only after
+  its "Send as a link anyway" is ticked (the "×" of its row removes it instead); `block`: the note says it cannot be sent
+  as a link (insert stays off); `allow`: nothing.
+  When every recipient is internal (`INTERNAL_DOMAINS`, else the own domain) there is no note – colleagues can open
+  the file; it comes back as soon as an external recipient is added. Without recipients the note shows.
 - Recognised: Word, Excel, PowerPoint, Visio (also encrypted – the label is stored unencrypted next to the encrypted
   content), the old binary Office formats, PDF; other files Purview protects (`.pfile`, `.ppdf` …) count as protected.
   Setting the label on the message needs Outlook with the sensitivity label API (Mailbox 1.13); the names come from

@@ -88,7 +88,7 @@ describe("password jobs", () => {
     expect(token).toBe("token");
     expect(recipients).toEqual(sentMessage.recipients);
     expect(subject).toBe("Kennwort für: Unterlagen");
-    expect(html).toContain("die folgenden Freigaben");
+    expect(html).toContain("die folgenden Links");
     expect(html).toContain("a.pdf");
     expect(html).toContain("Upload-Link für Ihre Dateien");
     expect(html).toContain("https://vault/#/send/x");
@@ -108,7 +108,7 @@ describe("password jobs", () => {
 
     expect(sendMail).toHaveBeenCalledOnce();
     const [, , subject, html] = sendMail.mock.calls[0];
-    expect(subject).toBe("Kennwort für 2 Freigaben: Unterlagen");
+    expect(subject).toBe("Kennwort für 2 Dateien: Unterlagen");
     expect(html).toContain("a.pdf");
     expect(html).toContain("b.png");
     expect(getJob(id)?.fileNames).toEqual(["a.pdf", "b.png"]);

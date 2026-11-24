@@ -22,7 +22,7 @@
   window.Office = {
     AsyncResultStatus: { Succeeded: "succeeded", Failed: "failed" },
     CoercionType: { Html: "html", Text: "text" },
-    EventType: { AttachmentsChanged: "olkAttachmentsChanged", OfficeThemeChanged: "officeThemeChanged", ItemChanged: "olkItemSelectedChanged" },
+    EventType: { AttachmentsChanged: "olkAttachmentsChanged", OfficeThemeChanged: "officeThemeChanged", ItemChanged: "olkItemSelectedChanged", RecipientsChanged: "olkRecipientsChanged" },
     MailboxEnums: {
       AttachmentType: { File: "file", Item: "item", Cloud: "cloud" },
       AttachmentContentFormat: { Base64: "base64", Url: "url", Eml: "eml", ICalendar: "iCalendar" },
@@ -96,7 +96,12 @@
             log.removed.push(id);
             cb(ok());
           },
-          addHandlerAsync(_type, _handler, cb) { if (cb) cb(ok()); },
+          // Item events (RecipientsChanged …) – the test can fire them via window.__itemHandlers.
+          addHandlerAsync(type, handler, cb) { (window.__itemHandlers = window.__itemHandlers || {})[type] = handler; if (cb) cb(ok()); },
+          // Recipients of the draft: window.__officeConfig.to / cc / bcc (may change during the test).
+          to: { getAsync(cb) { cb(ok(((window.__officeConfig || {}).to || []).map((a) => ({ emailAddress: a })))); } },
+          cc: { getAsync(cb) { cb(ok(((window.__officeConfig || {}).cc || []).map((a) => ({ emailAddress: a })))); } },
+          bcc: { getAsync(cb) { cb(ok(((window.__officeConfig || {}).bcc || []).map((a) => ({ emailAddress: a })))); } },
           body: {
             getTypeAsync(cb) { cb(ok(cfg.bodyType || "html")); },
             // New Outlook reports success but inserts nothing when the cursor has never been in the body.

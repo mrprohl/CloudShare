@@ -524,7 +524,10 @@ offered with `DELIVERY_PROOF`, which follows `DOWNLOAD_NOTICE` when unset – it
   `deferred` with `toRecipients` and the signature. After a right code `releasePassword` sends what is still held
   back – a password mail (new Send with the same password, app token, as the mailbox the mail came from) to the
   confirmed address, to other addresses once, the SMS once (`ProofCase.released`) – and the gateway shows the next
-  steps with a link on instead of redirecting at once. The link card says so (`card.proofPassword`).
+  steps with a link on instead of redirecting at once. The link card says so: under the button "Gültig bis … · Vorgang …",
+  then one sentence in the order things happen – confirm the address with a code, then the password (`card.proofPassword`,
+  `noteLines` in `mailCard.ts`). The password mail speaks of "Datei"/"Dateien" when all its items are files, else of
+  "Link"/"Links" (`itemsKey` in `passwordMail.ts`); the code mail of an upload link of uploading (`proof.codeMail.textUpload`).
 - **Mails to the sender** (`proofMail.ts`, app token, PDF attached via `sendMailAsApp` attachments): after the first
   download (`downloadMailSent`; `notices.ts` skips its download confirmation for links of a case) and when the case is
   done (`finalMailSent`, retried until it went out); `proof.sent` records each. `GET /proof/:id.pdf` first runs
@@ -576,11 +579,14 @@ longer attached, so the add-in does it itself (`addin/src/taskpane/labels.ts`, n
 - **The mail's label** (`item.sensitivityLabel`): after inserting, the highest-ranked label of the files is set if the
   mail's is lower – never lowered (`labelForMail`; `LABEL_POLICY=inherit`), or offered with "Übernehmen" (`suggest`).
 - **Encrypted files** (`renderEncrypted`): as soon as a ticked file is known to be encrypted, a note appears right
-  below the file list (`#encrypted-field`); `LABEL_ENCRYPTED=warn` – the insert button stays off until "Trotzdem als Link senden"
-  is ticked (`insertReady`), `block` – it stays off, `allow` – no note. The note's "×" (`#encrypted-dismiss`) removes the
-  encrypted files instead (attachments from the mail, files chosen in the pane from the list); the note follows the list (`renderAttachments` / `renderPicked` call `renderEncrypted`), so a
-  file removed from the mail takes its note with it. Large attachments are read only when inserted;
-  then the same check runs before any upload.
+  under its row, indented under the file name, orange, without a frame (`.file-encrypted`, `encryptedNote`);
+  `LABEL_ENCRYPTED=warn` – the note has its own "Trotzdem als Link senden" per file (`encryptedConfirmed`), the insert
+  button stays off until every encrypted file is confirmed (`encryptedPending`, `insertReady`), `block` – red, no box,
+  it stays off, `allow` – no note. No note either while the draft has recipients and all are internal
+  (`onlyInternalRecipients`, `INTERNAL_DOMAINS` or the own domain; re-checked on `RecipientsChanged`). The row's "×"
+  removes the file as always; the notes follow the list (`renderAttachments` / `renderPicked` call `renderEncrypted`),
+  so a removed or unticked file takes its note with it. Large attachments are read only when inserted; then the same
+  check runs before any upload and the note appears at that file.
 - No extra permission: the manifest already has `ReadWriteItem`.
 
 ### 2.14 Attachments inside and outside the organisation

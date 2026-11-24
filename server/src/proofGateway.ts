@@ -267,7 +267,9 @@ function codeMail(c: ProofCase, token: string, link: ProofLink, address: string,
   return {
     subject: t("mail.proof.codeMail.subject", { name: link.name }),
     html: mailDocument({
-      opening: paragraph(t("mail.greeting")) + paragraph(t("mail.proof.codeMail.text", { sender, name: link.name })),
+      // An upload link: about uploading, not about opening a file.
+      opening: paragraph(t("mail.greeting")) +
+        paragraph(t(link.kind === "request" ? "mail.proof.codeMail.textUpload" : "mail.proof.codeMail.text", { sender, name: link.name })),
       card: {
         accent: "brand",
         title: t("mail.proof.codeMail.title"),
