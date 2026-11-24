@@ -22,6 +22,7 @@ One container (Fastify backend and the add-in) behind its own Caddy, deployed wi
 
 ## Documentation
 
+- [INSTALL.md](INSTALL.md) – installation step by step, with checklists
 - [docs/manual.md](docs/manual.md) – what senders and recipients see, installation, settings, operation, troubleshooting
 - [docs/microsoft-365.md](docs/microsoft-365.md) – Microsoft 365 step by step: Entra app registration, add-in deployment, Exchange
 - [docs/architecture.md](docs/architecture.md) – components, data flows, state, HTTP API, security
@@ -35,7 +36,7 @@ docker compose up -d                      # or as a Portainer/Dockhand stack fro
 ```
 
 Before that: the Entra app registration ([docs/microsoft-365.md](docs/microsoft-365.md)); afterwards deploy the add-in
-in the Microsoft 365 admin center – both step by step in the [manual](docs/manual.md#installation).
+in the Microsoft 365 admin center – all of it step by step in [INSTALL.md](INSTALL.md).
 
 ## Not in this repository
 
