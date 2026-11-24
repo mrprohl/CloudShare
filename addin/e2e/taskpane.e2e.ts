@@ -361,7 +361,7 @@ async function readmeShot(page: Page, name: string) {
   await page.setViewportSize(size);
   expect(
     picture,
-    `docs/images/taskpane-${name}.png no longer shows the pane – take it from the artifact "readme-pictures" (README → "Pictures")`,
+    `docs/images/taskpane-${name}.png no longer shows the pane – take it from the artifact "readme-pictures" (docs/manual.md → "Pictures")`,
   ).toMatchSnapshot(`taskpane-${name}.png`, { maxDiffPixels: 0 }); // CI renders the same pixels every time; a changed word must fail
 }
 

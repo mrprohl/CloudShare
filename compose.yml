@@ -67,7 +67,7 @@ services:
     volumes:
       - data:/data
       # Optional: templates.json (texts of SMS, password mail, download confirmation – see templates.example.json) and
-      # locales/<language>.json (own languages or changed texts – see README)
+      # locales/<language>.json (own languages or changed texts – see docs/manual.md)
       - /opt/cloudshare/env/config:/config:ro
     # Entra ID, Nextcloud, Vaultwarden service account, CREDENTIAL_KEY (setup.sh)
     env_file: [/opt/cloudshare/env/cloudshare.env]

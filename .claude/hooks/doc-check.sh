@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Claude Code Stop hook: before Claude finishes, check that changed code came with changed documentation.
 # Looks at the working tree (uncommitted and untracked) and the commits of the branch since public/main (or main).
-# Code: addin/src, server/src, addin/manifest.xml. Documentation: README.md, docs/, CLAUDE.md, cloudshare.env.example,
+# Code: addin/src, server/src, addin/manifest.xml. Documentation: README.md, docs/ (manual.md …), CLAUDE.md, cloudshare.env.example,
 # locales/ (help texts). A changed pane (taskpane html/css/ts) also asks for the README pictures. Blocks once per stop
 # (stop_hook_active lets the second attempt through), so Claude either updates the docs or says why none are needed.
 set -u
@@ -24,7 +24,7 @@ pictures=$(grep -E '^docs/images/' <<<"$changed" || true)
 
 reasons=()
 if [ -n "$code" ] && [ -z "$docs" ]; then
-  reasons+=("Code changed without any documentation change: $(tr '\n' ' ' <<<"$code"). Check README.md (features, settings table), docs/architecture.md (flows, data, API table), the help texts help.* in locales/*.json, CLAUDE.md and cloudshare.env.example – update what the change affects, or tell the user why nothing needs updating.")
+  reasons+=("Code changed without any documentation change: $(tr '\n' ' ' <<<"$code"). Check docs/manual.md (features, settings table), docs/architecture.md (flows, data, API table), the help texts help.* in locales/*.json, CLAUDE.md and cloudshare.env.example – update what the change affects, or tell the user why nothing needs updating.")
 fi
 if [ -n "$pane" ] && [ -z "$pictures" ]; then
   reasons+=("The taskpane changed but no README picture (docs/images): if the change is visible in a README picture, the UI tests will fail – after the CI run take the pictures from the artifact readme-pictures. Mockup pictures (docs/mockups) need re-rendering when the card or a mail changed.")
