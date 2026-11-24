@@ -295,7 +295,7 @@ failed, retrying later`); everything else keeps working.
 4. Send the mail to yourself or a colleague → the password mail follows within about a minute. The server log shows
    `Password mail sent` (`docker logs cloudshare 2>&1 | grep "Password mail"`).
 5. Open the sent mail in *Sent Items* → **CloudShare** → the pane lists its link under *In this message*.
-6. With `DELIVERY_PROOF`: switch on *Proof of delivery* under *Recipients*, send a file to a second address of yours →
+6. With `DELIVERY_PROOF`: switch on *Proof of delivery* (below the password), send a file to a second address of yours →
    no password mail arrives with the mail. Open the link, confirm the address with the code → the password mail
    arrives, *To the download* leads on. In *History* the seal next to the file name opens the PDF; Adobe Reader shows
    it as signed and unchanged (signer "unknown" with the certificate CloudShare made itself).

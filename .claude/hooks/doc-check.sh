@@ -18,7 +18,7 @@ changed=$( { git status --porcelain --untracked-files=all | sed -E 's/^.. //; s/
 [ -z "$changed" ] && exit 0
 
 code=$(grep -E '^(addin/src/|server/src/|addin/manifest\.xml$)' <<<"$changed" || true)
-docs=$(grep -E '^(README\.md|CLAUDE\.md|cloudshare\.env\.example|docs/|locales/)' <<<"$changed" || true)
+docs=$(grep -E '^(README\.md|INSTALL\.md|CLAUDE\.md|cloudshare\.env\.example|docs/|locales/)' <<<"$changed" || true)
 pane=$(grep -E '^addin/src/taskpane/.*\.(html|css|ts)$' <<<"$changed" || true)
 pictures=$(grep -E '^docs/images/' <<<"$changed" || true)
 

@@ -248,6 +248,8 @@ Outlook add-in ──HTTPS──► Caddy (Let's Encrypt) ──► CloudShare c
 
 ## Installation
 
+Step by step with checklists and checkpoints: **[INSTALL.md](../INSTALL.md)**. The overview:
+
 ### Requirements
 
 - Microsoft 365 / Exchange Online and permission to register an app in Entra ID and deploy add-ins

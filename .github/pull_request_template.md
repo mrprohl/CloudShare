@@ -8,6 +8,7 @@ Tick what applies, or say why it is not needed. The CI checks part of it (server
 the UI tests); the rest is up to us.
 
 - [ ] **Help in the pane** (`help.*` in `locales/*.json`, sections in `taskpane.html`) describes the changed behaviour – in plain words, every language
+- [ ] **INSTALL.md** – steps and checks still match setup.sh and the linked guides
 - [ ] **docs/manual.md** – features, settings table (`env`), Personal settings, Languages, troubleshooting
 - [ ] **docs/architecture.md** – flows, state and data, HTTP API table, security
 - [ ] **docs/microsoft-365.md** – permissions, deployment, manifest version
