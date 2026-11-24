@@ -43,3 +43,8 @@ in the Microsoft 365 admin center – all of it step by step in [INSTALL.md](INS
 Secrets and everything generated on the server stay out: `env/` (written by `setup.sh`), the data volume and own
 texts in `env/config/`. The documentation uses example names only (`cloudshare.example.com`, `cloud.example.com`,
 `vault.example.com`).
+
+## License
+
+[MIT](LICENSE). The image also contains third-party software under its own licenses (among them the Bitwarden CLI
+under GPL-3.0) – see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
