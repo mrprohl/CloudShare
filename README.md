@@ -1,3 +1,5 @@
+<img src="addin/assets/icon.svg" alt="CloudShare logo: a white cloud with a padlock on a blue tile" width="96">
+
 # CloudShare
 
 Outlook add-in for Microsoft 365 / Exchange Online: large and confidential files go to the sender's own **Nextcloud**
