@@ -1,3 +1,5 @@
+<img src="../addin/assets/icon.svg" alt="CloudShare logo" width="72">
+
 # CloudShare – manual
 
 **Send large files from Outlook as password-protected Nextcloud links – with the password delivered automatically on
